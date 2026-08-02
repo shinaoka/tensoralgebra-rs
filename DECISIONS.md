@@ -41,12 +41,16 @@ Settled; do not re-open without new data:
 **The immediate next task is Phase 4: profiling and improvement.** In priority
 order, with what Phase 3 learned about each:
 
-1. **Profile the write-back.** Phase 3 found a clean 2x defect on nine corpus
-   cases that is monotone in the stride of the output's leading `M` axis, with
-   packing held constant and block scatter fully regular. The diagnosis
-   (DTLB/L2 pressure from the scattered write-back) is inferred from that
-   pattern, not measured — confirm it with `perf` first, then fix. This is the
-   single largest known win.
+1. **Fix the write-back.** Phase 3 found and then *profiled* a clean 2x defect
+   on nine corpus cases, monotone in the stride of the output's leading `M`
+   axis: instructions and DTLB misses flat, L2 demand misses 2.3x, IPC 1.25 →
+   0.78. It is L2 miss traffic on the `C`/`D` update, not TLB pressure. Two
+   separable pieces, both already on the Phase 4 list:
+   * a vectorised / line-aware write-back for regular blocks — this is where
+     the 2x is;
+   * choosing the micro-tile aspect ratio from the output's stride pattern,
+     measured at ±11% in a controlled test and free to apply, since the kernels
+     are parameterised over `(MV, NR)` already.
 2. **Sweep `MC`/`KC`/`NC`.** Still the untouched Phase 2 heuristic. Phase 3
    showed the whole method ranking turns on whether the `A` sliver is an L1
    resident or an L2 stream, which makes `KC` a first-order parameter.
@@ -618,14 +622,42 @@ leads the `M` group. Throughput is monotone in that axis's stride in `D`,
 | `b` | `n_a` | 36.2, 36.4, 36.6 |
 | `c` | `n_a * n_b` | 17.7, 17.8, 17.8 |
 
-Packing is identical across the nine (same operand layouts, fully regular
-block scatter), so the cost is in the **scattered write-back**: at `MR = 16`
-the tile's rows land `n_a*n_b` elements apart, spreading one micro-tile's
-stores across ~150 KiB and one `MC` block's across ~1.2 MiB of DTLB and L2
-footprint. This is inferred from the 9/9 monotone pattern and from what is held
-constant across the nine, **not** from a profile — confirming it with one is
-the first Phase 4 task. It puts a number on the "vectorised write-back for
-regular blocks" item already on the Phase 4 list: up to 2x on affected shapes.
+Packing is identical across the nine (same operand layouts, fully regular block
+scatter), so the cost is in the **scattered write-back**. `perf stat` on three
+of them, same binary, same reps, confirms it and identifies the mechanism:
+
+| `M` leading axis | cycles | instructions | IPC | dTLB store misses | **L2 demand misses** |
+|---|---|---|---|---|---|
+| `a` (stride 1) | 5.19e9 | 6.50e9 | 1.25 | 4.11e6 | 27.5e6 |
+| `b` (stride `n_a`) | 5.48e9 | 6.46e9 | 1.18 | 4.21e6 | 33.0e6 |
+| `c` (stride `n_a*n_b`) | **8.32e9** | 6.49e9 | **0.78** | 4.07e6 | **62.9e6** |
+
+Instruction count and retired stores are flat to within 1%, so this is purely
+stalling, not extra work. **The first-guess mechanism was wrong**: DTLB misses
+are flat, so it is not TLB pressure. It is L2 miss traffic — 2.3x more of it —
+from poor cache-line utilisation and reuse distance on the `C`/`D` update when
+consecutive tile rows are far apart in the output.
+
+A controlled follow-up: rebuilding *planar alone* with 3m's wider `8x10` tile
+instead of its own `16x6`, changing nothing else, moves these cases the way the
+mechanism predicts and moves the others back:
+
+| case | `16x6` | `8x10` | |
+|---|---|---|---|
+| `abcijk-ijmc-mkab` — `D` contiguous along `N` | 17.8 | **19.8** | +11% |
+| `abcijk-ijmb-mkac` — intermediate | 36.2 | 33.8 | −7% |
+| `abcijk-ijma-mkbc` — `D` contiguous along `M` | 40.5 | 35.9 | −11% |
+| `ijkl-imjn-lnkm` — compute-bound control | 79.4 | 79.4 | 0% |
+
+So micro-tile **aspect ratio should follow the output's stride pattern** — a
+real lever, worth about ±11%, and free to apply since the kernels are already
+parameterised over `(MV, NR)`. It also explains why 3m beats planar by 1.36x on
+exactly these three cases while losing everywhere else.
+
+But ±11% does not explain a 2x. Aspect ratio is a tuning knob; the 2x is the
+write-back's L2 traffic itself, and closing it needs the "vectorised write-back
+for regular blocks" item on the Phase 4 list — or blocking the `jr`/`ir` loops
+against the output's layout rather than only against the packed panels.
 
 ### Assumptions added
 

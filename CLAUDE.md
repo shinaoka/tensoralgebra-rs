@@ -154,10 +154,12 @@ three counts. No AVX2 path yet; deferred to Phase 5's multi-arch work.
 **Phase 4 — Profiling & improvement.** *Next.* In the order Phase 3's data
 argues for:
 
-1. **Profile the write-back**, and fix it. Phase 3 found a 2x defect on nine
-   corpus cases, monotone in the stride of the output's leading `M` axis, with
-   packing identical and block scatter fully regular across all nine. The
-   mechanism is *inferred*, not measured — get `perf` on it first.
+1. **Fix the write-back.** Phase 3 found *and profiled* a 2x defect on nine
+   corpus cases, monotone in the stride of the output's leading `M` axis:
+   instructions and DTLB misses flat, L2 demand misses 2.3x, IPC 1.25 → 0.78.
+   It is L2 miss traffic on the `C`/`D` update. Also make the micro-tile
+   aspect ratio follow the output's stride pattern — worth ±11%, measured in a
+   controlled test, and free since the kernels take `(MV, NR)`.
 2. **Sweep `MC`/`KC`/`NC`**, still the untouched Phase 2 heuristic. `KC` is now
    known to be first-order: it decides whether the `A` sliver is an L1 resident
    or an L2 stream, which is what the whole method ranking turns on.
