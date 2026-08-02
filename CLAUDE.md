@@ -31,8 +31,9 @@ they can be benchmarked against each other and against TBLIS on equal footing.
   Absolute performance is meaningful from here on. The three-way comparison is
   done — see below and the Phase 3 report.
 * **Phase 4 in progress.** Item 1 (the write-back) is **done**: the profiled
-  2x defect is closed in all four dtypes for +11–12% corpus geometric mean,
+  2x defect is closed in all four dtypes for +12–17% corpus geometric mean,
   with no case left slower beyond noise. Items 1c, 2, 3 and the rest remain.
+  Item 1c is now the biggest remaining lever — see `DECISIONS.md` part 4.
 * Phase 5 not started.
 
 Workspace MSRV is **1.89** (AVX-512 intrinsics stabilised there).
@@ -243,7 +244,16 @@ cargo run --release -p tensorcontract --example kernel_shapes
 ```
 
 Benchmarks are single-core measurements: **do not compile, build a baseline or
-run anything else on the machine while one is in flight.**
+run anything else on the machine while one is in flight.** Pinning is not
+enough — the pinned core's **hyperthread sibling** shares L1d and L2, which is
+what every cache-blocking measurement here turns on. Two Phase 4 conclusions
+had to be corrected after re-measuring on an exclusive machine.
+
+Use `scripts/phase4-remeasure.sh` as the pattern for any A/B: it runs
+`A, B, A'` so a repeat brackets the treatment, prefers a runtime switch over a
+rebuild so the arms interleave, and records sibling-CPU occupancy alongside the
+results. **Noise floor when the machine is exclusive: ±1.3% on a 49-case
+geometric mean, ±6% per case.** Anything smaller is not a result.
 
 Useful environment variables:
 
