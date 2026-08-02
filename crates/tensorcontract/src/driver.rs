@@ -129,10 +129,6 @@ pub unsafe fn execute<T>(
         return;
     }
 
-    let Blocking { mc, kc, nc } = cfg.blk;
-    let mc = mc.min(m.next_multiple_of(mr));
-    let nc = nc.min(n.next_multiple_of(nr));
-
     // Block-scatter metadata. Cheap (O(M/MR + N/NR)) and element-type
     // dependent only through MR/NR, so it lives here rather than in the plan.
     let a_m_bs = build_block_scatter(am, mr);
@@ -146,6 +142,19 @@ pub unsafe fn execute<T>(
     } else {
         build_block_scatter(cm, mr)
     };
+
+    // NOTE (Phase 4): `cfg.blk` is still the untouched Phase 2 heuristic, and
+    // `MC`/`NC` in it are sized for a `KC`-deep panel. On a third of the corpus
+    // the contraction is far shallower than `KC` (`k = 24` against 256), so the
+    // packed `A` block uses a tenth of its budget and `B` is re-streamed
+    // `M/MC` times for nothing. Re-deriving against `min(k, KC)` was tried and
+    // is *not* a win: it swings individual cases by +13% and −18% with no rule
+    // visible, because `MC` has a second constraint this model omits — the
+    // strip of `D` that one `jr` pass revisits. See the Phase 4 report; this is
+    // what the `MC`/`KC`/`NC` sweep has to settle.
+    let Blocking { mc, kc, nc } = cfg.blk;
+    let mc = mc.min(m.next_multiple_of(mr));
+    let nc = nc.min(n.next_multiple_of(nr));
 
     // Panel sizes come from the kernel's declared per-k sliver widths, so a
     // method that packs more reals per element (1m's "1e", 3m's sum plane)

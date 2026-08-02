@@ -227,10 +227,34 @@ impl Blocking {
     /// rows. Getting that wrong would hand 1m an unfair L2 overflow and make
     /// the comparison meaningless.
     pub fn derive(real_bytes: usize, a_reals: usize, b_reals: usize) -> Blocking {
+        let kc = if real_bytes <= 4 { 384 } else { 256 };
+        Blocking::derive_at_depth(real_bytes, a_reals, b_reals, kc)
+    }
+
+    /// [`Blocking::derive`] with `kc` supplied rather than chosen.
+    ///
+    /// Exists for the `MC`/`KC`/`NC` sweep, which needs to vary `kc` and get
+    /// the cache-budget-consistent `mc`/`nc` that go with it rather than a
+    /// grid of independently chosen numbers.
+    ///
+    /// Tempting use it takes some care with: re-deriving against `min(k, KC)`
+    /// once the contraction depth is known. A contraction shallower than `KC`
+    /// — `k = 24` against a `KC` of 256 describes the entire `abcijk` third of
+    /// the corpus — otherwise packs into an `A` block sized for a panel ten
+    /// times deeper, using a tenth of its L2 budget. Doing that measured
+    /// **+13% on one case and −18% on another**, because `MC` also bounds the
+    /// strip of `D` that a `jr` pass revisits, which this budget does not
+    /// model. See the Phase 4 report before reaching for it.
+    pub fn derive_at_depth(
+        real_bytes: usize,
+        a_reals: usize,
+        b_reals: usize,
+        kc: usize,
+    ) -> Blocking {
         // Roughly half of a 1 MiB L2 for the packed A block, 3 MiB of L3 for B.
         const A_BUDGET: usize = 512 * 1024;
         const B_BUDGET: usize = 3 * 1024 * 1024;
-        let kc = if real_bytes <= 4 { 384 } else { 256 };
+        let kc = kc.max(1);
         let mc = (A_BUDGET / (kc * a_reals * real_bytes)).max(1);
         let nc = (B_BUDGET / (kc * b_reals * real_bytes)).max(1);
         Blocking { mc, kc, nc }
