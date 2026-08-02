@@ -17,7 +17,7 @@ use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 
 use tensorcontract::element::{Element, Real};
-use tensorcontract::kernel::{Blocking, KernelSet};
+use tensorcontract::kernel::{Blocking, ComplexMethod, KernelSet};
 use tensorcontract::plan::{ElementOp, Operand};
 use tensorcontract::reference::{contract_reference, RefOperand};
 use tensorcontract::{Layout, Plan};
@@ -52,11 +52,20 @@ fn rel_error<T: Element>(got: &[T], want: &[T]) -> f64 {
     }
 }
 
-fn tol<T: Element>() -> f64 {
-    if core::mem::size_of::<T::Real>() == 4 {
+/// 3m's error bound is relative to `|Ar||Br| + |Ai||Bi|` rather than to the
+/// complex magnitudes, so it can lose relative accuracy under cancellation.
+/// That is the documented price of the 25% flop saving, and the tolerance
+/// reflects it rather than hiding it.
+fn tol<T: Element>(method: ComplexMethod) -> f64 {
+    let base = if core::mem::size_of::<T::Real>() == 4 {
         2e-4
     } else {
         1e-11
+    };
+    if T::IS_COMPLEX && method == ComplexMethod::ThreeM {
+        base * 100.0
+    } else {
+        base
     }
 }
 
@@ -189,7 +198,12 @@ fn op(b: bool) -> ElementOp {
     }
 }
 
-fn check_problem<T>(p: &Problem, rng: &mut ChaCha8Rng, blocking: Option<Blocking>) -> f64
+fn check_problem<T>(
+    p: &Problem,
+    rng: &mut ChaCha8Rng,
+    blocking: Option<Blocking>,
+    method: ComplexMethod,
+) -> f64
 where
     T: Element,
     T::Real: KernelSet,
@@ -225,7 +239,8 @@ where
             op: op(p.conj_d),
         },
     )
-    .expect("plan");
+    .expect("plan")
+    .with_complex_method(method);
     if let Some(blk) = blocking {
         plan = plan.with_blocking(blk);
     }
@@ -284,32 +299,51 @@ where
     T: Element,
     T::Real: KernelSet,
 {
+    // Every complex method must produce the same answer as the oracle on the
+    // same problem. Running all three over the same generated problems is the
+    // property that keeps them genuinely interchangeable.
+    let methods: &[ComplexMethod] = if complex {
+        &ComplexMethod::ALL
+    } else {
+        &[ComplexMethod::Planar]
+    };
     let mut rng = ChaCha8Rng::seed_from_u64(seed);
     for i in 0..iters {
         let p = random_problem(&mut rng, complex);
-        for blk in [Some(TINY), None] {
-            let err = check_problem::<T>(&p, &mut rng, blk);
-            assert!(
-                err <= tol::<T>(),
-                "iteration {i} blocking {blk:?}: relative error {err:e}\n\
-                 idx_a={:?} idx_b={:?} idx_c={:?} idx_d={:?}\n\
-                 la={:?} lb={:?} lc={:?} ld={:?}\n\
-                 conj a/b/c/d = {}/{}/{}/{} use_c={}",
-                p.idx_a,
-                p.idx_b,
-                p.idx_c,
-                p.idx_d,
-                p.la,
-                p.lb,
-                p.lc,
-                p.ld,
-                p.conj_a,
-                p.conj_b,
-                p.conj_c,
-                p.conj_d,
-                p.use_c,
-            );
+        for &method in methods {
+            for blk in [Some(TINY), None] {
+                let err = check_problem::<T>(&p, &mut rng, blk, method);
+                assert!(
+                    err <= tol::<T>(method),
+                    "iteration {i} method {} blocking {blk:?}: relative error {err:e}\n{p}",
+                    method.name(),
+                );
+            }
         }
+    }
+}
+
+impl std::fmt::Display for Problem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "  idx_a={:?} idx_b={:?} idx_c={:?} idx_d={:?}\n  \
+             la={:?}\n  lb={:?}\n  lc={:?}\n  ld={:?}\n  \
+             conj a/b/c/d = {}/{}/{}/{} use_c={}",
+            self.idx_a,
+            self.idx_b,
+            self.idx_c,
+            self.idx_d,
+            self.la,
+            self.lb,
+            self.lc,
+            self.ld,
+            self.conj_a,
+            self.conj_b,
+            self.conj_c,
+            self.conj_d,
+            self.use_c,
+        )
     }
 }
 
@@ -349,7 +383,9 @@ fn naive_gemm<T: Element>(m: usize, n: usize, k: usize, a: &[T], b: &[T]) -> Vec
 }
 
 /// Sizes chosen to straddle the real `MC`/`KC`/`NC` boundaries with an
-/// awkward remainder in every dimension.
+/// awkward remainder in every dimension. Run for every complex method, since
+/// each has its own `MC` (1m's packed A is twice the size, so its blocks fall
+/// in different places).
 fn large_gemm_case<T>(m: usize, n: usize, k: usize, seed: u64)
 where
     T: Element,
@@ -358,34 +394,47 @@ where
     let mut rng = ChaCha8Rng::seed_from_u64(seed);
     let a: Vec<T> = fill(m * k, &mut rng);
     let b: Vec<T> = fill(k * n, &mut rng);
-    let mut d = vec![T::zero(); m * n];
+    let want = naive_gemm(m, n, k, &a, &b);
 
     let la = Layout::col_major(&[m as i64, k as i64]);
     let lb = Layout::col_major(&[k as i64, n as i64]);
     let ld = Layout::col_major(&[m as i64, n as i64]);
-    let plan = Plan::new(
-        Operand::new(&la, &[0, 2]),
-        Operand::new(&lb, &[2, 1]),
-        None,
-        Operand::new(&ld, &[0, 1]),
-    )
-    .unwrap();
-    assert!(plan.stats.is_pure_gemm);
 
-    unsafe {
-        plan.run_raw::<T>(
-            T::one(),
-            a.as_ptr(),
-            b.as_ptr(),
-            T::zero(),
-            d.as_ptr(),
-            d.as_mut_ptr(),
-        )
+    let methods: &[ComplexMethod] = if T::IS_COMPLEX {
+        &ComplexMethod::ALL
+    } else {
+        &[ComplexMethod::Planar]
     };
+    for &method in methods {
+        let mut d = vec![T::zero(); m * n];
+        let plan = Plan::new(
+            Operand::new(&la, &[0, 2]),
+            Operand::new(&lb, &[2, 1]),
+            None,
+            Operand::new(&ld, &[0, 1]),
+        )
+        .unwrap()
+        .with_complex_method(method);
+        assert!(plan.stats.is_pure_gemm);
 
-    let want = naive_gemm(m, n, k, &a, &b);
-    let err = rel_error(&d, &want);
-    assert!(err <= tol::<T>(), "{m}x{n}x{k}: relative error {err:e}");
+        unsafe {
+            plan.run_raw::<T>(
+                T::one(),
+                a.as_ptr(),
+                b.as_ptr(),
+                T::zero(),
+                d.as_ptr(),
+                d.as_mut_ptr(),
+            )
+        };
+
+        let err = rel_error(&d, &want);
+        assert!(
+            err <= tol::<T>(method),
+            "{m}x{n}x{k} [{}]: relative error {err:e}",
+            method.name()
+        );
+    }
 }
 
 #[test]
@@ -546,78 +595,85 @@ fn conjugation_matrix_is_consistent() {
     let alpha = sample::<T>(&mut rng);
     let beta = sample::<T>(&mut rng);
 
-    for mask in 0..16u8 {
-        let (ca, cb, cc, cd) = (mask & 1 != 0, mask & 2 != 0, mask & 4 != 0, mask & 8 != 0);
-        let mut got = vec![T::zero(); 6];
-        let mut want = vec![T::zero(); 6];
-        let plan = Plan::new(
-            Operand {
-                layout: &la,
-                idx: &[0, 2],
-                op: op(ca),
-            },
-            Operand {
-                layout: &lb,
-                idx: &[2, 1],
-                op: op(cb),
-            },
-            Some(Operand {
-                layout: &ld,
-                idx: &[0, 1],
-                op: op(cc),
-            }),
-            Operand {
-                layout: &ld,
-                idx: &[0, 1],
-                op: op(cd),
-            },
-        )
-        .unwrap()
-        // force multiple K blocks so the accumulate path's conjugation
-        // handling is exercised
-        .with_blocking(Blocking {
-            mc: 1,
-            kc: 1,
-            nc: 1,
-        });
-        unsafe {
-            plan.run_raw::<T>(
-                alpha,
-                a.as_ptr(),
-                b.as_ptr(),
-                beta,
-                c.as_ptr(),
-                got.as_mut_ptr(),
+    for method in ComplexMethod::ALL {
+        for mask in 0..16u8 {
+            let (ca, cb, cc, cd) = (mask & 1 != 0, mask & 2 != 0, mask & 4 != 0, mask & 8 != 0);
+            let mut got = vec![T::zero(); 6];
+            let mut want = vec![T::zero(); 6];
+            let plan = Plan::new(
+                Operand {
+                    layout: &la,
+                    idx: &[0, 2],
+                    op: op(ca),
+                },
+                Operand {
+                    layout: &lb,
+                    idx: &[2, 1],
+                    op: op(cb),
+                },
+                Some(Operand {
+                    layout: &ld,
+                    idx: &[0, 1],
+                    op: op(cc),
+                }),
+                Operand {
+                    layout: &ld,
+                    idx: &[0, 1],
+                    op: op(cd),
+                },
             )
-        };
-        contract_reference::<T>(
-            alpha,
-            &RefOperand {
-                data: &a,
-                layout: &la,
-                idx: &[0, 2],
-                op: op(ca),
-            },
-            &RefOperand {
-                data: &b,
-                layout: &lb,
-                idx: &[2, 1],
-                op: op(cb),
-            },
-            beta,
-            Some(&RefOperand {
-                data: &c,
-                layout: &ld,
-                idx: &[0, 1],
-                op: op(cc),
-            }),
-            &mut want,
-            &ld,
-            &[0, 1],
-            op(cd),
-        )
-        .unwrap();
-        let err = rel_error(&got, &want);
-        assert!(err < 1e-12, "conj mask {mask:04b}: relative error {err:e}");
+            .unwrap()
+            .with_complex_method(method)
+            // force multiple K blocks so the accumulate path's conjugation
+            // handling is exercised
+            .with_blocking(Blocking {
+                mc: 1,
+                kc: 1,
+                nc: 1,
+            });
+            unsafe {
+                plan.run_raw::<T>(
+                    alpha,
+                    a.as_ptr(),
+                    b.as_ptr(),
+                    beta,
+                    c.as_ptr(),
+                    got.as_mut_ptr(),
+                )
+            };
+            contract_reference::<T>(
+                alpha,
+                &RefOperand {
+                    data: &a,
+                    layout: &la,
+                    idx: &[0, 2],
+                    op: op(ca),
+                },
+                &RefOperand {
+                    data: &b,
+                    layout: &lb,
+                    idx: &[2, 1],
+                    op: op(cb),
+                },
+                beta,
+                Some(&RefOperand {
+                    data: &c,
+                    layout: &ld,
+                    idx: &[0, 1],
+                    op: op(cc),
+                }),
+                &mut want,
+                &ld,
+                &[0, 1],
+                op(cd),
+            )
+            .unwrap();
+            let err = rel_error(&got, &want);
+            assert!(
+                err < tol::<T>(method),
+                "conj mask {mask:04b} [{}]: relative error {err:e}",
+                method.name()
+            );
+        }
     }
 }

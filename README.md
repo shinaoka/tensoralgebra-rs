@@ -1,6 +1,7 @@
 # tensorcontract-rs
 
-A native-Rust, transpose-free dense tensor contraction engine, plus a
+A native-Rust, transpose-free dense tensor contraction engine with **three
+interchangeable complex methods** (planar, 1m, 3m) behind one switch, plus a
 systematic benchmark of complex-vs-real tensor contraction across TBLIS, TTGT
 and a vendor GEMM ceiling.
 
@@ -14,7 +15,8 @@ algorithm is Matthews' block-scatter-matrix tensor contraction
 
 > **Status.** The engine is correct and framework-complete (Phase 2 gate met);
 > the micro-kernels are still the portable scalar fallback, so absolute
-> performance is not yet meaningful.
+> performance and the method-vs-method ranking are **not yet meaningful**.
+> Vectorised kernels are Phase 3.
 >
 > The project's original thesis — that complex contraction is where existing
 > engines leave the most on the table, because interleaved storage compounds
@@ -77,6 +79,39 @@ every stride-1 extent up to a multiple of 24, which divides every plausible
 register block, so its block-scatter vectors are **fully regular** and the
 irregular gather path never runs. Any claim about awkward strides needs the
 `--stress ragged` / `--stress padded` modes added here.
+
+## Three complex methods, one engine
+
+Complex contraction can be induced from real arithmetic in several ways, and
+which one wins depends on shape, element type and machine. Rather than pick
+one, the engine implements three and lets you switch:
+
+| [`ComplexMethod`] | A / B reals per complex elt | FMAs per k per tile | accumulator planes |
+|---|---|---|---|
+| `Planar` (default) | 2 / 2 | `4*MR*NR` | 2 |
+| `OneM` — BLIS's 1m, what TBLIS 2.x uses | **4** / 2 | `4*MR*NR` | 2 (as `2*MR x NR` real) |
+| `ThreeM` — Karatsuba | 3 / 3 | **`3*MR*NR`** | 3 |
+
+```rust
+let plan = Plan::new(a, b, None, d)?.with_complex_method(ComplexMethod::ThreeM);
+```
+```bash
+TENSORCONTRACT_COMPLEX=1m ./target/release/tcbench sweep --dtype c64
+./target/release/tcbench premise --engines planar,1m,3m --dtype f64,c64
+```
+
+The three share the *entire* engine — index analysis, scatter machinery,
+five-loop driver, write-back scatter. `driver.rs` contains no branch on the
+method; everything a method changes is declared on the `Ukr` it selects
+(`a_pack`, `b_pack`, `tile_fmt` and the sliver widths). Cache blocking is
+derived from the reals a method actually packs, not from `size_of::<Element>()`,
+so 1m automatically gets a smaller `MC` and every method sees the same L2
+budget — otherwise the comparison would be quietly rigged.
+
+`ThreeM` trades accuracy for its 25% flop saving: its error bound is relative to
+`|Ar||Br| + |Ai||Bi|` rather than the complex magnitudes, so it can lose
+relative accuracy under cancellation. It is opt-in for that reason, and the
+test suite gives it a correspondingly looser tolerance rather than hiding it.
 
 ## Layout
 

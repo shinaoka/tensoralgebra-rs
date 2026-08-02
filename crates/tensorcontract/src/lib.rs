@@ -14,11 +14,20 @@
 //!
 //! # What is different here
 //!
-//! Complex operands are packed into **planar (split-complex)** panels: the
-//! real and imaginary parts are separated into contiguous runs during the
-//! scatter/gather pass that packing has to make anyway, and re-interleaved
-//! only at write-back. That gives a real-SIMD micro-kernel with no in-register
-//! shuffles, and a packed `A` panel half the size of BLIS's 1m "1e" format.
+//! Complex contraction can be induced from real arithmetic in more than one
+//! way, and this crate implements **three interchangeable methods** so they can
+//! be measured against each other on genuinely equal footing — same index
+//! analysis, same scatter machinery, same five-loop driver, same write-back
+//! scatter. Only packing, the micro-kernel and the tile recombination differ.
+//!
+//! | [`ComplexMethod`] | packing | kernel | note |
+//! |---|---|---|---|
+//! | `Planar` (default) | split real/imaginary planes, 2 reals per element | fused complex | smallest packed A, no in-register shuffles |
+//! | `OneM` | BLIS "1e" for A (4 reals per element), "1r" for B | plain real | what BLIS and TBLIS 2.x use |
+//! | `ThreeM` | real, imaginary and sum planes, 3 reals per element | Karatsuba | 25% fewer flops, weaker error bound |
+//!
+//! Select per plan with [`Plan::with_complex_method`], or globally with the
+//! `TENSORCONTRACT_COMPLEX` environment variable (`planar` | `1m` | `3m`).
 //! See [`kernel`] and [`pack`] for the details.
 //!
 //! # Example
@@ -62,7 +71,7 @@ pub mod scatter;
 
 pub use element::{Element, Real, C32, C64};
 pub use error::{Error, Result};
-pub use kernel::KernelSet;
+pub use kernel::{ComplexMethod, KernelSet};
 pub use layout::Layout;
 pub use plan::{Class, ElementOp, Operand, Plan, PlanStats};
 

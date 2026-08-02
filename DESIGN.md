@@ -1,11 +1,15 @@
 # Design: a transpose-free tensor contraction engine in Rust
 
-Phase 1 design document. Status: **complete; the working thesis it was written
-to serve has been refuted by the Phase 1 premise check.** See
-[`DECISIONS.md`](DECISIONS.md) §Phase 1 report for the measurement and the
-recommended pivot. The engineering below stands on its own — it is implemented,
-correct, and benchmarked — but the *motivation* for the planar-complex design
-did not survive contact with data.
+Phase 1 design document, updated after the premise check and the
+three-methods decision.
+
+Status: **complete.** The working thesis it was written to serve — that planar
+complex packing is a research win over BLIS's 1m — did not survive the Phase 1
+premise check (see [`DECISIONS.md`](DECISIONS.md) §Phase 1 report). The project
+has been re-aimed: rather than advocating for planar, the engine now implements
+**all three induced-complex methods behind one switch** so they can be measured
+against each other and against TBLIS on genuinely equal footing
+(§3.4, §3.5, and `DECISIONS.md` §Phase 2b).
 
 ---
 
@@ -225,29 +229,46 @@ register-block size.
 
 ```rust
 pub struct Ukr<T> {
-    pub mr: usize,
+    pub mr: usize,          // logical (complex) rows of the micro-tile
     pub nr: usize,
+    pub a_per_k: usize,     // reals in an A sliver per logical k-step
+    pub b_per_k: usize,
+    pub tile: usize,        // reals in the accumulator tile
+    pub a_pack: PackFormat,
+    pub b_pack: PackFormat,
+    pub tile_fmt: TileFormat,
     pub func: unsafe fn(kc: usize, a: *const T, b: *const T, ab: *mut T),
     pub name: &'static str,
 }
 ```
 
-The kernel *overwrites* an `MR x NR` accumulator tile; `alpha`, `beta`, the
-scattered write-back and the re-interleaving of complex output happen
-afterwards in `writeback.rs`. Keeping them separate is what lets one kernel
-serve the regular fast path, the gather path and every edge block. The cost is
-one extra store/load of a tile that is L1-resident by construction.
+This struct is the whole of the method abstraction. `driver.rs` contains **no
+branch on the complex method**: it reads sliver widths, panel sizes, tile size
+and formats off the selected `Ukr`. Swapping methods swaps a `Ukr`, nothing
+else — which is precisely what makes the three comparable.
 
-Complex kernels accumulate into two real planes:
+Kernels take the *logical* `kc` (in complex elements) and know their own panel
+layout, so 1m's internal doubling to `2*kc` real steps never leaks out.
 
-```
-ab_re[j*MR+i] = sum_p (a_re[i]*b_re[j] - a_im[i]*b_im[j])
-ab_im[j*MR+i] = sum_p (a_re[i]*b_im[j] + a_im[i]*b_re[j])
-```
+The kernel *overwrites* the accumulator tile; `alpha`, `beta`, the scattered
+write-back and the recombination of planes happen afterwards in `writeback.rs`.
+Keeping them separate is what lets one kernel serve the regular fast path, the
+gather path and every edge block. The cost is one extra store/load of a tile
+that is L1-resident by construction.
 
-Complex needs 2x the accumulator register state, so the complex micro-tile is
-half the real one. That is inherent to complex arithmetic, not to the planar
-representation.
+Tile formats, read by `writeback::tile_value`:
+
+| `TileFormat` | layout | complex value |
+|---|---|---|
+| `Real` | `ab[j*MR+i]` | `(x, 0)` |
+| `Planar` | two `MR x NR` planes | `(re, im)` |
+| `OneM` | one real `2*MR x NR` | row `2i` is Re, row `2i+1` is Im |
+| `ThreeM` | three `MR x NR` planes | `(M1-M2, M3-M1-M2)` |
+
+Complex needs more accumulator register state than real — two planes for
+planar, a doubled real row count for 1m, three planes for 3m — so the complex
+micro-tile is smaller. That is inherent to complex arithmetic, not to any one
+method.
 
 Dispatch is by `trait KernelSet`, implemented for `f32`/`f64` with runtime CPU
 feature detection and a portable scalar fallback. Any other `Real` type
@@ -261,11 +282,19 @@ genericity is real, not aspirational, and is exercised by the
 Defaults are derived from cache sizes (packed A ≈ half of L2, packed B ≈ 3 MiB
 of L3) and overridable per plan or via `TENSORCONTRACT_MC/KC/NC`.
 
-The only planar-specific overhead is the write-back interleave, roughly
-`c / (4 * min(K, KC))` of a tile's compute with `c` the interleave-ops per
-element (~0.5 vectorised, ~2 scalar). Negligible for `K >= KC`, rising like
-`1/(8K)` for small `K`, material only at `K` in the low single digits — which
-was to be handled by dispatch (planar / 1m / TTGT).
+Critically, `Blocking::derive` takes the **reals per element the method
+actually packs**, not `size_of::<Element>()`. 1m stores four reals per complex
+element where planar stores two, so an element-size-based rule would silently
+give 1m twice the L2 footprint and rig the comparison. Deriving from the packed
+footprint gives every method the same L2 budget and 1m a proportionally
+smaller `MC`.
+
+The per-output recombination cost at write-back differs by method — two loads
+for planar and 1m, three loads and three adds for 3m — and is roughly
+`c / (4 * min(K, KC))` of a tile's compute with `c` the ops per element.
+Negligible for `K >= KC`, rising like `1/(8K)` for small `K`, material only at
+`K` in the low single digits. That is where a shape-driven method dispatch (or
+a fall-back to TTGT) belongs, in Phase 4.
 
 ### 3.7 TAPP export
 
@@ -383,19 +412,21 @@ Written before the premise check was run, and left standing because the
 4. That TBLIS-as-built is a fair stand-in for "the state of the art in complex
    tensor contraction".
 
-**Alternatives to planar.**
+**Alternatives to planar.** All three are now implemented rather than argued
+about, which is the resolution of this section.
 
 * **1m** — the incumbent. Its A-panel inflation is real but may be irrelevant.
-* **3m** — 25% fewer flops, slightly worse error bound. Planar packing makes it
+* **3m** — 25% fewer flops, weaker error bound. Planar-style packing makes it
   natural (pack `re`, `im`, and `re+im` in one pass). This is the one complex
   idea with a *flop-count* advantage rather than a bandwidth one, and the
   premise check does not bear on it.
-* **TTGT with a good permute** (HPTT-class) — the measurements below show TTGT
-  is 2–4x off TBLIS on low-intensity shapes, so the transpose really does cost.
+* **TTGT with a good permute** (HPTT-class) — the measurements show TTGT is
+  2–4x off TBLIS on low-intensity shapes, so the transpose really does cost.
 * **Wrap TBLIS** — no research contribution, but the honest answer if the goal
   is a working Rust tensor contraction today.
-* **Contribute upstream** — a planar path inside BLIS/TBLIS would be a much
-  smaller change than a new engine.
+* **Contribute upstream** — a 3m or planar path inside BLIS/TBLIS would be a
+  much smaller change than a new engine, and this repository is now a
+  ready-made A/B harness for arguing that case.
 
 **Single most likely failure mode, and how Phase 1 detects it early.**
 

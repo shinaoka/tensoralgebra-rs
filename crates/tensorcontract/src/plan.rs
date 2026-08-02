@@ -200,6 +200,8 @@ pub struct Plan {
     pub(crate) conj_d: bool,
     /// Overrides the element-type-derived cache blocking when set.
     pub(crate) blocking: Option<crate::kernel::Blocking>,
+    /// Overrides the default complex method when set.
+    pub(crate) method: Option<crate::kernel::ComplexMethod>,
     pub stats: PlanStats,
 }
 
@@ -339,8 +341,40 @@ impl Plan {
             conj_c: c.map(|c| c.op.is_conj()).unwrap_or(false),
             conj_d: d.op.is_conj(),
             blocking: None,
+            method: None,
             stats,
         })
+    }
+
+    /// Choose how complex arithmetic is induced from real micro-kernels.
+    ///
+    /// Ignored for real element types. Without this, the plan uses
+    /// [`ComplexMethod::from_env`], i.e. `TENSORCONTRACT_COMPLEX` if set and
+    /// [`ComplexMethod::Planar`] otherwise.
+    ///
+    /// ```
+    /// # use tensorcontract::{Layout, Plan, Operand, ComplexMethod};
+    /// # let la = Layout::col_major(&[4, 5]);
+    /// # let lb = Layout::col_major(&[5, 6]);
+    /// # let ld = Layout::col_major(&[4, 6]);
+    /// let plan = Plan::new(
+    ///     Operand::new(&la, &[0, 2]),
+    ///     Operand::new(&lb, &[2, 1]),
+    ///     None,
+    ///     Operand::new(&ld, &[0, 1]),
+    /// )?
+    /// .with_complex_method(ComplexMethod::ThreeM);
+    /// # Ok::<(), tensorcontract::Error>(())
+    /// ```
+    pub fn with_complex_method(mut self, method: crate::kernel::ComplexMethod) -> Self {
+        self.method = Some(method);
+        self
+    }
+
+    /// The complex method this plan will execute with.
+    pub fn complex_method(&self) -> crate::kernel::ComplexMethod {
+        self.method
+            .unwrap_or_else(crate::kernel::ComplexMethod::from_env)
     }
 
     /// Override the cache blocking parameters this plan executes with.

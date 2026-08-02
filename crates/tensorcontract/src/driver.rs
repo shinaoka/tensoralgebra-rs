@@ -3,28 +3,36 @@
 //! Structurally identical to BLIS's GEMM: two levels of cache blocking with a
 //! packing step at each, wrapped around a register-blocked micro-kernel. The
 //! only tensor-specific part is that every matrix access goes through a
-//! scatter vector, and that packing emits planar complex panels.
+//! scatter vector.
 //!
 //! ```text
 //! for each Hadamard (batch) index h          -- offsets all four operands
 //!   loop 5: for jc in 0..N step NC
 //!     loop 4: for pc in 0..K step KC
-//!               pack B[pc:pc+KC, jc:jc+NC] -> Bp    (planar, NR slivers)
+//!               pack B[pc:pc+KC, jc:jc+NC] -> Bp    (NR slivers)
 //!       loop 3: for ic in 0..M step MC
-//!                 pack A[ic:ic+MC, pc:pc+KC] -> Ap  (planar, MR slivers)
+//!                 pack A[ic:ic+MC, pc:pc+KC] -> Ap  (MR slivers)
 //!         loop 2: for jr in 0..NC step NR
 //!           loop 1: for ir in 0..MC step MR
 //!                     micro-kernel -> MR x NR tile
 //!                     write back to C/D through the scatter vectors
 //! ```
 //!
+//! The loop nest is identical for real and for all three complex methods. What
+//! the complex method changes is captured entirely by the selected
+//! [`Ukr`](crate::kernel::Ukr): its `a_pack`/`b_pack` formats, its per-k sliver
+//! widths, its tile size and its `tile_fmt`. Nothing here branches on the
+//! method, which is what makes the three genuinely comparable — they share
+//! every line of index analysis, packing traversal, loop arithmetic and
+//! write-back scatter.
+//!
 //! `beta` and the `C` operand are consumed on the first `pc` iteration only;
 //! later iterations accumulate into `D`.
 
 use crate::buffer::Panel;
 use crate::element::Element;
-use crate::kernel::{Blocking, KernelSet};
-use crate::pack::pack_panel;
+use crate::kernel::{config_for, Blocking, KernelSet};
+use crate::pack::{pack_panel, panel_len};
 use crate::plan::Plan;
 use crate::scatter::build_block_scatter;
 use crate::writeback::{scale_only, writeback};
@@ -53,18 +61,13 @@ pub unsafe fn execute<T>(
         return;
     }
 
-    let cfg = if T::IS_COMPLEX {
-        <T::Real as KernelSet>::config_cplx()
-    } else {
-        <T::Real as KernelSet>::config_real()
-    };
+    let cfg = config_for::<T>(plan.complex_method());
     let cfg = match plan.blocking {
         Some(blk) => cfg.with_blocking(blk),
         None => cfg,
     };
-    let (mr, nr) = (cfg.ukr.mr, cfg.ukr.nr);
-    let ukr = cfg.ukr.func;
-    let planes = T::PLANES;
+    let ukr = cfg.ukr;
+    let (mr, nr) = (ukr.mr, ukr.nr);
 
     let m = plan.stats.m;
     let n = plan.stats.n;
@@ -97,9 +100,12 @@ pub unsafe fn execute<T>(
     let a_m_bs = build_block_scatter(&plan.a_m, mr);
     let b_n_bs = build_block_scatter(&plan.b_n, nr);
 
-    let mut ap = Panel::<T::Real>::new(mc * kc * planes);
-    let mut bp = Panel::<T::Real>::new(nc * kc * planes);
-    let mut tile = Panel::<T::Real>::new(mr * nr * planes);
+    // Panel sizes come from the kernel's declared per-k sliver widths, so a
+    // method that packs more reals per element (1m's "1e", 3m's sum plane)
+    // automatically gets a correspondingly larger buffer.
+    let mut ap = Panel::<T::Real>::new(panel_len(mc, mr, kc, ukr.a_pack));
+    let mut bp = Panel::<T::Real>::new(panel_len(nc, nr, kc, ukr.b_pack));
+    let mut tile = Panel::<T::Real>::new(ukr.tile);
     let ap_ptr = ap.as_mut_ptr();
     let bp_ptr = bp.as_mut_ptr();
     let tile_ptr = tile.as_mut_ptr();
@@ -130,9 +136,10 @@ pub unsafe fn execute<T>(
                     &plan.b_k[pc..pc + pc_len],
                     nr,
                     plan.conj_b,
+                    ukr.b_pack,
                     bp_ptr,
                 );
-                let b_sliver = nr * pc_len * planes;
+                let b_sliver = ukr.b_per_k * pc_len;
 
                 // ---- loop 3: M blocking -----------------------------------
                 let mut ic = 0;
@@ -146,9 +153,10 @@ pub unsafe fn execute<T>(
                         &plan.a_k[pc..pc + pc_len],
                         mr,
                         plan.conj_a,
+                        ukr.a_pack,
                         ap_ptr,
                     );
-                    let a_sliver = mr * pc_len * planes;
+                    let a_sliver = ukr.a_per_k * pc_len;
 
                     // ---- loop 2: NR ---------------------------------------
                     let mut jr = 0;
@@ -164,11 +172,12 @@ pub unsafe fn execute<T>(
                             let i0 = ic + ir;
                             let apan = ap_ptr.add((ir / mr) * a_sliver);
 
-                            ukr(pc_len, apan, bpan, tile_ptr);
+                            (ukr.func)(pc_len, apan, bpan, tile_ptr);
 
                             if first_k_block {
                                 writeback::<T>(
                                     tile_ptr,
+                                    ukr.tile_fmt,
                                     mr,
                                     nr,
                                     mrem,
@@ -189,6 +198,7 @@ pub unsafe fn execute<T>(
                                 // the readback exactly when op_D conjugates.
                                 writeback::<T>(
                                     tile_ptr,
+                                    ukr.tile_fmt,
                                     mr,
                                     nr,
                                     mrem,

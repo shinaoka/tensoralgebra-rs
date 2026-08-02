@@ -176,7 +176,7 @@ fn report(results: &Results, ceilings: &[(String, String, f64)], opts: &Options)
         if !(opts.wants(real) && opts.wants(cplx)) {
             continue;
         }
-        for engine in ["tblis", "ttgt", "planar"] {
+        for engine in ["tblis", "ttgt", "planar", "1m", "3m"] {
             if !results.rows.iter().any(|r| r.engine == engine) {
                 continue;
             }

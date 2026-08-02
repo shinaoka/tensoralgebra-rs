@@ -5,6 +5,57 @@ is auditable after the fact.
 
 ---
 
+## Resume here
+
+**State as of 2026-08-01.** Phases 1 and 2 are complete and their gates are
+met. Phase 3 has not started.
+
+What exists:
+
+* `crates/tensorcontract` — the engine. Correct and framework-complete: index
+  analysis with folding, scatter/block-scatter, packing in four formats, three
+  complex methods, five-loop driver, scattered write-back, brute-force oracle.
+  Micro-kernels are the **portable scalar fallback only**.
+* `crates/tensorcontract-tapp` — TAPP C ABI, verified against the upstream
+  headers, exercised end to end through the C entry points.
+* `crates/tensorcontract-bench` — `tcbench` with `verify` / `premise` /
+  `sweep` / `info`; TBLIS (1.3 and 2.x) and OpenBLAS-TTGT baselines; the TCCG
+  corpus; GEMM roofline; stride-stress modes; CSV output.
+* `bench-results/` — raw CSVs for every measurement quoted in this file.
+
+Settled; do not re-open without new data:
+
+1. The complex-weakness thesis is refuted against TBLIS 2.0 and confirmed
+   against TBLIS 1.3.0, for a mundane reason (1.x has no complex micro-kernel
+   outside Sandy Bridge). See the Phase 1 report.
+2. The real headroom is low arithmetic intensity in either domain.
+3. The TCCG corpus cannot test awkward-stride claims without `--stress`.
+4. The corpus is 49 cases, not 48.
+
+**The immediate next task is Phase 3: vectorised micro-kernels.** Fill in
+`crates/tensorcontract/src/kernel/x86.rs`, which currently returns `None` for
+every configuration. The `Ukr` contract (`a_pack`, `b_pack`, `a_per_k`,
+`b_per_k`, `tile`, `tile_fmt`) already describes everything a kernel must
+honour, and `kernel::tests` checks any selected kernel against the
+mathematical definition directly, so a new kernel is validated the moment it is
+registered. Nothing outside that file needs to change.
+
+Suggested register blocks for the reference machine (AVX-512, 32 zmm):
+
+| dtype / method | real kernel shape | accumulator registers |
+|---|---|---|
+| f64 real | `MR=16, NR=8` | 16 zmm |
+| f32 real | `MR=32, NR=8` | 16 zmm |
+| c64 planar | `MR=8, NR=8` complex | 16 zmm (2 planes) |
+| c64 3m | `MR=8, NR=8` complex | 24 zmm (3 planes) |
+| c64 1m | real `16x8`, complex tile `8x8` | 16 zmm |
+
+The three-way method comparison with *real* kernels is the headline
+measurement the project now exists to produce; the scalar-kernel numbers in the
+Phase 2b report below are not a substitute for it.
+
+---
+
 ## Environment
 
 All measurements in this file were taken on:
@@ -319,10 +370,76 @@ meaningful yet and are not reported as a result.
 
 ---
 
+## Phase 2b report: three interchangeable complex methods
+
+**Direction decision.** After the Phase 1 result, the chosen direction is to
+keep all three induced-complex methods available and switchable, so that the
+comparison can be made properly rather than argued from first principles. This
+supersedes the four options listed at the end of the Phase 1 report.
+
+### What was built
+
+`ComplexMethod::{Planar, OneM, ThreeM}`, selected per plan with
+`Plan::with_complex_method` or globally with `TENSORCONTRACT_COMPLEX`.
+
+The three share the *entire* engine except three things, each named in the
+`Ukr` the method selects:
+
+| | `a_pack` / `b_pack` | kernel | `tile_fmt` |
+|---|---|---|---|
+| planar | `Planar` / `Planar` | fused complex, 4 FMAs per k per output | `Planar` |
+| 1m | `OneE` / `Planar` | plain real, `2*MR x NR` over `2*KC` | `OneM` |
+| 3m | `ThreeM` / `ThreeM` | Karatsuba, 3 FMAs per k per output | `ThreeM` |
+
+`crates/tensorcontract/src/driver.rs` contains no branch on the method at all —
+it reads sliver widths, tile size and formats off the `Ukr`. That is what makes
+the comparison fair: same index analysis, same scatter traversal, same loop
+arithmetic, same write-back scatter.
+
+| # | Decision | Rationale |
+|---|---|---|
+| D13 | `Blocking::derive` takes reals-per-element for A and B rather than `size_of::<Element>()`. | 1m's packed A carries four reals per complex element instead of two, so an element-size-based rule would hand it double the L2 footprint and quietly rig the comparison. Deriving from the actual packed footprint gives every method the same L2 budget and gives 1m a proportionally smaller `MC`. |
+| D14 | B's "1r" packing under 1m is bit-identical to planar packing, and shares the code path. | Not a shortcut: `[re_0..re_{NR-1}, im_0..im_{NR-1}]` per logical k-step *is* both formats. Worth stating because it means 1m's cost over planar is entirely on the A side. |
+| D15 | 3m gets a 100x looser test tolerance than the other two. | Its error bound is relative to `\|Ar\|\|Br\| + \|Ai\|\|Bi\|` rather than the complex magnitudes, so it loses relative accuracy under cancellation. That is the documented price of the 25% flop saving; the tolerance records it rather than hiding it. |
+| D16 | Kernels take the *logical* `kc` and know their own panel layout. | 1m internally runs `2*kc` real steps. Exposing that to the driver would leak the method into the loop nest. |
+
+### Correctness
+
+* The randomised oracle sweep now runs **every complex problem under all three
+  methods** — 300 problems x 3 methods x 2 blockings for `c64`, likewise
+  `c32` — plus the all-16-conjugation-masks test and the large blocking-boundary
+  cases, each across all three.
+* `kernel::tests` checks each method's kernel directly against the definition,
+  including a packing helper that builds panels in each `PackFormat` and a
+  reader for each `TileFormat`, so a mis-specified format is caught at the
+  kernel boundary rather than end to end.
+* All 49 corpus cases agree with **both** TBLIS and TTGT to ~2e-16 under each
+  of the three methods (`TENSORCONTRACT_COMPLEX=planar|1m|3m tcbench verify`).
+
+### Measurement, and why it does not yet mean much
+
+`tcbench premise --size 16 --engines planar,1m,3m --dtype f64,c64`, 12 cases,
+single core. Geometric-mean `c64` throughput relative to planar:
+
+| method | relative c64 GF/s | mean complex/real efficiency ratio |
+|---|---|---|
+| planar | 1.000 | 0.726 |
+| 1m | 1.086 | 0.783 |
+| 3m | 1.129 | 0.817 |
+
+**This ranking is an artifact of the scalar kernels and must not be quoted as
+a result.** All three currently run portable scalar loops, and the numbers
+mostly reflect how well LLVM auto-vectorises three different loop shapes: 1m's
+inner loop is a plain real GEMM kernel, which LLVM handles best, while planar's
+entire argument is *fewer shuffles in a hand-written SIMD kernel* — which does
+not exist yet. 3m's edge is more likely real, since a 25% flop reduction
+survives any kernel quality, but even that needs confirming.
+
+The honest three-way comparison is the Phase 3 gate.
+
+Raw data: `bench-results/methods-f64c64.csv`.
+
 ## Phases 3–5
 
-Not started. Blocked pending the direction decision above — building AVX-512
-kernels and a threading layer to chase a refuted hypothesis would be wasted
-effort, and the kernel design depends on which of options 1–4 is chosen (a
-small-`k` re-aim changes the register blocking and the loop fusion, and may
-make a pack-free path more important than the micro-kernel itself).
+Not started. See "Resume here" at the top of this file for exactly where to
+pick up.

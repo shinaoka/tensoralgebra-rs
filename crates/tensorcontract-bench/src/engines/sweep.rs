@@ -5,7 +5,7 @@ use std::process::ExitCode;
 use num_complex::Complex;
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
-use tensorcontract::kernel::{selected_config, selected_kernel_name, KernelSet};
+use tensorcontract::kernel::{selected_config, selected_kernel_name, ComplexMethod, KernelSet};
 use tensorcontract::plan::Operand;
 use tensorcontract::scatter::{build_block_scatter, regular_fraction};
 use tensorcontract::Plan;
@@ -16,6 +16,10 @@ use crate::report::{Results, Row, Table};
 #[cfg(feature = "blas")]
 use crate::ttgt::{ttgt, TtgtScratch};
 use crate::Options;
+
+/// Column order for the report tables: our three complex methods first, then
+/// the external baselines.
+pub const ENGINE_ORDER: &[&str] = &["planar", "1m", "3m", "ttgt", "tblis"];
 
 pub fn run(opts: &Options) -> ExitCode {
     pin_single_threaded();
@@ -89,10 +93,7 @@ where
     let (m, n, k) = s.mnk();
     let macs = s.macs();
 
-    let (mr, nr, _blk) = selected_config::<T>();
     let sc = plan.scatters();
-    let reg_a = regular_fraction(&build_block_scatter(sc.a_m, mr));
-    let reg_b = regular_fraction(&build_block_scatter(sc.b_n, nr));
 
     let mut rng = ChaCha8Rng::seed_from_u64(0x5EED);
     let a: Vec<T> = (0..s.elems_a()).map(|_| T::sample(&mut rng)).collect();
@@ -122,28 +123,49 @@ where
         }
     };
 
-    let push = |engine: &str, secs: f64, notes: String, results: &mut Results| {
-        results.push(Row {
-            case: s.case.name.to_string(),
-            group: s.case.group.to_string(),
-            dtype: T::NAME.to_string(),
-            engine: engine.to_string(),
-            m,
-            n,
-            k,
-            macs,
-            secs,
-            gflops: gflops::<T>(macs, secs),
-            reg_a,
-            reg_b,
-            notes,
-        });
-    };
+    let push =
+        |engine: &str, secs: f64, reg_a: f64, reg_b: f64, notes: String, results: &mut Results| {
+            results.push(Row {
+                case: s.case.name.to_string(),
+                group: s.case.group.to_string(),
+                dtype: T::NAME.to_string(),
+                engine: engine.to_string(),
+                m,
+                n,
+                k,
+                macs,
+                secs,
+                gflops: gflops::<T>(macs, secs),
+                reg_a,
+                reg_b,
+                notes,
+            });
+        };
 
-    // ---- our engine ------------------------------------------------------
-    if opts.engine("planar") {
+    // ---- our engine, once per complex method -----------------------------
+    //
+    // For a real element type all three methods reduce to the same real path,
+    // so it is measured once and reported under each requested engine name.
+    // That keeps the complex-over-real efficiency ratio well defined for every
+    // method without pretending to have measured the real path three times.
+    let mut real_measured: Option<(f64, f64, f64, String)> = None;
+    for method in ComplexMethod::ALL {
+        let name = method.name();
+        if !opts.engine(name) {
+            continue;
+        }
+        if let Some((secs, ra, rb, notes)) = &real_measured {
+            push(name, *secs, *ra, *rb, notes.clone(), results);
+            continue;
+        }
+
+        let p = plan.clone().with_complex_method(method);
+        let (mr, nr, _blk) = selected_config::<T>(method);
+        let reg_a = regular_fraction(&build_block_scatter(sc.a_m, mr));
+        let reg_b = regular_fraction(&build_block_scatter(sc.b_n, nr));
+
         let secs = timed(opts.reps, || unsafe {
-            plan.run_raw::<T>(
+            p.run_raw::<T>(
                 T::one(),
                 a.as_ptr(),
                 b.as_ptr(),
@@ -152,16 +174,30 @@ where
                 d.as_mut_ptr(),
             )
         });
-        let notes = check("planar", &d, &mut reference);
-        push(
-            "planar",
-            secs,
-            format!("{} {notes}", selected_kernel_name::<T>())
-                .trim()
-                .to_string(),
-            results,
-        );
+        let notes = format!(
+            "{} {}",
+            selected_kernel_name::<T>(method),
+            check(name, &d, &mut reference)
+        )
+        .trim()
+        .to_string();
+        push(name, secs, reg_a, reg_b, notes.clone(), results);
+        if !T::IS_COMPLEX {
+            real_measured = Some((secs, reg_a, reg_b, notes));
+        }
     }
+
+    // Regularity for the baselines' rows: report at the default method's
+    // register block so the column means one thing per row. (Only consumed
+    // when a baseline feature is enabled.)
+    #[cfg(any(feature = "blas", feature = "tblis"))]
+    let (reg_a, reg_b) = {
+        let (mr, nr, _) = selected_config::<T>(ComplexMethod::default());
+        (
+            regular_fraction(&build_block_scatter(sc.a_m, mr)),
+            regular_fraction(&build_block_scatter(sc.b_n, nr)),
+        )
+    };
 
     // ---- TTGT ------------------------------------------------------------
     #[cfg(feature = "blas")]
@@ -181,7 +217,7 @@ where
             )
         });
         let notes = check("ttgt", &dt, &mut reference);
-        push("ttgt", secs, notes, results);
+        push("ttgt", secs, reg_a, reg_b, notes, results);
     }
     // ---- TBLIS -----------------------------------------------------------
     #[cfg(feature = "tblis")]
@@ -221,13 +257,14 @@ where
             }
         });
         let notes = check("tblis", &dt, &mut reference);
-        push("tblis", secs, notes, results);
+        push("tblis", secs, reg_a, reg_b, notes, results);
     }
 }
 
 fn print_tables(results: &Results, opts: &Options) {
-    let engines: Vec<&str> = ["planar", "ttgt", "tblis"]
-        .into_iter()
+    let engines: Vec<&str> = ENGINE_ORDER
+        .iter()
+        .copied()
         .filter(|e| results.rows.iter().any(|r| &r.engine == e))
         .collect();
 
@@ -288,8 +325,9 @@ fn print_tables(results: &Results, opts: &Options) {
 /// the machine's FMA throughput from complex data as from real data; anything
 /// below that is the complex penalty.
 fn print_ratio_table(results: &Results, real: &str, cplx: &str) {
-    let engines: Vec<&str> = ["planar", "ttgt", "tblis"]
-        .into_iter()
+    let engines: Vec<&str> = ENGINE_ORDER
+        .iter()
+        .copied()
         .filter(|e| results.rows.iter().any(|r| &r.engine == e))
         .collect();
     if engines.is_empty() {

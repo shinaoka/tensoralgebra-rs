@@ -46,7 +46,9 @@ fn main() -> ExitCode {
                  \x20 --reps <n>        timed repetitions per measurement (default 5)\n\
                  \x20 --dtype <list>    comma separated: f32,f64,c32,c64 (default all)\n\
                  \x20 --case <substr>   only cases whose name contains this\n\
-                 \x20 --engines <list>  comma separated: planar,ttgt,tblis (default all built)\n\
+                 \x20 --engines <list>  comma separated, default all of:\n\
+                 \x20                   planar,1m,3m  (this engine's three complex methods)\n\
+                 \x20                   ttgt,tblis    (external baselines)\n\
                  \x20 --csv <path>      also write machine-readable results\n\
                  \x20 --stress <mode>   none|ragged|padded: perturb TCCG extents/layouts\n\
                  \x20                   so the block-scatter gather path is exercised\n"
@@ -74,7 +76,10 @@ impl Options {
             reps: 5,
             dtypes: vec!["f32".into(), "f64".into(), "c32".into(), "c64".into()],
             case_filter: None,
-            engines: vec!["planar".into(), "ttgt".into(), "tblis".into()],
+            engines: crate::engines::sweep::ENGINE_ORDER
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
             csv: None,
             stress: corpus::Stress::None,
         };
