@@ -886,6 +886,47 @@ before the machine was quiet does **not** survive re-measurement; those rows
 are flat to within noise, and the paragraph explaining them as a write-back
 side effect was explaining contention.
 
+### Part 3: a negative result on depth-adaptive `MC` — do not redo this
+
+The obvious first move on item 2 looked free and is not. `Blocking::derive`
+sizes `MC` and `NC` so a `KC`-deep packed block fits its cache budget, but a
+third of the corpus contracts over `k = 24` against a `KC` of 256. Those cases
+pack an `A` block a tenth the size of its L2 budget, and the only consequence
+is that `B` is re-streamed `M/MC` times for nothing. Re-deriving against
+`min(k, KC)` — widening `MC` about tenfold — should be pure profit.
+
+It is not. Unconditionally, `abcijk-jkm*` planar:
+
+| case | `f32` | `f64` | `c32` | `c64` |
+|---|---|---|---|---|
+| `-ma` | 50.6 → **32.5** | 35.5 → 30.1 | 83.1 → **61.2** | 42.9 → 43.2 |
+| `-mb` | 39.4 → **24.3** | 32.0 → 29.8 | 65.0 → **53.2** | 45.0 → 43.4 |
+| `-mc` | 56.3 → 56.3 | 27.6 → **31.7** | 93.5 → **104.1** | 48.6 → **53.4** |
+
+The mechanism for the losses is visible: `MC` also bounds the strip of `D` that
+one `jr` pass touches and the *next* pass revisits. When the output's rows are
+strided, that strip is `MC` distinct cache lines, and a tenfold `MC` takes it
+from 24 KiB (L1-resident) to 350 KiB. The packed-`A` budget does not model this
+at all.
+
+Gating the widening on "every `D` row block is unit-stride" — where the strip
+is `NR` sequential runs, streamed and written once — removes the `f32`/`c32`
+losses, but a clean A/B on `f64` (all three cases unit-stride, pinned blocking
+vs adaptive, 15 reps) shows the rule still does not hold:
+
+| case | pinned `mc=256 kc=256 nc=1536` | depth-adaptive |
+|---|---|---|
+| `-ma` | 37.1 | 30.5 (**−18%**) |
+| `-mb` | 32.9 | 29.9 (−9%) |
+| `-mc` | 28.4 | 32.0 (**+13%**) |
+
+Three cases, one sign each way, no rule. **Backed out.** `Blocking::derive_at_depth`
+is kept because the sweep needs to vary `kc` and get budget-consistent `mc`/`nc`
+with it, but the driver does not call it. The lesson for item 2 is that `MC` is
+a two-sided constraint — packed-`A` residency below, output-strip residency
+above — and the sweep has to be designed to separate them rather than to find a
+single best `MC`.
+
 ### Part 4: what an exclusive machine changed, and the rule's 9 known misses
 
 Everything above was first measured while other work shared the workstation.
@@ -947,8 +988,9 @@ fallback.
 
 ### Where the next lever is, and why it is now sharper
 
-The `f32` `a`/`b` rows above take the write-back's **gather** path, and for a
-specific reason: their leading axis in `D` has unit stride but extent 24, while
+The `f32` `a`/`b` rows above gained least — and they are the ones still on the
+write-back's **gather** path, for a structural reason rather than a measured
+regression: their leading axis in `D` has unit stride but extent 24, while
 the `f32` real kernel's `MR` is 48. A 48-row block therefore straddles a
 discontinuity and the block scatter reports it irregular — the same quantity
 that condition 2 of the orientation rule turns on. Choosing `MR` to divide the
@@ -966,47 +1008,6 @@ is a 32-bit case where `MR` (32 or 48) exceeds the run (24). Changing `MR` to
 16 for those shapes would satisfy condition 2 and make the rule pick BA without
 any new discriminant. **Do 1c before trying to fix the orientation rule** — it
 may dissolve the problem rather than require solving it.
-
-### Part 3: a negative result on depth-adaptive `MC` — do not redo this
-
-The obvious first move on item 2 looked free and is not. `Blocking::derive`
-sizes `MC` and `NC` so a `KC`-deep packed block fits its cache budget, but a
-third of the corpus contracts over `k = 24` against a `KC` of 256. Those cases
-pack an `A` block a tenth the size of its L2 budget, and the only consequence
-is that `B` is re-streamed `M/MC` times for nothing. Re-deriving against
-`min(k, KC)` — widening `MC` about tenfold — should be pure profit.
-
-It is not. Unconditionally, `abcijk-jkm*` planar:
-
-| case | `f32` | `f64` | `c32` | `c64` |
-|---|---|---|---|---|
-| `-ma` | 50.6 → **32.5** | 35.5 → 30.1 | 83.1 → **61.2** | 42.9 → 43.2 |
-| `-mb` | 39.4 → **24.3** | 32.0 → 29.8 | 65.0 → **53.2** | 45.0 → 43.4 |
-| `-mc` | 56.3 → 56.3 | 27.6 → **31.7** | 93.5 → **104.1** | 48.6 → **53.4** |
-
-The mechanism for the losses is visible: `MC` also bounds the strip of `D` that
-one `jr` pass touches and the *next* pass revisits. When the output's rows are
-strided, that strip is `MC` distinct cache lines, and a tenfold `MC` takes it
-from 24 KiB (L1-resident) to 350 KiB. The packed-`A` budget does not model this
-at all.
-
-Gating the widening on "every `D` row block is unit-stride" — where the strip
-is `NR` sequential runs, streamed and written once — removes the `f32`/`c32`
-losses, but a clean A/B on `f64` (all three cases unit-stride, pinned blocking
-vs adaptive, 15 reps) shows the rule still does not hold:
-
-| case | pinned `mc=256 kc=256 nc=1536` | depth-adaptive |
-|---|---|---|
-| `-ma` | 37.1 | 30.5 (**−18%**) |
-| `-mb` | 32.9 | 29.9 (−9%) |
-| `-mc` | 28.4 | 32.0 (**+13%**) |
-
-Three cases, one sign each way, no rule. **Backed out.** `Blocking::derive_at_depth`
-is kept because the sweep needs to vary `kc` and get budget-consistent `mc`/`nc`
-with it, but the driver does not call it. The lesson for item 2 is that `MC` is
-a two-sided constraint — packed-`A` residency below, output-strip residency
-above — and the sweep has to be designed to separate them rather than to find a
-single best `MC`.
 
 ### Assumptions added
 
