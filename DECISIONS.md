@@ -23,7 +23,27 @@ What exists:
 * `crates/tensorcontract-bench` — `tcbench` with `verify` / `premise` /
   `sweep` / `info`; TBLIS (1.3 and 2.x) and OpenBLAS-TTGT baselines; the TCCG
   corpus; GEMM roofline; stride-stress modes; CSV output.
-* `bench-results/` — raw CSVs for every measurement quoted in this file.
+* `bench-results/` — raw CSVs for every measurement quoted in this file, all
+  committed. `phase3-*` is the Phase 3 set; `phase4/rm-*` is the Phase 4
+  re-measurement on an exclusive machine and is the one to compare against.
+* `scripts/` — `env.sh` (toolchain + single-threading), `phase3-bench.sh` (the
+  Phase 3 measurement set), `phase4-remeasure.sh` (the A/B pattern to copy),
+  `compare-sweeps.py` (turns two sweep CSVs into the ratio tables in this file).
+
+Sanity check on a fresh checkout, in this order:
+
+```bash
+cargo test --workspace --release              # 6 green suites
+TENSORCONTRACT_KERNEL=scalar cargo test --workspace --release
+cargo clippy --workspace --all-targets        # silent
+cargo build --release -p tensorcontract-bench
+cd bench-results/phase4 && python3 ../../scripts/compare-sweeps.py \
+    rm-A-f64c64.csv,rm-A-f32c32.csv rm-A2-f64c64.csv,rm-A2-f32c32.csv
+```
+
+The last one re-derives the published noise floor from committed data and
+should print geomeans of 0.99–1.01 without touching the CPU. If it does not,
+the analysis tooling has drifted from the numbers in this file.
 
 Settled; do not re-open without new data:
 
@@ -36,7 +56,11 @@ Settled; do not re-open without new data:
 5. **The three-way comparison is done and planar wins**, by 3–8% geometric
    mean over the corpus in both precisions — but the ranking inverts on
    memory-bound shapes, where 3m wins. The mechanism is bytes moved per useful
-   flop, not flop count and not shuffles. See the Phase 3 report.
+   flop, not flop count and not shuffles. See the Phase 3 report. *Caveat added
+   in Phase 4:* the margin has narrowed, because 3m gained most from the
+   write-back work (`c32` 3m is now the best cumulative improvement at 1.167,
+   against planar's 1.116). The mechanism is unchanged; the margin is not.
+   Re-measure before quoting a ranking.
 
 **Phase 4 item 1 is done** — see the Phase 4 report, parts 1–4. The 2x
 write-back defect is closed in all four dtypes (2.75x / 2.02x / 2.17x / 2.23x
@@ -85,7 +109,8 @@ Two things came out of item 1 that are worth carrying forward:
 3. **Dispatch the complex method by shape.** The inversion is measured and
    large enough to exploit: 3m on memory-bound shapes, planar otherwise. Note
    Phase 4.1 moved the ranking: `c32` 3m gained the most from the write-back
-   work (1.168 cumulative vs planar's 1.109), so re-measure before dispatching.
+   work (1.167 cumulative against planar's 1.116), so re-measure before
+   dispatching — the Phase 3 margins are no longer current.
 4. Then the rest of the Phase 4 list: threading, small-`k` handling, fusing the
    `pc` loop so `C` is touched once, a pack-free fast path for unit-stride
    block scatter, prefetch.

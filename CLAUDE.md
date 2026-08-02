@@ -121,6 +121,12 @@ corpus, single core, geometric-mean throughput relative to planar:
 | 1m | 0.967 | 0.979 |
 | 3m | 0.956 | 0.921 |
 
+**These margins are Phase 3 and are no longer current.** Phase 4.1 helped 3m
+most — `c32` 3m improved 1.167 over Phase 3 against planar's 1.116 — so the
+gaps have narrowed and the `c32` ordering may have flipped. The *mechanism*
+below is unchanged and still holds. Re-measure before quoting any ranking
+number; do not copy this table forward.
+
 **Planar wins — but not for the reason the project assumed, and not
 everywhere.** Three things to carry forward and not re-derive:
 
@@ -160,10 +166,19 @@ three counts. No AVX2 path yet; deferred to Phase 5's multi-arch work.
    own L2 traffic, as Phase 3 concluded — it was the row/column **orientation**
    of the matrix view. Computing `D^T = B^T A^T` when `D`'s column direction is
    the contiguous one recovers all of it; a regular-block write-back on top
-   adds 6–13% more, but only in single precision. See the Phase 4 report.
-   Still open under this item: make the micro-tile aspect ratio follow the
-   output's stride pattern. Phase 3 sized it at ±11%; it is now also the way to
-   move whole block families onto the write-back's unit-stride path.
+   adds 2–15% more, most of it in single precision. See the Phase 4 report.
+
+   **Still open under this item, and now the biggest lever left: 1c, the
+   micro-tile aspect ratio.** Phase 3 sized it at ±11%. Two things since make
+   it worth more. Choosing `MR` to divide the output's leading contiguous run
+   moves whole block families onto the write-back's unit-stride path — a
+   code-path change, not a tuning delta. And the orientation rule is right on
+   only **63 of 72** case-dtypes; all nine misses are worth 1.18–1.47x, all are
+   32-bit, and all are cases where `MR` exceeds that run, so shrinking `MR` may
+   fix them without needing a better rule. A narrow tile costs 7–20% of kernel
+   peak (measured, `phase3-kernel-shapes.txt`), which the affected shapes are
+   nowhere near reaching — so it must be a per-plan selection, never a new
+   default. Do 1c before attacking the orientation rule directly.
 2. **Sweep `MC`/`KC`/`NC`**, still the untouched Phase 2 heuristic. `KC` is now
    known to be first-order: it decides whether the `A` sliver is an L1 resident
    or an L2 stream, which is what the whole method ranking turns on.
@@ -230,7 +245,17 @@ Both baselines currently live outside the repo at
 `../baselines/tblis-{1.3.0,2.0}-install` (built 2026-08-02, same commits as
 Phase 1). If they are gone, rebuild them — it is ~30 min unattended.
 
-Two reproducible measurement entry points:
+Three reproducible measurement entry points:
+
+```bash
+# The Phase 4 A/B pattern: A, B, A' with a repeat bracketing the treatment,
+# plus sibling-CPU occupancy. Copy this shape for any new comparison. ~2 h.
+scripts/phase4-remeasure.sh 4 bench-results/phase4
+
+# Turn two sweep CSVs into the ratio tables used throughout DECISIONS.md.
+# Needs no CPU; run it on committed data to check the tooling still agrees.
+scripts/compare-sweeps.py BASE_CSVS NEW_CSVS
+```
 
 ```bash
 # The Phase 3 measurement set: verify, GEMM-roofline premise, full corpus
@@ -263,6 +288,12 @@ Useful environment variables:
 | `TENSORCONTRACT_KERNEL` | `scalar` forces the portable kernels |
 | `TENSORCONTRACT_MC/_KC/_NC` | override cache blocking |
 | `TENSORCONTRACT_ORIENT` | `none` \| `swap`: pin the row/column orientation |
+| `TENSORCONTRACT_WRITEBACK` | `gather` forces the general scatter write-back |
+
+The last two exist to make a change an A/B switch at run time rather than a
+rebuild, so both arms can be measured interleaved in one session. Add one
+whenever you introduce a fast path — a build-to-build diff already produced one
+wrong sign in Phase 4.
 
 ## Starting references
 
