@@ -344,6 +344,24 @@ fn env_blocking() -> Option<BlockingOverride> {
 pub trait KernelSet: Real + Sized {
     fn config_real() -> KernelConfig<Self>;
     fn config_cplx(method: ComplexMethod) -> KernelConfig<Self>;
+
+    /// Logical row blocks `MR` this kernel set can run, default first.
+    ///
+    /// More than one entry is an invitation to [`crate::Plan::row_block`] to
+    /// pick a shape that suits the output's stride pattern rather than the
+    /// kernel's own peak. An empty menu means "no choice", which is what the
+    /// portable path returns.
+    fn row_blocks(complex: bool, method: ComplexMethod) -> &'static [usize] {
+        let _ = (complex, method);
+        &[]
+    }
+
+    /// The configuration at a chosen row block, or `None` if there is no such
+    /// kernel. Only ever called with an `mr` from [`KernelSet::row_blocks`].
+    fn config_at(complex: bool, method: ComplexMethod, mr: usize) -> Option<KernelConfig<Self>> {
+        let _ = (complex, method, mr);
+        None
+    }
 }
 
 /// Force the portable scalar kernels regardless of CPU features.
@@ -366,7 +384,8 @@ fn force_scalar() -> bool {
 }
 
 macro_rules! impl_kernel_set {
-    ($t:ty, $real_x86:path, $cplx_x86:path, $mr:literal, $nr:literal) => {
+    ($t:ty, $real_x86:path, $cplx_x86:path, $rows_x86:path,
+     $real_at_x86:path, $cplx_at_x86:path, $mr:literal, $nr:literal) => {
         impl KernelSet for $t {
             fn config_real() -> KernelConfig<Self> {
                 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -387,12 +406,64 @@ macro_rules! impl_kernel_set {
                 }
                 scalar::config_cplx::<$t, $mr, $nr>(method).normalise()
             }
+
+            fn row_blocks(complex: bool, method: ComplexMethod) -> &'static [usize] {
+                #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+                if !force_scalar() {
+                    return $rows_x86(complex, method);
+                }
+                // The portable path has one shape per method and no menu.
+                #[allow(unreachable_code)]
+                {
+                    let _ = (complex, method);
+                    &[]
+                }
+            }
+
+            fn config_at(
+                complex: bool,
+                method: ComplexMethod,
+                mr: usize,
+            ) -> Option<KernelConfig<Self>> {
+                #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+                if !force_scalar() {
+                    let c = if complex {
+                        $cplx_at_x86(method, mr)
+                    } else {
+                        $real_at_x86(mr)
+                    };
+                    return c.map(KernelConfig::normalise);
+                }
+                #[allow(unreachable_code)]
+                {
+                    let _ = (complex, method, mr);
+                    None
+                }
+            }
         }
     };
 }
 
-impl_kernel_set!(f64, x86::config_real_f64, x86::config_cplx_f64, 4, 4);
-impl_kernel_set!(f32, x86::config_real_f32, x86::config_cplx_f32, 4, 4);
+impl_kernel_set!(
+    f64,
+    x86::config_real_f64,
+    x86::config_cplx_f64,
+    x86::row_blocks_f64,
+    x86::config_real_f64_at,
+    x86::config_cplx_f64_at,
+    4,
+    4
+);
+impl_kernel_set!(
+    f32,
+    x86::config_real_f32,
+    x86::config_cplx_f32,
+    x86::row_blocks_f32,
+    x86::config_real_f32_at,
+    x86::config_cplx_f32_at,
+    4,
+    4
+);
 
 /// The register block `(MR, NR)` and cache blocking the engine will use for
 /// element type `T`. Exposed for diagnostics and for harnesses that want to
@@ -429,6 +500,39 @@ where
     }
 }
 
+/// [`config_for`] plus the plan's choice of micro-tile row block.
+///
+/// This is what execution uses. It differs from [`config_for`] only when the
+/// output's stride pattern makes a shape other than the kernel set's default
+/// worth having — see [`crate::Plan::row_block`] — and falls back to the
+/// default whenever the requested shape does not exist.
+pub(crate) fn config_for_plan<T>(plan: &crate::plan::Plan) -> KernelConfig<T::Real>
+where
+    T: crate::element::Element,
+    T::Real: KernelSet,
+{
+    let method = plan.complex_method();
+    let menu = <T::Real as KernelSet>::row_blocks(T::IS_COMPLEX, method);
+    plan.row_block(menu)
+        .and_then(|mr| <T::Real as KernelSet>::config_at(T::IS_COMPLEX, method, mr))
+        .unwrap_or_else(|| config_for::<T>(method))
+}
+
+/// The register block `(MR, NR)` and cache blocking a *plan* will execute with.
+///
+/// [`selected_config`] reports the kernel set's default; this reports what the
+/// plan actually gets, which can differ. Harnesses reporting block-scatter
+/// regularity must use this one, or they describe a traversal that does not
+/// happen.
+pub fn plan_config<T>(plan: &crate::plan::Plan) -> (usize, usize, Blocking)
+where
+    T: crate::element::Element,
+    T::Real: KernelSet,
+{
+    let cfg = config_for_plan::<T>(plan);
+    (cfg.ukr.mr, cfg.ukr.nr, cfg.blk)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -437,7 +541,16 @@ mod tests {
     /// packing and tile format it uses. This is the contract the driver relies
     /// on, so it is checked directly rather than only end to end.
     fn check_real<T: KernelSet>(tol: f64) {
-        let cfg = T::config_real();
+        check_real_cfg::<T>(T::config_real(), tol);
+        for &mr in T::row_blocks(false, ComplexMethod::default()) {
+            let cfg = T::config_at(false, ComplexMethod::default(), mr)
+                .unwrap_or_else(|| panic!("real menu offers MR={mr} with no kernel"));
+            assert_eq!(cfg.ukr.mr, mr);
+            check_real_cfg::<T>(cfg, tol);
+        }
+    }
+
+    fn check_real_cfg<T: KernelSet>(cfg: KernelConfig<T>, tol: f64) {
         let (mr, nr) = (cfg.ukr.mr, cfg.ukr.nr);
         let kc = 37usize;
         let a: Vec<T> = (0..cfg.ukr.a_per_k * kc)
@@ -522,7 +635,16 @@ mod tests {
     }
 
     fn check_cplx<T: KernelSet>(method: ComplexMethod, tol: f64) {
-        let cfg = T::config_cplx(method);
+        check_cplx_cfg::<T>(T::config_cplx(method), method, tol);
+        for &mr in T::row_blocks(true, method) {
+            let cfg = T::config_at(true, method, mr)
+                .unwrap_or_else(|| panic!("{} menu offers MR={mr} with no kernel", method.name()));
+            assert_eq!(cfg.ukr.mr, mr);
+            check_cplx_cfg::<T>(cfg, method, tol);
+        }
+    }
+
+    fn check_cplx_cfg<T: KernelSet>(cfg: KernelConfig<T>, method: ComplexMethod, tol: f64) {
         let (mr, nr) = (cfg.ukr.mr, cfg.ukr.nr);
         let kc = 29usize;
 
@@ -599,6 +721,31 @@ mod tests {
         check_real::<f32>(1e-4);
         for m in ComplexMethod::ALL {
             check_cplx::<f32>(m, 1e-4);
+        }
+    }
+
+    /// A menu with a repeated `MR` would make `config_at` unreachable for the
+    /// later entry, silently pinning to the wrong shape; and the head of the
+    /// menu must be exactly what the default builders return, or `base` and
+    /// `idx=0` would mean different things.
+    #[test]
+    fn row_block_menus_are_well_formed() {
+        fn check<T: KernelSet>(complex: bool, method: ComplexMethod, default_mr: usize) {
+            let menu = T::row_blocks(complex, method);
+            if menu.is_empty() {
+                return; // no vectorised kernels on this CPU
+            }
+            assert_eq!(menu[0], default_mr, "menu head is not the default shape");
+            for (i, &mr) in menu.iter().enumerate() {
+                assert!(mr > 0);
+                assert!(!menu[..i].contains(&mr), "MR={mr} appears twice on a menu");
+            }
+        }
+        check::<f64>(false, ComplexMethod::default(), f64::config_real().ukr.mr);
+        check::<f32>(false, ComplexMethod::default(), f32::config_real().ukr.mr);
+        for m in ComplexMethod::ALL {
+            check::<f64>(true, m, f64::config_cplx(m).ukr.mr);
+            check::<f32>(true, m, f32::config_cplx(m).ukr.mr);
         }
     }
 

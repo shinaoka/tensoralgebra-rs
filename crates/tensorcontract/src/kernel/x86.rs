@@ -306,98 +306,157 @@ avx512_kernels!(
 // Configuration builders
 // ---------------------------------------------------------------------------
 
-/// Assemble the four [`Ukr`] descriptors for one instruction set / type, given
-/// the shapes chosen for it.
+/// Assemble the [`Ukr`] descriptors for one instruction set / type from a
+/// *menu* of register blocks per method, the default first.
 ///
 /// Every field is derived from `MV`/`NR` and the lane count, so a shape change
 /// cannot desynchronise the descriptor from the kernel it describes — the
 /// `panel_sizes_are_self_consistent` test in `kernel::tests` checks the
 /// arithmetic, and `kernels_match_reference_*` checks the semantics.
+///
+/// # Why a menu rather than one shape
+///
+/// The first entry is the shape measured fastest in isolation and is what runs
+/// unless something asks for otherwise. The alternates exist because peak
+/// kernel throughput is not the only thing `MR` decides: it also sets the
+/// granularity at which the output's row scatter is blocked, and therefore
+/// whether the write-back takes its unit-stride path or its gather path. A
+/// shape 10–20% off peak that moves whole block families onto the fast path
+/// wins on any contraction that is nowhere near kernel-bound. See
+/// [`super::row_block_for`].
 macro_rules! configs {
-    ($t:ty, $m:ident, $isa:literal, $rmv:expr, $rnr:expr,
-     $pmv:expr, $pnr:expr, $omv:expr, $onr:expr, $tmv:expr, $tnr:expr) => {
-        pub fn real_config() -> KernelConfig<$t> {
-            const MR: usize = $rmv * $m::L;
+    ($t:ty, $m:ident, $isa:literal,
+     real   = [$(($rmv:literal, $rnr:literal)),+ $(,)?],
+     planar = [$(($pmv:literal, $pnr:literal)),+ $(,)?],
+     onem   = [$(($omv:literal, $onr:literal)),+ $(,)?],
+     threem = [$(($tmv:literal, $tnr:literal)),+ $(,)?] $(,)?) => {
+        /// Logical row blocks with a real kernel, default first.
+        pub const REAL_ROW_BLOCKS: &[usize] = &[$($rmv * $m::L),+];
+        /// Logical (complex) row blocks with a planar kernel, default first.
+        pub const PLANAR_ROW_BLOCKS: &[usize] = &[$($pmv * $m::L),+];
+        /// Ditto for 1m. The complex tile is half the real row block.
+        pub const ONEM_ROW_BLOCKS: &[usize] = &[$($omv * $m::L / 2),+];
+        /// Ditto for 3m.
+        pub const THREEM_ROW_BLOCKS: &[usize] = &[$($tmv * $m::L),+];
+
+        fn real_cfg<const MV: usize, const NR: usize>() -> KernelConfig<$t> {
+            let mr = MV * $m::L;
             KernelConfig {
                 ukr: Ukr {
-                    mr: MR,
-                    nr: $rnr,
-                    a_per_k: MR,
-                    b_per_k: $rnr,
-                    tile: MR * $rnr,
+                    mr,
+                    nr: NR,
+                    a_per_k: mr,
+                    b_per_k: NR,
+                    tile: mr * NR,
                     a_pack: PackFormat::Real,
                     b_pack: PackFormat::Real,
                     tile_fmt: TileFormat::Real,
-                    func: $m::tramp_real::<$rmv, $rnr>,
+                    func: $m::tramp_real::<MV, NR>,
                     name: concat!($isa, "-real"),
                 },
                 blk: Blocking::derive(core::mem::size_of::<$t>(), 1, 1),
             }
         }
 
-        pub fn cplx_config(method: ComplexMethod) -> KernelConfig<$t> {
-            let sz = core::mem::size_of::<$t>();
+        fn planar_cfg<const MV: usize, const NR: usize>() -> KernelConfig<$t> {
+            let mr = MV * $m::L;
+            KernelConfig {
+                ukr: Ukr {
+                    mr,
+                    nr: NR,
+                    a_per_k: 2 * mr,
+                    b_per_k: 2 * NR,
+                    tile: 2 * mr * NR,
+                    a_pack: PackFormat::Planar,
+                    b_pack: PackFormat::Planar,
+                    tile_fmt: TileFormat::Planar,
+                    func: $m::tramp_planar::<MV, NR>,
+                    name: concat!($isa, "-planar"),
+                },
+                blk: Blocking::derive(core::mem::size_of::<$t>(), 2, 2),
+            }
+        }
+
+        /// The real kernel is `MR2 x NR`; the complex tile is half as tall.
+        /// `MR2` is even for any `MV >= 1` since `L` is a power of two.
+        fn onem_cfg<const MV: usize, const NR: usize>() -> KernelConfig<$t> {
+            let mr2 = MV * $m::L;
+            KernelConfig {
+                ukr: Ukr {
+                    mr: mr2 / 2,
+                    nr: NR,
+                    a_per_k: 2 * mr2,
+                    b_per_k: 2 * NR,
+                    tile: mr2 * NR,
+                    a_pack: PackFormat::OneE,
+                    b_pack: PackFormat::Planar,
+                    tile_fmt: TileFormat::OneM,
+                    func: $m::tramp_onem::<MV, NR>,
+                    name: concat!($isa, "-1m"),
+                },
+                // Four reals per complex element in packed A, so the same L2
+                // budget buys half the rows planar gets.
+                blk: Blocking::derive(core::mem::size_of::<$t>(), 4, 2),
+            }
+        }
+
+        fn threem_cfg<const MV: usize, const NR: usize>() -> KernelConfig<$t> {
+            let mr = MV * $m::L;
+            KernelConfig {
+                ukr: Ukr {
+                    mr,
+                    nr: NR,
+                    a_per_k: 3 * mr,
+                    b_per_k: 3 * NR,
+                    tile: 3 * mr * NR,
+                    a_pack: PackFormat::ThreeM,
+                    b_pack: PackFormat::ThreeM,
+                    tile_fmt: TileFormat::ThreeM,
+                    func: $m::tramp_threem::<MV, NR>,
+                    name: concat!($isa, "-3m"),
+                },
+                blk: Blocking::derive(core::mem::size_of::<$t>(), 3, 3),
+            }
+        }
+
+        /// The real kernel at logical row block `mr`, or `None` if the menu
+        /// has no shape of that height.
+        pub fn real_config_at(mr: usize) -> Option<KernelConfig<$t>> {
+            $( if mr == $rmv * $m::L { return Some(real_cfg::<$rmv, $rnr>()); } )+
+            None
+        }
+
+        /// The complex kernel for `method` at logical row block `mr`.
+        pub fn cplx_config_at(method: ComplexMethod, mr: usize) -> Option<KernelConfig<$t>> {
             match method {
                 ComplexMethod::Planar => {
-                    const MR: usize = $pmv * $m::L;
-                    KernelConfig {
-                        ukr: Ukr {
-                            mr: MR,
-                            nr: $pnr,
-                            a_per_k: 2 * MR,
-                            b_per_k: 2 * $pnr,
-                            tile: 2 * MR * $pnr,
-                            a_pack: PackFormat::Planar,
-                            b_pack: PackFormat::Planar,
-                            tile_fmt: TileFormat::Planar,
-                            func: $m::tramp_planar::<$pmv, $pnr>,
-                            name: concat!($isa, "-planar"),
-                        },
-                        blk: Blocking::derive(sz, 2, 2),
-                    }
+                    $( if mr == $pmv * $m::L { return Some(planar_cfg::<$pmv, $pnr>()); } )+
                 }
                 ComplexMethod::OneM => {
-                    // The real kernel is `MR2 x NR`; the complex tile is half
-                    // as tall. `MR2` must therefore be even, which it is for
-                    // any `MV >= 1` since `L` is a power of two.
-                    const MR2: usize = $omv * $m::L;
-                    KernelConfig {
-                        ukr: Ukr {
-                            mr: MR2 / 2,
-                            nr: $onr,
-                            a_per_k: 2 * MR2,
-                            b_per_k: 2 * $onr,
-                            tile: MR2 * $onr,
-                            a_pack: PackFormat::OneE,
-                            b_pack: PackFormat::Planar,
-                            tile_fmt: TileFormat::OneM,
-                            func: $m::tramp_onem::<$omv, $onr>,
-                            name: concat!($isa, "-1m"),
-                        },
-                        // Four reals per complex element in packed A, so the
-                        // same L2 budget buys half the rows planar gets.
-                        blk: Blocking::derive(sz, 4, 2),
-                    }
+                    $( if mr == $omv * $m::L / 2 { return Some(onem_cfg::<$omv, $onr>()); } )+
                 }
                 ComplexMethod::ThreeM => {
-                    const MR: usize = $tmv * $m::L;
-                    KernelConfig {
-                        ukr: Ukr {
-                            mr: MR,
-                            nr: $tnr,
-                            a_per_k: 3 * MR,
-                            b_per_k: 3 * $tnr,
-                            tile: 3 * MR * $tnr,
-                            a_pack: PackFormat::ThreeM,
-                            b_pack: PackFormat::ThreeM,
-                            tile_fmt: TileFormat::ThreeM,
-                            func: $m::tramp_threem::<$tmv, $tnr>,
-                            name: concat!($isa, "-3m"),
-                        },
-                        blk: Blocking::derive(sz, 3, 3),
-                    }
+                    $( if mr == $tmv * $m::L { return Some(threem_cfg::<$tmv, $tnr>()); } )+
                 }
             }
+            None
+        }
+
+        pub fn cplx_row_blocks(method: ComplexMethod) -> &'static [usize] {
+            match method {
+                ComplexMethod::Planar => PLANAR_ROW_BLOCKS,
+                ComplexMethod::OneM => ONEM_ROW_BLOCKS,
+                ComplexMethod::ThreeM => THREEM_ROW_BLOCKS,
+            }
+        }
+
+        pub fn real_config() -> KernelConfig<$t> {
+            real_config_at(REAL_ROW_BLOCKS[0]).expect("default shape is on the menu")
+        }
+
+        pub fn cplx_config(method: ComplexMethod) -> KernelConfig<$t> {
+            cplx_config_at(method, cplx_row_blocks(method)[0])
+                .expect("default shape is on the menu")
         }
     };
 }
@@ -417,9 +476,30 @@ macro_rules! configs {
 /// plus the broadcasts — falls off a cliff of 30–50%, which is what rules out
 /// e.g. `3m 24 x 4` (36 accumulators). Within the survivors the ranking follows
 /// bytes-per-useful-flop, not FMA count: see the module docs.
+///
+/// The alternates on each menu, and what they cost at the operating `kc`
+/// (fraction of the default's throughput, from the Phase 4.1c re-run of
+/// `examples/kernel_shapes`):
+///
+/// | method | menu, `MR` (`NR`) | cost of each alternate |
+/// |---|---|---|
+/// | real | 24 (8), 16 (8), 8 (8) | 0.82, 0.79 |
+/// | planar | 16 (6), 24 (3), 8 (8) | 1.02, 0.93 |
+/// | 1m | 12 (8), 16 (6), 8 (8) | 1.02, 0.86 |
+/// | 3m | 8 (10), 16 (4), 24 (3) | 0.89, 0.87 |
+///
+/// Those within a couple of percent of 1.00 are ties at the sweep's own
+/// repeatability, not free lunches; the menu is ordered by the Phase 3 choice,
+/// which is not re-litigated here.
 pub mod cfg_avx512_f64 {
     use super::*;
-    configs!(f64, avx512_f64, "avx512", 3, 8, 2, 6, 3, 8, 1, 10);
+    configs!(
+        f64, avx512_f64, "avx512",
+        real   = [(3, 8), (2, 8), (1, 8)],
+        planar = [(2, 6), (3, 3), (1, 8)],
+        onem   = [(3, 8), (4, 6), (2, 8)],
+        threem = [(1, 10), (2, 4), (3, 3)],
+    );
 }
 
 /// AVX-512 shapes for `f32` / `c32` (`L = 16`), measured at `kc = 384`.
@@ -434,9 +514,31 @@ pub mod cfg_avx512_f64 {
 /// 1m prefers a wider real row block here than it does in `f64` because the
 /// doubled lane count already makes its "1e" panel large; the other three
 /// methods land on the same `MV x NR` in both precisions.
+///
+/// The alternates and their cost at the operating `kc`, as for `f64`:
+///
+/// | method | menu, `MR` (`NR`) | cost of each alternate |
+/// |---|---|---|
+/// | real | 48 (8), 32 (8), 16 (10) | 0.87, 1.02 |
+/// | planar | 32 (6), 48 (4), 16 (12) | 0.95, 0.90 |
+/// | 1m | 32 (6), 24 (8), 16 (8), 8 (12) | 1.03, 0.86, 0.86 |
+/// | 3m | 16 (10), 32 (4), 48 (3) | 0.91, 0.84 |
+///
+/// The 32-bit menus are the ones that matter for the write-back: the corpus
+/// rounds every stride-1 index up to a multiple of **24**, and at `L = 16` no
+/// full-width `MR` divides 24 except 1m's, so the others can only reduce the
+/// straddling fraction rather than eliminate it. `real 16 (10)` costing nothing
+/// measurable is the important entry — it is the shape the `f32` cases still on
+/// the gather path would need.
 pub mod cfg_avx512_f32 {
     use super::*;
-    configs!(f32, avx512_f32, "avx512", 3, 8, 2, 6, 4, 6, 1, 10);
+    configs!(
+        f32, avx512_f32, "avx512",
+        real   = [(3, 8), (2, 8), (1, 10)],
+        planar = [(2, 6), (3, 4), (1, 12)],
+        onem   = [(4, 6), (3, 8), (2, 8), (1, 12)],
+        threem = [(1, 10), (2, 4), (3, 3)],
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -459,18 +561,59 @@ fn have_avx512() -> bool {
     }
 }
 
-pub fn config_real_f64() -> Option<KernelConfig<f64>> {
-    have_avx512().then(cfg_avx512_f64::real_config)
+/// The four entry points the [`super::KernelSet`] impls call, per type: the
+/// default shape, the menu of row blocks, and the config at a chosen one. Each
+/// yields `None` when the CPU has no AVX-512, which sends the caller to the
+/// portable scalar path.
+macro_rules! dispatch {
+    ($t:ty, $cfg:ident, $real:ident, $cplx:ident, $rows:ident, $real_at:ident, $cplx_at:ident) => {
+        pub fn $real() -> Option<KernelConfig<$t>> {
+            have_avx512().then($cfg::real_config)
+        }
+
+        pub fn $cplx(method: ComplexMethod) -> Option<KernelConfig<$t>> {
+            have_avx512().then(|| $cfg::cplx_config(method))
+        }
+
+        /// Row blocks with a kernel, default first; empty when unavailable.
+        pub fn $rows(complex: bool, method: ComplexMethod) -> &'static [usize] {
+            if !have_avx512() {
+                return &[];
+            }
+            if complex {
+                $cfg::cplx_row_blocks(method)
+            } else {
+                $cfg::REAL_ROW_BLOCKS
+            }
+        }
+
+        pub fn $real_at(mr: usize) -> Option<KernelConfig<$t>> {
+            have_avx512().then(|| $cfg::real_config_at(mr)).flatten()
+        }
+
+        pub fn $cplx_at(method: ComplexMethod, mr: usize) -> Option<KernelConfig<$t>> {
+            have_avx512()
+                .then(|| $cfg::cplx_config_at(method, mr))
+                .flatten()
+        }
+    };
 }
 
-pub fn config_cplx_f64(method: ComplexMethod) -> Option<KernelConfig<f64>> {
-    have_avx512().then(|| cfg_avx512_f64::cplx_config(method))
-}
-
-pub fn config_real_f32() -> Option<KernelConfig<f32>> {
-    have_avx512().then(cfg_avx512_f32::real_config)
-}
-
-pub fn config_cplx_f32(method: ComplexMethod) -> Option<KernelConfig<f32>> {
-    have_avx512().then(|| cfg_avx512_f32::cplx_config(method))
-}
+dispatch!(
+    f64,
+    cfg_avx512_f64,
+    config_real_f64,
+    config_cplx_f64,
+    row_blocks_f64,
+    config_real_f64_at,
+    config_cplx_f64_at
+);
+dispatch!(
+    f32,
+    cfg_avx512_f32,
+    config_real_f32,
+    config_cplx_f32,
+    row_blocks_f32,
+    config_real_f32_at,
+    config_cplx_f32_at
+);

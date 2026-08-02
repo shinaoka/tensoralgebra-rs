@@ -33,6 +33,7 @@ fn main() -> ExitCode {
         "verify" => engines::verify::run(&opts),
         "premise" => engines::premise::run(&opts),
         "sweep" => engines::sweep::run(&opts),
+        "shapes" => engines::shapes::run(&opts),
         "info" => {
             report::print_environment();
             ExitCode::SUCCESS

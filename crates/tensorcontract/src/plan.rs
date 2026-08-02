@@ -478,6 +478,78 @@ impl Plan {
         }
     }
 
+    /// Choose the micro-tile row block `MR` from a menu of shapes the kernel
+    /// set actually has, ordered fastest-in-isolation first.
+    ///
+    /// Returns `None` for "use the menu's default", which is also what an
+    /// unrecognised or absent `TENSORCONTRACT_ROWBLOCK` gives.
+    ///
+    /// # Why `MR` is not just a kernel-tuning constant
+    ///
+    /// `MR` is the granularity at which the *output's* row scatter is blocked,
+    /// so it decides which of [`crate::writeback`]'s three paths each block
+    /// takes. When `D`'s rows come in contiguous runs of `r` elements, an
+    /// aligned `MR`-block lies inside one run — and so gets the unit-stride
+    /// path — only when `MR` divides into the run pattern; otherwise it
+    /// straddles a discontinuity, the block scatter reports [`IRREGULAR`], and
+    /// the whole block falls back to a gather. That is a code-path change, not
+    /// a tuning delta, and the shapes it wants are not the shapes peak
+    /// throughput wants. The TCCG corpus rounds every stride-1 index up to a
+    /// multiple of 24, while `MR` at `L = 16` lanes is 16, 32 or 48.
+    ///
+    /// [`IRREGULAR`]: crate::scatter::IRREGULAR
+    ///
+    /// # The rule
+    ///
+    /// Score every shape on the menu by the fraction of output row blocks that
+    /// survive as a single arithmetic run — evaluated in the orientation *that
+    /// shape* would execute in, since [`Plan::transposes_gemm`] also takes
+    /// `MR` — and take the best, breaking ties towards the front of the menu,
+    /// i.e. towards the faster kernel. A shape is only preferred over the
+    /// default if it strictly improves that fraction.
+    pub fn row_block(&self, menu: &[usize]) -> Option<usize> {
+        match row_block_override() {
+            RowBlock::Base => None,
+            RowBlock::Auto => self.preferred_row_block(menu),
+            RowBlock::Pin(mr) => menu.contains(&mr).then_some(mr),
+            RowBlock::Index(i) => menu.get(i).copied(),
+        }
+    }
+
+    /// [`Plan::row_block`]'s rule with no environment override, so that it can
+    /// be scored offline against measured ground truth.
+    pub fn preferred_row_block(&self, menu: &[usize]) -> Option<usize> {
+        let (default, rest) = menu.split_first()?;
+        let base = self.row_block_score(*default);
+        let mut best = (*default, base);
+        for &mr in rest {
+            let s = self.row_block_score(mr);
+            if s > best.1 + 1e-9 {
+                best = (mr, s);
+            }
+        }
+        (best.0 != *default).then_some(best.0)
+    }
+
+    /// Fraction of the output's row blocks that would stay off
+    /// [`crate::writeback`]'s gather path at row block `mr`, evaluated in the
+    /// orientation `mr` itself selects.
+    ///
+    /// `0.0` when the output's rows have no uniform run structure — then `MR`
+    /// has no predictable effect and every shape scores alike, which leaves the
+    /// tie-break to keep the default.
+    pub fn row_block_score(&self, mr: usize) -> f64 {
+        let rows = if self.transposes_gemm(mr) {
+            &self.d_n
+        } else {
+            &self.d_m
+        };
+        match run_structure(rows) {
+            Some(run) => unbroken_fraction(rows.len(), run, mr),
+            None => 0.0,
+        }
+    }
+
     /// `true` when the contraction produces no output elements.
     pub fn is_empty(&self) -> bool {
         self.stats.m == 0 || self.stats.n == 0 || self.stats.batch == 0
@@ -506,6 +578,112 @@ fn orient_override() -> Option<bool> {
     {
         None
     }
+}
+
+/// What `TENSORCONTRACT_ROWBLOCK` asked for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RowBlock {
+    /// The kernel set's default shape — the Phase 3 choice.
+    Base,
+    /// [`Plan::row_block`]'s rule.
+    Auto,
+    /// A specific logical `MR`, where the kernel set has one.
+    Pin(usize),
+    /// A position on the menu, which is comparable across element types and
+    /// methods in a way a bare `MR` is not — `mr=16` names different shapes in
+    /// `f32` and `f64`, `idx=1` names "the first alternate" in both.
+    Index(usize),
+}
+
+/// `TENSORCONTRACT_ROWBLOCK=base|auto|mr=<n>|idx=<i>` selects the micro-tile
+/// row block. Read once per process.
+///
+/// The default is deliberately `base`: the mechanism ships before the rule does,
+/// so that `auto` can be measured against the committed behaviour as a runtime
+/// A/B in one session rather than as a diff between two builds. See A15.
+fn row_block_override() -> RowBlock {
+    #[cfg(feature = "std")]
+    {
+        use std::sync::OnceLock;
+        static ENV: OnceLock<RowBlock> = OnceLock::new();
+        *ENV.get_or_init(|| {
+            let Ok(v) = std::env::var("TENSORCONTRACT_ROWBLOCK") else {
+                return RowBlock::Base;
+            };
+            let v = v.trim().to_ascii_lowercase();
+            match v.as_str() {
+                "auto" => RowBlock::Auto,
+                "base" | "default" => RowBlock::Base,
+                _ => {
+                    let parse = |p: &str| v.strip_prefix(p)?.parse::<usize>().ok();
+                    if let Some(n) = parse("mr=") {
+                        RowBlock::Pin(n)
+                    } else if let Some(i) = parse("idx=") {
+                        RowBlock::Index(i)
+                    } else {
+                        RowBlock::Base
+                    }
+                }
+            }
+        })
+    }
+    #[cfg(not(feature = "std"))]
+    {
+        RowBlock::Base
+    }
+}
+
+/// The run structure of a scatter vector: `Some((len, stride))` when it is a
+/// concatenation of equal-length maximal arithmetic runs, `None` otherwise.
+///
+/// This is the shape of every output scatter the corpus produces — a leading
+/// axis of extent `len` and stride `stride`, restarted by the outer axes — and
+/// it is what makes the effect of a candidate `MR` computable in `O(M / MR)`
+/// rather than by rebuilding a block scatter per candidate.
+fn run_structure(scat: &[i64]) -> Option<(usize, i64)> {
+    if scat.len() < 2 {
+        return None;
+    }
+    let stride = scat[1] - scat[0];
+    // First discontinuity ends the first run; every later run must match it.
+    let len = scat
+        .windows(2)
+        .position(|w| w[1] - w[0] != stride)
+        .map_or(scat.len(), |p| p + 1);
+    if len < 2 || !scat.len().is_multiple_of(len) {
+        return None;
+    }
+    for (i, w) in scat.windows(2).enumerate() {
+        let want = if (i + 1) % len == 0 { None } else { Some(stride) };
+        if want.is_some_and(|s| w[1] - w[0] != s) {
+            return None;
+        }
+        // A run boundary that happens to continue the progression would mean
+        // the runs are longer than measured, contradicting maximality.
+        if want.is_none() && w[1] - w[0] == stride {
+            return None;
+        }
+    }
+    Some((len, stride))
+}
+
+/// Fraction of aligned `mr`-blocks of a `total`-row scatter that fall inside a
+/// single run, given runs of `(len, _)` rows.
+///
+/// Exactly the fraction that reaches [`crate::writeback`]'s non-gather paths.
+fn unbroken_fraction(total: usize, (len, _): (usize, i64), mr: usize) -> f64 {
+    if total == 0 || mr == 0 {
+        return 1.0;
+    }
+    let nblk = total.div_ceil(mr);
+    let whole = (0..nblk)
+        .filter(|b| {
+            let lo = b * mr;
+            let hi = (lo + mr).min(total) - 1;
+            lo / len == hi / len
+        })
+        .count();
+    whole as f64 / nblk as f64
 }
 
 /// Collapse repeated labels within one tensor onto its diagonal, validating
@@ -764,6 +942,82 @@ mod tests {
         // Both directions strided: the swap cannot make the rows contiguous,
         // so the smaller stride alone does not justify it.
         assert!(!gemm_plan(64, 64, [512, 2]).transposes_gemm(16));
+    }
+
+    #[test]
+    fn run_structure_recognises_equal_length_runs() {
+        // Four contiguous runs of 24, restarted by an outer axis.
+        let s = build_scatter(&[24, 4], &[1, 200]);
+        assert_eq!(run_structure(&s), Some((24, 1)));
+        // A single unbroken run is the whole vector.
+        assert_eq!(run_structure(&build_scatter(&[24], &[1])), Some((24, 1)));
+        // Constant non-unit stride is still a run: `MR` cannot break it.
+        assert_eq!(run_structure(&build_scatter(&[12], &[4])), Some((12, 4)));
+        // Unequal runs have no uniform structure.
+        assert_eq!(run_structure(&[0, 1, 2, 100, 101, 200]), None);
+        assert_eq!(run_structure(&[7]), None);
+    }
+
+    #[test]
+    fn unbroken_fraction_counts_straddling_blocks() {
+        // 96 rows in runs of 24. Only shapes that tile a run keep every block.
+        let total = 96;
+        let run = (24, 1);
+        assert_eq!(unbroken_fraction(total, run, 24), 1.0);
+        assert_eq!(unbroken_fraction(total, run, 8), 1.0);
+        // 16 into 24 straddles every second block of a 48-row period.
+        assert!((unbroken_fraction(total, run, 16) - 2.0 / 3.0).abs() < 1e-12);
+        // 32 and 48 cross a boundary every time.
+        assert_eq!(unbroken_fraction(total, run, 32), 0.0);
+        assert_eq!(unbroken_fraction(total, run, 48), 0.0);
+    }
+
+    /// `D[a,c,j] = A[a,c,k] B[k,j]` with `a` contiguous in `D` (extent 24) and
+    /// `c` far away, so `D`'s rows come in runs of 24 — the shape the whole
+    /// TCCG corpus has, since it rounds stride-1 extents up to multiples of 24.
+    fn run24_plan() -> Plan {
+        let d = Layout::new(vec![24, 4, 8], vec![1, 200, 4000]).unwrap();
+        let a = lay(&[24, 4, 7]);
+        let b = lay(&[7, 8]);
+        Plan::new(
+            Operand::new(&a, &[0, 1, 3]),
+            Operand::new(&b, &[3, 2]),
+            None,
+            Operand::new(&d, &[0, 1, 2]),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn row_block_scores_follow_the_output_runs() {
+        let p = run24_plan();
+        assert_eq!(p.stats.m, 96, "two unfolded M axes");
+        assert_eq!(p.row_block_score(24), 1.0);
+        assert_eq!(p.row_block_score(8), 1.0);
+        assert!((p.row_block_score(16) - 2.0 / 3.0).abs() < 1e-12);
+        assert_eq!(p.row_block_score(48), 0.0);
+    }
+
+    #[test]
+    fn row_block_picks_a_shape_that_tiles_the_run() {
+        let p = run24_plan();
+        // `c64` planar's menu: the default straddles, the first alternate does
+        // not, so the rule moves.
+        assert_eq!(p.preferred_row_block(&[16, 24, 8]), Some(24));
+        // The default is already perfect: never trade kernel peak for nothing.
+        assert_eq!(p.preferred_row_block(&[24, 16, 8]), None);
+        // Only a partial improvement is available, and it is still taken.
+        assert_eq!(p.preferred_row_block(&[48, 16]), Some(16));
+        // Ties keep the default, which is the fastest kernel.
+        assert_eq!(p.preferred_row_block(&[8, 24]), None);
+        assert_eq!(p.preferred_row_block(&[]), None);
+    }
+
+    #[test]
+    fn row_block_leaves_a_fully_regular_output_alone() {
+        // Column-major `D`: one run, so no shape can straddle anything.
+        let p = gemm_plan(64, 64, [1, 64]);
+        assert_eq!(p.preferred_row_block(&[16, 24, 8]), None);
     }
 
     #[test]

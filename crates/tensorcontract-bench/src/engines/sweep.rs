@@ -5,7 +5,7 @@ use std::process::ExitCode;
 use num_complex::Complex;
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
-use tensorcontract::kernel::{selected_config, selected_kernel_name, ComplexMethod, KernelSet};
+use tensorcontract::kernel::{plan_config, selected_kernel_name, ComplexMethod, KernelSet};
 use tensorcontract::plan::Operand;
 use tensorcontract::scatter::{build_block_scatter, regular_fraction};
 use tensorcontract::Plan;
@@ -95,12 +95,10 @@ where
 
     // Regularity is reported against the orientation the engine actually
     // executes in, which is not necessarily `A`-rows / `B`-columns.
-    // `MR` is element-type and method dependent, and so is the orientation; the
-    // default method's block is the one column headings are reported at.
-    let (mr0, _, _) = selected_config::<T>(ComplexMethod::default());
-    let sc = plan.oriented_scatters(mr0);
-    let orient = if plan.transposes_gemm(mr0) { "BA" } else { "AB" };
-
+    // `MR` is element-type and method dependent — and since Phase 4.1c, plan
+    // dependent too — and so is the orientation. Each engine row therefore
+    // reports against its own `MR`; the baselines' rows use the default
+    // method's, so that column means one thing per row.
     let mut rng = ChaCha8Rng::seed_from_u64(0x5EED);
     let a: Vec<T> = (0..s.elems_a()).map(|_| T::sample(&mut rng)).collect();
     let b: Vec<T> = (0..s.elems_b()).map(|_| T::sample(&mut rng)).collect();
@@ -166,9 +164,11 @@ where
         }
 
         let p = plan.clone().with_complex_method(method);
-        let (mr, nr, _blk) = selected_config::<T>(method);
-        let reg_a = regular_fraction(&build_block_scatter(sc.a_m, mr));
-        let reg_b = regular_fraction(&build_block_scatter(sc.b_n, nr));
+        let (mr, nr, _blk) = plan_config::<T>(&p);
+        let psc = p.oriented_scatters(mr);
+        let orient = if p.transposes_gemm(mr) { "BA" } else { "AB" };
+        let reg_a = regular_fraction(&build_block_scatter(psc.a_m, mr));
+        let reg_b = regular_fraction(&build_block_scatter(psc.b_n, nr));
 
         let secs = timed(opts.reps, || unsafe {
             p.run_raw::<T>(
@@ -180,8 +180,10 @@ where
                 d.as_mut_ptr(),
             )
         });
+        // `MR x NR` goes in the notes because it is no longer a constant per
+        // dtype and method: a CSV without it cannot be re-read later.
         let notes = format!(
-            "{} {orient} {}",
+            "{} {mr}x{nr} {orient} {}",
             selected_kernel_name::<T>(method),
             check(name, &d, &mut reference)
         )
@@ -198,7 +200,8 @@ where
     // when a baseline feature is enabled.)
     #[cfg(any(feature = "blas", feature = "tblis"))]
     let (reg_a, reg_b) = {
-        let (mr, nr, _) = selected_config::<T>(ComplexMethod::default());
+        let (mr, nr, _) = plan_config::<T>(&plan);
+        let sc = plan.oriented_scatters(mr);
         (
             regular_fraction(&build_block_scatter(sc.a_m, mr)),
             regular_fraction(&build_block_scatter(sc.b_n, nr)),

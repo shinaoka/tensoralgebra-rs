@@ -31,7 +31,7 @@
 
 use crate::buffer::Panel;
 use crate::element::Element;
-use crate::kernel::{config_for, Blocking, KernelSet};
+use crate::kernel::{config_for_plan, Blocking, KernelSet};
 use crate::pack::{pack_panel, panel_len};
 use crate::plan::Plan;
 use crate::scatter::{build_block_scatter, IRREGULAR};
@@ -61,7 +61,10 @@ pub unsafe fn execute<T>(
         return;
     }
 
-    let cfg = config_for::<T>(plan.complex_method());
+    // `MR` is a plan-level choice, not just a kernel constant: it sets the
+    // granularity at which the output's row scatter is blocked, and so which
+    // write-back path each block takes. See `Plan::row_block`.
+    let cfg = config_for_plan::<T>(plan);
     let cfg = match plan.blocking {
         Some(blk) => cfg.with_blocking(blk),
         None => cfg,

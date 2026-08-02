@@ -2,6 +2,7 @@
 //! per-engine runners.
 
 pub mod premise;
+pub mod shapes;
 pub mod sweep;
 pub mod verify;
 
