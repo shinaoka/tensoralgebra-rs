@@ -35,6 +35,30 @@ use crate::element::{Element, Real};
 use crate::kernel::TileFormat;
 use crate::scatter::IRREGULAR;
 
+/// `TENSORCONTRACT_WRITEBACK=gather` forces the general scatter loop, disabling
+/// both the block-scatter row addressing and the `alpha = 1, beta = 0` copy.
+///
+/// This is the write-back's counterpart to `TENSORCONTRACT_KERNEL=scalar`: it
+/// makes the fast path an A/B switch at run time rather than a rebuild, so the
+/// two arms can be measured in one session under identical conditions. Read
+/// once per process.
+fn force_gather() -> bool {
+    #[cfg(feature = "std")]
+    {
+        use std::sync::OnceLock;
+        static FORCE: OnceLock<bool> = OnceLock::new();
+        *FORCE.get_or_init(|| {
+            std::env::var("TENSORCONTRACT_WRITEBACK")
+                .map(|v| v.eq_ignore_ascii_case("gather") || v.eq_ignore_ascii_case("scatter"))
+                .unwrap_or(false)
+        })
+    }
+    #[cfg(not(feature = "std"))]
+    {
+        false
+    }
+}
+
 /// Read complex element `(i, j)` out of an accumulator tile.
 #[inline(always)]
 unsafe fn tile_value<R: Real>(
@@ -108,8 +132,9 @@ pub(crate) unsafe fn writeback<T: Element>(
     // most callers overwrite `D`), and it must not be pushed onto the slow path.
     let c_ok = beta_is_zero || c_rs != IRREGULAR;
     let (d0, c0) = (*d_r.get_unchecked(0), *c_r.get_unchecked(0));
+    let gather = force_gather();
 
-    if d_rs == IRREGULAR || !c_ok {
+    if gather || d_rs == IRREGULAR || !c_ok {
         writeback_rows::<T, _, _>(
             ab,
             fmt,
@@ -120,6 +145,7 @@ pub(crate) unsafe fn writeback<T: Element>(
             alpha,
             beta,
             beta_is_zero,
+            gather,
             c_base,
             |i| *c_r.get_unchecked(i),
             c_c,
@@ -145,6 +171,7 @@ pub(crate) unsafe fn writeback<T: Element>(
             alpha,
             beta,
             beta_is_zero,
+            gather,
             c_base,
             |i| c0 + i as i64,
             c_c,
@@ -165,6 +192,7 @@ pub(crate) unsafe fn writeback<T: Element>(
             alpha,
             beta,
             beta_is_zero,
+            gather,
             c_base,
             |i| c0 + c_rs * i as i64,
             c_c,
@@ -194,6 +222,7 @@ unsafe fn writeback_rows<T: Element, CR, DR>(
     alpha: T,
     beta: T,
     beta_is_zero: bool,
+    force_general: bool,
     c_base: *const T,
     c_row: CR,
     c_c: &[i64],
@@ -206,7 +235,7 @@ unsafe fn writeback_rows<T: Element, CR, DR>(
     CR: Fn(usize) -> i64,
     DR: Fn(usize) -> i64,
 {
-    let plain = beta_is_zero && !conj_d && alpha == T::one();
+    let plain = !force_general && beta_is_zero && !conj_d && alpha == T::one();
 
     for j in 0..nrem {
         let dcj = *d_c.get_unchecked(j);
