@@ -1,0 +1,265 @@
+# Decisions, assumptions and phase reports
+
+Newest phase report last. Every material decision is recorded here so the run
+is auditable after the fact.
+
+---
+
+## Environment
+
+All measurements in this file were taken on:
+
+| | |
+|---|---|
+| host | `ccqlin038.flatironinstitute.org` (Flatiron / CCQ workstation) |
+| CPU | Intel Xeon Gold 6244, Cascade Lake-SP, 2 sockets x 8 cores, 3.6 GHz base |
+| ISA | AVX-512F/DQ/BW/VL/VNNI, 2 FMA units per core |
+| cache | 32 KiB L1d, 1 MiB L2 per core, 25.3 MiB shared L3 per socket |
+| memory | 251 GiB, 2 NUMA nodes |
+| toolchain | rustc 1.97.1, gcc 13.3.0 (module), cmake 3.31.6 |
+| TBLIS | `devinamatthews/tblis` `develop` @ v2.0, BLIS auto-configured for `skx` |
+| BLAS | OpenBLAS 0.3.29 (`openblas/single-0.3.29` module) |
+
+All runs are **single-threaded** (`TBLIS_NUM_THREADS=1`, `OPENBLAS_NUM_THREADS=1`,
+engine is not yet threaded).
+
+Reference for single-core ceiling: OpenBLAS `dgemm` reaches ~96 GF/s and
+`zgemm` ~96 GF/s on large square shapes here, so the two domains have
+effectively the same ceiling, as expected.
+
+---
+
+## Standing assumptions
+
+| # | Assumption | Status |
+|---|---|---|
+| A1 | TAPP can express everything needed, including complex and conjugation. | **Confirmed** from the actual headers: `TAPP_C32`/`TAPP_C64`, `TAPP_CONJUGATE` per operand, `int64_t` label arrays, `intptr_t` handles. No kill condition. |
+| A2 | TBLIS `develop` supports TAPP in-tree (per arXiv:2601.07827). | **Refuted.** No TAPP source in `master` or `develop` of `devinamatthews/tblis` v2.0. TBLIS is benchmarked through its native `tblis_tensor_mult` C API instead. |
+| A3 | Achievable GF/s peak is the same for real and complex on real-SIMD hardware. | Confirmed: `dgemm` 96 GF/s vs `zgemm` 96 GF/s. This validates the efficiency-ratio metric. |
+| A4 | The TCCG corpus exercises the irregular/gather path. | **Refuted.** TCCG rounds stride-1 extents to multiples of 24, which divides every register block in use, so `regA = 1.00` everywhere. Added `--stress ragged` / `--stress padded` to probe it. |
+| A5 | Shapes must be held fixed across dtypes for the real-vs-complex ratio to mean anything. | Adopted. Deviates from TCCG's per-precision sizing; documented in `corpus.rs`. |
+| A6 | This host is the reference machine; single-core is the headline. | Adopted. Threading deferred to Phase 4 (never reached). |
+
+---
+
+## Build-vs-reuse decisions
+
+| Layer | Decision | Why |
+|---|---|---|
+| N-d array crate | **Build** (`Layout`, 20 lines) | The engine needs pointer + extents + strides. A dependency would leak into the public API and the TAPP C ABI for no gain. |
+| `num-complex` | **Reuse** | `#[repr(C)]`, layout-identical to `TAPP_C32/C64` and C99 `_Complex`; ecosystem standard. Layout pinned by a test. |
+| SIMD abstraction (`pulp`, `macerator`) | **Build** on `core::arch` | `portable_simd` is unstable on 1.97. Register-blocked kernels want explicit register control. The `Ukr` function pointer keeps a `pulp` backend addable later without touching the driver. |
+| GEMM kernels (`gemm`, `matrixmultiply`, `microgemm`, `faer`) | **Build** | All expose *matrix* multiply, not a panel-panel kernel over externally packed buffers, and none has a planar-complex path. `matrixmultiply` (now with AVX-512 `cgemm`/`zgemm`) is a benchmark target, not a foundation. |
+| `rayon` | **Build** on `std::thread::scope` (deferred) | BLIS parallelism wants static partitioning with a shared packed-B panel; work-stealing fights that. |
+| `tblis`/`tblis-ffi` crates | **Build** ~100 lines of FFI | The benchmark must control which TBLIS is measured — crucially which BLIS config its kernels were built for. Those crates vendor their own build. Struct layout pinned by a `sizeof`/`offsetof` test. |
+| `criterion` | **Build** a small harness | Criterion targets many fast iterations of a cache-resident routine. These are 0.1–5 s measurements on 64–200 MiB working sets; best-of-N after warm-up plus a CSV is the right tool. |
+| `opt-einsum-path` | **Out of scope** | This engine executes one binary contraction; ordering is a caller concern. |
+
+---
+
+## Design decisions
+
+| # | Decision | Rationale |
+|---|---|---|
+| D1 | Reductions (TAPP case 4) become contraction indices with stride 0 in the operand that lacks them. | Needs no workspace, unlike a pre-reduction pass. TAPP itself warns case 4 may need unbounded workspace. Works because block-scatter treats stride 0 as regular. |
+| D2 | Irregular block-scatter entries are flagged with `i64::MIN`, not `0`. | Follows from D1: a zero block stride is a *legal, regular* pattern here, so it cannot double as the sentinel. |
+| D3 | Diagonals (repeated labels) are handled by summing strides, per tensor, before classification. | Keeps the rest of the engine free of repeated labels. |
+| D4 | Broadcast output indices (TAPP case 5) are rejected. | TAPP does not require support; supporting it needs either workspace or redundant compute. |
+| D5 | Class ordering: `M`/`N`/`H` by `|stride_D|`, `K` by `|stride_A|`. | The output update is the one access packing cannot hide, so `D` gets first claim on contiguity. Heuristic; a Phase 4 knob. |
+| D6 | Scatter vectors are materialised in full at plan time; block-scatter vectors at execute time. | Scatter is element-type independent (so one plan serves all dtypes, which the TAPP layer needs); block-scatter depends on `MR`/`NR` and is `O(M/MR)`, i.e. free. |
+| D7 | Micro-kernel writes to a stack tile; `alpha`/`beta`/scatter write-back/re-interleave happen outside. | One kernel serves the regular path, the gather path and every edge block. Cost is one extra store/load of an L1-resident tile. |
+| D8 | Conjugation is folded into packing (negate the imaginary plane). | Free, and it is what makes `TAPP_CONJUGATE` cost nothing. |
+| D9 | On accumulate passes, `op_C` is set equal to `op_D`. | Conjugation is additive and involutive, so `conj(alpha*AB_p + conj(stored))` accumulates correctly across `K` blocks. Verified by an all-16-masks test forced through multiple `K` blocks. |
+| D10 | Blocking is overridable per plan and via `TENSORCONTRACT_MC/KC/NC`. | Lets the test suite drive every level of the five-loop nest on oracle-sized tensors, and lets Phase 4 sweep parameters. |
+| D11 | Corpus is TCCG's **full 49-case** set, not 48. | See `DESIGN.md` §5.2: the brief's "48" does not correspond to any list in upstream `benchmark.py`. 49 is the full set and a superset of the 25-case reduced set; `_sortedTCs` is a re-labelling, not a sixth group. |
+
+---
+
+## Phase 1 report
+
+**Gate:** self-approved design doc; premise resolved with data; green scaffolded
+repo; working harness with baselines wired in.
+
+**Status: gate met. Kill/pivot condition triggered.**
+
+### Delivered
+
+* `DESIGN.md` — literature review (cited), ecosystem survey with per-layer
+  build-vs-reuse calls, full engine design, benchmark/test framework,
+  self-scrutiny.
+* Cargo workspace: `tensorcontract` (core), `tensorcontract-tapp` (C ABI),
+  `tensorcontract-bench` (harness). CI (build/test/clippy/fmt/docs/MSRV +
+  a scalar-fallback job), dual MIT/Apache-2.0, MSRV 1.75.
+* Working engine, correct end-to-end (this is the Phase 2 gate, met early — see
+  the Phase 2 report).
+* Harness `tcbench` with `verify` / `premise` / `sweep` / `info`, TBLIS and
+  OpenBLAS-TTGT baselines wired in, CSV output, GEMM roofline annotation, and
+  stride-stress modes.
+* Raw results in `bench-results/`.
+
+### The premise check
+
+Hypothesis under test, from the brief:
+
+> TBLIS underperforms on complex contractions, worst in memory-bound / awkward-stride
+> cases, because interleaved-complex storage and the scatter/block-scatter packing
+> compound and force more work onto the slow full-scatter (gather) path.
+
+Method: 12 cases sampled evenly across TCCG's bandwidth-bound-to-compute-bound
+ordering, at 64 MiB nominal tensor size, best of 3, single-threaded. For each,
+measure the contraction and a same-shape vendor GEMM, in both a real and the
+matching complex dtype. Report `eff = contraction / GEMM` and
+`eff ratio = complex eff / real eff`.
+
+Because a complex MAC is four real FMAs counted as 8 flops, the achievable GF/s
+peak is the same number in both domains (confirmed: `dgemm` 96, `zgemm` 96).
+So `eff ratio < 1` means a complex-specific penalty; `>= 1` refutes the thesis.
+
+**Results — mean `eff ratio` over 12 cases:**
+
+| engine | dtypes | stress | mean eff ratio |
+|---|---|---|---|
+| TBLIS | f64 / c64 | none | **1.060** |
+| TBLIS | f64 / c64 | ragged (`regA` 0.80–1.00) | **1.027** |
+| TBLIS | f64 / c64 | padded strided views | **1.059** |
+| TBLIS | f32 / c32 | none | **1.150** |
+| TTGT | f64 / c64 | none | **1.170** |
+
+**Ceiling-free cross-check — raw complex/real GF/s ratio for the same shape:**
+
+| run | n | min | median | max | mean | below 1.0 |
+|---|---|---|---|---|---|---|
+| TBLIS f64→c64 | 12 | 0.98 | 1.91 | 2.67 | 1.76 | 1 |
+| TBLIS f64→c64 ragged | 12 | 1.01 | 1.82 | 2.28 | 1.68 | 0 |
+| TBLIS f64→c64 padded | 12 | 1.03 | 1.90 | 2.53 | 1.76 | 0 |
+| TBLIS f32→c32 | 12 | 1.07 | 1.95 | 2.07 | 1.70 | 0 |
+| TTGT f64→c64 | 12 | 1.10 | 2.12 | 2.62 | 1.94 | 0 |
+
+### Verdict: the thesis is refuted
+
+TBLIS does not underperform on complex contractions. On the same shape it
+sustains a **median 1.9x higher GF/s on complex than on real** data, and 47 of
+48 measurements are at or above parity. Relative to a same-shape vendor GEMM
+ceiling — the fair normalisation — complex efficiency is on average **6%
+better** than real efficiency in double precision and **15%** better in single.
+
+The specific sub-claim about awkward strides is also refuted, and it had to be
+tested deliberately because the standard corpus cannot test it: TCCG's rounding
+of stride-1 extents to multiples of 24 makes every block-scatter vector fully
+regular. Forcing irregularity (`--stress ragged`, `regA` down to 0.80) moves
+the mean eff ratio from 1.060 to 1.027 — still at or above parity, and nowhere
+near a complex-specific collapse.
+
+**Why the folklore is wrong.** The reasoning ran: complex data is 2x the bytes,
+scatter/gather is the bottleneck, therefore complex suffers more. The missing
+term is arithmetic intensity. A complex MAC does 4x the flops of a real MAC on
+2x the bytes, so complex contraction has **2x the arithmetic intensity** of the
+same-shape real contraction. Everything that packing, indexing and write-back
+cost gets amortised over twice as much arithmetic. In exactly the memory-bound,
+low-intensity shapes where the thesis predicted complex would be worst, complex
+is *best*: `abcijk-ikmb-mjac` runs at 8.8 GF/s in f64 and 23.5 GF/s in c64;
+`abjcd-dkbac-jk` at 5.5 vs 11.2.
+
+BLIS's 1m does inflate the packed A panel 2x (four reals per complex element in
+"1e" format versus two in planar). That cost is real but is not on the critical
+path at these shapes, and the intensity advantage swamps it.
+
+### What the data says the real headroom is
+
+Not complex — **low arithmetic intensity**, in either domain:
+
+* TBLIS `eff` against the GEMM ceiling ranges from **0.34 to 1.05**. It is
+  0.85–0.87 on the big compute-bound `ijkl` cases and collapses to 0.34–0.53 on
+  small-`k` / skinny shapes (`abjcd-dkbac-jk`, `ajbc-ckba-jk`,
+  `abcijk-*`, all with `k = 24`).
+* The gap is worse in **f32** (mean `eff` ≈ 0.6) than f64, because the same
+  overhead is amortised over half the bytes of arithmetic.
+* TTGT is 2–4x behind TBLIS on those same low-intensity shapes (`eff` 0.15–0.35),
+  confirming that materialising a transposed copy is what hurts — the original
+  BSMTC insight, still valid.
+
+So the defensible target is **small-`k` and skinny tensor contractions**, where
+the best available transpose-free engine leaves 50–65% of the machine on the
+table, in *both* domains. That is a larger and better-evidenced gap than the
+one the project set out to close.
+
+### Kill/pivot condition
+
+`DESIGN.md` §6 named this as the single most likely failure mode, and the
+Phase 1 gate exists precisely to catch it before implementation is committed
+to. Per the operating rules, this is escalated rather than worked around.
+Options, with the evidence for each:
+
+1. **Re-aim at low arithmetic intensity** (recommended). Keep everything built:
+   the data model, index analysis, block-scatter machinery, TAPP surface,
+   corpus and harness are all domain-agnostic and all still needed. Change the
+   target from "complex vs real" to "small-`k` / skinny shapes", where TBLIS
+   measurably gives up 50–65%. Plausible mechanisms, in order of expected
+   value: fusing the `pc` loop so `C` is touched once instead of `K/KC` times;
+   skipping packing of `A` entirely when the block-scatter is already regular
+   and unit-stride (a "pack-free" fast path); dispatching to a
+   small-`k`-specialised kernel; and the write-back fast path for regular
+   blocks. Planar complex stays in the design because it is *free* and it is
+   what makes `TAPP_CONJUGATE`, mixed real x complex operands and 3m natural —
+   it is simply no longer the headline claim.
+2. **Pursue 3m instead.** Untouched by this result: 3m's advantage is a 25%
+   *flop* reduction, not a bandwidth one, and planar packing makes it cheap to
+   build. Smaller, more speculative, and carries a numerical-stability caveat.
+3. **Wrap TBLIS.** Honest answer if the goal is a usable Rust tensor
+   contraction today, but no research contribution, and it keeps the C++
+   dependency the brief wanted to remove.
+4. **Stop.** The negative result is itself publishable, and the brief says so:
+   there is no public systematic complex tensor-contraction benchmark, this
+   repository now is one, and "complex contraction is not the weak spot; low
+   arithmetic intensity is, and here is why" is a useful correction to
+   circulating folklore.
+
+**Recommendation: option 1**, with the Phase 1 negative result written up as a
+standalone finding.
+
+---
+
+## Phase 2 report
+
+**Gate:** numerically correct across the full matrix (shapes, permutations,
+dtypes, traces, degenerate cases) vs oracle, TTGT, TBLIS. Performance measured
+as a baseline, not a goal.
+
+**Status: gate met.** Phase 2 was completed alongside Phase 1 because the
+premise check needed a working engine to sit alongside the baselines.
+
+Implemented: tensor data model; index analysis with folding; scatter and
+block-scatter construction; planar-complex packing with conjugation folded in;
+reference scalar micro-kernel; five-loop driver; scattered write-back with
+`alpha`/`beta`/`op_C`/`op_D`; TAPP C-ABI export.
+
+Correctness evidence:
+
+* 1000 randomised contractions vs the brute-force oracle across
+  `f32`/`f64`/`c32`/`c64`, each run under both tiny `(1,2,1)` blocking and the
+  real blocking, covering free/contracted/Hadamard/isolated indices, repeated
+  labels, random stride permutations, random conjugation masks, and
+  `alpha`/`beta` including zero — all within `1e-11` (f64) / `2e-4` (f32).
+* Targeted degenerate cases: empty contraction extent, zero-sized output,
+  scalar output (full double contraction), negative strides via a reversed
+  axis, all 16 conjugation flag combinations forced through multiple `K` blocks.
+* Large pure-GEMM cases crossing the real `MC`/`KC`/`NC` boundaries with
+  awkward remainders, in all four dtypes.
+* Cross-implementation: all 49 corpus cases x 4 dtypes agree with **both** TBLIS
+  and TTGT to `~2e-16` (f64/c64) and `~1.5e-7` (f32/c32), under `none`,
+  `ragged` and `padded` stride stress.
+* TAPP C ABI exercised end-to-end through the C entry points on a complex case.
+
+Performance baseline: the micro-kernels are the portable scalar fallback
+(Phase 3 was not reached), so the `planar` engine's absolute numbers are not
+meaningful yet and are not reported as a result.
+
+---
+
+## Phases 3–5
+
+Not started. Blocked pending the direction decision above — building AVX-512
+kernels and a threading layer to chase a refuted hypothesis would be wasted
+effort, and the kernel design depends on which of options 1–4 is chosen (a
+small-`k` re-aim changes the register blocking and the loop fusion, and may
+make a pack-free path more important than the micro-kernel itself).

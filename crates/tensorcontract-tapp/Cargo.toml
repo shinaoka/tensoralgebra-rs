@@ -1,0 +1,17 @@
+[package]
+name = "tensorcontract-tapp"
+description = "TAPP (Tensor Algebra Processing Primitives) C-ABI front end for tensorcontract"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lib]
+name = "tensorcontract_tapp"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[dependencies]
+tensorcontract.workspace = true
+num-complex.workspace = true

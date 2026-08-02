@@ -1,0 +1,24 @@
+[package]
+name = "tensorcontract"
+description = "Transpose-free dense tensor contraction with planar-complex packing"
+keywords = ["tensor", "contraction", "gemm", "complex", "blis"]
+categories = ["mathematics", "science"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+num-complex.workspace = true
+
+[features]
+default = ["std"]
+std = []
+# Emit per-contraction diagnostics on stderr (block-scatter regularity, chosen params).
+trace = []
+
+[dev-dependencies]
+rand = "0.8"
+rand_chacha = "0.3"
