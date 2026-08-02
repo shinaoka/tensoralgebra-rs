@@ -8,7 +8,25 @@
 //!
 //! Struct layout was verified against a `sizeof`/`offsetof` probe compiled
 //! with the same headers (`tblis_tensor` is 64 bytes:
-//! `type@0 conj@4 scalar@8 data@32 ndim@40 len@48 stride@56`).
+//! `type@0 conj@4 scalar@8 data@32 ndim@40 len@48 stride@56`). The layout is
+//! identical in 1.3.0 and 2.0 (`ndim` is `unsigned` in 1.3 and `int` in 2.0,
+//! same size and offset).
+//!
+//! # Version skew — read before changing anything here
+//!
+//! The `type_t` enumerators are **swapped** between the two TBLIS releases:
+//!
+//! | | `TYPE_SINGLE` | | | `TYPE_DCOMPLEX` |
+//! |---|---|---|---|---|
+//! | v1.3.0 | 0 | `TYPE_DOUBLE` = 1 | `TYPE_SCOMPLEX` = 2 | 3 |
+//! | v2.0   | 0 | `TYPE_SCOMPLEX` = 1 | `TYPE_DOUBLE` = 2 | 3 |
+//!
+//! This is a silent ABI break: linking code built against one against the
+//! other computes single-complex where double was asked for, with no error and
+//! no crash — the tensor sizes still line up because the harness passes the
+//! extents separately. Hence the `tblis13` feature, and hence the runtime
+//! self-check in [`verify_type_tags`] which multiplies a known matrix and
+//! refuses to proceed if the answer is wrong.
 
 #![allow(non_camel_case_types)]
 #![allow(dead_code)] // surface is used only under the `tblis` / `blas` features
@@ -16,10 +34,28 @@
 use std::ffi::c_void;
 use std::os::raw::{c_char, c_int, c_uint};
 
-pub const TYPE_SINGLE: c_int = 0;
-pub const TYPE_SCOMPLEX: c_int = 1;
-pub const TYPE_DOUBLE: c_int = 2;
-pub const TYPE_DCOMPLEX: c_int = 3;
+#[cfg(not(feature = "tblis13"))]
+mod tags {
+    use std::os::raw::c_int;
+    pub const TYPE_SINGLE: c_int = 0;
+    pub const TYPE_SCOMPLEX: c_int = 1;
+    pub const TYPE_DOUBLE: c_int = 2;
+    pub const TYPE_DCOMPLEX: c_int = 3;
+    pub const VERSION: &str = "2.x";
+}
+
+#[cfg(feature = "tblis13")]
+mod tags {
+    use std::os::raw::c_int;
+    pub const TYPE_SINGLE: c_int = 0;
+    pub const TYPE_DOUBLE: c_int = 1;
+    pub const TYPE_SCOMPLEX: c_int = 2;
+    pub const TYPE_DCOMPLEX: c_int = 3;
+    pub const VERSION: &str = "1.3";
+}
+
+#[allow(unused_imports)]
+pub use tags::{TYPE_DCOMPLEX, TYPE_DOUBLE, TYPE_SCOMPLEX, TYPE_SINGLE, VERSION};
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -131,6 +167,113 @@ impl Operand {
     pub fn labels(&self) -> *const c_char {
         self.labels.as_ptr()
     }
+}
+
+/// Confirm at runtime that the compiled-in `type_t` enumerators match the
+/// TBLIS actually linked.
+///
+/// Because 1.3 and 2.0 swap `TYPE_DOUBLE` and `TYPE_SCOMPLEX`, a mismatch is
+/// silent: TBLIS happily reinterprets an `f64` buffer as `Complex<f32>` and
+/// returns numbers. Multiplying a known 2x2 identity-ish pair in each of the
+/// four dtypes and checking the result catches it immediately.
+///
+/// # Safety
+/// Requires a linked TBLIS.
+#[cfg(feature = "tblis")]
+pub unsafe fn verify_type_tags() -> Result<(), String> {
+    fn ident2<T: Copy>(one: T, zero: T) -> Vec<T> {
+        vec![one, zero, zero, one]
+    }
+
+    // A = [[1,0],[0,1]], B = [[2,3],[4,5]] column-major, expect C == B.
+    unsafe fn run<T: Copy + PartialEq + std::fmt::Debug>(
+        ty: c_int,
+        one: T,
+        zero: T,
+        b: &[T],
+        alpha: tblis_scalar,
+        beta: tblis_scalar,
+        name: &str,
+    ) -> Result<(), String> {
+        let a = ident2(one, zero);
+        let mut c = vec![zero; 4];
+        let ext = [2i64, 2];
+        let str_ = [1i64, 2];
+        let mut oa = Operand::new(&ext, &str_, "ik");
+        let mut ob = Operand::new(&ext, &str_, "kj");
+        let mut oc = Operand::new(&ext, &str_, "ij");
+        let ta = oa.tensor(ty, alpha, a.as_ptr() as *mut c_void);
+        let tb = ob.tensor(ty, alpha, b.as_ptr() as *mut c_void);
+        let mut tc = oc.tensor(ty, beta, c.as_mut_ptr() as *mut c_void);
+        tblis_tensor_mult(
+            std::ptr::null(),
+            std::ptr::null(),
+            &ta,
+            oa.labels(),
+            &tb,
+            ob.labels(),
+            &mut tc,
+            oc.labels(),
+        );
+        if c != b {
+            return Err(format!(
+                "TBLIS type tag mismatch for {name}: identity * {b:?} gave {c:?}.\n\
+                 The harness was built for TBLIS {VERSION} but linked against a \
+                 different version (1.3 and 2.0 swap TYPE_DOUBLE and TYPE_SCOMPLEX).\n\
+                 Toggle the `tblis13` cargo feature."
+            ));
+        }
+        Ok(())
+    }
+
+    use num_complex::Complex;
+    run::<f32>(
+        TYPE_SINGLE,
+        1.0,
+        0.0,
+        &[2.0, 3.0, 4.0, 5.0],
+        tblis_scalar::f32(1.0),
+        tblis_scalar::f32(0.0),
+        "f32",
+    )?;
+    run::<f64>(
+        TYPE_DOUBLE,
+        1.0,
+        0.0,
+        &[2.0, 3.0, 4.0, 5.0],
+        tblis_scalar::f64(1.0),
+        tblis_scalar::f64(0.0),
+        "f64",
+    )?;
+    run::<Complex<f32>>(
+        TYPE_SCOMPLEX,
+        Complex::new(1.0, 0.0),
+        Complex::new(0.0, 0.0),
+        &[
+            Complex::new(2.0, 1.0),
+            Complex::new(3.0, 1.0),
+            Complex::new(4.0, 1.0),
+            Complex::new(5.0, 1.0),
+        ],
+        tblis_scalar::c32(1.0, 0.0),
+        tblis_scalar::c32(0.0, 0.0),
+        "c32",
+    )?;
+    run::<Complex<f64>>(
+        TYPE_DCOMPLEX,
+        Complex::new(1.0, 0.0),
+        Complex::new(0.0, 0.0),
+        &[
+            Complex::new(2.0, 1.0),
+            Complex::new(3.0, 1.0),
+            Complex::new(4.0, 1.0),
+            Complex::new(5.0, 1.0),
+        ],
+        tblis_scalar::c64(1.0, 0.0),
+        tblis_scalar::c64(0.0, 0.0),
+        "c64",
+    )?;
+    Ok(())
 }
 
 #[cfg(test)]

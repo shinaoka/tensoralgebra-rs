@@ -17,8 +17,20 @@ All measurements in this file were taken on:
 | cache | 32 KiB L1d, 1 MiB L2 per core, 25.3 MiB shared L3 per socket |
 | memory | 251 GiB, 2 NUMA nodes |
 | toolchain | rustc 1.97.1, gcc 13.3.0 (module), cmake 3.31.6 |
-| TBLIS | `devinamatthews/tblis` `develop` @ v2.0, BLIS auto-configured for `skx` |
+| TBLIS (A) | v1.3.0 (tag `c4f81e0`, 2 Jul 2025) — the latest **stable** release |
+| TBLIS (B) | `develop` @ `555320c` (4 Dec 2025), version string 2.0, BLIS auto-configured for `skx` — an **unreleased** development snapshot, 5 months past the newest tag (`v2.0-beta2`) |
 | BLAS | OpenBLAS 0.3.29 (`openblas/single-0.3.29` module) |
+
+Both TBLIS versions are measured. They behave completely differently on
+complex data, and the difference is the single most important result in this
+document — see the Phase 1 report.
+
+Note a silent ABI break between them: `type_t` swaps `TYPE_DOUBLE` and
+`TYPE_SCOMPLEX` (1.3: `DOUBLE=1, SCOMPLEX=2`; 2.0: `SCOMPLEX=1, DOUBLE=2`).
+Mixing them produces plausible-looking wrong numbers with no error. The harness
+has a `tblis13` cargo feature and a startup self-check
+(`tblis::verify_type_tags`) that multiplies a known matrix in each dtype and
+aborts on mismatch.
 
 All runs are **single-threaded** (`TBLIS_NUM_THREADS=1`, `OPENBLAS_NUM_THREADS=1`,
 engine is not yet threaded).
@@ -35,6 +47,7 @@ effectively the same ceiling, as expected.
 |---|---|---|
 | A1 | TAPP can express everything needed, including complex and conjugation. | **Confirmed** from the actual headers: `TAPP_C32`/`TAPP_C64`, `TAPP_CONJUGATE` per operand, `int64_t` label arrays, `intptr_t` handles. No kill condition. |
 | A2 | TBLIS `develop` supports TAPP in-tree (per arXiv:2601.07827). | **Refuted.** No TAPP source in `master` or `develop` of `devinamatthews/tblis` v2.0. TBLIS is benchmarked through its native `tblis_tensor_mult` C API instead. |
+| A2b | "TBLIS" is one thing. | **Refuted.** v1.3.0 (latest release) and 2.0-dev differ by ~5x on complex, because 1.x has no complex micro-kernel outside Sandy Bridge. Any statement about TBLIS's complex performance must name a version. Both are now measured. |
 | A3 | Achievable GF/s peak is the same for real and complex on real-SIMD hardware. | Confirmed: `dgemm` 96 GF/s vs `zgemm` 96 GF/s. This validates the efficiency-ratio metric. |
 | A4 | The TCCG corpus exercises the irregular/gather path. | **Refuted.** TCCG rounds stride-1 extents to multiples of 24, which divides every register block in use, so `regA = 1.00` everywhere. Added `--stress ragged` / `--stress padded` to probe it. |
 | A5 | Shapes must be held fixed across dtypes for the real-vs-complex ratio to mean anything. | Adopted. Deviates from TCCG's per-precision sizing; documented in `corpus.rs`. |
@@ -51,7 +64,7 @@ effectively the same ceiling, as expected.
 | SIMD abstraction (`pulp`, `macerator`) | **Build** on `core::arch` | `portable_simd` is unstable on 1.97. Register-blocked kernels want explicit register control. The `Ukr` function pointer keeps a `pulp` backend addable later without touching the driver. |
 | GEMM kernels (`gemm`, `matrixmultiply`, `microgemm`, `faer`) | **Build** | All expose *matrix* multiply, not a panel-panel kernel over externally packed buffers, and none has a planar-complex path. `matrixmultiply` (now with AVX-512 `cgemm`/`zgemm`) is a benchmark target, not a foundation. |
 | `rayon` | **Build** on `std::thread::scope` (deferred) | BLIS parallelism wants static partitioning with a shared packed-B panel; work-stealing fights that. |
-| `tblis`/`tblis-ffi` crates | **Build** ~100 lines of FFI | The benchmark must control which TBLIS is measured — crucially which BLIS config its kernels were built for. Those crates vendor their own build. Struct layout pinned by a `sizeof`/`offsetof` test. |
+| `tblis`/`tblis-ffi` crates | **Build** ~100 lines of FFI | The benchmark must control which TBLIS is measured — crucially which BLIS config its kernels were built for. Those crates vendor their own build. This turned out to be load-bearing: the headline result *is* a version difference, which a crate that vendors one fixed build could not have surfaced. Struct layout pinned by a `sizeof`/`offsetof` test, and the 1.3-vs-2.0 `type_t` swap by a runtime self-check. |
 | `criterion` | **Build** a small harness | Criterion targets many fast iterations of a cache-resident routine. These are 0.1–5 s measurements on 64–200 MiB working sets; best-of-N after warm-up plus a CSV is the right tool. |
 | `opt-einsum-path` | **Out of scope** | This engine executes one binary contraction; ordering is a caller concern. |
 
@@ -72,6 +85,7 @@ effectively the same ceiling, as expected.
 | D9 | On accumulate passes, `op_C` is set equal to `op_D`. | Conjugation is additive and involutive, so `conj(alpha*AB_p + conj(stored))` accumulates correctly across `K` blocks. Verified by an all-16-masks test forced through multiple `K` blocks. |
 | D10 | Blocking is overridable per plan and via `TENSORCONTRACT_MC/KC/NC`. | Lets the test suite drive every level of the five-loop nest on oracle-sized tensors, and lets Phase 4 sweep parameters. |
 | D11 | Corpus is TCCG's **full 49-case** set, not 48. | See `DESIGN.md` §5.2: the brief's "48" does not correspond to any list in upstream `benchmark.py`. 49 is the full set and a superset of the 25-case reduced set; `_sortedTCs` is a re-labelling, not a sixth group. |
+| D12 | Both TBLIS v1.3.0 and 2.0-dev are benchmarked, behind a `tblis13` cargo feature, with a runtime ABI self-check. | The two releases swap `TYPE_DOUBLE`/`TYPE_SCOMPLEX`, so a mismatch is silent rather than fatal. Given the result hinges on the version difference, guessing was not acceptable. |
 
 ---
 
@@ -119,50 +133,99 @@ So `eff ratio < 1` means a complex-specific penalty; `>= 1` refutes the thesis.
 
 | engine | dtypes | stress | mean eff ratio |
 |---|---|---|---|
-| TBLIS | f64 / c64 | none | **1.060** |
-| TBLIS | f64 / c64 | ragged (`regA` 0.80–1.00) | **1.027** |
-| TBLIS | f64 / c64 | padded strided views | **1.059** |
-| TBLIS | f32 / c32 | none | **1.150** |
+| **TBLIS v1.3.0** (latest release) | f64 / c64 | none | **0.215** |
+| TBLIS 2.0-dev | f64 / c64 | none | **1.060** |
+| TBLIS 2.0-dev | f64 / c64 | ragged (`regA` 0.80–1.00) | **1.027** |
+| TBLIS 2.0-dev | f64 / c64 | padded strided views | **1.059** |
+| TBLIS 2.0-dev | f32 / c32 | none | **1.150** |
 | TTGT | f64 / c64 | none | **1.170** |
 
 **Ceiling-free cross-check — raw complex/real GF/s ratio for the same shape:**
 
 | run | n | min | median | max | mean | below 1.0 |
 |---|---|---|---|---|---|---|
-| TBLIS f64→c64 | 12 | 0.98 | 1.91 | 2.67 | 1.76 | 1 |
-| TBLIS f64→c64 ragged | 12 | 1.01 | 1.82 | 2.28 | 1.68 | 0 |
-| TBLIS f64→c64 padded | 12 | 1.03 | 1.90 | 2.53 | 1.76 | 0 |
-| TBLIS f32→c32 | 12 | 1.07 | 1.95 | 2.07 | 1.70 | 0 |
+| **TBLIS v1.3.0 f64→c64** | 12 | **0.19** | **0.33** | 1.15 | 0.40 | **11** |
+| TBLIS 2.0-dev f64→c64 | 12 | 0.98 | 1.91 | 2.67 | 1.76 | 1 |
+| TBLIS 2.0-dev f64→c64 ragged | 12 | 1.01 | 1.82 | 2.28 | 1.68 | 0 |
+| TBLIS 2.0-dev f64→c64 padded | 12 | 1.03 | 1.90 | 2.53 | 1.76 | 0 |
+| TBLIS 2.0-dev f32→c32 | 12 | 1.07 | 1.95 | 2.07 | 1.70 | 0 |
 | TTGT f64→c64 | 12 | 1.10 | 2.12 | 2.62 | 1.94 | 0 |
 
-### Verdict: the thesis is refuted
+### Verdict: the observation is real, the explanation is not, and it is already fixed
 
-TBLIS does not underperform on complex contractions. On the same shape it
-sustains a **median 1.9x higher GF/s on complex than on real** data, and 47 of
-48 measurements are at or above parity. Relative to a same-shape vendor GEMM
-ceiling — the fair normalisation — complex efficiency is on average **6%
-better** than real efficiency in double precision and **15%** better in single.
+The answer depends entirely on which TBLIS you measure, and the two differ by
+almost a factor of five.
 
-The specific sub-claim about awkward strides is also refuted, and it had to be
-tested deliberately because the standard corpus cannot test it: TCCG's rounding
-of stride-1 extents to multiples of 24 makes every block-scatter vector fully
-regular. Forcing irregularity (`--stress ragged`, `regA` down to 0.80) moves
-the mean eff ratio from 1.060 to 1.027 — still at or above parity, and nowhere
-near a complex-specific collapse.
+**Against v1.3.0, the latest stable release, the complex-weakness claim is
+emphatically true.** Complex efficiency against the GEMM ceiling is 0.09–0.20
+across every case, versus 0.37–1.08 for real: a mean `eff ratio` of **0.215**.
 
-**Why the folklore is wrong.** The reasoning ran: complex data is 2x the bytes,
-scatter/gather is the bottleneck, therefore complex suffers more. The missing
-term is arithmetic intensity. A complex MAC does 4x the flops of a real MAC on
-2x the bytes, so complex contraction has **2x the arithmetic intensity** of the
-same-shape real contraction. Everything that packing, indexing and write-back
-cost gets amortised over twice as much arithmetic. In exactly the memory-bound,
-low-intensity shapes where the thesis predicted complex would be worst, complex
-is *best*: `abcijk-ikmb-mjac` runs at 8.8 GF/s in f64 and 23.5 GF/s in c64;
-`abjcd-dkbac-jk` at 5.5 vs 11.2.
+But the *mechanism* is not the one the brief proposes, and the diagnostic is
+unmistakable. TBLIS 1.3.0's complex throughput is essentially **flat across
+shapes** — 4.1 to 9.1 GF/s, a 2.2x spread — while its real throughput spans
+6.2 to 48.4 GF/s, a 7.8x spread. A memory- or scatter-bound effect would track
+shape. A flat ceiling means one fixed-throughput kernel is the bottleneck
+regardless of what it is fed.
+
+Reading `src/configs/*/config.hpp` in v1.3.0 confirms it directly. The
+`TBLIS_CONFIG_GEMM_UKR` macro takes four slots, `(float, double, scomplex,
+dcomplex)`:
+
+```
+skx1:        TBLIS_CONFIG_GEMM_UKR(bli_sgemm_asm_6x16, bli_dgemm_asm_6x8,  _, _)
+skx2:        TBLIS_CONFIG_GEMM_UKR(_,                  bli_dgemm_opt_6x32_l1, _, _)
+haswell:     TBLIS_CONFIG_GEMM_UKR(bli_sgemm_asm_24x4, bli_dgemm_asm_12x4, _, _)
+zen:         TBLIS_CONFIG_GEMM_UKR(bli_sgemm_asm_6x16, bli_dgemm_asm_6x8,  _, _)
+knl:         TBLIS_CONFIG_GEMM_UKR(bli_sgemm_opt_30x16_knc, bli_dgemm_opt_30x8_knc, _, _)
+sandybridge: TBLIS_CONFIG_GEMM_UKR(bli_sgemm_asm_8x8,  bli_dgemm_asm_8x4,
+                                   bli_cgemm_asm_8x4,  bli_zgemm_asm_4x4)
+```
+
+**Sandy Bridge is the only configuration with complex micro-kernels.** On every
+post-2012 x86 target — Haswell, Zen, Skylake-X, KNL — TBLIS 1.x runs complex
+tensor contraction on the generic templated fallback while real gets hand-tuned
+BLIS assembly. That is the entire effect. It has nothing to do with
+interleaved storage, nothing to do with scatter/gather, and nothing to do with
+the block-scatter fast path: `regA = 1.00` on every case measured.
+
+**Against 2.0-dev the claim is refuted.** Rebasing onto BLIS-as-framework
+brings BLIS's 1m induced method, and complex immediately regains full shape
+sensitivity (11.2–82.9 GF/s, a 7.4x spread matching real) and lands at or above
+parity — mean `eff ratio` 1.06 in f64, 1.15 in f32, and still 1.03 when
+irregular block scatter is forced. The upstream release notes for `v2.0-beta2`
+say as much: "a major update … which incorporates BLIS as the core framework"
+with improvements including complex number support.
+
+**Why complex is not intrinsically disadvantaged.** The folklore reasoning ran:
+complex data is 2x the bytes, scatter/gather is the bottleneck, therefore
+complex suffers more. The missing term is arithmetic intensity. A complex MAC
+does 4x the flops of a real MAC on 2x the bytes, so complex contraction has
+**2x the arithmetic intensity** of the same-shape real contraction. Packing,
+indexing and write-back costs are amortised over twice as much arithmetic. Once
+a real complex kernel exists (2.0), the memory-bound shapes where complex was
+predicted to be worst are where it looks *best*: `abcijk-ikmb-mjac` runs at
+8.8 GF/s in f64 and 23.5 GF/s in c64; `abjcd-dkbac-jk` at 5.5 vs 11.2.
 
 BLIS's 1m does inflate the packed A panel 2x (four reals per complex element in
 "1e" format versus two in planar). That cost is real but is not on the critical
 path at these shapes, and the intensity advantage swamps it.
+
+### What this means for the project
+
+The gap the project set out to exploit **exists in the wild today** — anyone
+using the packaged, released TBLIS for complex tensor contraction on modern x86
+is getting roughly a fifth of the achievable throughput. But:
+
+* it is a missing-kernel bug, not an algorithmic opening, so beating it proves
+  nothing about planar packing;
+* it is already closed upstream, and will disappear from the wild the moment
+  2.0 ships;
+* the correct opponent for any new complex method is 2.0/BLIS 1m, and against
+  that opponent there is no complex-specific headroom to take.
+
+So the planar-complex thesis is refuted as a *research* proposition, while the
+practical observation that motivated it is validated as a *packaging* problem.
+Both halves are worth reporting.
 
 ### What the data says the real headroom is
 

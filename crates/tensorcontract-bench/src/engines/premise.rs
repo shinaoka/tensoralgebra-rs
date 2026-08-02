@@ -35,8 +35,6 @@ use rand_chacha::ChaCha8Rng;
 #[cfg(feature = "blas")]
 use super::{gflops, timed};
 use super::{pin_single_threaded, BenchElem};
-#[cfg(feature = "blas")]
-use crate::blas::GemmScalar;
 use crate::corpus;
 use crate::report::{Results, Table};
 use crate::Options;

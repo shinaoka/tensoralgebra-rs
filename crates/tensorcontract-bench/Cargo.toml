@@ -20,6 +20,10 @@ default = []
 # Link the C++ TBLIS baseline. Requires TBLIS_ROOT to point at an install
 # prefix containing lib/libtblis.{so,a}.
 tblis = []
+# Target the TBLIS 1.3.0 ABI instead of 2.x. The two releases swap the
+# TYPE_DOUBLE and TYPE_SCOMPLEX enumerators, which is a silent mismatch, so the
+# harness self-checks at startup.
+tblis13 = ["tblis"]
 # Link a CBLAS-compatible BLAS for the TTGT (transpose-transpose-GEMM-transpose)
 # baseline. Requires BLAS_ROOT or a system libopenblas.
 blas = []

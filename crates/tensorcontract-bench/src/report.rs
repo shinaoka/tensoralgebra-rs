@@ -91,9 +91,11 @@ pub fn print_environment() {
         cfg!(feature = "blas")
     );
     #[cfg(feature = "tblis")]
-    println!("tblis threads: {}", unsafe {
-        crate::tblis::tblis_get_num_threads()
-    });
+    println!(
+        "tblis       : abi {}, {} thread(s)",
+        crate::tblis::VERSION,
+        unsafe { crate::tblis::tblis_get_num_threads() }
+    );
 }
 
 fn hostname() -> String {

@@ -124,11 +124,16 @@ pub fn rel_error<T: Element>(got: &[T], want: &[T]) -> f64 {
     }
 }
 
-/// Force the process onto one core's worth of BLAS/TBLIS threads.
+/// Force the process onto one core's worth of BLAS/TBLIS threads, and confirm
+/// the linked TBLIS matches the ABI the harness was compiled for.
 pub fn pin_single_threaded() {
     #[cfg(feature = "tblis")]
     unsafe {
-        tblis::tblis_set_num_threads(1)
+        tblis::tblis_set_num_threads(1);
+        if let Err(e) = tblis::verify_type_tags() {
+            eprintln!("FATAL: {e}");
+            std::process::exit(2);
+        }
     };
     #[cfg(feature = "blas")]
     unsafe {
