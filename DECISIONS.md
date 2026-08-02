@@ -7,15 +7,17 @@ is auditable after the fact.
 
 ## Resume here
 
-**State as of 2026-08-01.** Phases 1 and 2 are complete and their gates are
-met. Phase 3 has not started.
+**State as of 2026-08-02.** Phases 1, 2 and 3 are complete and their gates are
+met. Phase 4 has not started.
 
 What exists:
 
 * `crates/tensorcontract` — the engine. Correct and framework-complete: index
   analysis with folding, scatter/block-scatter, packing in four formats, three
   complex methods, five-loop driver, scattered write-back, brute-force oracle.
-  Micro-kernels are the **portable scalar fallback only**.
+  Micro-kernels are **AVX-512 for `f32`/`f64` and all three complex methods**,
+  runtime-dispatched, with the portable scalar path retained behind
+  `TENSORCONTRACT_KERNEL=scalar`. No AVX2 path yet.
 * `crates/tensorcontract-tapp` — TAPP C ABI, verified against the upstream
   headers, exercised end to end through the C entry points.
 * `crates/tensorcontract-bench` — `tcbench` with `verify` / `premise` /
@@ -31,28 +33,32 @@ Settled; do not re-open without new data:
 2. The real headroom is low arithmetic intensity in either domain.
 3. The TCCG corpus cannot test awkward-stride claims without `--stress`.
 4. The corpus is 49 cases, not 48.
+5. **The three-way comparison is done and planar wins**, by 3–8% geometric
+   mean over the corpus in both precisions — but the ranking inverts on
+   memory-bound shapes, where 3m wins. The mechanism is bytes moved per useful
+   flop, not flop count and not shuffles. See the Phase 3 report.
 
-**The immediate next task is Phase 3: vectorised micro-kernels.** Fill in
-`crates/tensorcontract/src/kernel/x86.rs`, which currently returns `None` for
-every configuration. The `Ukr` contract (`a_pack`, `b_pack`, `a_per_k`,
-`b_per_k`, `tile`, `tile_fmt`) already describes everything a kernel must
-honour, and `kernel::tests` checks any selected kernel against the
-mathematical definition directly, so a new kernel is validated the moment it is
-registered. Nothing outside that file needs to change.
+**The immediate next task is Phase 4: profiling and improvement.** In priority
+order, with what Phase 3 learned about each:
 
-Suggested register blocks for the reference machine (AVX-512, 32 zmm):
+1. **Profile the write-back.** Phase 3 found a clean 2x defect on nine corpus
+   cases that is monotone in the stride of the output's leading `M` axis, with
+   packing held constant and block scatter fully regular. The diagnosis
+   (DTLB/L2 pressure from the scattered write-back) is inferred from that
+   pattern, not measured — confirm it with `perf` first, then fix. This is the
+   single largest known win.
+2. **Sweep `MC`/`KC`/`NC`.** Still the untouched Phase 2 heuristic. Phase 3
+   showed the whole method ranking turns on whether the `A` sliver is an L1
+   resident or an L2 stream, which makes `KC` a first-order parameter.
+3. **Dispatch the complex method by shape.** The inversion is measured and
+   large enough to exploit: 3m on memory-bound shapes, planar otherwise.
+4. Then the rest of the Phase 4 list: threading, small-`k` handling, fusing the
+   `pc` loop so `C` is touched once, a pack-free fast path for unit-stride
+   block scatter, prefetch.
 
-| dtype / method | real kernel shape | accumulator registers |
-|---|---|---|
-| f64 real | `MR=16, NR=8` | 16 zmm |
-| f32 real | `MR=32, NR=8` | 16 zmm |
-| c64 planar | `MR=8, NR=8` complex | 16 zmm (2 planes) |
-| c64 3m | `MR=8, NR=8` complex | 24 zmm (3 planes) |
-| c64 1m | real `16x8`, complex tile `8x8` | 16 zmm |
-
-The three-way method comparison with *real* kernels is the headline
-measurement the project now exists to produce; the scalar-kernel numbers in the
-Phase 2b report below are not a substitute for it.
+Do not re-derive the register blocks; they are measured and recorded in
+`kernel::x86`, with the sweep in `examples/kernel_shapes` if the machine
+changes.
 
 ---
 
@@ -67,10 +73,17 @@ All measurements in this file were taken on:
 | ISA | AVX-512F/DQ/BW/VL/VNNI, 2 FMA units per core |
 | cache | 32 KiB L1d, 1 MiB L2 per core, 25.3 MiB shared L3 per socket |
 | memory | 251 GiB, 2 NUMA nodes |
-| toolchain | rustc 1.97.1, gcc 13.3.0 (module), cmake 3.31.6 |
-| TBLIS (A) | v1.3.0 (tag `c4f81e0`, 2 Jul 2025) — the latest **stable** release |
-| TBLIS (B) | `develop` @ `555320c` (4 Dec 2025), version string 2.0, BLIS auto-configured for `skx` — an **unreleased** development snapshot, 5 months past the newest tag (`v2.0-beta2`) |
+| toolchain | rustc 1.97.1, gcc 13.3.0 (module), cmake 3.31.6; workspace MSRV 1.89 (see D20) |
+| TBLIS (A) | v1.3.0 (tag `c4f81e0`, 2 Jul 2025) — the latest **stable** release, re-checked 2026-08-02: still the newest tag |
+| TBLIS (B) | `develop` @ `555320c` (4 Dec 2025), version string 2.0, BLIS auto-configured for `skx` — an **unreleased** development snapshot, now 8 months past the newest tag (`v2.0-beta2`) |
 | BLAS | OpenBLAS 0.3.29 (`openblas/single-0.3.29` module) |
+
+Both TBLIS baselines were rebuilt from source for Phase 3, at the same commits,
+under `../baselines/tblis-{1.3.0,2.0}-install` relative to the repo. They are
+not in the repo and not in the build; `scripts/phase3-bench.sh` takes their
+prefixes from `TBLIS_ROOT_13` and `TBLIS_ROOT_2X`. The rebuild reproduces the
+Phase 1 headline to three digits, which is the check that it is the same
+baseline — see the Phase 3 report.
 
 Both TBLIS versions are measured. They behave completely differently on
 complex data, and the difference is the single most important result in this
@@ -102,7 +115,10 @@ effectively the same ceiling, as expected.
 | A3 | Achievable GF/s peak is the same for real and complex on real-SIMD hardware. | Confirmed: `dgemm` 96 GF/s vs `zgemm` 96 GF/s. This validates the efficiency-ratio metric. |
 | A4 | The TCCG corpus exercises the irregular/gather path. | **Refuted.** TCCG rounds stride-1 extents to multiples of 24, which divides every register block in use, so `regA = 1.00` everywhere. Added `--stress ragged` / `--stress padded` to probe it. |
 | A5 | Shapes must be held fixed across dtypes for the real-vs-complex ratio to mean anything. | Adopted. Deviates from TCCG's per-precision sizing; documented in `corpus.rs`. |
-| A6 | This host is the reference machine; single-core is the headline. | Adopted. Threading deferred to Phase 4 (never reached). |
+| A6 | This host is the reference machine; single-core is the headline. | Adopted. Threading deferred to Phase 4. |
+| A7 | The three complex methods differ mainly in flop count. | **Refuted in Phase 3.** They differ mainly in bytes moved per useful flop. |
+| A8 | One register block per method is enough. | **Refuted in Phase 3.** The best shape depends on method, element type and `kc`. |
+| A9 | Absolute performance figures are meaningful. | Adopted from Phase 3 onward; explicitly *not* true before it. |
 
 ---
 
@@ -137,6 +153,10 @@ effectively the same ceiling, as expected.
 | D10 | Blocking is overridable per plan and via `TENSORCONTRACT_MC/KC/NC`. | Lets the test suite drive every level of the five-loop nest on oracle-sized tensors, and lets Phase 4 sweep parameters. |
 | D11 | Corpus is TCCG's **full 49-case** set, not 48. | See `DESIGN.md` §5.2: the brief's "48" does not correspond to any list in upstream `benchmark.py`. 49 is the full set and a superset of the 25-case reduced set; `_sortedTCs` is a re-labelling, not a sixth group. |
 | D12 | Both TBLIS v1.3.0 and 2.0-dev are benchmarked, behind a `tblis13` cargo feature, with a runtime ABI self-check. | The two releases swap `TYPE_DOUBLE`/`TYPE_SCOMPLEX`, so a mismatch is silent rather than fatal. Given the result hinges on the version difference, guessing was not acceptable. |
+| D17 | Micro-kernels are macro-generated over `(MV, NR)` const generics from one body per method, not hand-written per shape. | A comparison between three methods must not also be a comparison between three hand-tunings. One body per method, one shape parameterisation, and the shape is then chosen by measurement. It also made the shape sweep possible at all. |
+| D18 | `#[target_feature]` kernels are reached through one-line plain-`fn` trampolines. | A `#[target_feature]` function cannot be coerced to a function pointer, which the `Ukr` contract requires. Cost is one `call` per micro-tile against `kc*MR*NR` FMAs — unmeasurable. |
+| D19 | Register blocks were chosen by measured throughput at the `kc` the engine actually uses, per method and per element type. | The uop model gets the *cliffs* right (spills above 32 live vector registers) but the *ranking* wrong: it predicts 3m fastest, and 3m is fastest only when the panels are L1-resident. See the Phase 3 report. |
+| D20 | Workspace MSRV raised `1.75` → `1.89`. | AVX-512 intrinsics and `is_x86_feature_detected!("avx512f")` were stabilised in Rust 1.89. The alternative — feature-gating the AVX-512 path so 1.75 still builds — would make the project's headline measurement an opt-in extra. 1.89 is a year old. |
 
 ---
 
@@ -439,7 +459,198 @@ The honest three-way comparison is the Phase 3 gate.
 
 Raw data: `bench-results/methods-f64c64.csv`.
 
-## Phases 3–5
+---
 
-Not started. See "Resume here" at the top of this file for exactly where to
-pick up.
+## Phase 3 report: vectorised micro-kernels
+
+**Gate:** correctness unchanged; single-core throughput against the baselines
+and a GEMM roofline; **an honest three-way planar/1m/3m comparison with real
+kernels.** All three met. This is the measurement the project exists to
+produce.
+
+### What was built
+
+`crates/tensorcontract/src/kernel/x86.rs`, previously four `None`s, now holds
+AVX-512 kernels for all four shapes — `real`, `planar`, `onem`, `threem` —
+macro-generated over `(MV, NR)` const generics for both `f32` and `f64`,
+selected by runtime `avx512f` detection with the scalar path untouched behind
+`TENSORCONTRACT_KERNEL=scalar`. `MV` is the number of vector registers an `A`
+sliver occupies per plane per k-step.
+
+**Nothing outside that file changed.** The `Ukr` contract carried the new
+kernels unmodified, which is the design claim from Phase 2 discharged.
+
+Also added: `examples/kernel_shapes`, a register-block sweep used to choose the
+shapes (D19), and `scripts/phase3-bench.sh`, which reproduces this entire
+report from a clean checkout given the two TBLIS prefixes.
+
+### Correctness
+
+Unchanged, and checked at three levels:
+
+* `kernel::tests` validates each selected kernel directly against the
+  mathematical definition through its own `PackFormat`/`TileFormat`. Every
+  kernel here passed on first execution.
+* `cargo test --workspace --release` green, and green again under
+  `TENSORCONTRACT_KERNEL=scalar`.
+* `tcbench verify` — all 49 corpus cases x `f32`/`f64`/`c32`/`c64` x all three
+  complex methods, against **both** TBLIS 2.0-dev and TTGT. `f32`/`f64` agree
+  exactly (`0.0e0`); `c32` to ~1.3e-7, `c64` to ~2.5e-16.
+
+### The three-way comparison
+
+Full 49-case TCCG corpus, 64 MiB nominal tensors, single core, geometric mean
+GF/s. `tblis` is 2.0-dev at `555320c`. Unperturbed corpus, so `regA = 1.00`
+throughout and the gather path is not involved.
+
+| engine | c64 | vs planar | c32 | vs planar |
+|---|---|---|---|---|
+| **planar** | **43.6** | 1.000 | **79.9** | 1.000 |
+| 1m | 42.2 | 0.967 | 78.2 | 0.979 |
+| 3m | 41.7 | 0.956 | 73.6 | 0.921 |
+| tblis 2.0-dev | 44.1 | 1.011 | 71.2 | 0.891 |
+| ttgt | 23.2 | 0.532 | 45.3 | 0.567 |
+
+**Planar wins, in both precisions, but by 3–8% rather than by a lot.** The
+scalar-kernel ranking of Phase 2b (planar 1.00, 1m 1.09, 3m 1.13) is now
+reversed, exactly as that report predicted it would be once the ranking stopped
+measuring LLVM's auto-vectoriser.
+
+**But the aggregate hides the actual finding, which is that the ranking is
+shape-dependent and inverts.** Splitting the same corpus by arithmetic
+intensity:
+
+| c64 subset | planar | 1m | 3m | tblis |
+|---|---|---|---|---|
+| `min(n,k) > 64` — compute-bound, 25 cases | **69.0** | 65.4 | 62.2 | 71.3 |
+| `min(n,k) <= 64` — memory-bound, 24 cases | 27.0 | 26.7 | **27.4** | 26.7 |
+
+and the micro-kernel sweep says why. Timing each kernel in isolation while
+sweeping `kc`, which decides whether the `A` sliver is an L1 resident or an L2
+stream (`bench-results/phase3-kernel-shapes.txt`, `f64`):
+
+| method | best shape | GF/s at `kc=64` | GF/s at `kc=256` | bytes / useful flop |
+|---|---|---|---|---|
+| planar | `16x6` | 107.7 | **102.8** | **0.46** |
+| 1m | `12x8` | 93.2 | 91.1 | 0.67 |
+| 3m | `8x10` | **117.1** | 87.8 | 0.68 |
+
+So:
+
+1. **3m's 25% flop saving is real and it is not free.** With both panels
+   L1-resident 3m is the fastest of the three, by roughly the margin the flop
+   count predicts. At the `kc = 256` the engine actually uses, it is the
+   slowest. 3m loads *three* planes of both operands to save one of four
+   products, so per useful flop it moves 1.5x planar's bytes; once the kernel
+   stops being FMA-issue-bound that is what decides it.
+2. **Planar wins on bytes, not on shuffles.** Its advantage over 1m is that
+   "1e" packing carries four reals per complex element of `A` against planar's
+   two. The original argument for planar — fewer in-register shuffles — is not
+   what the data rewards, because at these shapes none of the three methods is
+   shuffle-limited: LLVM emits `vbroadcastsd` as its own uop and every winning
+   shape is FMA-issue-bound (verified in the disassembly).
+3. **When the contraction is memory-bound the kernel's byte traffic stops
+   mattering and its flop count starts to.** That is the inversion above, and
+   it is a direct argument for the shape-dispatch item already listed in
+   Phase 4.
+
+Every candidate needing more than 32 live vector registers loses 30–50%. That
+cliff, not the flop count, is what bounds 3m's usable shapes: it needs three
+accumulator planes, so it cannot be given a block wide enough to amortise its
+loads.
+
+### Against the baselines
+
+Full corpus, 64 MiB, geometric mean GF/s, `planar` for complex:
+
+| dtype | this engine | tblis 2.0-dev | ttgt | best-of-49 count (ours / tblis / ttgt) |
+|---|---|---|---|---|
+| f64 | **30.5** | 27.0 | 13.1 | 22 / 16 / 11 |
+| f32 | **54.6** | 42.7 | 24.4 | 23 / 13 / 13 |
+| c64 | 43.6 | **44.1** | 23.2 | 13 / 12 / 12 |
+| c32 | **79.9** | 71.2 | 45.3 | 10 / 11 / 16 |
+
+Against **TBLIS v1.3.0** (`c4f81e0`, still the latest stable release — no new
+tag has appeared since Phase 1), 12-case premise set at 200 MiB: `c64` planar
+**43.8** vs **7.3** GF/s, a 6.0x gap, and `f64` 29.2 vs 21.5. The Phase 1
+finding that 1.x has no complex micro-kernel outside Sandy Bridge reproduces
+unchanged.
+
+The rebuilt TBLIS 2.0-dev reproduces Phase 1's headline to three digits — mean
+complex-over-real efficiency ratio **1.058** here against 1.06 in Phase 1 —
+which is the check that the rebuilt baseline is the same baseline.
+
+Complex-over-real efficiency ratio against a same-shape GEMM ceiling, 12-case
+premise set at 200 MiB: planar 0.976 / 1m 0.931 / 3m 0.979 (`c64`), and 1.156 /
+1.144 / 1.134 (`c32`). Against the roofline directly, the engine reaches
+**0.81–0.84** of a same-shape `zgemm` on the large compute-bound cases and
+**0.69–0.70** of `dgemm` — complex is the *easier* domain for us too, for the
+arithmetic-intensity reason established in Phase 1.
+
+### Irregular strides
+
+`--stress ragged`, `c64`, 64 MiB. 40 of 49 cases become genuinely irregular
+(mean observed `regA = 0.656`; the remaining 9 stay at 1.00). On those 40:
+
+| engine | GF/s |
+|---|---|
+| planar | **43.7** |
+| 3m | 42.5 |
+| 1m | 42.3 |
+| tblis 2.0-dev | 39.4 |
+
+An 11% lead for the transpose-free path where strides are awkward — the one
+regime where block-scatter is doing work a TTGT-style engine cannot avoid
+paying for. Note these numbers are *not* comparable to the unstressed table
+above: `--stress ragged` changes the extents, so it is a different set of
+shapes, not the same shapes made harder.
+
+### A concrete 2x defect, localised
+
+Nine corpus cases of the form `abcijk-{ij,ik,jk}m{a,b,c}-*` have identical
+`m`, `n`, `k` and `regA = regB = 1.00`, and differ only in which output axis
+leads the `M` group. Throughput is monotone in that axis's stride in `D`,
+9 cases out of 9:
+
+| `M` leading axis | its stride in `D` | planar `c64` GF/s |
+|---|---|---|
+| `a` | 1 | 40.5, 40.5, 40.5 |
+| `b` | `n_a` | 36.2, 36.4, 36.6 |
+| `c` | `n_a * n_b` | 17.7, 17.8, 17.8 |
+
+Packing is identical across the nine (same operand layouts, fully regular
+block scatter), so the cost is in the **scattered write-back**: at `MR = 16`
+the tile's rows land `n_a*n_b` elements apart, spreading one micro-tile's
+stores across ~150 KiB and one `MC` block's across ~1.2 MiB of DTLB and L2
+footprint. This is inferred from the 9/9 monotone pattern and from what is held
+constant across the nine, **not** from a profile — confirming it with one is
+the first Phase 4 task. It puts a number on the "vectorised write-back for
+regular blocks" item already on the Phase 4 list: up to 2x on affected shapes.
+
+### Assumptions added
+
+| # | Assumption | Status |
+|---|---|---|
+| A7 | The three complex methods differ mainly in flop count. | **Refuted.** They differ mainly in bytes moved per useful flop, and that is what decides the ranking at realistic `kc`. Flop count decides it only when the panels are L1-resident or the contraction is memory-bound. |
+| A8 | One register block per method is enough. | **Refuted, and it matters.** The best shape depends on the method, the element type and `kc`, and neighbouring shapes differ by 30–50% across the 32-register cliff. |
+| A9 | Absolute performance is meaningful now that kernels are vectorised. | Adopted. It was explicitly not meaningful before this phase. |
+
+### What is *not* done
+
+* **No AVX2 path.** Dispatch is AVX-512 or the scalar fallback. The macro takes
+  it without restructuring; deferred to Phase 5's multi-arch work, since the
+  reference machine is AVX-512 and the gate is a comparison on it.
+* **Blocking is still the Phase 2 heuristic.** `MC`/`KC`/`NC` come from a fixed
+  cache-budget rule, never swept. Given that the whole Phase 3 result turns on
+  where the `A` sliver lives, `KC` in particular is now known to be a
+  first-order parameter rather than a detail. Phase 4.
+* **Still single-threaded.**
+
+Raw data: `bench-results/phase3-*.csv`, transcript in
+`bench-results/phase3-log.txt`, kernel sweep in
+`bench-results/phase3-kernel-shapes.txt`. Reproduce with
+`scripts/phase3-bench.sh`.
+
+## Phases 4–5
+
+Not started. See "Resume here" at the top of this file.

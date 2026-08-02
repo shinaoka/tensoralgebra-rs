@@ -22,14 +22,18 @@ Its distinguishing feature is **three interchangeable complex methods**
 (planar, 1m, 3m) behind one switch, sharing every other line of the engine, so
 they can be benchmarked against each other and against TBLIS on equal footing.
 
-## Current state (2026-08-01)
+## Current state (2026-08-02)
 
 * **Phase 1 complete.** Design doc, repo, harness, baselines, premise check.
 * **Phase 2 complete.** Engine is correct and framework-complete.
-* **Phase 3 not started.** Micro-kernels are still the portable scalar
-  fallback (`crates/tensorcontract/src/kernel/x86.rs` returns `None`).
-  Absolute performance is therefore *not* meaningful yet.
-* Phases 4–5 not started.
+* **Phase 3 complete.** AVX-512 micro-kernels for `f32`/`f64` and all three
+  complex methods, runtime-dispatched; register blocks chosen by measurement.
+  Absolute performance is meaningful from here on. The three-way comparison is
+  done — see below and the Phase 3 report.
+* **Phase 4 next.** Not started.
+* Phase 5 not started.
+
+Workspace MSRV is **1.89** (AVX-512 intrinsics stabilised there).
 
 Everything builds warning-free, `cargo clippy --workspace --all-targets` is
 clean, and `cargo test --workspace --release` is green.
@@ -105,12 +109,32 @@ scatter machinery, five-loop driver and write-back scatter; they differ only in
 a smaller `MC` and every method sees the same L2 budget. Getting that wrong
 would silently rig the comparison.
 
-**Current measured ranking is not yet meaningful.** With scalar kernels the
-geometric-mean c64 throughput is planar 1.00, 1m 1.09, 3m 1.13 — but that
-mostly reflects how well LLVM auto-vectorises three different scalar loops. 1m's
-inner loop is a plain real GEMM kernel, which LLVM handles best. Planar's whole
-argument is *fewer shuffles in a hand-written SIMD kernel*, which does not exist
-yet. The real comparison is Phase 3.
+**Measured ranking, with real AVX-512 kernels (Phase 3).** Full 49-case
+corpus, single core, geometric-mean throughput relative to planar:
+
+| method | c64 | c32 |
+|---|---|---|
+| planar | **1.000** | **1.000** |
+| 1m | 0.967 | 0.979 |
+| 3m | 0.956 | 0.921 |
+
+**Planar wins — but not for the reason the project assumed, and not
+everywhere.** Three things to carry forward and not re-derive:
+
+1. The deciding quantity is **bytes moved per useful flop**, not flop count and
+   not shuffles. Planar packs 2 reals per complex element in both operands; 1m
+   packs 4 in `A`; 3m packs 3 in both while doing only 3/4 the products.
+2. **3m's 25% flop saving is real** and shows up whenever the kernel is
+   FMA-issue-bound — with L1-resident panels 3m is the *fastest* of the three.
+   At the `kc` the engine uses, the `A` sliver is an L2 stream and the saving
+   is consumed by the extra plane traffic.
+3. **The ranking inverts by shape.** On memory-bound corpus cases
+   (`min(n,k) <= 64`) 3m wins; on compute-bound ones planar wins by ~11% over
+   3m. Exploiting this is a Phase 4 item.
+
+Do not re-derive the register blocks — they are measured, recorded in
+`kernel::x86`, and re-derivable with `examples/kernel_shapes` if the machine
+changes.
 
 ## Phases
 
@@ -121,29 +145,37 @@ Each phase ends with a self-check against its gate, a report to
 
 **Phase 2 — Correct, framework-complete implementation.** *Complete.*
 
-**Phase 3 — Micro-kernels.** *Next.* Vectorised real micro-kernels
-(register-blocked `MR x NR`) via `core::arch` intrinsics with runtime dispatch,
-for `f32`/`f64`; then the complex paths for all three methods over the same
-packed formats. Fill in `kernel/x86.rs`; the `KernelSet`/`Ukr` contract already
-accommodates them, so nothing else needs to change.
-Gate: correctness unchanged (the kernel-vs-reference tests in `kernel::tests`
-check every selected kernel directly); single-core throughput vs baselines and
-a GEMM roofline; **an honest three-way planar/1m/3m comparison with real
-kernels** — this is the measurement the project now exists to produce.
+**Phase 3 — Micro-kernels.** *Complete.* AVX-512 kernels for `f32`/`f64` and
+all three complex methods in `kernel/x86.rs`, macro-generated over `(MV, NR)`
+const generics, runtime-dispatched, scalar path retained. Nothing outside that
+file changed — the `Ukr` contract carried them unmodified. Gate met on all
+three counts. No AVX2 path yet; deferred to Phase 5's multi-arch work.
 
-**Phase 4 — Profiling & improvement.** Profile; then threading (BLIS-style,
-`std::thread::scope`, static partitioning with a shared packed-B panel),
-method dispatch by shape, small-`k` handling, prefetch, block-scatter
-regularity exploitation, and the low-arithmetic-intensity work identified in
-Phase 1 (fusing the `pc` loop so `C` is touched once rather than `K/KC` times;
-a pack-free fast path when block scatter is already unit-stride; a vectorised
-write-back for regular blocks).
+**Phase 4 — Profiling & improvement.** *Next.* In the order Phase 3's data
+argues for:
+
+1. **Profile the write-back**, and fix it. Phase 3 found a 2x defect on nine
+   corpus cases, monotone in the stride of the output's leading `M` axis, with
+   packing identical and block scatter fully regular across all nine. The
+   mechanism is *inferred*, not measured — get `perf` on it first.
+2. **Sweep `MC`/`KC`/`NC`**, still the untouched Phase 2 heuristic. `KC` is now
+   known to be first-order: it decides whether the `A` sliver is an L1 resident
+   or an L2 stream, which is what the whole method ranking turns on.
+3. **Dispatch the complex method by shape** — 3m on memory-bound shapes,
+   planar otherwise. The inversion is measured and large enough to exploit.
+4. Then: threading (BLIS-style, `std::thread::scope`, static partitioning with
+   a shared packed-B panel), small-`k` handling, prefetch, block-scatter
+   regularity exploitation, and the rest of the low-arithmetic-intensity work
+   from Phase 1 (fusing the `pc` loop so `C` is touched once rather than
+   `K/KC` times; a pack-free fast path when block scatter is already
+   unit-stride).
+
 Gate: performance targets met, or a clear evidence-based account of the gap.
 
 **Phase 5 — Packaging.** API polish, docs, examples, feature flags, multi-arch
-CI, crate publication, TAPP conformance, reproducible benchmark artifact,
-paper-shaped writeup covering both the negative result and the three-way
-comparison.
+CI (including the AVX2 kernels Phase 3 deferred), crate publication, TAPP
+conformance, reproducible benchmark artifact, paper-shaped writeup covering
+both the negative result and the three-way comparison.
 
 ## Kill / pivot conditions (only reasons to escalate)
 
@@ -187,6 +219,26 @@ cargo build --release -p tensorcontract-bench --features tblis,blas
 `scripts/env.sh` documents how to build TBLIS 2.x. For TBLIS 1.3.0 use
 autotools (`./configure --prefix=... --enable-shared && make && make install`)
 and build the harness with `--features tblis13,blas`.
+
+Both baselines currently live outside the repo at
+`../baselines/tblis-{1.3.0,2.0}-install` (built 2026-08-02, same commits as
+Phase 1). If they are gone, rebuild them — it is ~30 min unattended.
+
+Two reproducible measurement entry points:
+
+```bash
+# The Phase 3 measurement set: verify, GEMM-roofline premise, full corpus
+# sweeps, ragged stress, and the TBLIS 1.3.0 comparison. ~4 h, single core.
+TBLIS_ROOT_2X=../baselines/tblis-2.0-install \
+TBLIS_ROOT_13=../baselines/tblis-1.3.0-install \
+  scripts/phase3-bench.sh 64 3
+
+# Micro-kernel register-block sweep. Needs no baselines. ~8 min.
+cargo run --release -p tensorcontract --example kernel_shapes
+```
+
+Benchmarks are single-core measurements: **do not compile, build a baseline or
+run anything else on the machine while one is in flight.**
 
 Useful environment variables:
 
