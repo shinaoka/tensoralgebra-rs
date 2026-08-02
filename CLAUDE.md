@@ -30,7 +30,9 @@ they can be benchmarked against each other and against TBLIS on equal footing.
   complex methods, runtime-dispatched; register blocks chosen by measurement.
   Absolute performance is meaningful from here on. The three-way comparison is
   done — see below and the Phase 3 report.
-* **Phase 4 next.** Not started.
+* **Phase 4 in progress.** Item 1 (the write-back) is **done**: the profiled
+  2x defect is closed in all four dtypes for +11–12% corpus geometric mean,
+  with no case left slower beyond noise. Items 1c, 2, 3 and the rest remain.
 * Phase 5 not started.
 
 Workspace MSRV is **1.89** (AVX-512 intrinsics stabilised there).
@@ -151,15 +153,16 @@ const generics, runtime-dispatched, scalar path retained. Nothing outside that
 file changed — the `Ukr` contract carried them unmodified. Gate met on all
 three counts. No AVX2 path yet; deferred to Phase 5's multi-arch work.
 
-**Phase 4 — Profiling & improvement.** *Next.* In the order Phase 3's data
-argues for:
+**Phase 4 — Profiling & improvement.** *In progress.*
 
-1. **Fix the write-back.** Phase 3 found *and profiled* a 2x defect on nine
-   corpus cases, monotone in the stride of the output's leading `M` axis:
-   instructions and DTLB misses flat, L2 demand misses 2.3x, IPC 1.25 → 0.78.
-   It is L2 miss traffic on the `C`/`D` update. Also make the micro-tile
-   aspect ratio follow the output's stride pattern — worth ±11%, measured in a
-   controlled test, and free since the kernels take `(MV, NR)`.
+1. **Fix the write-back.** ***Done.*** The 2x defect was *not* the write-back's
+   own L2 traffic, as Phase 3 concluded — it was the row/column **orientation**
+   of the matrix view. Computing `D^T = B^T A^T` when `D`'s column direction is
+   the contiguous one recovers all of it; a regular-block write-back on top
+   adds 6–13% more, but only in single precision. See the Phase 4 report.
+   Still open under this item: make the micro-tile aspect ratio follow the
+   output's stride pattern. Phase 3 sized it at ±11%; it is now also the way to
+   move whole block families onto the write-back's unit-stride path.
 2. **Sweep `MC`/`KC`/`NC`**, still the untouched Phase 2 heuristic. `KC` is now
    known to be first-order: it decides whether the `A` sliver is an L1 resident
    or an L2 stream, which is what the whole method ranking turns on.
@@ -249,6 +252,7 @@ Useful environment variables:
 | `TENSORCONTRACT_COMPLEX` | `planar` \| `1m` \| `3m` |
 | `TENSORCONTRACT_KERNEL` | `scalar` forces the portable kernels |
 | `TENSORCONTRACT_MC/_KC/_NC` | override cache blocking |
+| `TENSORCONTRACT_ORIENT` | `none` \| `swap`: pin the row/column orientation |
 
 ## Starting references
 

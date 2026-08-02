@@ -409,6 +409,75 @@ impl Plan {
         }
     }
 
+    /// The scatter vectors in the row/column orientation execution will use.
+    ///
+    /// Identical to [`Plan::scatters`] unless [`Plan::transposes_gemm`], in
+    /// which case `(A, M)` and `(B, N)` are exchanged. Report block-scatter
+    /// regularity against *this*, not [`Plan::scatters`]: after a swap the
+    /// engine blocks `B`'s column scatter at `MR` and `A`'s row scatter at
+    /// `NR`, so regularity measured on the unswapped vectors describes a
+    /// traversal that never happens.
+    pub fn oriented_scatters(&self, mr: usize) -> Scatters<'_> {
+        let s = self.scatters();
+        if !self.transposes_gemm(mr) {
+            return s;
+        }
+        Scatters {
+            a_m: s.b_n,
+            a_k: s.b_k,
+            b_k: s.a_k,
+            b_n: s.a_m,
+            c_m: s.c_n,
+            c_n: s.c_m,
+            d_m: s.d_n,
+            d_n: s.d_m,
+            h_a: s.h_b,
+            h_b: s.h_a,
+            h_c: s.h_c,
+            h_d: s.h_d,
+        }
+    }
+
+    /// Whether execution will compute `D^T = B^T A^T` rather than `D = A B`.
+    ///
+    /// The engine is symmetric under exchanging `(A, M)` with `(B, N)`: doing
+    /// so transposes the matrix view of `C` and `D` and changes nothing else.
+    /// It is worth doing when it makes the `MR` rows of a micro-tile a single
+    /// contiguous run of `D`, because the write-back runs under the innermost
+    /// loop and is the one access packing cannot hide. On the nine corpus cases
+    /// Phase 3 profiled as a 2x defect this is worth up to 2.7x.
+    ///
+    /// Both conditions are needed, and the second one is the interesting one:
+    ///
+    /// 1. `D`'s column direction must be *strictly* more contiguous than its
+    ///    row direction — otherwise there is nothing to gain.
+    /// 2. The swap must leave the row block **unbroken**: the new leading axis
+    ///    must have unit stride and an extent of at least `MR`.
+    ///
+    /// Condition 2 is measured, not assumed. On the `abcijk-*m{b}-*` family the
+    /// swap makes the leading axis unit-stride but only 16 long, and the result
+    /// is monotone in `run / MR`: +18% at 16/16 (`c64`), +23% at 16/24 (`f64`),
+    /// 0% at 16/32 (`c32`), **−17%** at 16/48 (`f32`). A shattered row block
+    /// keeps the swap's costs and loses its benefit, so the rule declines it.
+    /// Note this makes the choice element-type dependent through `MR`, which is
+    /// why it is not a property of the plan alone.
+    ///
+    /// `TENSORCONTRACT_ORIENT=none` disables the swap and `=swap` forces it;
+    /// both exist to A/B the decision, and neither affects correctness.
+    pub fn transposes_gemm(&self, mr: usize) -> bool {
+        if let Some(forced) = orient_override() {
+            return forced;
+        }
+        let lead = |axes: &[Axis]| axes.first().map_or(u64::MAX, |a| a.sd.unsigned_abs());
+        if lead(&self.stats.n_axes) >= lead(&self.stats.m_axes) {
+            return false;
+        }
+        match self.stats.n_axes.first() {
+            Some(ax) => ax.sd == 1 && ax.extent >= mr as i64,
+            None => false,
+        }
+    }
+
     /// `true` when the contraction produces no output elements.
     pub fn is_empty(&self) -> bool {
         self.stats.m == 0 || self.stats.n == 0 || self.stats.batch == 0
@@ -417,6 +486,25 @@ impl Plan {
     /// `true` when the contraction dimension is empty, so `D = beta * C`.
     pub fn has_empty_contraction(&self) -> bool {
         self.stats.k == 0
+    }
+}
+
+/// `TENSORCONTRACT_ORIENT=none|swap` pins the row/column orientation instead of
+/// deriving it from `D`'s strides. Read once per process; for measurement only.
+fn orient_override() -> Option<bool> {
+    #[cfg(feature = "std")]
+    {
+        use std::sync::OnceLock;
+        static ENV: OnceLock<Option<bool>> = OnceLock::new();
+        *ENV.get_or_init(|| match std::env::var("TENSORCONTRACT_ORIENT").ok()?.as_str() {
+            "none" | "ab" => Some(false),
+            "swap" | "ba" => Some(true),
+            _ => None,
+        })
+    }
+    #[cfg(not(feature = "std"))]
+    {
+        None
     }
 }
 
@@ -633,6 +721,49 @@ mod tests {
         )
         .unwrap_err();
         assert!(matches!(e, Error::BroadcastIndexUnsupported { label: 8 }));
+    }
+
+    /// `D[i,j] = A[i,k] B[k,j]` with `D` stored in the given strides.
+    fn gemm_plan(m: i64, n: i64, d_strides: [i64; 2]) -> Plan {
+        let a = lay(&[m, 7]);
+        let b = lay(&[7, n]);
+        let d = Layout::new(vec![m, n], d_strides.to_vec()).unwrap();
+        Plan::new(
+            Operand::new(&a, &[0, 2]),
+            Operand::new(&b, &[2, 1]),
+            None,
+            Operand::new(&d, &[0, 1]),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn column_major_output_is_not_transposed() {
+        // Rows already have the unit stride: nothing to gain.
+        assert!(!gemm_plan(64, 64, [1, 64]).transposes_gemm(16));
+    }
+
+    #[test]
+    fn row_major_output_is_transposed() {
+        // Columns have the unit stride and the run is long enough to cover MR.
+        assert!(gemm_plan(64, 64, [64, 1]).transposes_gemm(16));
+    }
+
+    #[test]
+    fn transpose_declined_when_it_would_shatter_the_row_block() {
+        // Same layout, but the contiguous run is shorter than MR, so the
+        // swapped micro-tile rows would still straddle a discontinuity. That
+        // case measured *slower* than not swapping; see `transposes_gemm`.
+        let p = gemm_plan(64, 16, [16, 1]);
+        assert!(p.transposes_gemm(16), "run == MR is taken");
+        assert!(!p.transposes_gemm(32), "run < MR is declined");
+    }
+
+    #[test]
+    fn transpose_declined_when_columns_are_not_contiguous() {
+        // Both directions strided: the swap cannot make the rows contiguous,
+        // so the smaller stride alone does not justify it.
+        assert!(!gemm_plan(64, 64, [512, 2]).transposes_gemm(16));
     }
 
     #[test]

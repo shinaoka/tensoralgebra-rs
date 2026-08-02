@@ -34,7 +34,7 @@ use crate::element::Element;
 use crate::kernel::{config_for, Blocking, KernelSet};
 use crate::pack::{pack_panel, panel_len};
 use crate::plan::Plan;
-use crate::scatter::build_block_scatter;
+use crate::scatter::{build_block_scatter, IRREGULAR};
 use crate::writeback::{scale_only, writeback};
 
 /// Execute a plan.
@@ -69,9 +69,47 @@ pub unsafe fn execute<T>(
     let ukr = cfg.ukr;
     let (mr, nr) = (ukr.mr, ukr.nr);
 
-    let m = plan.stats.m;
-    let n = plan.stats.n;
-    let k = plan.stats.k;
+    // Row/column orientation. Exchanging `(A, M)` with `(B, N)` computes
+    // `D^T = B^T A^T`, which is the same contraction seen through the
+    // transposed matrix view of `C` and `D`. Nothing below branches on it
+    // again: from here on `am`/`ak`/`ptr_a` *are* the row operand, whichever
+    // tensor that is. See `Plan::transposes_gemm` for why it is worth doing.
+    //
+    // Note this also swaps the two pack formats, which matters only for 1m,
+    // where they differ ("1e" for rows, "1r" for columns) — and there it is
+    // exactly right, since the kernel's contract is about the row and column
+    // panels, not about which user tensor they came from.
+    let swap = plan.transposes_gemm(mr);
+    let (ptr_a, ptr_b) = if swap { (b, a) } else { (a, b) };
+    let (am, ak, conj_a) = if swap {
+        (&plan.b_n, &plan.b_k, plan.conj_b)
+    } else {
+        (&plan.a_m, &plan.a_k, plan.conj_a)
+    };
+    let (bk, bn, conj_b) = if swap {
+        (&plan.a_k, &plan.a_m, plan.conj_a)
+    } else {
+        (&plan.b_k, &plan.b_n, plan.conj_b)
+    };
+    let (cm, cn) = if swap {
+        (&plan.c_n, &plan.c_m)
+    } else {
+        (&plan.c_m, &plan.c_n)
+    };
+    let (dm, dn) = if swap {
+        (&plan.d_n, &plan.d_m)
+    } else {
+        (&plan.d_m, &plan.d_n)
+    };
+    let (ha, hb) = if swap {
+        (&plan.h_b, &plan.h_a)
+    } else {
+        (&plan.h_a, &plan.h_b)
+    };
+
+    let m = am.len();
+    let n = bn.len();
+    let k = ak.len();
 
     // Empty contraction dimension: D = op_D(beta * op_C(C)).
     if plan.has_empty_contraction() {
@@ -79,12 +117,12 @@ pub unsafe fn execute<T>(
             scale_only::<T>(
                 beta,
                 c.offset(plan.h_c[h] as isize),
-                &plan.c_m,
-                &plan.c_n,
+                cm,
+                cn,
                 plan.conj_c,
                 d.offset(plan.h_d[h] as isize),
-                &plan.d_m,
-                &plan.d_n,
+                dm,
+                dn,
                 plan.conj_d,
             );
         }
@@ -97,8 +135,17 @@ pub unsafe fn execute<T>(
 
     // Block-scatter metadata. Cheap (O(M/MR + N/NR)) and element-type
     // dependent only through MR/NR, so it lives here rather than in the plan.
-    let a_m_bs = build_block_scatter(&plan.a_m, mr);
-    let b_n_bs = build_block_scatter(&plan.b_n, nr);
+    let a_m_bs = build_block_scatter(am, mr);
+    let b_n_bs = build_block_scatter(bn, nr);
+    // Row block scatter for the output too: the write-back uses it exactly as
+    // packing uses the operands', to keep scatter-table loads out of its
+    // innermost loop. `C` is only consulted when beta is nonzero.
+    let d_m_bs = build_block_scatter(dm, mr);
+    let c_m_bs = if beta == T::zero() {
+        Vec::new()
+    } else {
+        build_block_scatter(cm, mr)
+    };
 
     // Panel sizes come from the kernel's declared per-k sliver widths, so a
     // method that packs more reals per element (1m's "1e", 3m's sum plane)
@@ -113,8 +160,8 @@ pub unsafe fn execute<T>(
     let one = T::one();
 
     for h in 0..plan.stats.batch {
-        let ah = a.offset(plan.h_a[h] as isize);
-        let bh = b.offset(plan.h_b[h] as isize);
+        let ah = ptr_a.offset(ha[h] as isize);
+        let bh = ptr_b.offset(hb[h] as isize);
         let ch = c.offset(plan.h_c[h] as isize);
         let dh = d.offset(plan.h_d[h] as isize);
 
@@ -131,11 +178,11 @@ pub unsafe fn execute<T>(
 
                 pack_panel::<T>(
                     bh,
-                    &plan.b_n[jc..jc + jc_len],
+                    &bn[jc..jc + jc_len],
                     &b_n_bs[jc / nr..(jc + jc_len).div_ceil(nr)],
-                    &plan.b_k[pc..pc + pc_len],
+                    &bk[pc..pc + pc_len],
                     nr,
-                    plan.conj_b,
+                    conj_b,
                     ukr.b_pack,
                     bp_ptr,
                 );
@@ -148,11 +195,11 @@ pub unsafe fn execute<T>(
 
                     pack_panel::<T>(
                         ah,
-                        &plan.a_m[ic..ic + ic_len],
+                        &am[ic..ic + ic_len],
                         &a_m_bs[ic / mr..(ic + ic_len).div_ceil(mr)],
-                        &plan.a_k[pc..pc + pc_len],
+                        &ak[pc..pc + pc_len],
                         mr,
-                        plan.conj_a,
+                        conj_a,
                         ukr.a_pack,
                         ap_ptr,
                     );
@@ -174,7 +221,9 @@ pub unsafe fn execute<T>(
 
                             (ukr.func)(pc_len, apan, bpan, tile_ptr);
 
+                            let d_rs = *d_m_bs.get_unchecked(i0 / mr);
                             if first_k_block {
+                                let c_rs = c_m_bs.get(i0 / mr).copied().unwrap_or(IRREGULAR);
                                 writeback::<T>(
                                     tile_ptr,
                                     ukr.tile_fmt,
@@ -185,12 +234,14 @@ pub unsafe fn execute<T>(
                                     alpha,
                                     beta,
                                     ch,
-                                    &plan.c_m[i0..i0 + mrem],
-                                    &plan.c_n[j0..j0 + nrem],
+                                    &cm[i0..i0 + mrem],
+                                    &cn[j0..j0 + nrem],
+                                    c_rs,
                                     plan.conj_c,
                                     dh,
-                                    &plan.d_m[i0..i0 + mrem],
-                                    &plan.d_n[j0..j0 + nrem],
+                                    &dm[i0..i0 + mrem],
+                                    &dn[j0..j0 + nrem],
+                                    d_rs,
                                     plan.conj_d,
                                 );
                             } else {
@@ -206,12 +257,14 @@ pub unsafe fn execute<T>(
                                     alpha,
                                     one,
                                     dh as *const T,
-                                    &plan.d_m[i0..i0 + mrem],
-                                    &plan.d_n[j0..j0 + nrem],
+                                    &dm[i0..i0 + mrem],
+                                    &dn[j0..j0 + nrem],
+                                    d_rs,
                                     plan.conj_d,
                                     dh,
-                                    &plan.d_m[i0..i0 + mrem],
-                                    &plan.d_n[j0..j0 + nrem],
+                                    &dm[i0..i0 + mrem],
+                                    &dn[j0..j0 + nrem],
+                                    d_rs,
                                     plan.conj_d,
                                 );
                             }

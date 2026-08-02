@@ -391,14 +391,38 @@ where
     T: Element,
     T::Real: KernelSet,
 {
+    large_gemm_case_oriented::<T>(m, n, k, seed, false);
+    // Same product with a row-major `D`, which is what makes the driver
+    // compute `D^T = B^T A^T` instead. The whole engine runs mirrored — 1m's
+    // asymmetric "1e"/"1r" pack formats included — so it is worth checking at a
+    // size that crosses every cache block, not only in the randomised sweep.
+    large_gemm_case_oriented::<T>(m, n, k, seed ^ 0x9E37, true);
+}
+
+fn large_gemm_case_oriented<T>(m: usize, n: usize, k: usize, seed: u64, row_major_d: bool)
+where
+    T: Element,
+    T::Real: KernelSet,
+{
     let mut rng = ChaCha8Rng::seed_from_u64(seed);
     let a: Vec<T> = fill(m * k, &mut rng);
     let b: Vec<T> = fill(k * n, &mut rng);
-    let want = naive_gemm(m, n, k, &a, &b);
+    let cm = naive_gemm(m, n, k, &a, &b);
+    // The reference is column-major; the row-major variant stores the same
+    // matrix transposed, so compare against the transposed reference.
+    let want: Vec<T> = if row_major_d {
+        (0..m * n).map(|t| cm[(t % n) * m + t / n]).collect()
+    } else {
+        cm
+    };
 
     let la = Layout::col_major(&[m as i64, k as i64]);
     let lb = Layout::col_major(&[k as i64, n as i64]);
-    let ld = Layout::col_major(&[m as i64, n as i64]);
+    let ld = if row_major_d {
+        Layout::new(vec![m as i64, n as i64], vec![n as i64, 1]).unwrap()
+    } else {
+        Layout::col_major(&[m as i64, n as i64])
+    };
 
     let methods: &[ComplexMethod] = if T::IS_COMPLEX {
         &ComplexMethod::ALL
@@ -416,6 +440,15 @@ where
         .unwrap()
         .with_complex_method(method);
         assert!(plan.stats.is_pure_gemm);
+        // The point of the row-major variant is that it takes the swapped
+        // path; if the heuristic stops firing here the test still passes but
+        // has quietly stopped testing anything.
+        let (mr, ..) = tensorcontract::kernel::selected_config::<T>(method);
+        assert_eq!(
+            plan.transposes_gemm(mr),
+            row_major_d,
+            "row_major_d={row_major_d} should decide the orientation at mr={mr}"
+        );
 
         unsafe {
             plan.run_raw::<T>(

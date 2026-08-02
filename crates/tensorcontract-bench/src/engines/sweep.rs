@@ -93,7 +93,13 @@ where
     let (m, n, k) = s.mnk();
     let macs = s.macs();
 
-    let sc = plan.scatters();
+    // Regularity is reported against the orientation the engine actually
+    // executes in, which is not necessarily `A`-rows / `B`-columns.
+    // `MR` is element-type and method dependent, and so is the orientation; the
+    // default method's block is the one column headings are reported at.
+    let (mr0, _, _) = selected_config::<T>(ComplexMethod::default());
+    let sc = plan.oriented_scatters(mr0);
+    let orient = if plan.transposes_gemm(mr0) { "BA" } else { "AB" };
 
     let mut rng = ChaCha8Rng::seed_from_u64(0x5EED);
     let a: Vec<T> = (0..s.elems_a()).map(|_| T::sample(&mut rng)).collect();
@@ -175,7 +181,7 @@ where
             )
         });
         let notes = format!(
-            "{} {}",
+            "{} {orient} {}",
             selected_kernel_name::<T>(method),
             check(name, &d, &mut reference)
         )

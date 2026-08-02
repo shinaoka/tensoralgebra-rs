@@ -8,7 +8,7 @@ is auditable after the fact.
 ## Resume here
 
 **State as of 2026-08-02.** Phases 1, 2 and 3 are complete and their gates are
-met. Phase 4 has not started.
+met. **Phase 4 is in progress: item 1 (the write-back) is done.**
 
 What exists:
 
@@ -38,24 +38,36 @@ Settled; do not re-open without new data:
    memory-bound shapes, where 3m wins. The mechanism is bytes moved per useful
    flop, not flop count and not shuffles. See the Phase 3 report.
 
-**The immediate next task is Phase 4: profiling and improvement.** In priority
-order, with what Phase 3 learned about each:
+**Phase 4 item 1 is done** — see the Phase 4 report, part 1. The 2x write-back
+defect is closed in all four dtypes (2.7x / 1.9x / 2.4x / 2.2x on the affected
+cases) for **+11–12% corpus geometric mean**, with no case left slower beyond
+noise. Two things came out of it that are worth carrying forward:
 
-1. **Fix the write-back.** Phase 3 found and then *profiled* a clean 2x defect
-   on nine corpus cases, monotone in the stride of the output's leading `M`
-   axis: instructions and DTLB misses flat, L2 demand misses 2.3x, IPC 1.25 →
-   0.78. It is L2 miss traffic on the `C`/`D` update, not TLB pressure. Two
-   separable pieces, both already on the Phase 4 list:
-   * a vectorised / line-aware write-back for regular blocks — this is where
-     the 2x is;
-   * choosing the micro-tile aspect ratio from the output's stride pattern,
-     measured at ±11% in a controlled test and free to apply, since the kernels
-     are parameterised over `(MV, NR)` already.
+* The cause was **not** the mechanism Phase 3 named. It was the row/column
+  *orientation* of the matrix view, not the write-back's own L2 traffic. See
+  A10.
+* The orientation choice depends on `MR`, so it is not a property of the plan
+  alone (A11), and it must only be taken when the swap leaves the micro-tile
+  row block unbroken — the guard is empirical and the case it guards against
+  is **not fully explained**. Do not remove it without re-measuring
+  `abcijk-*mb-*` in `f32`.
+
+**The immediate next task is Phase 4 item 1c, then item 2.** In priority order:
+
+1. **Micro-tile aspect ratio from the output's stride pattern.** Phase 3 sized
+   this at ±11%; part 2 of the Phase 4 report gives it a sharper rationale —
+   choosing `MR` to divide the output's leading contiguous run moves whole
+   families of blocks from the write-back's gather path to its unit-stride
+   path, which is a code-path change, not a tuning delta. The kernels already
+   take `(MV, NR)` const generics, so this is a selection problem, not a
+   kernel-writing one.
 2. **Sweep `MC`/`KC`/`NC`.** Still the untouched Phase 2 heuristic. Phase 3
    showed the whole method ranking turns on whether the `A` sliver is an L1
    resident or an L2 stream, which makes `KC` a first-order parameter.
 3. **Dispatch the complex method by shape.** The inversion is measured and
-   large enough to exploit: 3m on memory-bound shapes, planar otherwise.
+   large enough to exploit: 3m on memory-bound shapes, planar otherwise. Note
+   Phase 4.1 moved the ranking: `c32` 3m gained the most from the write-back
+   work (1.168 cumulative vs planar's 1.109), so re-measure before dispatching.
 4. Then the rest of the Phase 4 list: threading, small-`k` handling, fusing the
    `pc` loop so `C` is touched once, a pack-free fast path for unit-stride
    block scatter, prefetch.
@@ -123,6 +135,9 @@ effectively the same ceiling, as expected.
 | A7 | The three complex methods differ mainly in flop count. | **Refuted in Phase 3.** They differ mainly in bytes moved per useful flop. |
 | A8 | One register block per method is enough. | **Refuted in Phase 3.** The best shape depends on method, element type and `kc`. |
 | A9 | Absolute performance figures are meaningful. | Adopted from Phase 3 onward; explicitly *not* true before it. |
+| A10 | The Phase 3 write-back defect is the write-back's own L2 traffic. | **Refuted in Phase 4.** It was the row/column orientation of the matrix view. |
+| A11 | The row/column orientation is a property of the plan. | **Refuted in Phase 4.** It depends on `MR`, hence on element type and method. |
+| A12 | Write-back overhead matters equally in both precisions. | **Refuted in Phase 4.** ~2x more of the budget in `f32`/`c32` than in `f64`/`c64`. |
 
 ---
 
@@ -683,6 +698,158 @@ Raw data: `bench-results/phase3-*.csv`, transcript in
 `bench-results/phase3-kernel-shapes.txt`. Reproduce with
 `scripts/phase3-bench.sh`.
 
-## Phases 4–5
+## Phase 4 report, part 1: the write-back
 
-Not started. See "Resume here" at the top of this file.
+Phase 3 left a profiled 2x defect on nine corpus cases and named two candidate
+fixes. Both were built. The first one is not the one Phase 3 predicted.
+
+### What was built
+
+1. **Row/column orientation** (`Plan::transposes_gemm`, applied in `driver`).
+   The engine is symmetric under exchanging `(A, M)` with `(B, N)`; doing so
+   computes `D^T = B^T A^T`, which is the same contraction seen through the
+   transposed matrix view of `C` and `D`. The driver binds `am`/`ak`/`ptr_a` to
+   whichever operand plays the row role and nothing downstream branches again.
+   For 1m this also swaps the two *different* pack formats ("1e" for rows, "1r"
+   for columns), which is right: the kernel's contract is about the row and
+   column panels, not about which user tensor they came from.
+2. **A regular-block write-back** (`writeback`). The row offsets now come from
+   the output's *block* scatter, exactly as packing takes the operands' — three
+   instantiations of one inlined body: gather, strided, and unit-stride. Only
+   the last lets LLVM vectorise the plane recombination, and it is the case the
+   orientation rule exists to create. The `alpha == 1, beta == 0, no
+   conjugation` combination gets its own inner loop, hoisted out of the `i`
+   loop, because it reduces to a straight tile-to-`D` copy.
+
+`TENSORCONTRACT_ORIENT=none|swap` pins the orientation for A/B measurement.
+
+### The orientation rule, and the condition that is not obvious
+
+Swap when, and only when:
+
+1. `D`'s column direction is **strictly** more contiguous than its row
+   direction (compared on the leading axis of each class, i.e. the smallest
+   |stride| in `D`, since that is the axis the register block is cut along); and
+2. the swap leaves the micro-tile's row block **unbroken** — the new leading
+   axis has unit stride *and* extent at least `MR`.
+
+Condition 2 was not anticipated and is the reason the first version of this
+rule regressed. On the `abcijk-*mb-*` family the swap makes the leading axis
+unit-stride but only 24 long, and the outcome is monotone in `run / MR`:
+
+| dtype | kernel `MR` | run / `MR` | swap vs no swap |
+|---|---|---|---|
+| `c64` | 16 | 1.50 | **+18%** |
+| `f64` | 24 | 1.00 | **+23%** |
+| `c32` | 32 | 0.75 | 0% |
+| `f32` | 48 | 0.50 | **−17%** |
+
+A shattered row block keeps the swap's costs and loses its benefit. Note this
+makes the choice element-type dependent through `MR`, so it is not a property
+of the plan alone — `transposes_gemm` and `oriented_scatters` both take `MR`.
+
+**The −17% is not fully explained and should not be presented as if it were.**
+`perf stat` on the `f32` case shows instructions flat to 1%, dTLB misses flat,
+and L1 load misses *down* 27% under the swap, yet 4% more cycles at IPC 1.05 →
+1.00. Counting cache lines per micro-tile also favours the swap (24 fully
+written lines against 48 half-written ones), as does the packing pattern. So
+the rule's condition 2 is an empirical guard rail, not a derived one.
+
+### Result: the 2x defect is closed, with no case left slower
+
+Full 49-case corpus, `--size 64 --reps 3`, single core, against the *recorded*
+Phase 3 sweep (`bench-results/phase3-sweep-*.csv`) — same basis, same machine.
+Cases the rule does not swap are a control group: the change cannot affect
+them, so their spread is a direct read of run-to-run noise.
+
+| | `f32` | `f64` | `c32` planar | `c64` planar |
+|---|---|---|---|---|
+| geomean, all 49 | **1.047** | **1.105** | **1.046** | **1.102** |
+| geomean, swapped cases | 1.620 | 1.700 | 1.485 | 1.801 |
+| geomean, control group | 0.985 | 1.040 | 0.996 | 1.029 |
+| worst swapped case | 1.493 | 1.315 | 1.094 | 1.153 |
+
+The nine cases Phase 3 profiled, `c64` planar, all three `M`-leading strides:
+
+| `M` leading axis | its stride in `D` | Phase 3 | now |
+|---|---|---|---|
+| `a` | 1 | 40.5 | 40.9 |
+| `b` | `n_a` | 36.2 | 44.1 |
+| `c` | `n_a * n_b` | 17.7 | **47.2** |
+
+Throughput is no longer monotone in that stride — it is flat to ±8%, and the
+case that was 2.3x slower than its sibling is now the fastest of the three.
+The `-mc` family gains **2.6–2.7x** in `c64` planar.
+
+A first version of the rule without condition 2 swapped 12 of 49 cases and
+scored 1.07–1.19 geomean *with* a −15% worst case; the guarded rule swaps 6–12
+depending on element type, scores slightly lower on paper, and has no
+regression beyond noise. Raw data for both: `bench-results/phase4/orient-*.csv`.
+
+### Part 2: the regular-block write-back, on top of the orientation fix
+
+Measured against the orientation-only build, same session, same basis
+(`bench-results/phase4/orient-rule-*.csv` → `bench-results/phase4/wb-*.csv`):
+
+| | planar | 1m | 3m |
+|---|---|---|---|
+| `f32` / `f64` (one real path) | 1.071 / 1.001 | — | — |
+| `c32` | 1.060 | 1.091 | **1.127** |
+| `c64` | 1.008 | 0.998 | 0.973 |
+
+It pays in single precision and is a wash in double. That is the ratio you
+would predict: the per-output-element cost this removes is fixed, while the
+kernel work it is measured against scales with the element size, so halving the
+element doubles the relative overhead. **There is no control group for this
+change** — it applies whatever the orientation — so the `c64` 3m 0.973 cannot
+be separated from noise, whose case-level spread here is roughly ±5%.
+
+### Cumulative Phase 4.1 result
+
+Full corpus, against the recorded Phase 3 sweep:
+
+| dtype | planar | 1m | 3m |
+|---|---|---|---|
+| `f32` | **1.121** | — | — |
+| `f64` | **1.106** | — | — |
+| `c32` | 1.109 | 1.113 | **1.168** |
+| `c64` | **1.111** | 1.065 | 1.038 |
+
+And the nine cases Phase 3 profiled as a 2x defect, planar, GF/s:
+
+| `M` leading axis | `c64` | `f64` | `c32` | `f32` |
+|---|---|---|---|---|
+| `a` (stride 1) | 40.5 → 43.3 | 32.4 → 34.5 | 82.8 → 82.6 | 52.8 → 50.1 |
+| `b` (stride `n_a`) | 36.3 → 44.4 | 25.0 → 31.4 | 63.3 → 65.1 | 40.6 → 38.7 |
+| `c` (stride `n_a n_b`) | 17.8 → **48.5** | 13.8 → **26.9** | 40.1 → **94.9** | 27.0 → **58.9** |
+
+The 2x defect is gone in every precision — 2.7x, 1.9x, 2.4x, 2.2x on the
+affected cases — and the ordering has inverted: what was the slowest of the
+three is now the fastest. Note the `f32` `a`/`b` rows lost 4–5%; they are
+unswapped cases, so only the write-back touched them, and they sit inside that
+change's measured case-level spread (`f32` control min 0.932). Not chased.
+
+### Where the next lever is, and why it is now sharper
+
+The `f32` `a`/`b` rows above take the write-back's **gather** path, and for a
+specific reason: their leading axis in `D` has unit stride but extent 24, while
+the `f32` real kernel's `MR` is 48. A 48-row block therefore straddles a
+discontinuity and the block scatter reports it irregular — the same quantity
+that condition 2 of the orientation rule turns on. Choosing `MR` to divide the
+output's leading contiguous run would convert those blocks to the unit-stride
+path outright. That reframes the Phase 3 "micro-tile aspect ratio should follow
+the output's stride pattern" item from a ±11% tuning knob into a way of
+reaching a qualitatively faster code path, and it is cheap because the kernels
+are already parameterised over `(MV, NR)`.
+
+### Assumptions added
+
+| # | Assumption | Status |
+|---|---|---|
+| A10 | The Phase 3 write-back defect is the write-back's own L2 traffic, needing a vectorised inner loop. | **Refuted as the primary cause.** It was the *orientation*: the row direction of the matrix view was the strided one, so the innermost loop jumped a row stride per micro-tile row. Choosing the orientation costs nothing and recovers the whole 2x. The vectorised inner loop is real but second-order, and only in single precision. |
+| A11 | The row/column orientation is a property of the plan. | **Refuted.** The right choice depends on `MR`, hence on element type and complex method. |
+| A12 | Write-back overhead matters equally in both precisions. | **Refuted.** It is per output element and the kernel work it hides behind scales with element size, so it is ~2x more of the budget in `f32`/`c32` than in `f64`/`c64`. |
+
+## Phases 4 (rest) – 5
+
+In progress. See "Resume here" at the top of this file.
