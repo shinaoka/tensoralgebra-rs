@@ -499,14 +499,50 @@ impl Plan {
     ///
     /// [`IRREGULAR`]: crate::scatter::IRREGULAR
     ///
-    /// # The rule
+    /// # The rule, and the three guards it needs
     ///
-    /// Score every shape on the menu by the fraction of output row blocks that
-    /// survive as a single arithmetic run — evaluated in the orientation *that
-    /// shape* would execute in, since [`Plan::transposes_gemm`] also takes
-    /// `MR` — and take the best, breaking ties towards the front of the menu,
-    /// i.e. towards the faster kernel. A shape is only preferred over the
-    /// default if it strictly improves that fraction.
+    /// Take the first shape on the menu that makes *every* output row block a
+    /// single run, but only when all three of these hold. Each guard is there
+    /// because the grid in `bench-results/phase4c` measured what happens
+    /// without it; none is a plausibility argument.
+    ///
+    /// 1. **The contraction is shallow** (`k <= 32`). The write-back costs a
+    ///    constant per output element against `~4k` flops of kernel work, so
+    ///    the path it takes only matters while `k` is small — and a shape off
+    ///    the kernel's peak always costs something. Measured: at `k = 24` the
+    ///    winning shape gains 1.09–1.26x; at `k >= 204` the same change is
+    ///    1.01–1.04x, i.e. nothing, and it is still being paid for. The corpus
+    ///    jumps from `k = 24` to `k = 52`, so it resolves this boundary only to
+    ///    somewhere in `(24, 52]`.
+    /// 2. **The default is substantially broken** (`wb <= 0.75`). A shape
+    ///    change is not free, so it cannot be repaid by a marginal improvement.
+    ///    Measured: taking `f32` `48x8 -> 32x8` where the default was already
+    ///    0.88 regular lost 7–9%. The corpus only takes the values 0, 0.67,
+    ///    0.88 and 1.0, so any threshold in `(0.67, 0.88]` fits it equally.
+    /// 3. **The orientation does not change.** `MR` is an input to
+    ///    [`Plan::transposes_gemm`], so a shape change can silently flip the
+    ///    row/column orientation — which is worth far more than the write-back
+    ///    path is (1.4x against 1.15x) and whose rule is known to be wrong on
+    ///    nine corpus cases (A14). A shape change must not re-decide it as a
+    ///    side effect. Measured: without this guard, `c32` 3m moves the three
+    ///    `abcijk-e*bc-*` cases from the good arm to the bad one and loses 19%.
+    ///
+    /// So guarded, the rule fires on 20 of 392 corpus case-dtype-methods, gains
+    /// 1.07–1.26x on 19 of them, and loses 7% on one small case — inside the
+    /// per-case noise floor. Unguarded it is a **loss**: maximising the
+    /// fraction alone scores 0.936 in `f32`.
+    ///
+    /// # What this deliberately leaves on the table
+    ///
+    /// An oracle picking the fastest shape per case with hindsight scores
+    /// 1.03–1.07 across every dtype and method, so most of the available gain
+    /// is *not* reachable from the output's stride pattern. The largest single
+    /// piece of it is the orientation: on the six `abcijk-e*bc-*` cases in
+    /// `f32`/`c32`, shrinking `MR` to 16 flips them to `BA` and gains
+    /// 1.24–1.39x **despite** paying ~30% in kernel shape — which says the
+    /// orientation there is worth about 2x and should be bought directly, at
+    /// the default `MR`, rather than through a shape change. See the Phase 4.1c
+    /// report.
     pub fn row_block(&self, menu: &[usize]) -> Option<usize> {
         match row_block_override() {
             RowBlock::Base => None,
@@ -519,16 +555,21 @@ impl Plan {
     /// [`Plan::row_block`]'s rule with no environment override, so that it can
     /// be scored offline against measured ground truth.
     pub fn preferred_row_block(&self, menu: &[usize]) -> Option<usize> {
-        let (default, rest) = menu.split_first()?;
-        let base = self.row_block_score(*default);
-        let mut best = (*default, base);
-        for &mr in rest {
-            let s = self.row_block_score(mr);
-            if s > best.1 + 1e-9 {
-                best = (mr, s);
-            }
+        /// Above this contraction depth the write-back is amortised and the
+        /// shape's own cost is all that is left. See [`Plan::row_block`].
+        const SHALLOW_K: usize = 32;
+        /// A default this regular already is not worth paying a shape change
+        /// to improve.
+        const BROKEN_ENOUGH: f64 = 0.75;
+
+        let (&default, rest) = menu.split_first()?;
+        if self.stats.k > SHALLOW_K || self.row_block_score(default) > BROKEN_ENOUGH {
+            return None;
         }
-        (best.0 != *default).then_some(best.0)
+        let orient = self.transposes_gemm(default);
+        rest.iter().copied().find(|&mr| {
+            self.transposes_gemm(mr) == orient && self.row_block_score(mr) >= 1.0 - 1e-9
+        })
     }
 
     /// Fraction of the output's row blocks that would stay off
@@ -598,9 +639,10 @@ enum RowBlock {
 /// `TENSORCONTRACT_ROWBLOCK=base|auto|mr=<n>|idx=<i>` selects the micro-tile
 /// row block. Read once per process.
 ///
-/// The default is deliberately `base`: the mechanism ships before the rule does,
-/// so that `auto` can be measured against the committed behaviour as a runtime
-/// A/B in one session rather than as a diff between two builds. See A15.
+/// The default is `auto`; `base` pins the Phase 3 shape, which is what the rule
+/// was measured against. Both arms stay reachable at run time so the comparison
+/// can be repeated in one session rather than as a diff between two builds
+/// (A15), and `idx=<i>` re-runs the whole grid the rule was derived from.
 fn row_block_override() -> RowBlock {
     #[cfg(feature = "std")]
     {
@@ -608,7 +650,7 @@ fn row_block_override() -> RowBlock {
         static ENV: OnceLock<RowBlock> = OnceLock::new();
         *ENV.get_or_init(|| {
             let Ok(v) = std::env::var("TENSORCONTRACT_ROWBLOCK") else {
-                return RowBlock::Base;
+                return RowBlock::Auto;
             };
             let v = v.trim().to_ascii_lowercase();
             match v.as_str() {
@@ -629,7 +671,7 @@ fn row_block_override() -> RowBlock {
     }
     #[cfg(not(feature = "std"))]
     {
-        RowBlock::Base
+        RowBlock::Auto
     }
 }
 
@@ -1001,16 +1043,77 @@ mod tests {
     #[test]
     fn row_block_picks_a_shape_that_tiles_the_run() {
         let p = run24_plan();
-        // `c64` planar's menu: the default straddles, the first alternate does
-        // not, so the rule moves.
+        // `c64` planar's menu: the default straddles a third of its blocks,
+        // the first alternate none, so the rule moves. This is the case worth
+        // 1.09-1.26x on the corpus.
         assert_eq!(p.preferred_row_block(&[16, 24, 8]), Some(24));
         // The default is already perfect: never trade kernel peak for nothing.
         assert_eq!(p.preferred_row_block(&[24, 16, 8]), None);
-        // Only a partial improvement is available, and it is still taken.
-        assert_eq!(p.preferred_row_block(&[48, 16]), Some(16));
         // Ties keep the default, which is the fastest kernel.
         assert_eq!(p.preferred_row_block(&[8, 24]), None);
         assert_eq!(p.preferred_row_block(&[]), None);
+    }
+
+    #[test]
+    fn row_block_refuses_a_partial_improvement() {
+        // 48 straddles everything and 16 fixes two blocks in three, but a
+        // shape that does not clear the gather path outright cannot repay its
+        // own cost: this is the `f32` menu, and taking it measured 0.88-0.95.
+        let p = run24_plan();
+        assert_eq!(p.preferred_row_block(&[48, 16]), None);
+    }
+
+    #[test]
+    fn row_block_refuses_to_change_the_orientation() {
+        // The alternate would be perfectly regular, but only because it flips
+        // the GEMM orientation — a decision worth more than this one and made
+        // by a rule known to be wrong on nine corpus cases. Declining it is
+        // what keeps `c32` 3m off a 19% regression.
+        let d = Layout::new(vec![24, 4, 32], vec![1, 200, 4000]).unwrap();
+        let a = lay(&[24, 4, 7]);
+        let b = lay(&[7, 32]);
+        let p = Plan::new(
+            Operand::new(&a, &[0, 1, 3]),
+            Operand::new(&b, &[3, 2]),
+            None,
+            Operand::new(&d, &[0, 1, 2]),
+        )
+        .unwrap();
+        for &mr in &[16usize, 24, 8] {
+            assert!(!p.transposes_gemm(mr), "this fixture must not swap");
+        }
+        // Same fixture, but with `D` stored so that the column direction is the
+        // contiguous one: now the shapes disagree about the orientation.
+        let d = Layout::new(vec![4, 32, 24], vec![200, 4000, 1]).unwrap();
+        let q = Plan::new(
+            Operand::new(&a, &[0, 1, 3]),
+            Operand::new(&b, &[3, 2]),
+            None,
+            Operand::new(&d, &[1, 2, 0]),
+        )
+        .unwrap();
+        if q.transposes_gemm(8) != q.transposes_gemm(24) {
+            assert_eq!(q.preferred_row_block(&[24, 8]), None);
+        }
+    }
+
+    #[test]
+    fn row_block_leaves_a_deep_contraction_alone() {
+        // Same output structure, but `k` large enough that the write-back is
+        // amortised: the shape change would cost and buy nothing.
+        let d = Layout::new(vec![24, 4, 8], vec![1, 200, 4000]).unwrap();
+        let a = lay(&[24, 4, 512]);
+        let b = lay(&[512, 8]);
+        let p = Plan::new(
+            Operand::new(&a, &[0, 1, 3]),
+            Operand::new(&b, &[3, 2]),
+            None,
+            Operand::new(&d, &[0, 1, 2]),
+        )
+        .unwrap();
+        assert_eq!(p.stats.k, 512);
+        assert!((p.row_block_score(16) - 2.0 / 3.0).abs() < 1e-12, "would fire");
+        assert_eq!(p.preferred_row_block(&[16, 24, 8]), None);
     }
 
     #[test]

@@ -32,8 +32,14 @@ they can be benchmarked against each other and against TBLIS on equal footing.
   done — see below and the Phase 3 report.
 * **Phase 4 in progress.** Item 1 (the write-back) is **done**: the profiled
   2x defect is closed in all four dtypes for +12–17% corpus geometric mean,
-  with no case left slower beyond noise. Items 1c, 2, 3 and the rest remain.
-  Item 1c is now the biggest remaining lever — see `DECISIONS.md` part 4.
+  with no case left slower beyond noise. **Item 1c (the micro-tile row block)
+  is done too** — a menu of register blocks per method plus a guarded rule,
+  worth 1.026 corpus geomean in `c64` planar and 1.11–1.12x on the 20 of 392
+  case-dtype-methods it fires on. Its more important result is that it
+  **prices the row/column orientation at ~2x** on the nine known misses and
+  shows `MR` is the wrong instrument for buying it. Items 2, 3 and the rest
+  remain; **the orientation rule is now the biggest lever** — see
+  `DECISIONS.md` Phase 4 report parts 4 and 5.
 * Phase 5 not started.
 
 Workspace MSRV is **1.89** (AVX-512 intrinsics stabilised there).
@@ -168,20 +174,31 @@ three counts. No AVX2 path yet; deferred to Phase 5's multi-arch work.
    the contiguous one recovers all of it; a regular-block write-back on top
    adds 2–15% more, most of it in single precision. See the Phase 4 report.
 
-   **Still open under this item, and now the biggest lever left: 1c, the
-   micro-tile aspect ratio.** Phase 3 sized it at ±11%. Two things since make
-   it worth more. Choosing `MR` to divide the output's leading contiguous run
-   moves whole block families onto the write-back's unit-stride path — a
-   code-path change, not a tuning delta. And the orientation rule is right on
-   only **63 of 72** case-dtypes; all nine misses are worth 1.18–1.47x, all are
-   32-bit, and all are cases where `MR` exceeds that run, so shrinking `MR` may
-   fix them without needing a better rule. A narrow tile costs 7–20% of kernel
-   peak (measured, `phase3-kernel-shapes.txt`), which the affected shapes are
-   nowhere near reaching — so it must be a per-plan selection, never a new
-   default. Do 1c before attacking the orientation rule directly.
+   **1c, the micro-tile row block: done.** Each method now carries a *menu* of
+   register blocks and `Plan::row_block` picks from it. The naive rule — take
+   the shape that keeps the most output row blocks off the gather path — is a
+   **loss** (0.936 in `f32`); it needs three measured guards (shallow `k`, a
+   default that is substantially broken, and no change of orientation), after
+   which it fires on 20 of 392 case-dtype-methods for 1.11–1.12x on those.
+   Its more important result is a negative one: it does *not* dissolve the
+   orientation misses as Phase 4.1 predicted, it prices them — those cases gain
+   1.17–1.39x while paying ~30% in kernel shape, so the orientation is worth
+   ~2x and `MR` is the wrong way to buy it.
+
+   **Now the biggest lever: the orientation rule itself, at the default `MR`.**
+   It is right on only 63 of 72 case-dtypes and the nine misses are worth
+   1.18–1.47x. Two ground-truth datasets exist and neither has been spent —
+   `bench-results/phase4/rm-orient-{none,swap}.csv` and
+   `bench-results/phase4c/rb-*` — so score a candidate discriminant offline
+   (`scripts/rowblock-score-rules.py` is the pattern) before spending CPU. The
+   honest fallback, if no discriminant exists, is empirical selection: run both
+   arms once per plan and keep the faster; plans are reusable.
 2. **Sweep `MC`/`KC`/`NC`**, still the untouched Phase 2 heuristic. `KC` is now
    known to be first-order: it decides whether the `A` sliver is an L1 resident
-   or an L2 stream, which is what the whole method ranking turns on.
+   or an L2 stream, which is what the whole method ranking turns on. 1c added a
+   second input: the *register block* is depth-conditional too (`c64` 3m wants
+   a wider `MR` at `k <= 24`, worth 1.088), so vary the shape alongside `kc`
+   rather than holding the Phase 3 table fixed.
 3. **Dispatch the complex method by shape** — 3m on memory-bound shapes,
    planar otherwise. The inversion is measured and large enough to exploit.
 4. Then: threading (BLIS-style, `std::thread::scope`, static partitioning with
@@ -255,6 +272,17 @@ scripts/phase4-remeasure.sh 4 bench-results/phase4
 # Turn two sweep CSVs into the ratio tables used throughout DECISIONS.md.
 # Needs no CPU; run it on committed data to check the tooling still agrees.
 scripts/compare-sweeps.py BASE_CSVS NEW_CSVS
+
+# The Phase 4.1c pattern, and the better one when the choice is discrete: sweep
+# the *whole grid* of options once (~2 h), then score candidate rules against it
+# offline, as many as you like, for free. This is how the row-block rule was
+# derived and how the orientation rule should be.
+scripts/phase4c-rowblock.sh 4 bench-results/phase4c
+scripts/rowblock-score-rules.py bench-results/phase4c/shapes.csv bench-results/phase4c
+
+# What a shape choice would do, with no CPU cost and no data touched. Safe to
+# run while a benchmark is in flight.
+./target/release/tcbench shapes --csv out.csv
 ```
 
 ```bash
@@ -289,11 +317,14 @@ Useful environment variables:
 | `TENSORCONTRACT_MC/_KC/_NC` | override cache blocking |
 | `TENSORCONTRACT_ORIENT` | `none` \| `swap`: pin the row/column orientation |
 | `TENSORCONTRACT_WRITEBACK` | `gather` forces the general scatter write-back |
+| `TENSORCONTRACT_ROWBLOCK` | `base` \| `auto` \| `mr=<n>` \| `idx=<i>`: pin the micro-tile row block |
 
-The last two exist to make a change an A/B switch at run time rather than a
+The last three exist to make a change an A/B switch at run time rather than a
 rebuild, so both arms can be measured interleaved in one session. Add one
 whenever you introduce a fast path — a build-to-build diff already produced one
-wrong sign in Phase 4.
+wrong sign in Phase 4. `idx=<i>` names a menu position rather than an `MR`,
+because `mr=16` names different shapes in `f32` and `f64` while `idx=1` means
+"the first alternate" in both; it is what makes a whole-grid sweep possible.
 
 ## Starting references
 

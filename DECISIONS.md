@@ -28,7 +28,10 @@ What exists:
   re-measurement on an exclusive machine and is the one to compare against.
 * `scripts/` — `env.sh` (toolchain + single-threading), `phase3-bench.sh` (the
   Phase 3 measurement set), `phase4-remeasure.sh` (the A/B pattern to copy),
-  `compare-sweeps.py` (turns two sweep CSVs into the ratio tables in this file).
+  `phase4c-rowblock.sh` (the row-block grid), `compare-sweeps.py` (turns two
+  sweep CSVs into the ratio tables in this file), `rowblock-decompose.py` and
+  `rowblock-score-rules.py` (score a candidate rule offline against the grid,
+  which is the pattern to copy for the orientation work).
 
 Sanity check on a fresh checkout, in this order:
 
@@ -86,26 +89,37 @@ Two things came out of item 1 that are worth carrying forward:
   is **not fully explained**. Do not remove it without re-measuring
   `abcijk-*mb-*` in `f32`.
 
-**The immediate next task is Phase 4 item 1c, then item 2.** In priority order:
+**Phase 4 item 1c is done** — see the Phase 4 report, part 5. The row-block
+menu and its guarded rule ship on by default; `c64` planar gains **1.026**
+corpus geomean (1.124 on the 12 cases it fires on), `c32` 1m 1.006 (1.108 on
+7), everything else is inside the noise floor, and one case out of 392 is left
+7% slower. It also **prices the orientation at ~2x** on the nine known misses
+and shows `MR` is the wrong instrument for buying it.
 
-1. **Micro-tile aspect ratio from the output's stride pattern.** Now the
-   biggest lever left, for two reasons that arrived after Phase 3 sized it at
-   ±11%. Choosing `MR` to divide the output's leading contiguous run moves
-   whole families of blocks from the write-back's gather path to its
-   unit-stride path — a code-path change, not a tuning delta. And **all nine of
-   the orientation rule's known misses (up to 1.47x, part 4) are 32-bit cases
-   where `MR` exceeds that run**, so shrinking `MR` may make the rule pick the
-   right arm without needing the discriminant nobody has found. Do this before
-   attacking the orientation rule directly. The kernels already take
-   `(MV, NR)` const generics, so this is a selection problem, not a
-   kernel-writing one.
+**The immediate next task is the orientation rule, then item 2.** In priority
+order:
+
+1. **Fix the orientation rule directly, at the default `MR`.** Part 5 makes
+   this the biggest measured lever left: the six `abcijk-e*bc-*` cases gain
+   1.17–1.39x from the BA arm *while paying ~30% in kernel shape*, so the
+   orientation alone is worth about **2x** there. `MR` cannot buy it
+   affordably, and an oracle over shapes is only worth 1.03–1.07, so this is
+   where the remaining headroom is. Two assets exist for it and neither has
+   been spent: `bench-results/phase4/rm-orient-{none,swap}.csv` holds both arms
+   for all 72 `abcijk` case-dtypes, and `bench-results/phase4c/rb-*` holds
+   every shape for the whole corpus — so a candidate discriminant can be scored
+   offline (`scripts/rowblock-score-rules.py` is the pattern) before any CPU is
+   spent. Failing a discriminant, empirical selection — run both arms once per
+   plan, keep the faster — is the honest fallback, and plans are reusable.
 2. **Sweep `MC`/`KC`/`NC`.** Still the untouched Phase 2 heuristic. Phase 3
    showed the whole method ranking turns on whether the `A` sliver is an L1
    resident or an L2 stream, which makes `KC` a first-order parameter. Phase 4
    part 3 adds a design constraint on the sweep itself: `MC` is bounded from
    *both* sides (A13), so the sweep must separate the two rather than look for
    one best value. Read part 3 before starting — the obvious depth-adaptive
-   shortcut is already measured and rejected.
+   shortcut is already measured and rejected. Part 5 adds a second input: the
+   *register block* is depth-conditional too (A18), so the sweep should vary
+   the shape alongside `kc` rather than hold the Phase 3 table fixed.
 3. **Dispatch the complex method by shape.** The inversion is measured and
    large enough to exploit: 3m on memory-bound shapes, planar otherwise. Note
    Phase 4.1 moved the ranking: `c32` 3m gained the most from the write-back
@@ -117,7 +131,9 @@ Two things came out of item 1 that are worth carrying forward:
 
 Do not re-derive the register blocks; they are measured and recorded in
 `kernel::x86`, with the sweep in `examples/kernel_shapes` if the machine
-changes.
+changes. Since Phase 4.1c each method carries a *menu* of them and the default
+is still the Phase 3 choice — the menu adds alternates, it does not re-litigate
+the default.
 
 ---
 
@@ -1009,10 +1025,131 @@ is a 32-bit case where `MR` (32 or 48) exceeds the run (24). Changing `MR` to
 any new discriminant. **Do 1c before trying to fix the orientation rule** — it
 may dissolve the problem rather than require solving it.
 
+### Part 5: item 1c, the micro-tile row block — and what it prices
+
+Part 4 predicted that choosing `MR` to divide the output's contiguous run would
+"dissolve" the orientation problem. It does not. It **prices** it, which is more
+useful, and the write-back gain it was aimed at is real but small and needs
+three guards to be positive at all.
+
+#### What was built
+
+`kernel::x86` now builds each method from a **menu** of register blocks rather
+than one, default first, using the same const-generic kernels Phase 3 wrote.
+The alternates were priced by re-running `examples/kernel_shapes`, extended with
+the `MV = 1` real and 1m cases it never covered
+(`bench-results/phase4c/kernel-shapes.txt`). `Plan::row_block` chooses from the
+menu, `Plan::row_block_score` reports the fraction of output row blocks that
+would stay off the gather path at a given `MR` — evaluated in the orientation
+*that* `MR` selects, since the two are coupled — and
+`TENSORCONTRACT_ROWBLOCK=base|auto|mr=<n>|idx=<i>` makes every arm reachable at
+run time. `tcbench shapes` scores every shape against every corpus case without
+running anything, which is how the measurements below were chosen.
+
+#### The grid, and why it was worth 2 h
+
+`scripts/phase4c-rowblock.sh` pins *every* shape on *every* menu across the
+whole corpus (`bench-results/phase4c/rb-*`, sibling CPU 0.6–1.3% throughout).
+That is worth far more than an A/B of the rule, because it splits each
+(dtype, method, shape) into cases where the shape changes nothing the
+write-back can see — their ratio is the shape's own cost — and cases where it
+does. Any candidate rule can then be scored offline against ground truth, which
+is what `scripts/rowblock-score-rules.py` does:
+
+| rule | `f32` | `c32` planar | `c32` 1m | `c32` 3m | `c64` planar |
+|---|---|---|---|---|---|
+| maximise the regular fraction | **0.936** | 1.006 | 1.026 | 0.987 | 1.040 |
+| + only where `k <= 32` | 1.006 | 1.018 | 1.027 | 0.987 | 1.034 |
+| + only reaching *full* regularity | 0.997 | 1.004 | 1.027 | 0.987 | 1.034 |
+| + only if the orientation is unchanged | 0.997 | 1.004 | 1.015 | **1.000** | 1.034 |
+| oracle, best shape per case with hindsight | 1.042 | 1.051 | 1.068 | 1.033 | 1.054 |
+
+The obvious rule — the one part 4 proposed — is a **loss**. Each guard is
+measured, not argued:
+
+1. **`k <= 32`.** The write-back costs a constant per output element against
+   `~4k` flops of kernel work, so which path it takes only matters while `k` is
+   small, and a shape off the kernel's peak always costs something. At `k = 24`
+   the winning shape gains 1.09–1.26x; at `k >= 204` the identical change is
+   1.01–1.04x and still being paid for. The corpus jumps from `k = 24` to
+   `k = 52`, so it resolves this boundary only to somewhere in `(24, 52]`.
+2. **The default must be substantially broken** (regular fraction `<= 0.75`).
+   Taking `f32` `48x8 -> 32x8`, where the default was already 0.88 regular, lost
+   7–9%. The corpus only produces the values 0, 0.67, 0.88 and 1.0, so any
+   threshold in `(0.67, 0.88]` fits it equally.
+3. **The orientation must not change.** `MR` is an input to
+   `transposes_gemm`, so a shape change can silently flip it. Without this
+   guard `c32` 3m moves the three `abcijk-e*bc-*` cases from the good arm to
+   the bad one and loses **19%**.
+
+#### Result
+
+Validation A/B (`bench-results/phase4c/v-*`, `base, auto, base'`, exclusive
+machine, sibling CPU 0.7–0.9%). Session noise floor from the bracketing repeat:
+geomean 0.992–1.008.
+
+| | corpus geomean | fired cases | n | untouched cases |
+|---|---|---|---|---|
+| `c64` planar | **1.026** | **1.124** | 12 | 0.996 |
+| `c32` 1m | 1.006 | **1.108** | 7 | 0.990 |
+| `c32` planar | 1.005 | 0.977 | 1 | 1.005 |
+| everything else | 0.992 – 1.000 | — | 0 | 0.992 – 1.000 |
+
+The rule fires on **20 of 392** case-dtype-methods. Per case it runs 1.065 to
+1.202 on 19 of them — `abcijk-ijma-mkbc` in `c64` planar goes 43.2 → 52.0 GF/s
+— and 0.931 on the twentieth, `ajbdc-ckbad-jk` in `c32` 1m, a case that runs at
+8.5 GF/s. That is the one case left slower, and it is only just outside the
+per-case noise floor. The untouched cases are a control group of 372 and sit
+inside the noise floor in every dtype and method.
+
+`f32` and `f64` are untouched by construction: at `L = 16` lanes no full-width
+`MR` divides the corpus's runs of 24 except 1m's, and `f64`'s default `MR = 24`
+already tiles them. The `f32` gather-path cases part 4 pointed at are therefore
+**not** reachable this way — see below.
+
+#### What this prices: the orientation is worth ~2x, and `MR` is a bad way to buy it
+
+Part 4's hope was that shrinking `MR` to 16 would satisfy the orientation rule's
+condition 2 on the nine misses and make it pick BA "without any new
+discriminant". The flip does happen — the grid confirms `abcijk-e*bc-*` in
+`f32`/`c32` switches to BA at `MR = 16`. But:
+
+| | `f32` real, `48x8 -> 16x10` | `c32` planar, `32x6 -> 16x12` |
+|---|---|---|
+| cases where nothing else changes | **0.70** | 0.96 – 0.99 |
+| the six `e*bc` / `e*ac` cases | **1.17 – 1.39** | 1.15 – 1.29 |
+
+Those cases gain 1.17–1.39x *while paying about 30% in kernel shape*, so the
+orientation there is worth roughly **2x** on its own. Buying it through a shape
+change is a bad trade, and the rule above correctly declines to (guard 3, plus
+guard 2 for `f32`). **The conclusion is the opposite of part 4's prediction:
+1c does not dissolve the orientation problem, it shows the orientation is the
+larger lever and must be attacked directly, at the default `MR`.**
+
+The oracle row above is the other half of the picture: picking the best shape
+per case with hindsight scores only 1.03–1.07 anywhere. The shape lever is close
+to exhausted. The orientation lever is not.
+
+#### Two effects seen, deliberately not shipped
+
+The grid also shows, at `k <= 24` and with no write-back change at all:
+
+* `c64` 3m gains **1.088** from a *wider* `MR` (16 or 24 against its default 8);
+* `c32` 1m gains **1.099** from `24x8` against its Phase 3 default `32x6`.
+
+Both are register blocks that are simply better at small `k` than the ones
+chosen at `kc = 256/384`, which is a *shape-by-depth* effect and belongs with
+item 2's `MC`/`KC`/`NC` sweep. Neither has a mechanism yet and neither has been
+validated on anything but this grid, so neither ships. Note the second one means
+the Phase 3 register-block table is depth-conditional, not wrong.
+
 ### Assumptions added
 
 | # | Assumption | Status |
 |---|---|---|
+| A16 | Choosing `MR` to divide the output's contiguous run converts whole block families to the write-back's fast path, so maximising that fraction is the rule. | **Refuted as a rule, confirmed as a mechanism.** Unguarded it scores 0.936 in `f32`. It needs three guards — shallow `k`, a default that is substantially broken, and no change of orientation — after which it fires on 20 of 392 case-dtype-methods for 1.11–1.12x on those and 1.026 corpus geomean in `c64` planar. |
+| A17 | Shrinking `MR` will fix the orientation rule's nine misses by satisfying its condition 2. | **Refuted as a fix, and it prices the problem.** The flip does happen, and those cases gain 1.17–1.39x *while paying ~30% in kernel shape* — so the orientation alone is worth ~2x there and must be bought at the default `MR`. `MR` is the wrong instrument. |
+| A18 | The register blocks measured at the operating `kc` are the right ones at every depth. | **Refuted.** At `k <= 24`, `c64` 3m prefers `MR` 16–24 over its default 8 (1.088) and `c32` 1m prefers `24x8` over `32x6` (1.099), with no write-back change involved. The Phase 3 table is depth-conditional. Belongs with item 2. |
 | A13 | `MC` is bounded only by keeping the packed `A` block in L2. | **Refuted.** It also bounds the `D` strip a `jr` pass revisits, which is the binding constraint whenever the output's rows are strided. |
 | A10 | The Phase 3 write-back defect is the write-back's own L2 traffic, needing a vectorised inner loop. | **Refuted as the primary cause.** It was the *orientation*: the row direction of the matrix view was the strided one, so the innermost loop jumped a row stride per micro-tile row. Choosing the orientation costs nothing and recovers the whole 2x. The vectorised inner loop is real but second-order, and only in single precision. |
 | A11 | The row/column orientation is a property of the plan. | **Refuted.** The right choice depends on `MR`, hence on element type and complex method. |
