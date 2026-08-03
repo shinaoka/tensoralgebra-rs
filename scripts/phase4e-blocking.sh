@@ -38,12 +38,37 @@
 # the same computation. Their spread across arms is therefore a direct per-case
 # noise measurement inside this very run, not one imported from another session.
 #
-# Cost: ~22 min per arm for both dtype pairs, 20 arms, so ~7.5 h. Single core.
-# Nothing else may run on the machine (not even a compile) while it is in
-# flight: the pinned core's hyperthread sibling shares the L1d and L2 that all
-# of this is about.
+# ---------------------------------------------------------------------------
+# Placement: one core, or one core per L3 domain
+# ---------------------------------------------------------------------------
 #
-# Usage: scripts/phase4e-blocking.sh [cpu] [outdir] [size_mib] [reps] [filter]
+# The arms are independent, so on a many-core node they can run concurrently —
+# 20 arms x 2 dtype pairs is 40 jobs, and 7.5 h of sequential work fits in under
+# an hour if 24 of them run at once. That is a *hypothesis about placement*, not
+# a free lunch, because arms sharing an L3 perturb each other and `NC` is sized
+# for L3. So both regimes are the same code path here, selected by the first
+# argument, and the parallel one must be validated before it is trusted:
+#
+#   scripts/phase4e-blocking.sh 4      OUT   # one pinned core, the reference regime
+#   scripts/phase4e-blocking.sh auto   OUT   # one core per L3 domain, rest idle
+#
+# `scripts/validate-placement.sh` is what decides which of those to use: it runs
+# one arm solo and then the same arm under the placement and compares them
+# against the noise floor measured in the same session. Run it first. A rejected
+# placement is a result worth recording, and costs half an hour rather than
+# seven contaminated hours.
+#
+# Either way `scripts/run-arms.py` records `/proc/stat` occupancy for **every
+# core in each arm's own L3 domain** across exactly that arm's window, plus the
+# observed overlap with other arms, so co-tenancy is a recorded fact per arm.
+# That recording is what made two earlier Phase 4 retractions detectable.
+#
+# Cost: ~22 min per arm for both dtype pairs on the reference machine, 20 arms,
+# so ~7.5 h pinned to one core. Nothing else may run on the machine (not even a
+# compile) while it is in flight.
+#
+# Usage: scripts/phase4e-blocking.sh [cpu|auto] [outdir] [size_mib] [reps] [filter]
+#        JOBS=<n> scripts/phase4e-blocking.sh auto ...   # cap the concurrency
 #
 # Smoke-test the whole thing in place before committing 7 h to it:
 #   scripts/phase4e-blocking.sh 4 /tmp/smoke 8 1 ijkl-imjn-lnkm
@@ -56,52 +81,15 @@ OUT=${2:-bench-results/phase4e}
 SIZE=${3:-64}
 REPS=${4:-3}
 FILTER=${5:-}
-SIB=$(cat /sys/devices/system/cpu/cpu$CPU/topology/thread_siblings_list)
 BIN=./target/release/tcbench
 [ -x "$BIN" ] || { echo "no $BIN in $PWD -- cargo build --release -p tensorprimitives-bench" >&2; exit 1; }
-FILT=()
-[ -n "$FILTER" ] && FILT=(--case "$FILTER")
 mkdir -p "$OUT"
 
-export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1
-
-echo "pinned to cpu$CPU; hyperthread siblings: $SIB"
-
-snap() {
-    python3 - <<'PY'
-out = {}
-for l in open("/proc/stat"):
-    f = l.split()
-    if f[0].startswith("cpu") and f[0][3:].isdigit():
-        out[f[0][3:]] = [int(x) for x in f[1:]]
-print(repr(out))
-PY
-}
-
-# run <tag> <dtypes> [env assignments...]
-run() {
-    local tag=$1 dt=$2 before after
-    shift 2
-    before=$(snap)
-    env "$@" taskset -c $CPU $BIN sweep \
-        --size $SIZE --reps $REPS "${FILT[@]}" \
-        --engines planar,1m,3m --dtype "$dt" --csv "$OUT/$tag.csv" \
-        > "$OUT/$tag.txt" 2>&1
-    after=$(snap)
-    python3 - "$SIB" "$before" "$after" > "$OUT/$tag.cpu" <<'PY'
-import sys, ast
-cpus = sys.argv[1].split(",")
-a, b = ast.literal_eval(sys.argv[2]), ast.literal_eval(sys.argv[3])
-for c in cpus:
-    d = [y - x for x, y in zip(a[c], b[c])]
-    tot, idle = sum(d), d[3] + d[4]
-    print(f"cpu{c} busy {100*(tot-idle)/tot if tot else 0:.1f}%")
-PY
-    echo "  $(date +%H:%M:%S) $tag: $(tr '\n' ' ' < "$OUT/$tag.cpu")"
-}
-
 # The arms. `base` appears three times — first, middle and last — so drift over
-# a seven-hour run is a measured quantity and every treatment is bracketed.
+# a long run is a measured quantity and every treatment is bracketed. Under
+# concurrent placement "first, middle, last" becomes "three independent
+# repeats", which brackets contention rather than drift; both are what the
+# repeats are for.
 #
 #   kc<n>  pinned mc/nc, kc forced: panel depth alone.
 #   ck<n>  kc forced and mc/nc re-derived at that depth: depth plus footprint.
@@ -129,22 +117,50 @@ ARMS=(
     # The analytical model (part 9), which is the arm that matters most now: it
     # is not a point in this grid but a whole different derivation, and it moves
     # all three parameters at once — `kc` down 2.4-8x, `mc` up 4-6x, `nc` up
-    # ~20x. Its `kc` makes the `A` sliver an L1 resident where the constants make
-    # it an L2 stream, which Phase 3 found the method ranking to turn on; its
-    # `mc` is exactly what A13's missing upper bound would punish. Both effects
-    # land in one arm, which is why the single-parameter arms above are still
-    # needed to attribute whatever it does.
+    # ~20x on the reference machine. Its `kc` makes the `A` sliver an L1 resident
+    # where the constants make it an L2 stream, which Phase 3 found the method
+    # ranking to turn on; its `mc` is exactly what A13's missing upper bound
+    # would punish. Both effects land in one arm, which is why the
+    # single-parameter arms above are still needed to attribute whatever it does.
+    #
+    # On any machine that is not `ccqlin038` this arm carries a second and larger
+    # claim: the legacy constants *are* `ccqlin038`'s cache sizes written down by
+    # hand, so elsewhere they are wrong by construction and the model should win.
+    # If it does not, that is a finding about the model, not about the node.
     "model  TENSORCONTRACT_BLOCKMODEL=model"
     "base2"
 )
 
-for pair in f64,c64 f32,c32; do
-    t=${pair/,/}
-    for arm in "${ARMS[@]}"; do
-        read -r tag envs <<<"$arm"
-        # shellcheck disable=SC2086  # envs is a deliberate word list
-        run "bl-$tag-$t" "$pair" $envs
+# One jobfile, generated from the list above, so the arm definitions have a
+# single source of truth whichever regime runs them. The dtype pairs are
+# separate jobs rather than an inner loop: they are independent measurements, so
+# under concurrent placement they are 40 jobs and not 20.
+JOBS_FILE="$OUT/arms.jobs"
+: > "$JOBS_FILE"
+{
+    echo "# generated by $0 on $(date -Iseconds)"
+    echo "# tag  dtypes  env..."
+    for pair in f64,c64 f32,c32; do
+        t=${pair/,/}
+        for arm in "${ARMS[@]}"; do
+            read -r tag envs <<<"$arm"
+            echo "bl-$tag-$t  $pair  $envs"
+        done
     done
-    echo "done $t"
-done
-echo "grid complete; score rules with scripts/blocking-score-rules.py"
+} >> "$JOBS_FILE"
+
+PLACE=(--cpus "$CPU" --sequential)
+if [ "$CPU" = auto ]; then
+    PLACE=()
+    [ -n "${JOBS:-}" ] && PLACE=(--jobs "$JOBS")
+fi
+
+FILT=()
+[ -n "$FILTER" ] && FILT=(--case "$FILTER")
+
+scripts/run-arms.py "$JOBS_FILE" --outdir "$OUT" --bin "$BIN" \
+    --size "$SIZE" --reps "$REPS" --engines planar,1m,3m \
+    "${FILT[@]}" "${PLACE[@]}" | tee -a "$OUT/run.log"
+
+echo "grid complete; score rules with scripts/blocking-score-rules.py" \
+    | tee -a "$OUT/run.log"

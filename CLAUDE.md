@@ -58,6 +58,17 @@ exclusive machine**; `DECISIONS.md`'s "Resume here" says which script and what t
 do with the output. Do not start either while anything else runs — a compile
 counts.
 
+**Those measurements are going to a Rusty node, and that is a design decision,
+not a change of venue — read `DECISIONS.md` part 10 before running anything.**
+Rusty has no Cascade Lake, so the partition picks the question; `rome` is chosen,
+which means the **AVX2** kernels and their *unmeasured* register blocks (D26), so
+**nothing measured there is comparable to any number in this repo** and every
+ratio must be computed within the session, including a re-derived noise floor.
+Part 10 also fixes, in advance, the accept/reject rule for running grid arms
+concurrently one per L3 domain. Drive it with `scripts/node-session.sh <stage>`,
+which stages the work in descending value and refuses to start a measurement
+while anything of yours is compiling.
+
 Workspace MSRV is **1.89** (AVX-512 intrinsics stabilised there).
 
 Everything builds warning-free, `cargo clippy --workspace --all-targets` is
@@ -312,7 +323,7 @@ scripts/compare-sweeps.py BASE_CSVS NEW_CSVS
 scripts/phase4c-rowblock.sh  4 bench-results/phase4c   # every register block
 scripts/phase4d-orient.sh    4 bench-results/phase4d   # both orientation arms
 scripts/phase4e-blocking.sh  4 bench-results/phase4e   # the MC/KC/NC grid, ~7 h
-scripts/phase4f-threads.sh 0-7 bench-results/phase4f   # thread scaling, ~1 h,
+scripts/phase4f-threads.sh auto bench-results/phase4f  # thread scaling, ~1 h,
                                                        # wants a whole socket
 scripts/rowblock-score-rules.py bench-results/phase4c/shapes.csv bench-results/phase4c
 scripts/orient-score-rules.py   bench-results/phase4d/features.csv bench-results/phase4d
@@ -341,6 +352,20 @@ Phase 4.1c and 4.1d each pinned the other's lever to isolate their own — corre
 experimental design, and exactly why neither could see that a 3% orientation
 error was blocking a 20% shape change in the shipped combination. Always finish
 with an end-to-end A/B in the configuration that actually ships (A20).
+
+On a cluster node, drive everything through the staged session instead:
+
+```bash
+scripts/node-session.sh prep     bench-results/<node>-<arch>   # build, describe, predict
+scripts/node-session.sh threads  bench-results/<node>-<arch>   # scaling + partition arms
+scripts/node-session.sh shapes   bench-results/<node>-<arch>   # register-block calibration
+scripts/node-session.sh validate bench-results/<node>-<arch>   # may arms run concurrently?
+PLACEMENT=auto scripts/node-session.sh grid bench-results/<node>-<arch>
+```
+
+Stages run one at a time, only `prep` compiles, and `topology.py` /
+`run-arms.py` record which cores were busy for every arm so exclusivity is
+evidence rather than assumption. See `DECISIONS.md` part 10.
 
 Benchmarks are single-core measurements: **do not compile, build a baseline or
 run anything else on the machine while one is in flight.** Pinning is not
