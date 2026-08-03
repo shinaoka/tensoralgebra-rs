@@ -25,7 +25,8 @@
 //! other computes single-complex where double was asked for, with no error and
 //! no crash — the tensor sizes still line up because the harness passes the
 //! extents separately. Hence the `tblis13` feature, and hence the runtime
-//! self-check in [`verify_type_tags`] which multiplies a known matrix and
+//! self-check in `verify_type_tags` (gated on the `tblis` feature, so it is not
+//! a doc link) which multiplies a known matrix and
 //! refuses to proceed if the answer is wrong.
 
 #![allow(non_camel_case_types)]

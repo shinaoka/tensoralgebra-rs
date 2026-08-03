@@ -3,35 +3,75 @@
 use core::fmt;
 
 /// Everything that can go wrong when building or executing a contraction plan.
+///
+/// Every variant is a rejected *description* of a contraction — a shape, label
+/// or stride inconsistency — caught while planning. There is deliberately no
+/// variant for a failure during execution: once [`crate::Plan::new`] has
+/// returned, the only thing that can still be wrong is the data slices, and
+/// [`crate::Plan::run`] checks those before touching anything.
+///
+/// `#[non_exhaustive]` because the mapping onto TAPP's error codes is the
+/// stable contract, not this enumeration; match with a `_` arm.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Error {
     /// `extents.len() != strides.len()`.
-    RankMismatch { extents: usize, strides: usize },
+    RankMismatch {
+        /// Number of extents supplied.
+        extents: usize,
+        /// Number of strides supplied.
+        strides: usize,
+    },
     /// The number of index labels does not match the tensor rank.
     LabelCountMismatch {
+        /// Which operand: `"A"`, `"B"`, `"C"` or `"D"`.
         tensor: &'static str,
+        /// Modes the layout has.
         nmode: usize,
+        /// Labels supplied for it.
         nlabel: usize,
     },
     /// A label appears with different extents in different operands, or a
     /// label repeated inside one tensor has inconsistent extents.
     ExtentMismatch {
+        /// The offending label.
         label: i64,
+        /// Extent seen first, and taken as authoritative for the message.
         expected: i64,
+        /// The conflicting extent.
         found: i64,
     },
     /// A label appears only in the output. TAPP calls this "case 5"
     /// (isolated output index / broadcast) and does not require support.
-    BroadcastIndexUnsupported { label: i64 },
+    BroadcastIndexUnsupported {
+        /// The output-only label.
+        label: i64,
+    },
     /// `C` and `D` must describe the same set of labels.
+    ///
+    /// They need not have the same strides or even the same mode order — `C` is
+    /// read through its own scatter vectors — but a label in one and not the
+    /// other would leave `beta * C` undefined at some output element.
     OutputLabelMismatch,
-    /// A negative extent was supplied.
-    NegativeExtent { label: i64, extent: i64 },
+    /// A negative extent was supplied. Negative *strides* are legal and
+    /// supported; negative extents are not a layout, they are a mistake.
+    NegativeExtent {
+        /// The label whose mode has the negative extent.
+        label: i64,
+        /// The extent as supplied.
+        extent: i64,
+    },
     /// The requested element type is not supported by this entry point.
+    /// Raised at the TAPP boundary for `TAPP_F16` / `TAPP_BF16`, which have no
+    /// [`crate::Element`] impl here.
     UnsupportedDatatype,
-    /// A null data pointer was supplied for a non-empty tensor.
-    NullPointer { tensor: &'static str },
+    /// A data slice or pointer cannot hold every offset the plan will generate
+    /// — including the null-pointer-for-a-non-empty-tensor case that gives the
+    /// variant its name.
+    NullPointer {
+        /// Which operand: `"A"`, `"B"`, `"C"` or `"D"`.
+        tensor: &'static str,
+    },
 }
 
 impl fmt::Display for Error {
@@ -78,4 +118,5 @@ impl fmt::Display for Error {
 #[cfg(feature = "std")]
 impl std::error::Error for Error {}
 
+/// `Result` with this crate's [`Error`].
 pub type Result<T> = core::result::Result<T, Error>;

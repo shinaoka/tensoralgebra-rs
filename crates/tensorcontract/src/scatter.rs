@@ -19,6 +19,15 @@
 //! indices, i.e. reductions), where the same element is read repeatedly.
 //! Irregular blocks are therefore flagged with a dedicated sentinel rather
 //! than with zero as in some other implementations.
+//!
+//! Everything public here is a pure function of `i64` slices with no coupling
+//! to the rest of the engine, which is why it is API rather than an internal
+//! detail: it is the only way for a caller — the project's own benchmark
+//! harness included — to describe the traversal the engine is about to make,
+//! and to report regularity at the same granularity the engine sees. Combine
+//! with [`crate::Plan::oriented_scatters`] and
+//! [`crate::kernel::plan_config`], which give the vectors and the block sizes
+//! actually used.
 
 /// Sentinel stored in a block-scatter vector for a block whose scatter entries
 /// are *not* an arithmetic progression.
@@ -161,6 +170,16 @@ pub fn regular_fraction(bs: &[i64]) -> f64 {
 
 /// A matrix view of a tensor through scatter vectors, with block-scatter
 /// metadata for the two axes.
+///
+/// **Not part of the public API** — `#[doc(hidden)]`, public only so the
+/// driver and write-back (private modules) can share one definition, and
+/// outside the crate's semver guarantee. It is not usefully constructible from
+/// outside anyway: `rblk`/`cblk` must be exactly the register blocks the
+/// selected micro-kernel uses, and `rbs`/`cbs` must have been built at those
+/// block sizes, neither of which a caller can know without also driving the
+/// loop nest. The building blocks are public and documented instead —
+/// [`build_scatter`], [`build_block_scatter`], [`run_structure`].
+#[doc(hidden)]
 #[derive(Debug)]
 pub struct BlockScatterMatrix<'a> {
     pub rscat: &'a [i64],
@@ -171,6 +190,7 @@ pub struct BlockScatterMatrix<'a> {
     pub cblk: usize,
 }
 
+#[doc(hidden)]
 impl BlockScatterMatrix<'_> {
     #[inline]
     pub fn nrows(&self) -> usize {

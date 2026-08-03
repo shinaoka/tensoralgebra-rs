@@ -11,15 +11,31 @@ use crate::layout::Layout;
 use crate::plan::ElementOp;
 
 /// Operand for the reference implementation.
+///
+/// Structurally the same as [`crate::TensorView`], and deliberately a separate
+/// type: the oracle must not be able to borrow any of the engine's
+/// convenience, or it would stop being an independent statement of the
+/// semantics.
 pub struct RefOperand<'a, T> {
+    /// The backing allocation.
     pub data: &'a [T],
+    /// Extents and strides, in elements.
     pub layout: &'a Layout,
+    /// One index label per mode of `layout`.
     pub idx: &'a [i64],
+    /// Element-wise operation applied while reading.
     pub op: ElementOp,
 }
 
 /// `D = op_D(alpha * op_A(A) * op_B(B) + beta * op_C(C))`, computed by brute
 /// force over every index assignment.
+///
+/// Exported so that a downstream [`crate::element::Element`] implementation, or
+/// a caller who has hit a surprising result, can check the engine against the
+/// definition without reimplementing it. It walks the full index space with a
+/// linear label search per access, so it is several orders of magnitude slower
+/// than the engine: fine for the shapes a test uses, hopeless above a few
+/// million output elements.
 #[allow(clippy::too_many_arguments)]
 pub fn contract_reference<T: Element>(
     alpha: T,

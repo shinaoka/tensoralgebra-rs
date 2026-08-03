@@ -132,6 +132,7 @@ pub enum CacheSource {
 }
 
 impl CacheSource {
+    /// Short name for reports: `"sysfs"`, `"cpuid"` or `"builtin"`.
     pub fn name(self) -> &'static str {
         match self {
             CacheSource::Sysfs => "sysfs",
@@ -148,9 +149,14 @@ impl CacheSource {
 /// plenty of targets lack one or both, and the model degrades level by level.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CacheHierarchy {
+    /// The L1 data cache, which fixes `kc`.
     pub l1d: CacheLevel,
+    /// The L2, which fixes `mc`. `None` leaves `mc` at the model's fallback.
     pub l2: Option<CacheLevel>,
+    /// The L3, which fixes `nc`. `None` on most non-server parts.
     pub l3: Option<CacheLevel>,
+    /// Which probe produced these numbers, so a blocking parameter can be
+    /// traced back to a measurement of the machine rather than to [`BUILTIN`].
     pub source: CacheSource,
 }
 
@@ -513,6 +519,9 @@ pub enum BlockModel {
 }
 
 impl BlockModel {
+    /// Parse the `TENSORCONTRACT_BLOCKMODEL` spelling. Several synonyms are
+    /// accepted for each arm so that a sweep script can say `on`/`off` and a
+    /// report can say `legacy`/`model`.
     pub fn parse(s: &str) -> Option<BlockModel> {
         match s.trim().to_ascii_lowercase().as_str() {
             "legacy" | "phase2" | "const" | "off" => Some(BlockModel::Legacy),
@@ -521,6 +530,9 @@ impl BlockModel {
         }
     }
 
+    /// The canonical name, which [`BlockModel::parse`] round-trips. Printed
+    /// alongside every measurement, because two arms of a sweep taken under
+    /// different derivations are not comparable.
     pub fn name(self) -> &'static str {
         match self {
             BlockModel::Legacy => "legacy",
@@ -572,7 +584,11 @@ pub fn block_model() -> BlockModel {
 pub struct PanelGeom {
     /// `S_DATA`: bytes in one real scalar.
     pub real_bytes: usize,
+    /// Reals a packed `A` panel carries per logical element: 1 real, 2 planar,
+    /// 4 for 1m's "1e", 3 for 3m.
     pub a_reals: usize,
+    /// Reals a packed `B` panel carries per logical element. Differs from
+    /// `a_reals` only under 1m, whose `B` stays in planar "1r" form.
     pub b_reals: usize,
     /// Logical rows of the micro-tile.
     pub mr: usize,

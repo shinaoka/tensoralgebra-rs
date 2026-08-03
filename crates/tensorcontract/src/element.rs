@@ -20,7 +20,17 @@ use num_complex::Complex;
 /// Implemented here for `f32`/`f64`. Downstream types (extended precision,
 /// dual numbers for forward-mode AD, `bf16`, ...) can implement this and get a
 /// correct — if unvectorised — contraction engine for free by also
-/// implementing [`crate::kernel::KernelSet`].
+/// implementing [`crate::kernel::KernelSet`]; there is a worked example in
+/// [`crate::kernel::scalar`].
+///
+/// The supertrait list is the whole arithmetic requirement, and it is
+/// deliberately short: the engine never divides in the hot path and never
+/// compares for ordering there either — `Div` and `PartialOrd` are here only
+/// for the test oracle's error metrics. Note in particular that no
+/// floating-point *properties* are assumed. Nothing below requires
+/// associativity, so a type with unusual rounding is admissible; what is
+/// required is that [`Real::ZERO`] is an additive identity, because the
+/// micro-kernels initialise accumulators with it.
 pub trait Real:
     Copy
     + Send
@@ -36,13 +46,28 @@ pub trait Real:
     + AddAssign
     + 'static
 {
+    /// The additive identity. Micro-kernels initialise their accumulator tiles
+    /// with it, so it must behave as one under `+`.
     const ZERO: Self;
+    /// The multiplicative identity, used to recognise `alpha == 1` and
+    /// `beta == 1` and skip the scaling entirely.
     const ONE: Self;
 
+    /// Convert from `f64`. Used for scalars supplied by the caller and by the
+    /// tests; never called per element in the hot path.
     fn from_f64(v: f64) -> Self;
+    /// Convert to `f64`, for diagnostics and the test oracle's error metrics.
+    /// Lossy for wider types, which is acceptable because nothing computational
+    /// depends on it.
     fn to_f64(self) -> f64;
+    /// Magnitude, for error metrics only.
     fn abs(self) -> Self;
 
+    /// Whether this value is [`Real::ZERO`].
+    ///
+    /// Provided rather than required because the derived definition is right for
+    /// every sane type; override it only if equality with zero is not the test
+    /// you want (a type with a signed zero and no `-0.0 == 0.0`, say).
     #[inline(always)]
     fn is_zero(self) -> bool {
         self == Self::ZERO
@@ -84,21 +109,42 @@ pub trait Element: Copy + Send + Sync + fmt::Debug + PartialEq + 'static {
     /// The underlying real type.
     type Real: Real;
 
+    /// Whether this element type carries an imaginary part.
+    ///
+    /// The engine branches on this rather than on `PLANES` because it is what
+    /// decides *which* trait method supplies the kernel — real element types
+    /// never consult a [`crate::kernel::ComplexMethod`] at all.
     const IS_COMPLEX: bool;
     /// Number of real planes per element: 1 for real, 2 for complex.
     const PLANES: usize;
     /// Real flops per multiply-accumulate: 2 for real, 8 for complex.
+    ///
+    /// Reported so a harness computes throughput the same way the engine
+    /// counts work. Note that this is the *textbook* count and is deliberately
+    /// not reduced for 3m, whose 25% saving is a property of the method and not
+    /// of the problem — charging 3m fewer flops would flatter it.
     const FLOPS_PER_MAC: u64;
 
+    /// The additive identity.
     fn zero() -> Self;
+    /// The multiplicative identity.
     fn one() -> Self;
+    /// The real part.
     fn re(self) -> Self::Real;
+    /// The imaginary part, or [`Real::ZERO`] for a real type.
     fn im(self) -> Self::Real;
+    /// Rebuild an element from its parts. A real type discards `im`, which is
+    /// why the engine can use one write-back for both domains.
     fn from_parts(re: Self::Real, im: Self::Real) -> Self;
 
+    /// Complex conjugate; the identity for a real type.
     fn conj(self) -> Self;
+    /// Element-wise product. Inherent rather than a `Mul` bound so that the
+    /// trait imposes no operator impls on a foreign element type.
     fn mul(self, rhs: Self) -> Self;
+    /// Element-wise sum.
     fn add(self, rhs: Self) -> Self;
+    /// Element-wise difference.
     fn sub(self, rhs: Self) -> Self;
 
     /// Magnitude, used by the test oracle for error metrics.
@@ -210,9 +256,9 @@ macro_rules! impl_element_complex {
 impl_element_complex!(f32);
 impl_element_complex!(f64);
 
-/// Convenient aliases matching the TAPP datatype names.
+/// Single-precision complex, spelled as TAPP's `TAPP_C32` names it.
 pub type C32 = Complex<f32>;
-/// Convenient aliases matching the TAPP datatype names.
+/// Double-precision complex, spelled as TAPP's `TAPP_C64` names it.
 pub type C64 = Complex<f64>;
 
 #[cfg(test)]
