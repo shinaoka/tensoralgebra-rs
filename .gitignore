@@ -7,3 +7,6 @@ perf.data*
 # Byte-compiled Python from the analysis scripts.
 __pycache__/
 *.pyc
+
+# Slurm job logs from scripts/rusty-phase4.sbatch.
+slurm-*.out

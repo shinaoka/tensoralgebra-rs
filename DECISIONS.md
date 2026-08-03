@@ -2094,6 +2094,30 @@ differs by machine.
   enforced rather than remembered: one stage at a time, only `prep` compiles, and
   a guard refuses to start a measurement while any `cargo`/`rustc`/`tcbench` of
   the user's is alive.
+* `scripts/placement-verdict.py` — the accept/reject rule **as code**, so an
+  unattended run can act on it and, more to the point, so the threshold cannot
+  drift once the numbers are visible. Strict reading of the pre-registered rule:
+  the per-case bound is the solo pair's *worst* case, not a percentile, because a
+  percentile is a knob and a knob chosen after seeing the data is how a
+  pre-registered rule stops being one. Every placed replicate must pass, not just
+  the one on the reference core, since the grid assigns arms to slots arbitrarily.
+* `scripts/rusty-phase4.sbatch` — the whole session unattended. Stage order is
+  `prep, shapes, threads, validate, grid`: `shapes` moves ahead of the
+  higher-priority `threads` because on an AVX2 node it is the highest-value single
+  deliverable and costs twenty minutes, so putting it behind a four-hour stage
+  risks the cheap irreplaceable thing for nothing. Stages are independent and a
+  failure does not abort the rest.
+
+**The rejection path returns data rather than nothing.** A rejected placement
+means the full grid cannot run — sequential is ~23 h on this node and does not fit
+a 12 h allocation — so the batch script runs a *scoped* grid sequentially inside
+the wall time that is left, in the order `base model base2` then the `kc` family:
+the model arm is a whole different derivation rather than a point in the grid and
+needs its brackets to mean anything, and `kc` is the first-order parameter. Arms
+that do not fit are named in `skipped-arms.txt` and in the log, because a bounded
+run that does not say what it dropped reads as complete coverage. A scoped grid is
+reported as scoped — offline rule scoring against a partial grid is not the asset
+that scoring against a whole one is.
 
 ### The prediction, made first
 

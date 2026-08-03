@@ -191,9 +191,12 @@ case "$STAGE" in
     validate) stage_validate ;;
     grid)     stage_grid ;;
     all)
+        # `shapes` before `threads` on purpose: it is twenty minutes and, on an
+        # AVX2 node, the highest-value single deliverable here (D26's blocks are
+        # an unmeasured guess), so it should not be behind a four-hour stage.
         stage_prep
-        stage_threads
         stage_shapes
+        stage_threads
         stage_validate
         say "stopping before the grid: it needs the placement decision from validate."
         say "then: PLACEMENT=auto scripts/node-session.sh grid $OUT"

@@ -101,6 +101,10 @@ def main():
                          "regime, occupancy recording included")
     ap.add_argument("--fake", metavar="CMD",
                     help="run CMD instead of tcbench, to test placement without measuring")
+    ap.add_argument("--deadline", type=float, metavar="EPOCH",
+                    help="stop starting new arms after this unix time; arms already "
+                         "running are allowed to finish. Skipped arms are reported "
+                         "loudly, never silently dropped")
     a = ap.parse_args()
 
     if not a.fake and not os.access(a.bin, os.X_OK):
@@ -202,12 +206,19 @@ def main():
                   f"co-tenants: {co or 'none'}")
             sys.stdout.flush()
 
+    skipped = []
+
     def worker():
         while True:
             try:
                 job = pending.get_nowait()
             except queue.Empty:
                 return
+            if a.deadline and time.time() >= a.deadline:
+                with lock:
+                    skipped.append(job["tag"])
+                pending.task_done()
+                continue
             slot = free.get()
             try:
                 run_one(job, slot)
@@ -242,9 +253,16 @@ def main():
     print()
     print(f"{len(results)} arms in {(time.time() - t0) / 60:.1f} min wall "
           f"(sum of arm times {sum(r['seconds'] for r in results) / 60:.1f} min)")
-    print("observed overlap per arm: "
-          f"min {min(r['overlap'] for r in results)}, "
-          f"max {max(r['overlap'] for r in results)}")
+    if results:
+        print("observed overlap per arm: "
+              f"min {min(r['overlap'] for r in results)}, "
+              f"max {max(r['overlap'] for r in results)}")
+    if skipped:
+        # A bounded run that does not say what it dropped reads as complete
+        # coverage. Say it, in both places anyone will look.
+        print(f"DEADLINE: {len(skipped)} arms never started: {' '.join(skipped)}")
+        with open(os.path.join(a.outdir, "skipped-arms.txt"), "w") as f:
+            f.write("\n".join(skipped) + "\n")
     if bad:
         print(f"FAILED arms: {[r['tag'] for r in bad]}")
     return 1 if bad else 0

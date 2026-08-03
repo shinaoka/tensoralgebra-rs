@@ -135,6 +135,15 @@ ARMS=(
 # single source of truth whichever regime runs them. The dtype pairs are
 # separate jobs rather than an inner loop: they are independent measurements, so
 # under concurrent placement they are 40 jobs and not 20.
+#
+# `ARMS_ONLY` keeps a subset, by tag. It exists for the case where the placement
+# was *rejected* and the grid has to run sequentially inside whatever wall time
+# is left: then the arms are not all equally worth having, and the order to keep
+# them in is `base model base2` first — the model arm is a whole different
+# derivation rather than a point in the grid, and it needs its two brackets to
+# mean anything — then the `kc` family, `kc` being the first-order parameter.
+# A subset is a *scoped* grid and must be reported as one; offline rule scoring
+# against a partial grid is not the same asset as against the whole one.
 JOBS_FILE="$OUT/arms.jobs"
 : > "$JOBS_FILE"
 {
@@ -144,10 +153,17 @@ JOBS_FILE="$OUT/arms.jobs"
         t=${pair/,/}
         for arm in "${ARMS[@]}"; do
             read -r tag envs <<<"$arm"
+            if [ -n "${ARMS_ONLY:-}" ]; then
+                case " $ARMS_ONLY " in *" $tag "*) ;; *) continue ;; esac
+            fi
             echo "bl-$tag-$t  $pair  $envs"
         done
     done
 } >> "$JOBS_FILE"
+if [ -n "${ARMS_ONLY:-}" ]; then
+    echo "SCOPED GRID: only arms [$ARMS_ONLY] -- this is not the full grid" \
+        | tee -a "$OUT/run.log"
+fi
 
 PLACE=(--cpus "$CPU" --sequential)
 if [ "$CPU" = auto ]; then
@@ -157,10 +173,12 @@ fi
 
 FILT=()
 [ -n "$FILTER" ] && FILT=(--case "$FILTER")
+DEAD=()
+[ -n "${DEADLINE:-}" ] && DEAD=(--deadline "$DEADLINE")
 
 scripts/run-arms.py "$JOBS_FILE" --outdir "$OUT" --bin "$BIN" \
     --size "$SIZE" --reps "$REPS" --engines planar,1m,3m \
-    "${FILT[@]}" "${PLACE[@]}" | tee -a "$OUT/run.log"
+    "${FILT[@]}" "${PLACE[@]}" "${DEAD[@]}" | tee -a "$OUT/run.log"
 
 echo "grid complete; score rules with scripts/blocking-score-rules.py" \
     | tee -a "$OUT/run.log"

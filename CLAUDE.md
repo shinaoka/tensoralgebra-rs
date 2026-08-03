@@ -353,7 +353,16 @@ experimental design, and exactly why neither could see that a 3% orientation
 error was blocking a 20% shape change in the shipped combination. Always finish
 with an end-to-end A/B in the configuration that actually ships (A20).
 
-On a cluster node, drive everything through the staged session instead:
+On a cluster node, submit the whole session unattended:
+
+```bash
+sbatch scripts/rusty-phase4.sbatch      # rome, exclusive, 1 node, 12 h
+```
+
+It runs `prep, shapes, threads, validate, grid`, decides the grid's placement with
+`scripts/placement-verdict.py` (the rule pre-registered in `DECISIONS.md` part 10),
+and falls back to a scoped sequential grid inside the remaining wall time if the
+placement is rejected. Or drive the same stages by hand:
 
 ```bash
 scripts/node-session.sh prep     bench-results/<node>-<arch>   # build, describe, predict
