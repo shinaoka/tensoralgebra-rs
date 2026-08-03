@@ -121,11 +121,28 @@ worth another 1.218 on six `c32` 1m cases. End to end against Phase 4.1:
 **`f32` 1.028, `c32` 1m 1.022, `c32` planar 1.013, `c32` 3m 1.010**, 64-bit
 flat, best case 1.48x, one genuine per-case regression at 7%.
 
-**Two things are pending, one measurement and one measurement.** Both are
-written, smoke-tested and waiting for an idle machine; neither needs a rebuild.
+**Since the last measurement, four things were built and none was measured.**
+All are correct, all are off or inert by default, and the whole set is green
+across ten combinations of the switches (default, `scalar`, `avx2`, 8 threads
+crossed with each, partition pinned to `m`/`n`/`2x2`, `blockmodel=model`, and a
+debug build):
+
+* **AVX2 kernels and ISA dispatch** (`avx512f` → `avx2+fma` → scalar), one macro
+  body per method across both ISAs. The AVX-512 instruction stream is
+  byte-identical to before — verified by disassembling both trees — so every
+  number in this file stands. Register blocks are *provisional and unmeasured*.
+  See the AVX2 interlude and D24–D26.
+* **The analytical cache-blocking model** (part 9, D23), behind
+  `TENSORCONTRACT_BLOCKMODEL=model`, default `legacy`. Predicts a `kc` 2.4–8x
+  smaller than the constants, i.e. an L1-resident `A` sliver.
+* **2-D threading** (part 8b, D27–D29), still off by default.
+* **The corpus's parallel width and the case against K-parallelism** (A21).
+
+**Then two measurements are pending.** Both are written, smoke-tested and waiting
+for an idle machine; neither needs a rebuild.
 
 1. **Item 2, the blocking grid** (part 7). `scripts/phase4e-blocking.sh 4
-   bench-results/phase4e`, 19 arms x 2 dtype pairs, ~7 h. It was launched
+   bench-results/phase4e`, 20 arms x 2 dtype pairs, ~7.5 h. It was launched
    2026-08-03 08:11 and **stopped after two arms** because the workstation was
    needed; the partial arms were discarded rather than mixed with a later
    regime. Nothing of it is measured. On completion, `run.log` ends in `grid
@@ -133,10 +150,13 @@ written, smoke-tested and waiting for an idle machine; neither needs a rebuild.
    bench-results/phase4e/features.csv bench-results/phase4e` produces the
    tables for part 7. Note part 8's caveat: the `nc` arms are single-core
    results, because threading makes `NC` a per-socket question.
-2. **Item 4, thread scaling** (part 8). `scripts/phase4f-threads.sh 0-7
-   bench-results/phase4f`, ~1 h, wants a whole socket rather than one core.
-   Threading itself is **implemented, correct and off by default** — see part 8
-   for the scheme and D21/D22 for why.
+2. **Item 4, thread scaling** (parts 8 and 8b). `scripts/phase4f-threads.sh 0-7
+   bench-results/phase4f`, ~1 h, wants a whole socket rather than one core. It
+   now also runs `TENSORCONTRACT_PARTITION=m` and `=n` at 8 threads, which price
+   the one modelled decision in `Plan::partition` — read part 8b first, since the
+   sharpest thing to check is whether leaving two cases 1-D on 7 of 8 threads is
+   right. Threading is **implemented, correct and off by default**; D21/D22 give
+   the scheme and why, D27–D29 the 2-D extension.
 
 Neither may run while anything else uses the machine — not even a compile. Both
 scripts are the only thing that needs to happen; everything they depend on is
@@ -276,6 +296,9 @@ effectively the same ceiling, as expected.
 | D24 | The instruction set is a **parameter of the kernel macro**, not a second set of bodies. `simd_kernels!` takes the lane count, a target-feature list and six intrinsics; AVX-512 and AVX2 are two instantiations of the same four bodies. | D17's argument — a three-method comparison must not also be a comparison between three hand-tunings — applies unchanged to two instruction sets, and would be violated the moment somebody hand-tuned AVX2 planar and not AVX2 3m. It also made the change auditable: because the AVX-512 arm expands from unchanged source text, its instruction stream is *verifiably* untouched (7816 zmm instructions, byte-identical, checked independently at merge). |
 | D25 | Dispatch is `avx512f` → `avx2 + fma` → scalar, and `TENSORCONTRACT_KERNEL` grows to `scalar\|avx2\|avx512\|auto`. A pinned ISA the CPU lacks falls back to scalar rather than faulting. | Without the pin, AVX2 kernels could be compiled on the reference machine and never executed on it, leaving the only coverage on hardware nobody here has. Same rule as `_ORIENT`/`_WRITEBACK`/`_ROWBLOCK`: every new fast path gets a run-time switch, because a build-to-build diff has already produced one wrong sign here (A15). Both `avx2` and `fma` are detected — separate CPUID bits, and the FMAs need the second. |
 | D26 | AVX2 register blocks are **provisional and explicitly unmeasured**, chosen from the register budget and the uop model, with a menu of alternates and `examples/kernel_shapes` extended to an AVX2 grid as the calibration path. | D19 splits this cleanly and the split was honoured: `live <= 16` and `acc >= 10` are load-bearing and were *verified in the disassembly at no CPU cost* (all shipped defaults allocate 15–16 distinct ymm with zero stack traffic; `planar 1x6` at `live=16` spills one register, `planar 2x3` at `live=18` spills seven — the cliff is exactly where the count puts it), while "which of the shapes that fit is fastest" is recorded as a guess. Publishing a modelled shape as measured would corrupt the one thing the register-block table is good for. |
+| D27 | Threading partitions the output in **two dimensions**: `pm` row strips of whole `MR` panels by `pn` column groups of whole `NR` blocks, with `pn > 1` only when `ceil(M/MR) < p`. The `N` cut is made *inside* loop 5, per `NC` block, not over the whole range. | D21's 1-D cap costs real throughput on the 16 case-dtype-methods whose row axis cannot fill 8 threads (part 8). Both axes partition the *output*, so D21's invariant survives intact — one owning thread per element, accumulating over the full `K` in the original order, hence bitwise identical to serial at every thread count *and* every `(pm, pn)`. Cutting `N` inside loop 5 is what keeps the packed `B` panel single and L3-sized (a top-level split would want `pn` panels and `pn` times the L3 budget) and keeps loops 5 and 4 identical across threads, which is what makes the barrier counts agree structurally rather than by bookkeeping. Barriers become per column group and `pm`-way; a pure `N` split synchronises nowhere at all. |
+| D28 | The packed `A` block stays per thread, duplicated `pn` times, rather than packed once per row strip behind a barrier. | The duplication costs one packed element per `NR * ceil(blocks/pn)` lane-FMAs and is only ever paid when `M` is narrow; `Plan::partition` prices it and refuses to split `N` when a thread would have too few `NR` blocks to amortise it. The alternative needs a barrier *inside* loop 3 — `M/MC` times more often than the ones above it — and leaves the block in one thread's L2 for the others to pull across L3, when `MC` exists precisely to make it an L2 resident. |
+| D29 | In the narrow-`M` regime `(pm, pn)` minimises `ceil(panels/pm) * (NR*ceil(blocks/pn) + PACK_WEIGHT)` with `PACK_WEIGHT = 8`, and `TENSORCONTRACT_PARTITION=m\|n\|<pm>x<pn>` pins the partition. | Maximising thread count alone either oversubscribes (3 panels, 8 threads → `3x3` = 9) or wastes threads; balancing tiles alone ignores the `A` duplication and takes an 8th thread that costs more than it returns. The weight is the rule's only modelled quantity, so it is one named constant and its insensitivity was checked offline against the committed feature table: **every weight in `[4, 64]` gives an identical partition on all 392 case-dtype-methods at 2/4/8/16/32 threads**. The env switch makes the axis choice a run-time A/B rather than a build diff (A15). |
 | D21 | Threading parallelises the `M` direction only, into contiguous strips of whole `MR` panels, with a per-thread packed `A` and a **shared** packed `B`. | The `pc` loop accumulates into `D` in place, so parallelising it would need a per-thread temporary or atomics; `M` instead gives every output element one owning thread. That makes the result **bitwise identical to serial at every thread count** — a stronger invariant than agreeing with the oracle, and one a test can assert directly. Strips of whole panels keep each thread's row blocks aligned with the block scatter, so the write-back fast path and the orientation rule are unaffected. `B` is shared because `NC` is sized for L3, which is a per-socket resource. |
 | D22 | The default thread count stays **1** until scaling is measured on the reference machine. | Every performance number in this file is a single-core measurement, and the item 2 blocking grid is designed against the serial engine. A default that changed with the machine's core count would make committed numbers irreproducible from a bare checkout. `TENSORCONTRACT_THREADS` and `Plan::with_threads` opt in; flipping the default is one line in `Plan::threads`. |
 | D20 | Workspace MSRV raised `1.75` → `1.89`. | AVX-512 intrinsics and `is_x86_feature_detected!("avx512f")` were stabilised in Rust 1.89. The alternative — feature-gating the AVX-512 path so 1.75 still builds — would make the project's headline measurement an opt-in extra. 1.89 is a year old. |
@@ -1559,6 +1582,63 @@ reduction negligible. So this is a demand-driven feature, not a Phase 4 item.
 | # | Assumption | Status |
 |---|---|---|
 | A21 | Some compute-bound contractions will need `K`-parallelism, hence per-thread accumulators and a reduction. | **Refuted for this corpus, and argued structurally.** 20 of 392 case-dtype-methods cannot fill 8 threads from `M`, all 20 can from `M x N`, and needing `K` requires fewer than `p` micro-tiles in the whole output — which bounds arithmetic intensity at `~2MN/((M+N)*bytes)` and so bounds the case away from compute-bound. Build the 2-D partition; leave `K` unbuilt until a real shape demands it. |
+
+## Phase 4 report, part 8b (item 4): the partition becomes 2-D
+
+**Status: built, correct, unmeasured.** Still off by default (D22).
+
+Part 8 named the 1-D partition's first limit and sized it before the fix was
+built: 16 of 392 case-dtype-methods cannot fill 8 threads from `M` alone, over
+four cases (`aqrs-pa-pqrs` at 2–6 row panels; `ij-ikl-ljk`, `ij-kil-lkj` and
+`ijk-il-jlk` at 5–7), and every one of them is 26–23435 `NR` blocks wide. (That
+count is at the *default* register block, which is what `tcbench orient` emits;
+the shipped row-block rule changes `MR` on some cases, so a case at the boundary
+can move either way.) The output is now cut into a `pm x pn` grid (D27–D29).
+Three things are worth carrying forward.
+
+**The two axes are cut in different places, and that is the design.** Row strips
+are cut once, outside everything; column groups are cut inside loop 5, per `NC`
+block. So every thread walks the same `(h, jc, pc)` sequence and a thread's cell
+changes only how much work happens inside an iteration, never how many
+iterations there are. That preserves both properties the 1-D scheme rested on —
+one L3-sized shared `B` panel, and barrier counts that agree because loops 5 and
+4 are identical across threads — while making the `N` axis available. A thread
+whose column group is empty in a tail `jc` block still takes both of that
+block's barriers and *then* skips loop 3.
+
+**A negative result on indexing, and the most valuable thing this produced.**
+Indexing the shared `B` panel by *absolute sliver*, which is what the 1-D scheme
+did, is wrong the moment `N` is split: a group's sliver range **moves** between
+`jc` blocks (a tail block has fewer slivers to divide) and its stride changes
+with `pc_len`, so one group's next block lands on another group's current one —
+and by design nothing orders them. Each group now owns a fixed slice, strided by
+the worst-case sliver size so groups on different `pc` blocks cannot overlap
+either. It surfaced only under test-level oversubscription and never in a
+standalone repro; the barrier-stress case, which has one sliver per `jc` block
+and therefore ranges that never move, passed throughout. **Worth remembering as
+the shape of bug this parallelisation produces: not a missing barrier, but a
+buffer whose ownership map is not constant.**
+
+**The one modelled decision, priced without the machine.** `PACK_WEIGHT = 8` was
+replayed offline over all 392 case-dtype-methods at five thread counts, and every
+weight in `[4, 64]` gives an identical partition everywhere; the only two cases
+that move at all choose between candidates 1.4% apart in modelled cost. At 8
+threads the rule spills most of the narrow cases onto the column axis and
+deliberately leaves `ij-ikl-ljk` / `ij-kil-lkj` 1-D **on 7 of 8 threads by
+choice** — 37 column blocks split eight ways is five per thread against a whole
+packed `A` block each. A hand estimate puts 1-D ahead by ~2.6%, which is an
+estimate, which is why `TENSORCONTRACT_PARTITION` exists and why
+`scripts/phase4f-threads.sh` now runs `=m` and `=n` arms at 8 threads beside the
+scaling curve. Verified behaviourally at merge: `aqrs-pa-pqrs` runs `2x4` in
+`f64` and `1x8` in `c64`, a wide case stays `8x1`, and the sweep CSV records
+`t<threads>/<pm>x<pn>` so the partition is recoverable from the data.
+
+Correctness is unchanged in kind and stronger in coverage: bitwise identity with
+serial at every thread count *and* every partition, plus a `Split` expectation on
+every threaded case pinning whether it is meant to be 1-D, 2-D, a genuine grid or
+clamped to serial — written in units of `MR`/`NR`, since a shape two row panels
+deep in `f32` is fourteen with the portable kernels. Green in release and debug,
+and across all ten combinations of the three features merged today.
 
 ## Phase 4 report, part 9: blocking that transfers
 

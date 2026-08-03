@@ -215,15 +215,19 @@ three counts. No AVX2 path yet; deferred to Phase 5's multi-arch work.
    rather than holding the Phase 3 table fixed.
 3. **Dispatch the complex method by shape** — 3m on memory-bound shapes,
    planar otherwise. The inversion is measured and large enough to exploit.
-4. **Threading — implemented, unmeasured.** BLIS-style over `M` only:
-   contiguous strips of whole `MR` panels, per-thread packed `A`, shared packed
-   `B`, `std::thread::scope`, static partitioning. Results are **bitwise
-   identical to serial at every thread count** (no reduction is parallelised),
-   which is the invariant the tests assert. Off by default (`TENSORCONTRACT_THREADS`
-   or `Plan::with_threads` opts in) so every committed single-core number stays
-   reproducible. Known limits: parallelism caps at `ceil(M / MR)` strips, threads
-   are spawned per call rather than pooled, and `NC`'s L3 budget is still charged
-   per core. Measure with `scripts/phase4f-threads.sh` — it wants a whole socket.
+4. **Threading — implemented, unmeasured.** BLIS-style, a 2-D `pm x pn`
+   partition of the *output*: row strips of whole `MR` panels by column groups of
+   whole `NR` blocks, per-thread packed `A`, one shared L3-sized packed `B`,
+   `std::thread::scope`, static partitioning. `pn > 1` only when the row axis
+   cannot fill the threads. Results are **bitwise identical to serial at every
+   thread count and every partition** (no reduction is parallelised), which is the
+   invariant the tests assert. Off by default (`TENSORCONTRACT_THREADS` or
+   `Plan::with_threads` opts in) so every committed single-core number stays
+   reproducible. **K-parallelism is ruled out on evidence, not skipped** — see
+   A21; do not build per-thread accumulators without a shape that demands them.
+   Remaining limits: threads are spawned per call rather than pooled, and `NC`'s
+   L3 budget is charged per core in the legacy blocking (the model arm fixes it,
+   A23). Measure with `scripts/phase4f-threads.sh` — it wants a whole socket.
    Then: small-`k` handling, prefetch, block-scatter
    regularity exploitation, and the rest of the low-arithmetic-intensity work
    from Phase 1 (fusing the `pc` loop so `C` is touched once rather than
@@ -354,6 +358,7 @@ Useful environment variables:
 | `TENSORCONTRACT_MC/_KC/_NC` | override cache blocking absolutely |
 | `TENSORCONTRACT_MC_PCT/_NC_PCT` | scale the *derived* `mc`/`nc`, so each dtype and method keeps its budget share |
 | `TENSORCONTRACT_KC_COUPLE` | set `kc` *and* re-derive `mc`/`nc` at that depth; the item 2 grid's second arm |
+| `TENSORCONTRACT_PARTITION` | `m` \| `n` \| `<pm>x<pn>`: pin the thread partition instead of using `Plan::partition`'s rule |
 | `TENSORCONTRACT_THREADS` | thread count, default **1**. Results are bitwise identical at any value, so this is never a correctness or accuracy decision. Also runs the whole test suite through the threaded driver, which is worth doing after any driver change |
 | `TENSORCONTRACT_ORIENT` | `none` \| `swap`: pin the row/column orientation; `legacy`: the Phase 4.1 rule |
 | `TENSORCONTRACT_WRITEBACK` | `gather` forces the general scatter write-back |
