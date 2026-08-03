@@ -73,6 +73,31 @@
 extern "C" {
 #endif
 
+/* ---------------------------------------------------------------- version */
+
+/*
+ * The version of *this header*. `TAPP_implementation_version()` below returns
+ * the version of the library that was actually linked. They are the same file's
+ * two ends and they can disagree — a distribution that ships the header and the
+ * shared library as separate packages, a stale `-I`, an `LD_PRELOAD` — so both
+ * exist and `examples/c-consumer` checks that they agree.
+ *
+ * These track the crate version, which is `MIT OR Apache-2.0`-licensed
+ * `tensorprimitives-tapp`, not any version of the TAPP standard: TAPP has no
+ * releases and no tags at all, which is why this header exists (see above).
+ */
+#define TAPP_VERSION_MAJOR 0
+#define TAPP_VERSION_MINOR 1
+#define TAPP_VERSION_PATCH 0
+#define TAPP_VERSION_STRING "0.1.0"
+
+/* Non-zero if this header is at least the given version. */
+#define TAPP_VERSION_AT_LEAST(major, minor, patch)                             \
+    ((TAPP_VERSION_MAJOR) > (major) ||                                         \
+     ((TAPP_VERSION_MAJOR) == (major) &&                                       \
+      ((TAPP_VERSION_MINOR) > (minor) ||                                       \
+       ((TAPP_VERSION_MINOR) == (minor) && (TAPP_VERSION_PATCH) >= (patch)))))
+
 /* ------------------------------------------------------------------ types */
 
 /*
@@ -330,6 +355,17 @@ TAPP_EXPORT TAPP_error TAPP_execute_batched_product(TAPP_tensor_product plan,
  * not free the result.
  */
 TAPP_EXPORT const char* TAPP_implementation_name(void);
+
+/*
+ * Not part of TAPP. Returns the `"major.minor.patch"` version of the linked
+ * library as a static NUL-terminated string. Never returns null; do not free the
+ * result.
+ *
+ * Compare against `TAPP_VERSION_STRING` to detect a header that does not match
+ * the library it is describing, which is the failure a separately-packaged
+ * header and shared library make possible.
+ */
+TAPP_EXPORT const char* TAPP_implementation_version(void);
 
 #ifdef __cplusplus
 } /* extern "C" */

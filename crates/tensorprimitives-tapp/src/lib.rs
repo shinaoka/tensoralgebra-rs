@@ -828,6 +828,21 @@ pub extern "C" fn TAPP_implementation_name() -> *const c_char {
     c"tensorprimitives-rs: tensorcontract (planar-complex BSMTC)".as_ptr()
 }
 
+/// The crate version of the *loaded library*, as a static NUL-terminated
+/// `"major.minor.patch"` string. Never null; do not free the result.
+///
+/// Non-standard, and the counterpart to the `TAPP_VERSION_*` macros in
+/// `<tapp.h>`: those describe the header a caller compiled against, this
+/// describes the library it actually linked. When a distribution ships the two
+/// separately — a JLL, a system package, an `LD_PRELOAD` — they can disagree,
+/// and without this there is no way to find out. `examples/c-consumer` compares
+/// them and fails if they differ.
+#[no_mangle]
+pub extern "C" fn TAPP_implementation_version() -> *const c_char {
+    // `c"..."` cannot interpolate, so the NUL is appended by hand.
+    concat!(env!("CARGO_PKG_VERSION"), "\0").as_ptr() as *const c_char
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

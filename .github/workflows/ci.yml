@@ -219,12 +219,15 @@ jobs:
   # built library and checks *numerical* results, so a wrong stride convention
   # or a complex-layout mismatch fails here rather than downstream.
   #
-  # Both supported ways of getting the library are exercised, because they fail
-  # differently. The prebuilt path is what a site that builds the Rust half
+  # All three supported ways of getting the library are exercised, because they
+  # fail differently. The prebuilt path is what a site that builds the Rust half
   # separately does, and needs no network. The corrosion path is what a CMake
   # project would actually write, and depends on corrosion resolving and on
   # cargo being driven correctly from CMake — a break there is invisible to the
-  # prebuilt path.
+  # prebuilt path. The installed-prefix path is what a JLL or a system package
+  # presents, and it is the only one in which the header is found somewhere other
+  # than the source tree, so it is the only one that would notice an install that
+  # forgot to copy it.
   #
   # Linux only, deliberately. macOS would additionally cover `.dylib` naming and
   # install-name handling and is the obvious next addition; it is left out
@@ -234,8 +237,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      # Prebuilt: cargo first, then CMake links what is already there.
+      # Prebuilt: cargo first, then CMake links what is already there. The
+      # SONAME flag is the one from `packaging/yggdrasil` -- rustc emits no
+      # DT_SONAME for a cdylib -- so what CI links is what a distribution ships.
       - run: cargo build --release -p tensorprimitives-tapp
+        env:
+          RUSTFLAGS: -D warnings -C link-arg=-Wl,-soname,libtensorprimitives_tapp.so
       - name: Prebuilt library
         run: |
           cmake -S examples/c-consumer -B build/prebuilt \
@@ -249,6 +256,37 @@ jobs:
                 -DCMAKE_BUILD_TYPE=Release -DTAPP_USE_CORROSION=ON
           cmake --build build/corrosion
           ctest --test-dir build/corrosion --output-on-failure
+      # An installed prefix, produced by the same script the BinaryBuilder recipe
+      # calls, consumed through the pkg-config file it writes.
+      - name: Installed prefix
+        run: |
+          crates/tensorprimitives-tapp/install.sh --prefix="${PWD}/build/pfx"
+          cmake -S examples/c-consumer -B build/installed \
+                -DCMAKE_BUILD_TYPE=Release -DTAPP_PREFIX="${PWD}/build/pfx"
+          cmake --build build/installed
+          ctest --test-dir build/installed --output-on-failure
+      # Two properties of the shipped binary that nothing in the Rust test suite
+      # can see, and that a binary distribution depends on.
+      - name: Shared-library properties
+        run: |
+          lib=target/release/libtensorprimitives_tapp.so
+          # A cdylib gets no DT_SONAME from rustc. Without one, every consumer
+          # records a bare filename and the library cannot be versioned at all.
+          readelf -d "$lib" | grep -q 'SONAME.*libtensorprimitives_tapp\.so'
+          # 22 TAPP symbols plus TAPP_implementation_{name,version}.
+          test "$(nm -D --defined-only "$lib" | grep -c ' T TAPP_')" -eq 24
+          # BinaryBuilder's `check_isa` audit *fails* a build whose minimum
+          # instruction set exceeds the platform's -- and this cdylib contains
+          # AVX-512 kernel bodies in a binary built for generic x86-64. It passes
+          # only because `analyze_instruction_set` abandons the analysis when it
+          # finds a `cpuid`, on the grounds that the library may be dispatching at
+          # run time, which is exactly what this one does. That escape hatch is
+          # load-bearing and is not a contract anyone promised us, so assert it:
+          # if `kernel::cache`'s `__cpuid_count` and `std_detect`'s `__cpuid` both
+          # ever left the cdylib, the failure would otherwise arrive months later
+          # as "Minimum instruction set detected ... is avx512" in someone else's
+          # CI. See D40.
+          test "$(objdump -d "$lib" | grep -c cpuid)" -gt 0
 
   # The vendored, network-free build, which is how an air-gapped HPC site would
   # take this.

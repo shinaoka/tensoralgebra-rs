@@ -21,6 +21,13 @@
 #     from a vendored tarball — and for anyone who would rather not have CMake
 #     invoke cargo at all.
 #
+#   TAPP_PREFIX=<dir>
+#     Consume an *installed* prefix — the layout `install.sh` produces, which is
+#     also the layout a JLL or a system package presents. Takes precedence over
+#     both of the above. This is the only mode in which the header is found
+#     somewhere other than the source tree, so it is the one that would catch a
+#     header the install forgot to copy.
+#
 # Nothing here needs a Rust toolchain at run time, and nothing crosses the C++
 # ABI: the boundary is C, so there is no name mangling, no exception
 # propagation and no libstdc++ version coupling.
@@ -38,6 +45,46 @@ get_filename_component(TAPP_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLU
 set(TAPP_CRATE_DIR "${TAPP_REPO_ROOT}/crates/tensorprimitives-tapp")
 
 add_executable(tapp-c-consumer main.c)
+
+# This program's own dependency, not the library's: `main.c` calls `cabs` from
+# <complex.h> to compare results. Stated once, before the branch, because all
+# three link modes need it and only one of them used to say so.
+if(UNIX)
+    target_link_libraries(tapp-c-consumer PRIVATE m)
+endif()
+
+if(DEFINED TAPP_PREFIX)
+    # An installed prefix. Prefer pkg-config, since that is what the install
+    # ships and what a real consumer would reach for; fall back to the layout
+    # directly if pkg-config is not available.
+    find_package(PkgConfig)
+    if(PkgConfig_FOUND)
+        set(ENV{PKG_CONFIG_PATH} "${TAPP_PREFIX}/lib/pkgconfig")
+        pkg_check_modules(TAPP REQUIRED IMPORTED_TARGET tensorprimitives-tapp)
+        message(STATUS "Using installed TAPP ${TAPP_VERSION} via pkg-config from ${TAPP_PREFIX}")
+        target_link_libraries(tapp-c-consumer PRIVATE PkgConfig::TAPP)
+        set(TAPP_RUNTIME_DIR "${TAPP_LIBRARY_DIRS}")
+    else()
+        message(STATUS "Using installed TAPP from ${TAPP_PREFIX} (no pkg-config)")
+        find_library(TAPP_LIBRARY
+            NAMES tensorprimitives_tapp
+            HINTS "${TAPP_PREFIX}/lib" "${TAPP_PREFIX}/bin"
+            REQUIRED
+        )
+        target_include_directories(tapp-c-consumer PRIVATE "${TAPP_PREFIX}/include")
+        target_link_libraries(tapp-c-consumer PRIVATE "${TAPP_LIBRARY}")
+        get_filename_component(TAPP_RUNTIME_DIR "${TAPP_LIBRARY}" DIRECTORY)
+    endif()
+
+    # An installed cdylib carries a SONAME but is not on the default search path,
+    # so the consumer needs the rpath just as in the prebuilt mode.
+    set_target_properties(tapp-c-consumer PROPERTIES BUILD_RPATH "${TAPP_RUNTIME_DIR}")
+
+    enable_testing()
+    add_test(NAME c-consumer COMMAND tapp-c-consumer)
+    return()
+endif()
+
 target_include_directories(tapp-c-consumer PRIVATE "${TAPP_CRATE_DIR}/include")
 
 if(TAPP_USE_CORROSION)
@@ -77,7 +124,7 @@ else()
     # does not, but asking for them is harmless either way. Threads are needed
     # regardless, since the engine's optional threading uses std::thread.
     find_package(Threads REQUIRED)
-    target_link_libraries(tapp-c-consumer PRIVATE Threads::Threads ${CMAKE_DL_LIBS} m)
+    target_link_libraries(tapp-c-consumer PRIVATE Threads::Threads ${CMAKE_DL_LIBS})
 
     # Let the built binary find a cdylib without LD_LIBRARY_PATH being set.
     set_target_properties(tapp-c-consumer PROPERTIES

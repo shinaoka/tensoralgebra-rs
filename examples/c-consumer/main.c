@@ -213,8 +213,84 @@ static void test_refusals(TAPP_handle handle, TAPP_executor exec) {
     must(TAPP_destroy_tensor_info(id), "destroy D");
 }
 
+/*
+ * The header and the library agree about the version.
+ *
+ * `abi_layout.rs` already checks the `TAPP_VERSION_*` macros against
+ * `CARGO_PKG_VERSION` by reading the header as text. This is the other half, and
+ * it is the half that needs a C compiler: here the macro comes from the header
+ * this translation unit actually included, and the string comes from the library
+ * it actually linked. A distribution that ships `include/` and `lib/` as separate
+ * packages can get those from different versions, and nothing else would notice.
+ */
+static void test_version_agreement(void) {
+    const char* linked = TAPP_implementation_version();
+    printf("  header %s, library %s\n", TAPP_VERSION_STRING, linked);
+    check(strcmp(TAPP_VERSION_STRING, linked) == 0,
+          "header TAPP_VERSION_STRING matches the linked library");
+    check(TAPP_VERSION_AT_LEAST(0, 1, 0), "TAPP_VERSION_AT_LEAST(0, 1, 0)");
+    check(!TAPP_VERSION_AT_LEAST(99, 0, 0), "!TAPP_VERSION_AT_LEAST(99, 0, 0)");
+}
+
+/*
+ * Reference every function `<tapp.h>` declares.
+ *
+ * The tests above call the entry points that do work, which leaves eight
+ * declarations that no C compiler has ever checked and no linker has ever
+ * resolved: `TAPP_set_nmodes`, `TAPP_set_extents`, `TAPP_set_strides`,
+ * `TAPP_get_strides`, `TAPP_execute_batched_product`, `TAPP_destroy_status`,
+ * `TAPP_attr_set` and `TAPP_attr_clear`. A wrong prototype for one of those
+ * would have been caught only by `abi_layout.rs`'s independent Rust
+ * transcription — which is a second hand-maintained copy, not an oracle.
+ *
+ * Taking each address is enough. It forces the declaration to be well-formed and
+ * the symbol to resolve at link time, without this file having to invent
+ * semantics for the ones that are deliberately inert.
+ */
+static void test_every_declaration_links(void) {
+    void* const decls[] = {
+        (void*)TAPP_check_success,
+        (void*)TAPP_explain_error,
+        (void*)TAPP_create_handle,
+        (void*)TAPP_destroy_handle,
+        (void*)TAPP_create_executor,
+        (void*)TAPP_destroy_executor,
+        (void*)TAPP_destroy_status,
+        (void*)TAPP_attr_set,
+        (void*)TAPP_attr_get,
+        (void*)TAPP_attr_clear,
+        (void*)TAPP_create_tensor_info,
+        (void*)TAPP_destroy_tensor_info,
+        (void*)TAPP_get_nmodes,
+        (void*)TAPP_set_nmodes,
+        (void*)TAPP_get_extents,
+        (void*)TAPP_set_extents,
+        (void*)TAPP_get_strides,
+        (void*)TAPP_set_strides,
+        (void*)TAPP_create_tensor_product,
+        (void*)TAPP_destroy_tensor_product,
+        (void*)TAPP_execute_product,
+        (void*)TAPP_execute_batched_product,
+        (void*)TAPP_implementation_name,
+        (void*)TAPP_implementation_version,
+    };
+    const size_t n = sizeof decls / sizeof *decls;
+
+    int all_resolved = 1;
+    for (size_t i = 0; i < n; i++) {
+        if (decls[i] == NULL) {
+            all_resolved = 0;
+        }
+    }
+    /* 22 TAPP symbols plus the two non-standard extensions. */
+    check(n == 24 && all_resolved, "every declaration in <tapp.h> links");
+}
+
 int main(void) {
     printf("TAPP provider: %s\n", TAPP_implementation_name());
+
+    test_version_agreement();
+    test_every_declaration_links();
 
     TAPP_handle handle;
     TAPP_executor exec;

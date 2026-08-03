@@ -118,6 +118,36 @@ The distinction matters more than the numbers, so it is stated per item.
 `K`-parallelism is deliberately absent, on evidence rather than by omission —
 see `DECISIONS.md` A21.
 
+### Added — distribution surface
+
+* **A version that can be asked at run time.** `TAPP_VERSION_MAJOR/MINOR/PATCH`,
+  `TAPP_VERSION_STRING` and `TAPP_VERSION_AT_LEAST()` in `<tapp.h>` describe the
+  header; `TAPP_implementation_version()` describes the *linked library*. Nothing
+  reported a version before, so a header and a shared library from different
+  packages could disagree silently. Both halves are now tested: `abi_layout.rs`
+  checks the macros against `CARGO_PKG_VERSION` by reading the header as text,
+  and `examples/c-consumer` compares the macro a C compiler saw against the string
+  the library it linked returns.
+* **A prefix install.** `crates/tensorprimitives-tapp/install.sh --prefix=DIR`
+  lays out `lib/`, `include/`, `lib/pkgconfig/` and `share/licenses/`, generating
+  a `tensorprimitives-tapp.pc`. The BinaryBuilder recipe calls the same script, so
+  a JLL and a manual install present the same layout by construction.
+* **A third link mode in `examples/c-consumer`**, `-DTAPP_PREFIX=<dir>`, which
+  consumes an installed prefix through `pkg_check_modules`. It is the only mode in
+  which the header is found outside the source tree. CI runs all three.
+* **Every declaration in `<tapp.h>` is now referenced from C.** Eight prototypes
+  — the setters, `TAPP_get_strides`, the batched product, `TAPP_destroy_status`,
+  `TAPP_attr_set`/`_clear` — were declared and never compiled or linked by any C
+  translation unit, so their only check was a second hand-maintained Rust
+  transcription.
+* **`SONAME` / install-name are set at link time.** rustc emits neither for a
+  `cdylib`: on ELF there is no `DT_SONAME` at all, and on Mach-O `LC_ID_DYLIB` is
+  the absolute build-tree path. `RUSTFLAGS='-C link-arg=-Wl,-soname,…'` (and the
+  `-install_name,@rpath/…` counterpart) fix both without rewriting binaries, which
+  matters because `patchelf` needs `--page-size 65536` on every 64 KiB-page
+  architecture. Documented for hand-building sites, used by CI and by the recipe,
+  and `install.sh` warns when they are missing.
+
 ### Added — portability
 
 * **Eleven cross-compilation targets checked in CI**, which had never been done:

@@ -109,8 +109,9 @@ mod c_abi {
             d: *mut *mut c_void,
         ) -> c_int;
 
-        // Non-standard extension, documented in the crate.
+        // Non-standard extensions, documented in the crate.
         pub fn TAPP_implementation_name() -> *const c_char;
+        pub fn TAPP_implementation_version() -> *const c_char;
 
         // `api/include/tapp/attributes.h`. These were missing entirely when this
         // suite was written — a C program including `<tapp.h>` and calling one
@@ -284,13 +285,71 @@ fn every_documented_symbol_resolves_and_runs() {
         assert_eq!(c_abi::TAPP_destroy_executor(exec), 0);
         assert_eq!(c_abi::TAPP_destroy_handle(handle), 0);
 
-        // The remaining two symbols.
+        // The remaining three symbols.
         let mut buf: [c_char; 64] = [0; 64];
         assert!(c_abi::TAPP_explain_error(3, buf.len(), buf.as_mut_ptr()) > 0);
         let name = c_abi::TAPP_implementation_name();
         assert!(!name.is_null());
         assert!(CStr::from_ptr(name).to_str().is_ok());
+        let version = c_abi::TAPP_implementation_version();
+        assert!(!version.is_null());
+        assert!(CStr::from_ptr(version).to_str().is_ok());
     }
+}
+
+// ------------------------------------------------------------------- versioning
+
+/// The library reports its own version, and the shipped header's macros agree
+/// with it.
+///
+/// Three things now state the version — `Cargo.toml`, the `TAPP_VERSION_*`
+/// macros in `include/tapp.h`, and `TAPP_implementation_version()` — and two of
+/// them are hand-maintained. `Cargo.toml` is the source of truth via
+/// `CARGO_PKG_VERSION`; this test is what makes the header's copy of it a build
+/// failure rather than a downstream one.
+///
+/// The header is parsed as text on purpose. Asking a C preprocessor would need a
+/// C compiler in the loop, which `examples/c-consumer` supplies for the *other*
+/// half of the claim (macro against runtime symbol, both seen by `cc`); this half
+/// has to hold in a bare `cargo test`, on a machine with no C toolchain at all.
+#[test]
+fn the_header_version_macros_match_the_crate_version() {
+    let header = include_str!("../include/tapp.h");
+
+    let macro_value = |name: &str| -> String {
+        let needle = format!("#define {name} ");
+        header
+            .lines()
+            .find_map(|l| l.strip_prefix(&needle))
+            .unwrap_or_else(|| panic!("{name} is not defined in include/tapp.h"))
+            .trim()
+            .trim_matches('"')
+            .to_string()
+    };
+
+    let from_header = format!(
+        "{}.{}.{}",
+        macro_value("TAPP_VERSION_MAJOR"),
+        macro_value("TAPP_VERSION_MINOR"),
+        macro_value("TAPP_VERSION_PATCH"),
+    );
+    assert_eq!(
+        from_header,
+        env!("CARGO_PKG_VERSION"),
+        "include/tapp.h's TAPP_VERSION_* macros disagree with Cargo.toml; \
+         bump the header when you bump the crate"
+    );
+    assert_eq!(
+        macro_value("TAPP_VERSION_STRING"),
+        env!("CARGO_PKG_VERSION"),
+        "include/tapp.h's TAPP_VERSION_STRING disagrees with Cargo.toml"
+    );
+
+    // And the symbol a caller actually asks at run time.
+    let reported = unsafe { CStr::from_ptr(c_abi::TAPP_implementation_version()) }
+        .to_str()
+        .expect("the version string is not UTF-8");
+    assert_eq!(reported, env!("CARGO_PKG_VERSION"));
 }
 
 /// The C symbols and the Rust paths are the same functions, not two

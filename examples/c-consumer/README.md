@@ -80,6 +80,60 @@ needs `-lpthread -ldl -lm` explicitly, and exports internal symbols that collide
 if two Rust static libraries end up in one binary. The cdylib is ~5 MB and
 exports essentially only the TAPP symbols.
 
+## Installing into a prefix
+
+If you want the library somewhere other than `target/release` — a module tree, a
+container image, `/usr/local` — build it and then install it:
+
+```bash
+cargo build --release -p tensorprimitives-tapp
+crates/tensorprimitives-tapp/install.sh --prefix=/opt/tapp
+```
+
+That lays out `lib/libtensorprimitives_tapp.so`, `include/tapp.h`,
+`lib/pkgconfig/tensorprimitives-tapp.pc` and the two licences, after which the
+library is consumable without knowing anything about cargo:
+
+```bash
+export PKG_CONFIG_PATH=/opt/tapp/lib/pkgconfig
+cc myprog.c $(pkg-config --cflags --libs tensorprimitives-tapp) \
+   -Wl,-rpath,/opt/tapp/lib -lm
+```
+
+From CMake, `-DTAPP_PREFIX=/opt/tapp` in this example project does the same
+through `pkg_check_modules`. This is the same script the BinaryBuilder recipe
+under `packaging/yggdrasil` calls, so the layout a JLL presents and the layout a
+manual install produces are the same layout by construction.
+
+### Set the SONAME, because cargo will not
+
+**rustc emits `-soname` only for the `dylib` crate type, never for a `cdylib`.**
+A library built with a plain `cargo build` therefore has no `DT_SONAME`, and
+everything that links against it records a bare filename instead. On macOS it is
+worse: `LC_ID_DYLIB` defaults to the absolute path the linker wrote to, so the
+`.dylib` is not relocatable at all.
+
+Set them at link time. `install.sh` warns if you did not:
+
+```bash
+# Linux, FreeBSD
+RUSTFLAGS='-C link-arg=-Wl,-soname,libtensorprimitives_tapp.so' \
+  cargo build --release -p tensorprimitives-tapp
+
+# macOS
+RUSTFLAGS='-C link-arg=-Wl,-install_name,@rpath/libtensorprimitives_tapp.dylib' \
+  cargo build --release -p tensorprimitives-tapp
+
+# musl, where the cdylib is otherwise *dropped* -- cargo prints "dropping
+# unsupported crate type `cdylib`" and exits 0, leaving you a header and no
+# library
+RUSTFLAGS='-C target-feature=-crt-static -C link-arg=-Wl,-soname,libtensorprimitives_tapp.so' \
+  cargo build --release -p tensorprimitives-tapp
+```
+
+Do not reach for `-C rpath` to get the macOS install name: it sets it, and also
+bakes build-tree `LC_RPATH` entries into the library.
+
 ## Offline and air-gapped sites
 
 Cargo fetches from crates.io on first build, which a cmake+C++ build does not.
