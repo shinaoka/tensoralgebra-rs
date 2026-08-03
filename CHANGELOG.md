@@ -118,6 +118,17 @@ The distinction matters more than the numbers, so it is stated per item.
 `K`-parallelism is deliberately absent, on evidence rather than by omission —
 see `DECISIONS.md` A21.
 
+### Added — portability
+
+* **Eleven cross-compilation targets checked in CI**, which had never been done:
+  `i686`, `aarch64`, `armv7`, `ppc64le` and `riscv64` Linux, both `musl`
+  architectures, `x86_64-pc-windows-gnu`, both Apple targets, and FreeBSD. All
+  compile unmodified — including 32-bit x86, where the AVX-512 intrinsics *are*
+  instantiated and were expected not to exist.
+* On `musl` the `cdylib` requires `-C target-feature=-crt-static`. Without it
+  cargo prints `dropping unsupported crate type cdylib` and **exits 0**, so the
+  build succeeds and ships no shared library. CI asserts both arms.
+
 ### Not included
 
 * No AArch64/NEON, RISC-V or GPU kernels. Off x86 the engine runs the portable

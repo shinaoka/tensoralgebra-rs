@@ -71,6 +71,75 @@ jobs:
       - run: cargo test --workspace --release --lib --bins --tests
       - run: cargo test --workspace --release --doc
 
+  # Every target a BinaryBuilder-style binary distribution will attempt, checked
+  # for compilation. `cargo check` rather than `cargo build`, deliberately: a
+  # linker for each of these is a cross toolchain this job has no business
+  # installing, and the link step is covered where it belongs — by the
+  # BinaryBuilder recipe under `packaging/yggdrasil`, which brings its own.
+  #
+  # `-p tensorprimitives-tapp` pulls in the engine as a dependency and excludes
+  # the bench harness, whose build script requires TBLIS_ROOT.
+  #
+  # Two results worth writing down, because both were open questions:
+  #
+  #   - **32-bit x86 compiles.** `kernel::x86` is gated on `any(target_arch =
+  #     "x86", target_arch = "x86_64")`, so the AVX-512 intrinsics *are*
+  #     instantiated on `i686`, and the expectation was that some of them would
+  #     not exist there. They all do. The cfg stays as it is.
+  #   - **musl needs `-crt-static`, and says so as a warning.** With the target
+  #     default (`crt-static` on) cargo emits "dropping unsupported crate type
+  #     `cdylib`" and exits 0, so a musl build succeeds while producing no shared
+  #     library at all. That is silent enough to ship, so it is pinned here and
+  #     the recipe sets the same flag.
+  cross:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - i686-unknown-linux-gnu
+          - aarch64-unknown-linux-gnu
+          - armv7-unknown-linux-gnueabihf
+          - powerpc64le-unknown-linux-gnu
+          - riscv64gc-unknown-linux-gnu
+          - x86_64-pc-windows-gnu
+          - x86_64-apple-darwin
+          - aarch64-apple-darwin
+          - x86_64-unknown-freebsd
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - run: cargo check --locked -p tensorprimitives-tapp --target ${{ matrix.target }}
+
+  # musl separately, because it needs a RUSTFLAG the others must not have, and
+  # because the thing being checked is that the cdylib survives at all.
+  cross-musl:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [x86_64-unknown-linux-musl, aarch64-unknown-linux-musl]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - run: cargo check --locked -p tensorprimitives-tapp --target ${{ matrix.target }}
+        env:
+          # Repeats the workflow-level `-D warnings`: setting RUSTFLAGS here
+          # replaces it rather than adding to it.
+          RUSTFLAGS: -D warnings -C target-feature=-crt-static
+      # And the negative control: without the flag, cargo drops the cdylib. If
+      # this ever stops warning, the flag can go -- and until then, a green musl
+      # build with no library in it is exactly the failure this guards.
+      - name: without -crt-static the cdylib is dropped
+        run: |
+          cargo check --locked -p tensorprimitives-tapp --target ${{ matrix.target }} \
+            --message-format short 2>&1 | tee /tmp/musl.log
+          grep -q "dropping unsupported crate type .cdylib." /tmp/musl.log
+
   # Every runtime switch that selects a different code path, over the same test
   # suite. One release build serves all of them — the switches are read from the
   # environment, not compiled in — so this is nearly free, and each arm is a path
