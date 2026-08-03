@@ -251,7 +251,10 @@ mod tests {
     #[test]
     fn run_structure_recognises_equal_length_runs() {
         // Four contiguous runs of 24, restarted by an outer axis.
-        assert_eq!(run_structure(&build_scatter(&[24, 4], &[1, 200])), Some((24, 1)));
+        assert_eq!(
+            run_structure(&build_scatter(&[24, 4], &[1, 200])),
+            Some((24, 1))
+        );
         // A single unbroken run is the whole vector.
         assert_eq!(run_structure(&build_scatter(&[24], &[1])), Some((24, 1)));
         // Constant non-unit stride is still one run: no block size breaks it.

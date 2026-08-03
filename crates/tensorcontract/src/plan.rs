@@ -835,14 +835,17 @@ fn orient_override() -> Orient {
     {
         use std::sync::OnceLock;
         static ENV: OnceLock<Orient> = OnceLock::new();
-        *ENV.get_or_init(
-            || match std::env::var("TENSORCONTRACT_ORIENT").unwrap_or_default().as_str() {
+        *ENV.get_or_init(|| {
+            match std::env::var("TENSORCONTRACT_ORIENT")
+                .unwrap_or_default()
+                .as_str()
+            {
                 "none" | "ab" => Orient::Force(false),
                 "swap" | "ba" => Orient::Force(true),
                 "legacy" | "phase41" => Orient::Legacy,
                 _ => Orient::Rule,
-            },
-        )
+            }
+        })
     }
     #[cfg(not(feature = "std"))]
     {
@@ -1234,11 +1237,7 @@ mod tests {
     fn mirrored_plan(m_run: i64, outer: i64) -> Plan {
         // `outer` and `outer2` break the folds, so both directions keep short
         // runs while staying long enough overall to fill a micro-tile.
-        let d = Layout::new(
-            vec![24, m_run, 4, 8],
-            vec![1, 24, outer, outer * 7 + 3],
-        )
-        .unwrap();
+        let d = Layout::new(vec![24, m_run, 4, 8], vec![1, 24, outer, outer * 7 + 3]).unwrap();
         let a = lay(&[m_run, 4, 7]);
         let b = lay(&[7, 24, 8]);
         Plan::new(
@@ -1260,7 +1259,10 @@ mod tests {
         let short = mirrored_plan(16, 100_000);
         assert_eq!(short.d_m_run.0, 16);
         assert_eq!(short.d_n_run, (24, 1));
-        assert!(!short.transposes_gemm(48), "rows already have the shorter run");
+        assert!(
+            !short.transposes_gemm(48),
+            "rows already have the shorter run"
+        );
 
         let long = mirrored_plan(256, 1_000_000);
         assert_eq!(long.d_m_run.0, 256);
@@ -1356,7 +1358,10 @@ mod tests {
         )
         .unwrap();
         assert_eq!(p.stats.k, 512);
-        assert!((p.row_block_score(16) - 2.0 / 3.0).abs() < 1e-12, "would fire");
+        assert!(
+            (p.row_block_score(16) - 2.0 / 3.0).abs() < 1e-12,
+            "would fire"
+        );
         assert_eq!(p.preferred_row_block(&[16, 24, 8]), None);
     }
 

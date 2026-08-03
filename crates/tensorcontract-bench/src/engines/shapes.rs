@@ -135,9 +135,7 @@ where
         if menu.is_empty() {
             continue;
         }
-        let pick = plan
-            .preferred_row_block(menu)
-            .unwrap_or_else(|| menu[0]);
+        let pick = plan.preferred_row_block(menu).unwrap_or_else(|| menu[0]);
         let shapes = menu
             .iter()
             .map(|&mr| {
@@ -253,7 +251,10 @@ fn print_table(rows: &[Row]) {
 fn write_csv(path: &str, rows: &[Row]) -> std::io::Result<()> {
     use std::io::Write;
     let mut f = std::io::BufWriter::new(std::fs::File::create(path)?);
-    writeln!(f, "case,dtype,method,m,n,k,mr,nr,orient,wb,reg_a,default,chosen")?;
+    writeln!(
+        f,
+        "case,dtype,method,m,n,k,mr,nr,orient,wb,reg_a,default,chosen"
+    )?;
     for r in rows {
         for s in &r.shapes {
             writeln!(

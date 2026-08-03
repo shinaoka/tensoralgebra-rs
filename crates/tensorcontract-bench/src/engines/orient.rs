@@ -75,7 +75,17 @@ pub fn run(opts: &Options) -> ExitCode {
     );
     println!(
         "{:<22} {:>4} {:>7} {:>3} {:>8} {:>8} {:>8} {:>8} {:>5} {:>5} {:>5} {:>5}",
-        "case", "type", "method", "arm", "m", "n", "row_run", "col_run", "rstr", "wb", "regA",
+        "case",
+        "type",
+        "method",
+        "arm",
+        "m",
+        "n",
+        "row_run",
+        "col_run",
+        "rstr",
+        "wb",
+        "regA",
         "regB"
     );
     for r in &rows {
