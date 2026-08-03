@@ -1,0 +1,100 @@
+[2026-08-03T15:10:15-04:00] prep: build, describe, predict. This is the only stage that compiles.
+[2026-08-03T15:10:15-04:00] building (release)
+    Finished `release` profile [optimized + debuginfo] target(s) in 0.52s
+   Compiling tensorcontract v0.1.0 (/mnt/home/ldevos/Projects/tensorcontract-rs/main/crates/tensorcontract)
+    Finished `release` profile [optimized + debuginfo] target(s) in 4.18s
+[2026-08-03T15:10:20-04:00] machine description (the engine's own probes, not sinfo)
+host        : worker5040
+target      : x86_64 / linux
+cpu features: avx2 fma 
+caches      : L1=32KiB/8-way/1sh L2=512KiB/8-way/1sh L3=16384KiB/16-way/4sh (via sysfs), blocking=legacy
+baselines   : tblis=false blas=false
+[2026-08-03T15:10:20-04:00] slurm job 6745376
+JobId=6745376 JobName=tp-phase4
+   RunTime=00:00:05 TimeLimit=12:00:00 TimeMin=N/A
+   ReqNodeList=(null) ExcNodeList=(null)
+   NodeList=worker5040
+   NumNodes=1 NumCPUs=128 NumTasks=1 CPUs/Task=1 ReqB:S:C:T=0:0:*:*
+   OverSubscribe=NO Contiguous=0 Licenses=(null) Network=(null)
+[2026-08-03T15:10:20-04:00] structural features for this ISA (free: touches no data)
+[2026-08-03T15:10:21-04:00] what the analytical model predicts here:
+cache descriptors (sysfs):
+  L1d       32 KiB   8-way      64 sets   64 B lines  shared by  1 logical CPU(s)
+  L2       512 KiB   8-way    1024 sets   64 B lines  shared by  1 logical CPU(s)
+  L3     16384 KiB  16-way   16384 sets   64 B lines  shared by  4 logical CPU(s)
+  1 logical CPU(s) per core, so the L2 belongs to 1 core(s) and the L3 to 4
+  blocking in force: legacy
+
+threads = 1
+dtype  method   MR  NR |     mc   kc      nc   A KiB   B KiB |     mc   kc      nc   A KiB   B KiB
+f64    -         8   6 |    256  256    1536     512    3072 |    192  256    7170     384   14340
+f32    -        16   6 |    352  384    2052     528    3078 |    320  320   11472     400   14340
+c64    planar    4   5 |    128  256     770     512    3080 |    128  192    4780     384   14340
+c64    1m        4   6 |     64  256     768     512    3072 |     96  128    7170     384   14340
+c64    3m        4   4 |     88  256     512     528    3072 |    128  128    4780     384   14340
+c32    planar    8   5 |    176  384    1025     528    3075 |    192  256    7170     384   14340
+c32    1m        8   6 |     88  384    1026     528    3078 |    160  160   11472     400   14340
+c32    3m        8   4 |    120  384     684     540    3078 |    192  170    7196     382   14335
+
+threads = 8
+dtype  method   MR  NR |     mc   kc      nc   A KiB   B KiB |     mc   kc      nc   A KiB   B KiB
+f64    -         8   6 |    256  256    1536     512    3072 |    192  256    6660     384   13320
+f32    -        16   6 |    352  384    2052     528    3078 |    320  320   10650     400   13312
+c64    planar    4   5 |    128  256     770     512    3080 |    128  192    4440     384   13320
+c64    1m        4   6 |     64  256     768     512    3072 |     96  128    6660     384   13320
+c64    3m        4   4 |     88  256     512     528    3072 |    128  128    4440     384   13320
+c32    planar    8   5 |    176  384    1025     528    3075 |    192  256    6660     384   13320
+c32    1m        8   6 |     88  384    1026     528    3078 |    160  160   10650     400   13312
+c32    3m        8   4 |    120  384     684     540    3078 |    192  170    6684     382   13315
+
+left block: legacy (hardcoded)   right block: analytical model
+[2026-08-03T15:10:21-04:00] predicted parallel width up to 128 cores
+=== summary: how the rule's reach changes with P
+    P  no fill from M  rule 2-D   idle  int-div  genuine  need K
+    1               0         0      0        0        0       0
+    2               0         0      0        0        0       0
+    4               0         0      0        0        0       0
+    8               1         1      0        0        0       0
+   16               8         6      2        0        2       0
+   32              23        15     10        0       10       0
+   64              32        26     16        0       16       0
+  128              32        32     20        6       14       0
+
+`need K` is the column that would justify per-thread accumulators and a
+reduction (A21). It is 0 at every P above, which extends A21's refutation
+from the 8 threads it was argued at to a whole 128-core node.
+[2026-08-03T15:10:21-04:00] prep done. Nothing measured yet.
+[2026-08-03T15:10:21-04:00] outdir: bench-results/worker5040-zen2
+[2026-08-03T15:10:21-04:00] shapes: micro-kernel register-block sweep (single core, ~8-20 min)
+[2026-08-03T15:10:21-04:00] pinned to cpu0
+[2026-08-03T15:10:53-04:00] best per method (this is what belongs in cfg_avx2_f64 / cfg_avx2_f32):
+best per method at kc = 256:
+  real     MV=2 NR=6      53.2 GF/s
+  planar   MV=1 NR=5      50.0 GF/s
+  1m       MV=2 NR=6      53.5 GF/s
+  3m       MV=1 NR=4      48.9 GF/s
+
+=== AVX2 f32 / c32 (L = 8 lanes/register, 16 registers) ===
+
+`live` is accumulators + A plane(s) + broadcasts; `!` marks a shape over budget.
+
+method      MRxNR  acc  live  load  fma    f/l B/flop   GF/s kc=16   GF/s kc=64  GF/s kc=384
+real       16x6     12   15      8   12   1.50  0.458        105.6        107.8        106.6
+real        8x6      6    8      7    6   0.86  0.583         73.1         67.2         64.8
+real        8x8      8   10      9    8   0.89  0.500         83.0         82.3         85.1
+real       16x4      8   11      6    8   1.33  0.625         89.3         85.8         85.7
+real       16x5     10   13      7   10   1.43  0.525         98.5         94.3        105.4
+real       24x3      9   13      6    9   1.50  0.750         93.5         91.4         88.9
+real       24x4     12   16      7   12   1.71  0.583         54.1         44.4         42.3
+real       32x2      8   13      6    8   1.33  1.062         87.5         85.7         82.0
+real       32x3     12   17!     7   12   1.71  0.729         49.8         44.3         42.8
+real       40x2     10   16      7   10   1.43  1.050         67.8         97.5         89.4
+--
+best per method at kc = 384:
+  real     MV=2 NR=6     106.6 GF/s
+  planar   MV=1 NR=5     104.6 GF/s
+  1m       MV=2 NR=6     107.0 GF/s
+  3m       MV=1 NR=4     112.6 GF/s
+[2026-08-03T15:10:53-04:00] shapes done
+[2026-08-03T15:10:53-04:00] outdir: bench-results/worker5040-zen2
+[2026-08-03T15:10:53-04:00] threads: scaling curve plus the two partition arms

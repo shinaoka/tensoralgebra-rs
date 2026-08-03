@@ -2192,6 +2192,114 @@ across machines.
 | A28 | The 2-D partition rule and `PACK_WEIGHT` behave at node scale as they do at 8 threads. | **Open, and the reason the threading run is worth more than a scaling curve.** The rule fires on 12 of 392 at 8 threads and 32–68 at 128; `PACK_WEIGHT`'s indifference was only ever replayed to 32. |
 | A29 | Parallel width is a property of the contraction. | **Refuted at no CPU cost — it is a property of the contraction *and the ISA*.** Row panels scale as `M / MR`, so AVX2's smaller register blocks give the same corpus 3–6x more of them: 1 of 392 case-dtype-methods short of 8 threads against 16 on AVX-512. |
 
+## Phase 4 report, part 11: the AVX2 register blocks, measured
+
+**First result of the `rome` session (job 6745376, `worker5040`).** The AVX2
+register blocks were shipped as an explicit guess (D26) — the register budget and
+the accumulator count were modelled, but *which of the fitting shapes is fastest*
+was not, because the reference machine cannot execute AVX2 competitively. It can
+now be answered.
+
+The machine, from the engine's own probes rather than from `sinfo`:
+
+| | |
+|---|---|
+| host | `worker5040` (Rusty, `gen` partition, `rome`) |
+| CPU | AMD EPYC Zen2, 2 x 64 cores, **SMT off** (`sinfo` `2:64:1`, confirmed on the node) |
+| ISA | `avx2 fma`, **no AVX-512** |
+| cache | 32 KiB L1d 8-way **private**; 512 KiB L2 8-way **private**; 16 MiB L3 16-way **per 4 cores** |
+| domains | 32 L3 domains of 4 cores each |
+
+Two consequences before any number: the **`avx2`-without-`avx512` auto-selection
+branch has now executed on real hardware** for the first time (it had only ever
+been forced on an AVX-512 machine), and the whole 128-core node has **no
+hyperthread sibling**, so the contention that forced two Phase 4 retractions is
+structurally absent here rather than merely avoided.
+
+### All four shipped shapes are the measured winners
+
+`examples/kernel_shapes`, packed panels hot, useful GF/s. At the `kc` the driver
+actually uses:
+
+| method | shipped `MV x NR` | logical `MR x NR` | GF/s | runner-up | GF/s |
+|---|---|---|---|---|---|
+| **f64 / c64, `kc = 256`** ||||||
+| real | `2 x 6` | 8 x 6 | **53.2** | 8 x 5 | 52.8 |
+| planar | `1 x 5` | 4 x 5 | **50.0** | 4 x 4 | 41.9 |
+| 1m | `2 x 6` | 4 x 6 | **53.5** | 4 x 5 | 52.9 |
+| 3m | `1 x 4` | 4 x 4 | **48.9** | 8 x 2 | 48.1 |
+| **f32 / c32, `kc = 384`** ||||||
+| real | `2 x 6` | 16 x 6 | **106.6** | 16 x 5 | 105.4 |
+| planar | `1 x 5` | 8 x 5 | **104.6** | 8 x 4 | 84.2 |
+| 1m | `2 x 6` | 8 x 6 | **107.0** | 8 x 5 | 106.5 |
+| 3m | `1 x 4` | 8 x 4 | **112.6** | 16 x 2 | 97.8 |
+
+**Eight for eight.** No change to `cfg_avx2_f64` / `cfg_avx2_f32` is indicated, so
+D26's guessed half turns out to have been right — and the *reason* is worth more
+than the confirmation: three of the four margins over the runner-up are 0.8–1.6%,
+i.e. inside anything this sweep can resolve, while the margin over the *rejected*
+shapes is 20–35%. The choice was never between close alternatives; it was between
+shapes that fit the register file and shapes that do not.
+
+**The spill has a price and it is now measured.** The interlude recorded that
+`planar 1x6` is better on both accumulator count and bytes per flop and was
+rejected "only on a single spill". That single spill costs **35% in `f64`** (32.5
+against 50.0) and **38% in `f32`** (64.5 against 104.6). Rejecting it was correct
+and the margin is not subtle.
+
+### A correction: the register budget is 15 ymm, not 16
+
+The sweep's `!` marker flags `live > 16` — and the data says that threshold is one
+register optimistic. Every shape with `live == 16` collapses just as the flagged
+ones do:
+
+| shape | `live` | flagged? | GF/s at operating `kc` | fast sibling |
+|---|---|---|---|---|
+| `real 12x4` f64 | 16 | no | 21.3 | `real 8x6` (15) 53.2 |
+| `1m 6x4` f64 | 16 | no | 20.9 | `1m 4x6` (15) 53.5 |
+| `planar 4x6` f64 | 16 | no | 32.5 | `planar 4x5` (14) 50.0 |
+| `real 16x3` f64 | 17 | yes | 21.5 | — |
+| `3m 8x5` f32 | 17 | yes | 45.9 | `3m 8x4` (14) 112.6 |
+
+So the boundary between "fast" and "collapsed" sits at `live <= 15`, not
+`live <= 16`: one ymm is not available to the shape, and every shipped default
+happens to sit at 14 or 15. **The uop model was right about the existence and
+location of a cliff for the fifth time, and wrong about its threshold by exactly
+one register** — which is the kind of error a whole-grid sweep is for, and which
+would have been invisible from a sweep of the menu alone. The `!` predicate in
+`examples/kernel_shapes` should flag `live > 15`; it is an analysis annotation and
+not a code path, so it is deliberately **not** changed while this job holds the
+node and shares a `target/` directory with it.
+
+### A24: the AVX-512 ranking does not carry over, and 3m leads in single precision
+
+A24 guessed "open, and probably not". At the kernel level it is now measurably
+*not*:
+
+| | AVX-512 (Phase 3, end to end) | AVX2 kernel, operating `kc` | AVX2 kernel, `kc = 16` |
+|---|---|---|---|
+| `f64`/`c64` | planar > 1m > 3m | 1m 53.5 ≈ real 53.2 > planar 50.0 > 3m 48.9 | **3m 54.8** > 1m 53.6 > real 51.6 > planar 44.3 |
+| `f32`/`c32` | planar > 1m > 3m | **3m 112.6** > 1m 107.0 ≈ real 106.6 > planar 104.6 | 3m 110.7 > 1m 107.2 > real 105.6 > planar 88.5 |
+
+3m is **first in single precision at the depth the driver uses**, where on
+AVX-512 it was last by 8% over the corpus. The mechanism is the one Phase 3
+identified and needs no revision: 16 ymm forces `MR` down to 4 complex rows in
+`f64`, which is the L1-resident regime where 3m's 25% flop saving is not consumed
+by extra plane traffic. Note also that 3m is fastest of all four at `kc = 16` in
+*both* precisions, which is Phase 3's finding reproduced on a different ISA.
+
+**What this does not settle.** These are *kernel* numbers: packed panels hot, no
+packing, no write-back, no cache blocking, which is exactly what the rest of the
+engine is. The corpus-level AVX2 ranking is a separate measurement and is not in
+this session. Do not quote the table above as a method ranking — it is the
+kernel's contribution to one, and Phase 3's whole lesson was that the ranking is
+decided by bytes moved per useful flop across the *driver*, not inside the kernel.
+
+| # | Assumption | Status |
+|---|---|---|
+| A24 | The AVX-512 method ranking (planar > 1m > 3m at the operating `kc`) carries over to AVX2. | **Refuted at the kernel level, in the direction predicted.** 3m is first in `f32`/`c32` at the operating `kc` and first in both precisions at `kc = 16`; planar is last or next-to-last in every AVX2 column. End-to-end confirmation is not in this session. |
+| A30 | The register-block sweep's `live <= 16` budget is the real one. | **Refuted, by one register.** Every `live == 16` shape collapses to 21–33 GF/s beside a 48–53 GF/s sibling at `live <= 15`. All eight shipped defaults sit at 14 or 15, so nothing shipped is affected — but the annotation is wrong and would mislead the next person choosing a shape. |
+
 ## Phases 4 (rest) – 5
 
 In progress. See "Resume here" at the top of this file.
