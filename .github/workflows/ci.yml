@@ -146,12 +146,29 @@ jobs:
   # with "no matching package named `tensorcontract` found" until that version is
   # on crates.io. A workspace run resolves the sibling through a temporary local
   # registry instead. Nothing here needs a crates.io token.
+  # Packaging, i.e. that what would be uploaded builds from its own tarball.
+  #
+  # Only the engine can be gated this way, and that is a fact about cargo rather
+  # than a shortcut. `tensorcontract-tapp` depends on the engine by path *and*
+  # version, so packaging it requires rewriting that into a registry dependency
+  # and resolving it — which cannot succeed until the engine exists on crates.io.
+  # Before the first release `cargo package -p tensorcontract-tapp` therefore
+  # fails at "failed to prepare local package for uploading", and
+  # `cargo package --workspace` is unreliable in the same situation: its temporary
+  # registry does satisfy the dependency, but the verify build has been observed
+  # compiling the dependent crate against a stale extraction whenever the
+  # dependent uses an engine API added since the last packaging run — which is
+  # exactly the case this job would need to catch.
+  #
+  # So: gate the engine properly, and let the ordering constraint stand as the
+  # publish procedure. Publish `tensorcontract` first, wait for the index, then
+  # `tensorcontract-tapp` — at which point this job can package both.
   package:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo package --workspace
+      - run: cargo package -p tensorcontract
 
   lint:
     runs-on: ubuntu-latest

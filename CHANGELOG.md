@@ -146,6 +146,11 @@ one test. All four were behaviour a C caller could observe:
   the pin once sat *below* the declared floor, and the `CPUID` cache probe once
   called `__cpuid_count` outside an `unsafe` block, which is only a safe function
   from 1.94 and silently raised the real floor by five releases.
+* **Publish order is fixed by cargo**: `tensorcontract` first, then
+  `tensorcontract-tapp` once the engine is in the index. The TAPP crate depends
+  on the engine by path and version, so it cannot even be packaged until the
+  engine is published — `cargo package -p tensorcontract-tapp` fails at
+  "failed to prepare local package for uploading" before that.
 * Licensed MIT OR Apache-2.0.
 * Any statement about TBLIS in `DECISIONS.md` names a version. v1.3.0 and
   2.0-dev differ by ~5x on complex data and swap two ABI enumerators; treating

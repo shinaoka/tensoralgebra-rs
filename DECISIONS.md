@@ -1840,10 +1840,20 @@ provisional (D26) — which makes the untuned path the *automatically* tested on
 * **The declared MSRV was wrong** in the other direction too — see D31.
 * **The `trace` feature was declared, described, and implemented nowhere.**
   Removed rather than advertised.
-* **`cargo package -p tensorcontract-tapp` alone fails**, because it depends on
-  the engine by path *and* version and that version is not yet on crates.io.
-  `--workspace` resolves it through a temporary registry. This is also the
-  publish-order constraint: engine first, then the TAPP front end.
+* **The TAPP crate cannot be packaged at all before the engine is published.**
+  It depends on the engine by path *and* version, and packaging rewrites that
+  into a registry dependency which must then resolve — so
+  `cargo package -p tensorcontract-tapp` fails at "failed to prepare local
+  package for uploading" until `tensorcontract 0.1.0` is in the index.
+  `cargo package --workspace` appears to work, and does set up a temporary
+  registry to satisfy the dependency, but it is **not a reliable gate**: it was
+  observed verifying the dependent crate against a *stale* extraction of the
+  engine as soon as the dependent used an engine API added since the previous
+  packaging run — which is precisely the case such a job exists to catch. It
+  passed earlier in this session and then failed on exactly that change, which is
+  how the behaviour was found. CI therefore gates `cargo package -p
+  tensorcontract` only, and the ordering stands as the documented publish
+  procedure: engine, index, then the front end.
 * **The `std` feature promised something it does not deliver.** Disabling it
   compiles, but the crate has no `#![no_std]` and uses `Vec`, so it is not a
   no-std build. The feature is now documented as the seam a future port would
