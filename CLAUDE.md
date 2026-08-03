@@ -48,7 +48,13 @@ they can be benchmarked against each other and against TBLIS on equal footing.
   threading is implemented, correct and off by default**, now a 2-D `pm x pn`
   partition, also unmeasured; **K-parallelism is ruled out on evidence** (A21).
   See `DECISIONS.md` Phase 4 report parts 5–9.
-* Phase 5 not started, but its multi-arch item is partly done (AVX2, above).
+* Phase 5 not started, but two of its items are partly done: the multi-arch one
+  (AVX2, above), and **the C/C++ consumption surface** — a shipped header
+  (`crates/tensorprimitives-tapp/include/tapp.h`), a CMake/corrosion consumer
+  under `examples/c-consumer` that CI compiles and runs in two link modes, a
+  panic boundary at the ABI, and a vendored-offline build job. See D36–D38 and
+  the Phase 5 interlude. Prompted by an external ask (the NDA C++ library);
+  the engine was not touched.
 
 **Four things now exist that no benchmark has seen** — AVX2 kernels, the
 analytical blocking model, 2-D threading, and the parallel-width analysis. All

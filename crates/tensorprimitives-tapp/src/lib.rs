@@ -103,9 +103,12 @@ pub const TAPP_ERROR_LABELS: c_int = 4;
 /// case 5, an output-only index (broadcast), which the standard does not
 /// require.
 pub const TAPP_ERROR_UNSUPPORTED: c_int = 5;
-/// A failure with no more specific code. Nothing raises it today; it exists so
-/// that a future [`tensorcontract::Error`] variant has a mapping rather than
-/// being silently misreported.
+/// A failure with no more specific code. Raised when a Rust panic is caught at
+/// the C boundary — the entry points that allocate or run the engine convert an
+/// unwind into this rather than letting it abort the caller's process — and
+/// reserved so that a future [`tensorcontract::Error`] variant has a mapping
+/// rather than being silently misreported. No [`tensorcontract::Error`] maps to
+/// it today.
 pub const TAPP_ERROR_INTERNAL: c_int = 6;
 
 fn explain(e: c_int) -> &'static str {
@@ -117,6 +120,40 @@ fn explain(e: c_int) -> &'static str {
         TAPP_ERROR_LABELS => "invalid index labels",
         TAPP_ERROR_UNSUPPORTED => "operation not supported by this implementation",
         _ => "internal error",
+    }
+}
+
+/// Stop a Rust panic at the C boundary and report it as [`TAPP_ERROR_INTERNAL`].
+///
+/// A panic that reaches an `extern "C"` frame aborts the process on any
+/// supported toolchain. That is memory-safe, but for a library called from a
+/// long-running host — a solver, an MPI rank, an interactive session — it turns
+/// a recoverable condition into the loss of everything not yet written out. The
+/// engine does panic on conditions a caller can plausibly hit: `Panel::new`
+/// asserts rather than returning when a packing buffer cannot be allocated, and
+/// a contraction large enough to exhaust memory is an ordinary user mistake, not
+/// a bug.
+///
+/// So the entry points that allocate or run the engine convert a panic into an
+/// error code. The panic hook still runs first, so the message and backtrace
+/// reach stderr exactly as before and nothing becomes less diagnosable; what
+/// changes is that the caller gets the chance to clean up.
+///
+/// This is *not* a claim that the engine is unwind-safe in the general sense.
+/// It is `AssertUnwindSafe` because the only state a caller can still reach
+/// after an error return is the handles it already owned: an entry point that
+/// panics has either not yet published its output handle or not yet written the
+/// output buffer, so no partially-built object escapes. `TAPP_execute_product`
+/// is the one exception worth naming — a panic partway through leaves `D`
+/// partially written, which is already true of the documented error paths in
+/// [`TAPP_execute_batched_product`].
+///
+/// Allocation *failure* proper (Rust's allocation error handler) still aborts
+/// and is not catchable here; this covers the assertion paths above it.
+fn guard(f: impl FnOnce() -> c_int) -> c_int {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
+        Ok(code) => code,
+        Err(_) => TAPP_ERROR_INTERNAL,
     }
 }
 
@@ -340,32 +377,34 @@ pub unsafe extern "C" fn TAPP_create_tensor_info(
     extents: *const i64,
     strides: *const i64,
 ) -> c_int {
-    if info.is_null() || nmode < 0 {
-        return TAPP_ERROR_NULL;
-    }
-    if !matches!(dtype, TAPP_F32 | TAPP_F64 | TAPP_C32 | TAPP_C64) {
-        return TAPP_ERROR_DATATYPE;
-    }
-    let n = nmode as usize;
-    if n > 0 && (extents.is_null() || strides.is_null()) {
-        return TAPP_ERROR_NULL;
-    }
-    let e = if n == 0 {
-        Vec::new()
-    } else {
-        std::slice::from_raw_parts(extents, n).to_vec()
-    };
-    let s = if n == 0 {
-        Vec::new()
-    } else {
-        std::slice::from_raw_parts(strides, n).to_vec()
-    };
-    let layout = match Layout::new(e, s) {
-        Ok(l) => l,
-        Err(err) => return map_err(err),
-    };
-    *info = Box::into_raw(Box::new(TensorInfo { dtype, layout })) as isize;
-    TAPP_SUCCESS
+    guard(move || {
+        if info.is_null() || nmode < 0 {
+            return TAPP_ERROR_NULL;
+        }
+        if !matches!(dtype, TAPP_F32 | TAPP_F64 | TAPP_C32 | TAPP_C64) {
+            return TAPP_ERROR_DATATYPE;
+        }
+        let n = nmode as usize;
+        if n > 0 && (extents.is_null() || strides.is_null()) {
+            return TAPP_ERROR_NULL;
+        }
+        let e = if n == 0 {
+            Vec::new()
+        } else {
+            std::slice::from_raw_parts(extents, n).to_vec()
+        };
+        let s = if n == 0 {
+            Vec::new()
+        } else {
+            std::slice::from_raw_parts(strides, n).to_vec()
+        };
+        let layout = match Layout::new(e, s) {
+            Ok(l) => l,
+            Err(err) => return map_err(err),
+        };
+        *info = Box::into_raw(Box::new(TensorInfo { dtype, layout })) as isize;
+        TAPP_SUCCESS
+    })
 }
 
 /// Release a tensor info from [`TAPP_create_tensor_info`].
@@ -544,75 +583,77 @@ pub unsafe extern "C" fn TAPP_create_tensor_product(
     idx_d: *const i64,
     _prec: c_int,
 ) -> c_int {
-    if plan_out.is_null() {
-        return TAPP_ERROR_NULL;
-    }
-    let (Some(ta), Some(tb), Some(tc), Some(td)) = (
-        (a as *const TensorInfo).as_ref(),
-        (b as *const TensorInfo).as_ref(),
-        (c as *const TensorInfo).as_ref(),
-        (d as *const TensorInfo).as_ref(),
-    ) else {
-        return TAPP_ERROR_NULL;
-    };
-
-    // TAPP allows mixed storage types; this engine computes at a single
-    // element type, so require all four to agree.
-    if ta.dtype != tb.dtype || ta.dtype != tc.dtype || ta.dtype != td.dtype {
-        return TAPP_ERROR_DATATYPE;
-    }
-
-    let labels = |p: *const i64, t: &TensorInfo| -> Option<Vec<i64>> {
-        let n = t.layout.ndim();
-        if n == 0 {
-            Some(Vec::new())
-        } else if p.is_null() {
-            None
-        } else {
-            Some(std::slice::from_raw_parts(p, n).to_vec())
+    guard(move || {
+        if plan_out.is_null() {
+            return TAPP_ERROR_NULL;
         }
-    };
-    let (Some(la), Some(lb), Some(lc), Some(ld)) = (
-        labels(idx_a, ta),
-        labels(idx_b, tb),
-        labels(idx_c, tc),
-        labels(idx_d, td),
-    ) else {
-        return TAPP_ERROR_NULL;
-    };
+        let (Some(ta), Some(tb), Some(tc), Some(td)) = (
+            (a as *const TensorInfo).as_ref(),
+            (b as *const TensorInfo).as_ref(),
+            (c as *const TensorInfo).as_ref(),
+            (d as *const TensorInfo).as_ref(),
+        ) else {
+            return TAPP_ERROR_NULL;
+        };
 
-    let plan = Plan::new(
-        Operand {
-            layout: &ta.layout,
-            idx: &la,
-            op: op_of(op_a),
-        },
-        Operand {
-            layout: &tb.layout,
-            idx: &lb,
-            op: op_of(op_b),
-        },
-        Some(Operand {
-            layout: &tc.layout,
-            idx: &lc,
-            op: op_of(op_c),
-        }),
-        Operand {
-            layout: &td.layout,
-            idx: &ld,
-            op: op_of(op_d),
-        },
-    );
-    match plan {
-        Ok(plan) => {
-            *plan_out = Box::into_raw(Box::new(Product {
-                plan,
-                dtype: ta.dtype,
-            })) as isize;
-            TAPP_SUCCESS
+        // TAPP allows mixed storage types; this engine computes at a single
+        // element type, so require all four to agree.
+        if ta.dtype != tb.dtype || ta.dtype != tc.dtype || ta.dtype != td.dtype {
+            return TAPP_ERROR_DATATYPE;
         }
-        Err(e) => map_err(e),
-    }
+
+        let labels = |p: *const i64, t: &TensorInfo| -> Option<Vec<i64>> {
+            let n = t.layout.ndim();
+            if n == 0 {
+                Some(Vec::new())
+            } else if p.is_null() {
+                None
+            } else {
+                Some(std::slice::from_raw_parts(p, n).to_vec())
+            }
+        };
+        let (Some(la), Some(lb), Some(lc), Some(ld)) = (
+            labels(idx_a, ta),
+            labels(idx_b, tb),
+            labels(idx_c, tc),
+            labels(idx_d, td),
+        ) else {
+            return TAPP_ERROR_NULL;
+        };
+
+        let plan = Plan::new(
+            Operand {
+                layout: &ta.layout,
+                idx: &la,
+                op: op_of(op_a),
+            },
+            Operand {
+                layout: &tb.layout,
+                idx: &lb,
+                op: op_of(op_b),
+            },
+            Some(Operand {
+                layout: &tc.layout,
+                idx: &lc,
+                op: op_of(op_c),
+            }),
+            Operand {
+                layout: &td.layout,
+                idx: &ld,
+                op: op_of(op_d),
+            },
+        );
+        match plan {
+            Ok(plan) => {
+                *plan_out = Box::into_raw(Box::new(Product {
+                    plan,
+                    dtype: ta.dtype,
+                })) as isize;
+                TAPP_SUCCESS
+            }
+            Err(e) => map_err(e),
+        }
+    })
 }
 
 /// Release a product from [`TAPP_create_tensor_product`].
@@ -669,53 +710,55 @@ pub unsafe extern "C" fn TAPP_execute_product(
     c: *const std::ffi::c_void,
     d: *mut std::ffi::c_void,
 ) -> c_int {
-    if !status.is_null() {
-        *status = 0;
-    }
-    let Some(p) = (plan as *const Product).as_ref() else {
-        return TAPP_ERROR_NULL;
-    };
-    if a.is_null() || b.is_null() || d.is_null() || alpha.is_null() || beta.is_null() {
-        return TAPP_ERROR_NULL;
-    }
-    // A null `C` is upstream's `TAPP_IN_PLACE`, whose meaning `product.h` leaves
-    // as an open `//TODO`. Reading it as "beta is zero" — which this did — turns
-    // `beta = 1, C = TAPP_IN_PLACE`, i.e. the request a caller would write for
-    // `D += alpha*A*B`, into a silent overwrite of `D`. Rather than guess which
-    // way upstream will settle it, reject the ambiguous combination and keep the
-    // unambiguous one: a null `C` with `beta == 0` overwrites `D`, and in-place
-    // accumulation is expressible today by passing `D`'s own pointer for `C`.
-    // Turning a wrong answer into a diagnosable error costs a caller nothing it
-    // can already express.
-    macro_rules! run {
-        ($t:ty) => {{
-            let al = *(alpha as *const $t);
-            let be = *(beta as *const $t);
-            if c.is_null() && be != <$t as tensorcontract::Element>::zero() {
-                return TAPP_ERROR_UNSUPPORTED;
-            }
-            let cp = if c.is_null() {
-                d as *const $t
-            } else {
-                c as *const $t
-            };
-            let be = if c.is_null() {
-                <$t as tensorcontract::Element>::zero()
-            } else {
-                be
-            };
-            p.plan
-                .run_raw::<$t>(al, a as *const $t, b as *const $t, be, cp, d as *mut $t);
-            TAPP_SUCCESS
-        }};
-    }
-    match p.dtype {
-        TAPP_F32 => run!(f32),
-        TAPP_F64 => run!(f64),
-        TAPP_C32 => run!(Complex<f32>),
-        TAPP_C64 => run!(Complex<f64>),
-        _ => TAPP_ERROR_DATATYPE,
-    }
+    guard(move || {
+        if !status.is_null() {
+            *status = 0;
+        }
+        let Some(p) = (plan as *const Product).as_ref() else {
+            return TAPP_ERROR_NULL;
+        };
+        if a.is_null() || b.is_null() || d.is_null() || alpha.is_null() || beta.is_null() {
+            return TAPP_ERROR_NULL;
+        }
+        // A null `C` is upstream's `TAPP_IN_PLACE`, whose meaning `product.h` leaves
+        // as an open `//TODO`. Reading it as "beta is zero" — which this did — turns
+        // `beta = 1, C = TAPP_IN_PLACE`, i.e. the request a caller would write for
+        // `D += alpha*A*B`, into a silent overwrite of `D`. Rather than guess which
+        // way upstream will settle it, reject the ambiguous combination and keep the
+        // unambiguous one: a null `C` with `beta == 0` overwrites `D`, and in-place
+        // accumulation is expressible today by passing `D`'s own pointer for `C`.
+        // Turning a wrong answer into a diagnosable error costs a caller nothing it
+        // can already express.
+        macro_rules! run {
+            ($t:ty) => {{
+                let al = *(alpha as *const $t);
+                let be = *(beta as *const $t);
+                if c.is_null() && be != <$t as tensorcontract::Element>::zero() {
+                    return TAPP_ERROR_UNSUPPORTED;
+                }
+                let cp = if c.is_null() {
+                    d as *const $t
+                } else {
+                    c as *const $t
+                };
+                let be = if c.is_null() {
+                    <$t as tensorcontract::Element>::zero()
+                } else {
+                    be
+                };
+                p.plan
+                    .run_raw::<$t>(al, a as *const $t, b as *const $t, be, cp, d as *mut $t);
+                TAPP_SUCCESS
+            }};
+        }
+        match p.dtype {
+            TAPP_F32 => run!(f32),
+            TAPP_F64 => run!(f64),
+            TAPP_C32 => run!(Complex<f32>),
+            TAPP_C64 => run!(Complex<f64>),
+            _ => TAPP_ERROR_DATATYPE,
+        }
+    })
 }
 
 /// Execute the same plan against `num_batches` sets of data pointers.
@@ -788,6 +831,31 @@ pub extern "C" fn TAPP_implementation_name() -> *const c_char {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A panic inside a guarded entry point becomes [`TAPP_ERROR_INTERNAL`]
+    /// instead of aborting the caller's process.
+    ///
+    /// This tests the mechanism rather than an end-to-end engine panic, and
+    /// deliberately so: the conditions that make the engine panic are
+    /// allocation failures, which cannot be induced from a test without a fault
+    /// injection point that would itself have to be maintained. What is checked
+    /// here is the part that could silently regress — that `guard` is a real
+    /// unwind boundary and returns the documented code — while the *placement*
+    /// of the guards is checked by reading them at the three call sites.
+    ///
+    /// The panic hook is silenced for the duration so a passing run does not
+    /// print a backtrace that looks like a failure.
+    #[test]
+    fn a_panic_is_caught_and_reported_rather_than_aborting() {
+        let prev = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let caught = guard(|| panic!("induced"));
+        let passed_through = guard(|| TAPP_ERROR_SHAPE);
+        std::panic::set_hook(prev);
+
+        assert_eq!(caught, TAPP_ERROR_INTERNAL);
+        assert_eq!(passed_through, TAPP_ERROR_SHAPE, "guard is transparent");
+    }
 
     /// Drive a 2x3 * 3x2 complex contraction entirely through the C ABI.
     #[test]
