@@ -16,13 +16,16 @@ a number.
 
 ### Added — crate layout
 
-* `tensorprimitives` — the facade. Depend on it and enable the primitives you
-  need; it contains no algorithms. Applications should prefer it, libraries
-  should depend on the operation crate directly, because cargo features are
-  additive across a dependency graph.
+One crate per primitive, named for its operation:
+
 * `tensorcontract` — the contraction engine, described below.
-* `tensortranspose` — reserved for dedicated transpose kernels. Not yet written,
+* `tensortranspose` — planned, for dedicated transpose kernels. Not yet written
   and not published as a placeholder.
+* `tensorprimitives-tapp` — the TAPP C ABI over whichever primitives exist.
+
+`tensorprimitives` is the project name, not a crate. A facade re-exporting a
+single primitive would be indirection rather than abstraction, and one can be
+added later without breaking existing dependents.
 
 ### Added — engine
 
@@ -157,9 +160,8 @@ one test. All four were behaviour a C caller could observe:
   called `__cpuid_count` outside an `unsafe` block, which is only a safe function
   from 1.94 and silently raised the real floor by five releases.
 * **Publish order is fixed by cargo**: **`tensorcontract` first**, then
-  `tensorprimitives` and `tensorprimitives-tapp` once the engine is in the index.
-  Both of those depend on the engine by path *and* version, so neither can even
-  be packaged beforehand — `cargo package` fails at "failed to prepare local
+  `tensorprimitives-tapp` once the engine is in the index. The TAPP crate depends
+  on the engine by path *and* version, so it cannot even be packaged beforehand — `cargo package` fails at "failed to prepare local
   package for uploading" until `tensorcontract 0.1.0` is in the registry.
 * Licensed MIT OR Apache-2.0.
 * Any statement about TBLIS in `DECISIONS.md` names a version. v1.3.0 and

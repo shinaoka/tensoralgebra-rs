@@ -208,9 +208,13 @@ test suite gives it a correspondingly looser tolerance rather than hiding it.
 
 | crate | what |
 |---|---|
-| `crates/tensorprimitives` | the facade: depend on this and enable the primitives you want. No algorithms of its own |
 | `crates/tensorcontract` | the contraction engine: data model, index analysis, scatter/block-scatter, packing, micro-kernels, five-loop driver, brute-force oracle |
 | `crates/tensortranspose` | dedicated transpose kernels — **planned, not yet written** |
+
+`tensorprimitives` is the project and the repository, not a crate: with one
+primitive implemented, a facade re-exporting it would be indirection rather than
+abstraction, and it can be added later without breaking anyone. Depend on the
+operation crate you need.
 | `crates/tensorprimitives-tapp` | TAPP C-ABI front end (`lib` / `cdylib` / `staticlib`) |
 | `crates/tensorprimitives-bench` | `tcbench`: correctness and performance harness, TCCG corpus, TBLIS and TTGT baselines |
 

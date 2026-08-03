@@ -1,9 +1,10 @@
 [workspace]
 resolver = "2"
 members = [
-    # The facade users depend on, and the per-operation crates it re-exports.
-    # `tensortranspose` joins this list when it exists.
-    "crates/tensorprimitives",
+    # One crate per primitive, named for its operation; `tensortranspose` joins
+    # when it exists. There is deliberately no `tensorprimitives` facade crate
+    # yet — with one primitive it would be indirection, and adding it later is
+    # purely additive (D34).
     "crates/tensorcontract",
     "crates/tensorprimitives-tapp",
     "crates/tensorprimitives-bench",

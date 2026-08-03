@@ -149,9 +149,8 @@ jobs:
   # Packaging, i.e. that what would be uploaded builds from its own tarball.
   #
   # Only the engine can be gated this way, and that is a fact about cargo rather
-  # than a shortcut. Both `tensorprimitives` (the facade) and
-  # `tensorprimitives-tapp` depend on the engine by path *and* version, so
-  # packaging either requires rewriting that into a registry dependency
+  # than a shortcut. `tensorprimitives-tapp` depends on the engine by path *and*
+  # version, so packaging it requires rewriting that into a registry dependency
   # and resolving it — which cannot succeed until the engine exists on crates.io.
   # Before the first release `cargo package -p tensorprimitives-tapp` therefore
   # fails at "failed to prepare local package for uploading", and
@@ -163,8 +162,7 @@ jobs:
   #
   # So: gate the engine properly, and let the ordering constraint stand as the
   # publish procedure. Publish `tensorcontract` first, wait for the index, then
-  # `tensorprimitives` and `tensorprimitives-tapp` — at which point this job can
-  # package all three.
+  # `tensorprimitives-tapp` — at which point this job can package both.
   package:
     runs-on: ubuntu-latest
     steps:
