@@ -43,14 +43,20 @@ they can be benchmarked against each other and against TBLIS on equal footing.
   discriminant A14 had recorded as unknown was found, worth +1.0–2.8% corpus
   geomean in every 32-bit column and up to 1.48x per case. **Item 2
   (`MC`/`KC`/`NC`) is built but unmeasured** — the grid is written and
-  smoke-tested and needs ~7 h of an idle machine. **Item 4's threading is
-  implemented, correct and off by default**, also unmeasured. See
-  `DECISIONS.md` Phase 4 report parts 5–8.
-* Phase 5 not started.
+  smoke-tested and needs ~7.5 h of an idle machine, and it now carries a
+  **cache-model arm** (part 9) as well as the parameter arms. **Item 4's
+  threading is implemented, correct and off by default**, now a 2-D `pm x pn`
+  partition, also unmeasured; **K-parallelism is ruled out on evidence** (A21).
+  See `DECISIONS.md` Phase 4 report parts 5–9.
+* Phase 5 not started, but its multi-arch item is partly done (AVX2, above).
 
-**Two measurements are pending and both need an exclusive machine**;
-`DECISIONS.md`'s "Resume here" says which script and what to do with the output.
-Do not start either while anything else runs — a compile counts.
+**Four things now exist that no benchmark has seen** — AVX2 kernels, the
+analytical blocking model, 2-D threading, and the parallel-width analysis. All
+are off or inert by default and green across ten switch combinations, so the
+engine still measures as it did. **Two measurements are pending and both need an
+exclusive machine**; `DECISIONS.md`'s "Resume here" says which script and what to
+do with the output. Do not start either while anything else runs — a compile
+counts.
 
 Workspace MSRV is **1.89** (AVX-512 intrinsics stabilised there).
 
