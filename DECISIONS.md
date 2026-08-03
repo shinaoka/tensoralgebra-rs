@@ -2354,6 +2354,69 @@ throughput measured on `ccqlin038`, used only as a compute-bound proxy for
 sorting. It is not a cross-machine performance claim and is regenerated from the
 node's own `t1` arm once that exists.
 
+### Result: the placement is clean on the corpus and *not* clean on the memory-bound half
+
+Measured on `worker5040`, 24 concurrent arms one per L3 domain against a solo arm.
+The honest comparison is against the **hot** solo arm (`t1b`, same core), because
+the reused solo pair straddles the cold-start transient A31 describes:
+
+| | geomean vs hot solo | range over slots |
+|---|---|---|
+| full corpus, socket 0 slots (12) | **1.0029** | 1.0017–1.0050 |
+| full corpus, socket 1 slots (12) | 1.0215 | 1.0181–1.0255 |
+| **memory-bound `abcijk` half, all 24** | **0.9684** | 0.9616–0.9769 |
+
+Read in order:
+
+1. **On the corpus as a whole the placement costs 0.3% — nothing.** Twenty-four
+   arms running at once, each with a private 16 MiB L3 and three idle cores in its
+   domain, measure what a solo arm measures. A27 is confirmed, and it bought a
+   **23.7x** speedup: 533 minutes of arm-time in 22.5 minutes of wall clock, which
+   is the difference between the grid being affordable and not.
+2. **The 2.2% socket split is thermal, not spatial.** The `threads` stage had run
+   for two hours entirely on socket 0, so socket 1 was cold when the placed round
+   started; its slots read 2.2% *faster*. `placement-spread.py` was built expecting
+   memory-system position to be the variable, and on this node it is temperature
+   history instead. Confirmed by the memory-bound round twenty minutes later, when
+   both sockets had been loaded and the split had shrunk to 0.6%.
+3. **On the memory-bound half the placement is rejected, decisively.** 3.2%
+   geomean and up to 10% per case, against a solo-pair floor of **0.02%** — the
+   cleanest floor in this whole project, from two arms 69 seconds apart. Every one
+   of the 24 slots fails. Bandwidth is the resource no placement can privatise, the
+   `abcijk` family at `k = 24` is where that bites first, and it does.
+
+**A gap between the rule as written and the rule as coded, which is mine.** Part 10
+pre-registered that both the full corpus *and* the `abcijk` family would be
+measured, but `rusty-phase4.sbatch` called `placement-verdict.py` with its default
+prefix, so only the full-corpus arms were scored and the grid launched placed on an
+ACCEPT that had not consulted the memory-bound arms. Scored after the fact with
+`--prefix mbp --solo mbsolo`, they REJECT. The verdict script now takes `--solo` so
+the rule can be applied to the arm set it was written for; the sequencing error had
+already happened.
+
+**What that does to the grid, and what it does not.** The grid is scored on
+*ratios between arms*, and every arm ran under the identical 24-way placement, so a
+uniform 3.2% penalty on memory-bound cases cancels in `arm / base`. The exposure is
+not uniformity but **interaction**: an arm that changes memory traffic suffers
+different contention, and that is exactly what the `nc` arms and the `model` arm do
+— `model` raises `nc` about 4.7x here. So:
+
+* `kc` and `mc` arms: the penalty is close to uniform and the ratios stand.
+* `nc25`, `nc400`, `model`: **confounded at the same order as the effect**, and
+  `model` is the single most interesting arm in the grid.
+
+The fix is cheap and does not need the whole grid re-run: measure `base`, `nc25`,
+`nc400`, `model`, `base2` sequentially on one core — 10 jobs, ~3.7 h — and compare
+those against each other in the clean regime, using `base`/`base2` to tie them back
+to the placed run. `scripts/rusty-phase4-seq.sbatch` does exactly that and nothing
+else. **Until it has run, do not quote the `nc` or `model` arms from the placed
+grid.**
+
+| # | Assumption | Status |
+|---|---|---|
+| A27 | Concurrent arms placed one per L3 domain measure the same thing as a solo arm. | **Confirmed on the corpus (+0.3%), refuted on the memory-bound half (−3.2%, up to −10%).** Private per-CCX L3 is enough for compute-bound work and irrelevant to bandwidth: `abcijk` at `k = 24` is bandwidth-bound and 24 arms contend. Use the placement for arms that do not change memory traffic; measure the `nc` and `model` arms sequentially. |
+| A32 | A session's drift is a single number. | **Refuted; it is a function of how far apart the two arms are.** Same node, same core, same corpus: 0.02% at 69 s apart, 1.1–1.9% at ~1 h, 4.4% across the cold-start transient. Quoting one floor for a whole session is what let a 4.4% cold-start artifact be mistaken for the precision of a repeat. |
+
 ### What would invalidate the run
 
 Checked before anything is believed, and each one recorded rather than assumed:

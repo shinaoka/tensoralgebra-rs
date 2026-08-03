@@ -28,13 +28,22 @@ What is reported:
                arms that are bit-for-bit the same computation.
 
 Usage:
-    scripts/blocking-score-rules.py FEATURES_CSV RESULT_DIR
+    scripts/blocking-score-rules.py FEATURES_CSV RESULT_DIR [PER_CASE_NOISE]
+
+`PER_CASE_NOISE` is the fraction a single case may move without it counting as a
+gain. It defaults to `ccqlin038`'s measured 0.06 and **must be given explicitly
+for a grid measured anywhere else** — the `noise` section below reports two
+estimates derived from inside the run itself, and on a different machine those are
+the only ones that apply. Passing the wrong floor here does not change a geomean;
+it changes how many cases are claimed to gain, which is the headline count.
 """
 import csv
 import math
 import sys
 
-NOISE_CASE = 0.06  # measured, Phase 4 part 4
+# `ccqlin038`'s measured per-case floor (Phase 4 part 4). Overridable, because it
+# is a property of a machine and a session, not of this analysis.
+NOISE_CASE = 0.06
 
 # Arm tags in the order `phase4e-blocking.sh` runs them, grouped by family.
 KC = ["kc64", "kc128", "kc256", "kc384", "kc512"]
@@ -166,6 +175,9 @@ RULES = [
 
 
 def main():
+    global NOISE_CASE
+    if len(sys.argv) > 3:
+        NOISE_CASE = float(sys.argv[3])
     if len(sys.argv) < 3:
         sys.exit(__doc__)
     feats_path, d = sys.argv[1], sys.argv[2].rstrip("/")
@@ -283,7 +295,9 @@ def main():
         if best / b > 1 + NOISE_CASE:
             wins.append((best / b, k, best_arm, feats[k]["k"], feats[k]["row_stride"]))
     wins.sort(reverse=True)
-    print(f"{len(wins)} of {len(keys)} case-dtype-methods gain more than the per-case noise floor")
+    print(f"{len(wins)} of {len(keys)} case-dtype-methods gain more than the "
+          f"per-case noise floor ({100 * NOISE_CASE:.0f}%"
+          f"{'' if len(sys.argv) > 3 else ', ccqlin038 default -- override it for another machine'})")
     print(f"{'gain':>6} {'case':<24} {'dtype':<5} {'engine':<7} {'arm':<7} {'k':>6} {'row_stride':>11}")
     for r, k, arm, kk, rs in wins[:40]:
         print(f"{r:6.3f} {k[0]:<24} {k[1]:<5} {k[2]:<7} {arm:<7} {kk:>6} {rs:>11}")

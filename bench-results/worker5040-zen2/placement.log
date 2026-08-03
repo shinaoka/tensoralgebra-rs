@@ -1,0 +1,330 @@
+reference core cpu0; placement concurrency 24
+host            : worker5040
+slurm           : job 6745376 on worker5040
+cpus allowed    : 128 of 128 online (0-127)
+physical cores  : 128   SMT width 1  (SMT off: no sibling to contend with)
+sockets         : 0:64c  1:64c
+numa nodes      : 0:16c  1:16c  2:16c  3:16c  4:16c  5:16c  6:16c  7:16c
+L1              : 32K 8-way, shared by 1 logical cpus
+L2              : 512K 8-way, shared by 1 logical cpus
+L3              : 16384K 16-way, shared by 4 logical cpus
+L3 domains      : 32, 4 cpus each (16384K per domain)
+
+placement       : 24 concurrent arms of 32 domains, one core per domain, rest of each domain idle
+                  cpus 0,4,8,16,20,24,32,36,40,48,52,56,64,68,72,80,84,88,96,100,104,112,116,120
+                  per numa node: 0:3  1:3  2:3  3:3  4:3  5:3  6:3  7:3
+reusing the threads run's solo pair: bench-results/worker5040-zen2/phase4f/th-t1-f64c64.csv (294 rows) and bench-results/worker5040-zen2/phase4f/th-t1b-f64c64.csv
+  reused solo arm ran on cpuset 0; reference core here is cpu0
+== 1,2/6 solo pair reused from bench-results/worker5040-zen2/phase4f (t1 vs t1b)
+== 3/6 placed (full corpus, 24 concurrent replicates)
+host worker5040  128 physical cores, SMT width 1, 32 L3 domains
+24 arms, 24 concurrent, cpus 0,4,8,16,20,24,32,36,40,48,52,56,64,68,72,80,84,88,96,100,104,112,116,120
+  17:30:44 p15              cpu116  dom29   1315.5s  rc=0  self 100%  co-tenants: none
+  17:30:47 p20              cpu72   dom18   1318.3s  rc=0  self 100%  co-tenants: none
+  17:30:47 p04              cpu64   dom16   1318.5s  rc=0  self 100%  co-tenants: none
+  17:30:48 p13              cpu84   dom21   1319.2s  rc=0  self 100%  co-tenants: none
+  17:30:48 p23              cpu120  dom30   1320.0s  rc=0  self 100%  co-tenants: none
+  17:30:49 p21              cpu88   dom22   1321.1s  rc=0  self 100%  co-tenants: none
+  17:30:50 p12              cpu68   dom17   1321.6s  rc=0  self 100%  co-tenants: none
+  17:30:50 p14              cpu100  dom25   1322.1s  rc=0  self 100%  co-tenants: none
+  17:30:52 p22              cpu104  dom26   1323.1s  rc=0  self 100%  co-tenants: none
+  17:30:52 p06              cpu96   dom24   1323.8s  rc=0  self 100%  co-tenants: none
+  17:30:53 p05              cpu80   dom20   1325.1s  rc=0  self 100%  co-tenants: none
+  17:30:57 p07              cpu112  dom28   1328.8s  rc=0  self 100%  co-tenants: none
+  17:31:09 p08              cpu4    dom1    1340.5s  rc=0  self 100%  co-tenants: none
+  17:31:10 p17              cpu24   dom6    1341.2s  rc=0  self 100%  co-tenants: none
+  17:31:12 p09              cpu20   dom5    1343.6s  rc=0  self 100%  co-tenants: none
+  17:31:12 p18              cpu40   dom10   1344.0s  rc=0  self 100%  co-tenants: none
+  17:31:12 p00              cpu0    dom0    1344.1s  rc=0  self 100%  co-tenants: none
+  17:31:13 p16              cpu8    dom2    1344.8s  rc=0  self 100%  co-tenants: none
+  17:31:13 p02              cpu32   dom8    1345.2s  rc=0  self 100%  co-tenants: none
+  17:31:14 p19              cpu56   dom14   1345.2s  rc=0  self 100%  co-tenants: none
+  17:31:14 p03              cpu48   dom12   1345.6s  rc=0  self 100%  co-tenants: none
+  17:31:15 p11              cpu52   dom13   1347.1s  rc=0  self 100%  co-tenants: none
+  17:31:16 p10              cpu36   dom9    1347.9s  rc=0  self 100%  co-tenants: none
+  17:31:16 p01              cpu16   dom4    1348.1s  rc=0  self 100%  co-tenants: none
+
+24 arms in 22.5 min wall (sum of arm times 533.2 min)
+observed overlap per arm: min 23, max 23
+== 4/6 mb-solo1 (memory-bound half, alone)
+host worker5040  128 physical cores, SMT width 1, 32 L3 domains
+1 arms, 1 concurrent, cpus 0
+  17:32:26 mbsolo1          cpu0    dom0      69.3s  rc=0  self 100%  co-tenants: none
+
+1 arms in 1.2 min wall (sum of arm times 1.2 min)
+observed overlap per arm: min 0, max 0
+== 5/6 mb-solo2
+host worker5040  128 physical cores, SMT width 1, 32 L3 domains
+1 arms, 1 concurrent, cpus 0
+  17:33:35 mbsolo2          cpu0    dom0      69.3s  rc=0  self 100%  co-tenants: none
+
+1 arms in 1.2 min wall (sum of arm times 1.2 min)
+observed overlap per arm: min 0, max 0
+== 6/6 mb-placed (24 concurrent replicates)
+host worker5040  128 physical cores, SMT width 1, 32 L3 domains
+24 arms, 24 concurrent, cpus 0,4,8,16,20,24,32,36,40,48,52,56,64,68,72,80,84,88,96,100,104,112,116,120
+  17:34:47 mbp23            cpu120  dom30     71.7s  rc=0  self 100%  co-tenants: none
+  17:34:47 mbp04            cpu64   dom16     71.9s  rc=0  self 100%  co-tenants: none
+  17:34:47 mbp21            cpu88   dom22     71.9s  rc=0  self 100%  co-tenants: none
+  17:34:47 mbp22            cpu104  dom26     71.9s  rc=0  self 100%  co-tenants: none
+  17:34:47 mbp20            cpu72   dom18     72.0s  rc=0  self 100%  co-tenants: none
+  17:34:48 mbp12            cpu68   dom17     72.1s  rc=0  self 100%  co-tenants: none
+  17:34:48 mbp19            cpu56   dom14     72.2s  rc=0  self 100%  co-tenants: none
+  17:34:48 mbp16            cpu8    dom2      72.3s  rc=0  self 100%  co-tenants: none
+  17:34:48 mbp17            cpu24   dom6      72.4s  rc=0  self 100%  co-tenants: none
+  17:34:48 mbp15            cpu116  dom29     72.4s  rc=0  self 100%  co-tenants: none
+  17:34:48 mbp07            cpu112  dom28     72.4s  rc=0  self 100%  co-tenants: none
+  17:34:48 mbp05            cpu80   dom20     72.5s  rc=0  self 100%  co-tenants: none
+  17:34:48 mbp18            cpu40   dom10     72.5s  rc=0  self 100%  co-tenants: none
+  17:34:48 mbp13            cpu84   dom21     72.5s  rc=0  self 100%  co-tenants: none
+  17:34:48 mbp06            cpu96   dom24     72.5s  rc=0  self 100%  co-tenants: none
+  17:34:48 mbp14            cpu100  dom25     72.5s  rc=0  self 100%  co-tenants: none
+  17:34:48 mbp01            cpu16   dom4      72.9s  rc=0  self 100%  co-tenants: none
+  17:34:48 mbp03            cpu48   dom12     73.0s  rc=0  self 100%  co-tenants: none
+  17:34:48 mbp11            cpu52   dom13     73.0s  rc=0  self 100%  co-tenants: none
+  17:34:48 mbp09            cpu20   dom5      73.0s  rc=0  self 100%  co-tenants: none
+  17:34:48 mbp02            cpu32   dom8      73.1s  rc=0  self 100%  co-tenants: none
+  17:34:48 mbp08            cpu4    dom1      73.1s  rc=0  self 100%  co-tenants: none
+  17:34:48 mbp10            cpu36   dom9      73.0s  rc=0  self 100%  co-tenants: none
+  17:34:48 mbp00            cpu0    dom0      73.1s  rc=0  self 100%  co-tenants: none
+
+24 arms in 1.2 min wall (sum of arm times 29.0 min)
+observed overlap per arm: min 23, max 23
+
+############ this node's noise floor, solo vs solo ############
+dtype  engine  or   n  geomean     min     max
+  c64      1m  AB  37    0.960   0.833   0.999
+  c64      1m  BA  12    0.954   0.850   1.007
+  c64      3m  AB  37    0.957   0.855   1.000
+  c64      3m  BA  12    0.956   0.856   0.999
+  c64  planar  AB  37    0.967   0.858   1.003
+  c64  planar  BA  12    0.962   0.901   0.995
+  f64      1m  AB  37    0.959   0.828   1.009
+  f64      1m  BA  12    0.935   0.771   0.984
+  f64      3m  AB  37    0.959   0.828   1.009
+  f64      3m  BA  12    0.935   0.771   0.984
+  f64  planar  AB  37    0.959   0.828   1.009
+  f64  planar  BA  12    0.935   0.771   0.984
+
+--- outside the +/-6% per-case noise floor (57 of 294) ---
+  0.771        abcs-rc-abrs  f64      1m  BA     24.0 ->    18.5
+  0.771        abcs-rc-abrs  f64      3m  BA     24.0 ->    18.5
+  0.771        abcs-rc-abrs  f64  planar  BA     24.0 ->    18.5
+  0.828        abjc-cbka-kj  f64      1m  AB     12.5 ->    10.4
+  0.828        abjc-cbka-kj  f64      3m  AB     12.5 ->    10.4
+  0.828        abjc-cbka-kj  f64  planar  AB     12.5 ->    10.4
+  0.833      adbjc-cbdka-kj  c64      1m  AB     10.1 ->     8.4
+  0.850        abcs-rc-abrs  c64      1m  BA     32.9 ->    28.0
+  0.852      adbjc-cbdka-kj  f64      1m  AB      4.8 ->     4.1
+  0.852      adbjc-cbdka-kj  f64      3m  AB      4.8 ->     4.1
+  ...
+  0.929        abrs-qb-aqrs  f64      1m  BA     24.9 ->    23.1
+  0.929        abrs-qb-aqrs  f64      3m  BA     24.9 ->    23.1
+  0.929        abrs-qb-aqrs  f64  planar  BA     24.9 ->    23.1
+  0.934    abcijk-ejbc-ikea  f64      1m  BA     22.3 ->    20.9
+  0.934    abcijk-ejbc-ikea  f64      3m  BA     22.3 ->    20.9
+  0.934    abcijk-ejbc-ikea  f64  planar  BA     22.3 ->    20.9
+  0.934          ijk-ikl-lj  c64      1m  AB     40.8 ->    38.1
+  0.936        abrs-qb-aqrs  c64      1m  BA     32.9 ->    30.8
+  0.938        aqrs-pa-pqrs  c64      3m  AB     33.0 ->    30.9
+  0.938          ijk-ilk-jl  c64      3m  AB     41.4 ->    38.8
+
+--- overall, all cases (what a user sees) ---
+  c64      1m  0.958
+  c64      3m  0.957
+  c64  planar  0.966
+  f64      1m  0.953
+  f64      3m  0.953
+  f64  planar  0.953
+
+############ placement penalty: same core, placed vs solo ############
+dtype  engine  or   n  geomean     min     max
+  c64      1m  AB  37    0.962   0.822   1.006
+  c64      1m  BA  12    0.967   0.941   0.993
+  c64      3m  AB  37    0.960   0.880   0.994
+  c64      3m  BA  12    0.975   0.947   0.995
+  c64  planar  AB  37    0.967   0.868   0.999
+  c64  planar  BA  12    0.966   0.950   0.986
+  f64      1m  AB  37    0.951   0.829   0.995
+  f64      1m  BA  12    0.954   0.921   0.976
+  f64      3m  AB  37    0.951   0.829   0.995
+  f64      3m  BA  12    0.954   0.921   0.976
+  f64  planar  AB  37    0.951   0.829   0.995
+  f64  planar  BA  12    0.954   0.921   0.976
+
+--- outside the +/-6% per-case noise floor (46 of 294) ---
+  0.822      adbjc-cbdka-kj  c64      1m  AB     10.1 ->     8.3
+  0.829        abjc-cbka-kj  f64      1m  AB     12.5 ->    10.4
+  0.829        abjc-cbka-kj  f64      3m  AB     12.5 ->    10.4
+  0.829        abjc-cbka-kj  f64  planar  AB     12.5 ->    10.4
+  0.840      ajbdc-ckbad-jk  f64      1m  AB      5.6 ->     4.7
+  0.840      ajbdc-ckbad-jk  f64      3m  AB      5.6 ->     4.7
+  0.840      ajbdc-ckbad-jk  f64  planar  AB      5.6 ->     4.7
+  0.842      abjcd-dkbac-jk  c64      1m  AB     11.3 ->     9.5
+  0.851      abjcd-dkbac-jk  f64      1m  AB      5.9 ->     5.0
+  0.851      abjcd-dkbac-jk  f64      3m  AB      5.9 ->     5.0
+  ...
+  0.930        ajbc-ckba-jk  c64      3m  AB     22.2 ->    20.7
+  0.932        ijk-ilmk-mjl  f64      1m  AB     30.2 ->    28.2
+  0.932        ijk-ilmk-mjl  f64      3m  AB     30.2 ->    28.2
+  0.932        ijk-ilmk-mjl  f64  planar  AB     30.2 ->    28.2
+  0.938    abcijk-jkmc-miab  f64      1m  BA     22.8 ->    21.4
+  0.938    abcijk-jkmc-miab  f64      3m  BA     22.8 ->    21.4
+  0.938    abcijk-jkmc-miab  f64  planar  BA     22.8 ->    21.4
+  0.940    abcijk-ekac-ijeb  f64      1m  AB     19.9 ->    18.7
+  0.940    abcijk-ekac-ijeb  f64      3m  AB     19.9 ->    18.7
+  0.940    abcijk-ekac-ijeb  f64  planar  AB     19.9 ->    18.7
+
+--- overall, all cases (what a user sees) ---
+  c64      1m  0.963
+  c64      3m  0.964
+  c64  planar  0.967
+  f64      1m  0.952
+  f64      3m  0.952
+  f64  planar  0.952
+
+############ memory-bound half: floor, then penalty ############
+dtype  engine  or   n  geomean     min     max
+  c64      1m  AB   9    0.999   0.986   1.019
+  c64      1m  BA   9    0.999   0.995   1.002
+  c64      3m  AB   9    0.996   0.976   1.002
+  c64      3m  BA   9    1.002   0.997   1.016
+  c64  planar  AB   9    0.999   0.980   1.007
+  c64  planar  BA   9    0.999   0.997   1.003
+  f64      1m  AB   9    1.001   0.996   1.009
+  f64      1m  BA   9    1.001   0.988   1.021
+  f64      3m  AB   9    1.001   0.996   1.009
+  f64      3m  BA   9    1.001   0.988   1.021
+  f64  planar  AB   9    1.001   0.996   1.009
+  f64  planar  BA   9    1.001   0.988   1.021
+
+--- outside the +/-6% per-case noise floor (0 of 108) ---
+
+--- overall, all cases (what a user sees) ---
+  c64      1m  0.999
+  c64      3m  0.999
+  c64  planar  0.999
+  f64      1m  1.001
+  f64      3m  1.001
+  f64  planar  1.001
+dtype  engine  or   n  geomean     min     max
+  c64      1m  AB   9    0.975   0.962   0.991
+  c64      1m  BA   9    0.972   0.958   0.992
+  c64      3m  AB   9    0.978   0.965   0.988
+  c64      3m  BA   9    0.985   0.971   0.998
+  c64  planar  AB   9    0.977   0.963   0.984
+  c64  planar  BA   9    0.976   0.965   0.993
+  f64      1m  AB   9    0.950   0.928   0.976
+  f64      1m  BA   9    0.954   0.930   0.985
+  f64      3m  AB   9    0.950   0.928   0.976
+  f64      3m  BA   9    0.954   0.930   0.985
+  f64  planar  AB   9    0.950   0.928   0.976
+  f64  planar  BA   9    0.954   0.930   0.985
+
+--- outside the +/-6% per-case noise floor (6 of 108) ---
+  0.928    abcijk-eiab-jkec  f64      1m  AB     22.7 ->    21.1
+  0.928    abcijk-eiab-jkec  f64      3m  AB     22.7 ->    21.1
+  0.928    abcijk-eiab-jkec  f64  planar  AB     22.7 ->    21.1
+  0.930    abcijk-jkmc-miab  f64      1m  BA     22.7 ->    21.1
+  0.930    abcijk-jkmc-miab  f64      3m  BA     22.7 ->    21.1
+  0.930    abcijk-jkmc-miab  f64  planar  BA     22.7 ->    21.1
+  0.928    abcijk-eiab-jkec  f64      1m  AB     22.7 ->    21.1
+  0.928    abcijk-eiab-jkec  f64      3m  AB     22.7 ->    21.1
+  0.928    abcijk-eiab-jkec  f64  planar  AB     22.7 ->    21.1
+  0.930    abcijk-jkmc-miab  f64      1m  BA     22.7 ->    21.1
+  0.930    abcijk-jkmc-miab  f64      3m  BA     22.7 ->    21.1
+  0.930    abcijk-jkmc-miab  f64  planar  BA     22.7 ->    21.1
+
+--- overall, all cases (what a user sees) ---
+  c64      1m  0.974
+  c64      3m  0.981
+  c64  planar  0.976
+  f64      1m  0.952
+  f64      3m  0.952
+  f64  planar  0.952
+
+############ spread across placement slots (position within the node) ############
+=== 24 concurrent replicates of the same arm, each against solo1.csv
+slot      cpu  dom  numa    n  geomean  min case  max case    secs  self%
+p00         0    0     0  294    0.958     0.822     1.006    1344    100
+p01        16    4     1  294    0.959     0.823     1.013    1348    100
+p02        32    8     2  294    0.961     0.814     1.005    1345    100
+p03        48   12     3  294    0.959     0.846     1.012    1346    100
+p04        64   16     4  294    0.975     0.826     1.028    1319    100
+p05        80   20     5  294    0.974     0.831     1.023    1325    100
+p06        96   24     6  294    0.975     0.833     1.028    1324    100
+p07       112   28     7  294    0.975     0.814     1.017    1329    100
+p08         4    1     0  294    0.960     0.837     1.005    1341    100
+p09        20    5     1  294    0.959     0.815     1.012    1344    100
+p10        36    9     2  294    0.958     0.804     1.022    1348    100
+p11        52   13     3  294    0.961     0.840     1.010    1347    100
+p12        68   17     4  294    0.978     0.852     1.019    1322    100
+p13        84   21     5  294    0.977     0.866     1.029    1319    100
+p14       100   25     6  294    0.977     0.843     1.050    1322    100
+p15       116   29     7  294    0.981     0.856     1.037    1316    100
+p16         8    2     0  294    0.959     0.838     1.010    1345    100
+p17        24    6     1  294    0.959     0.849     1.008    1341    100
+p18        40   10     2  294    0.960     0.829     1.006    1344    100
+p19        56   14     3  294    0.958     0.839     1.004    1345    100
+p20        72   18     4  294    0.977     0.827     1.027    1318    100
+p21        88   22     5  294    0.977     0.834     1.043    1321    100
+p22       104   26     6  294    0.977     0.849     1.044    1323    100
+p23       120   30     7  294    0.980     0.842     1.019    1320    100
+
+across replicates: geomean-of-geomeans 0.968, best 0.981, worst 0.958, spread 2.4%
+
+worst-hit cases (min over replicates):
+  0.804  ajbdc-ckbad-jk           f64   1m
+  0.804  ajbdc-ckbad-jk           f64   3m
+  0.804  ajbdc-ckbad-jk           f64   planar
+  0.814  ajbdc-ckbad-jk           c64   1m
+  0.814  ajbdc-ckbad-jk           c64   3m
+  0.815  abjc-cbka-kj             f64   1m
+  0.815  abjc-cbka-kj             f64   3m
+  0.815  abjc-cbka-kj             f64   planar
+
+by numa node: 0:0.959(n=3)  1:0.959(n=3)  2:0.960(n=3)  3:0.959(n=3)  4:0.977(n=3)  5:0.976(n=3)  6:0.977(n=3)  7:0.979(n=3)
+=== 24 concurrent replicates of the same arm, each against mbsolo1.csv
+slot      cpu  dom  numa    n  geomean  min case  max case    secs  self%
+mbp00       0    0     0  108    0.965     0.928     0.998      73    100
+mbp01      16    4     1  108    0.964     0.929     0.997      73    100
+mbp02      32    8     2  108    0.963     0.908     0.998      73    100
+mbp03      48   12     3  108    0.966     0.927     0.999      73    100
+mbp04      64   16     4  108    0.970     0.919     1.003      72    100
+mbp05      80   20     5  108    0.972     0.913     1.005      72    100
+mbp06      96   24     6  108    0.971     0.915     1.004      73    100
+mbp07     112   28     7  108    0.974     0.936     1.003      72    100
+mbp08       4    1     0  108    0.966     0.929     0.998      73    100
+mbp09      20    5     1  108    0.962     0.912     0.998      73    100
+mbp10      36    9     2  108    0.962     0.910     0.999      73    100
+mbp11      52   13     3  108    0.966     0.929     0.999      73    100
+mbp12      68   17     4  108    0.966     0.899     1.003      72    100
+mbp13      84   21     5  108    0.970     0.903     1.004      72    100
+mbp14     100   25     6  108    0.970     0.912     1.004      73    100
+mbp15     116   29     7  108    0.974     0.930     1.003      72    100
+mbp16       8    2     0  108    0.969     0.930     1.000      72    100
+mbp17      24    6     1  108    0.968     0.936     0.998      72    100
+mbp18      40   10     2  108    0.966     0.919     0.998      72    100
+mbp19      56   14     3  108    0.969     0.934     1.000      72    100
+mbp20      72   18     4  108    0.969     0.916     1.003      72    100
+mbp21      88   22     5  108    0.973     0.925     1.002      72    100
+mbp22     104   26     6  108    0.973     0.920     1.005      72    100
+mbp23     120   30     7  108    0.977     0.943     1.005      72    100
+
+across replicates: geomean-of-geomeans 0.969, best 0.977, worst 0.962, spread 1.6%
+
+worst-hit cases (min over replicates):
+  0.899  abcijk-eiab-jkec         f64   1m
+  0.899  abcijk-eiab-jkec         f64   3m
+  0.899  abcijk-eiab-jkec         f64   planar
+  0.902  abcijk-jkmc-miab         f64   1m
+  0.902  abcijk-jkmc-miab         f64   3m
+  0.902  abcijk-jkmc-miab         f64   planar
+  0.919  abcijk-eiac-jkeb         f64   1m
+  0.919  abcijk-eiac-jkeb         f64   3m
+
+by numa node: 0:0.967(n=3)  1:0.965(n=3)  2:0.964(n=3)  3:0.967(n=3)  4:0.969(n=3)  5:0.972(n=3)  6:0.971(n=3)  7:0.975(n=3)
+
+Decide with the rule at the top of this script, then either
+  scripts/phase4e-blocking.sh auto  bench-results/<node>/phase4e   # accepted
+  scripts/phase4e-blocking.sh 0  bench-results/<node>/phase4e   # rejected

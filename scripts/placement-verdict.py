@@ -68,11 +68,14 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("dir", help="the validate-placement.sh output directory")
     ap.add_argument("--prefix", default="p", help="placed-replicate tag prefix (default p)")
+    ap.add_argument("--solo", default="solo",
+                    help="solo-pair tag stem, i.e. <stem>1.csv and <stem>2.csv "
+                         "(default `solo`; use `mbsolo` for the memory-bound half)")
     ap.add_argument("--json", help="also write the verdict here")
     a = ap.parse_args()
 
-    solo1 = os.path.join(a.dir, "solo1.csv")
-    solo2 = os.path.join(a.dir, "solo2.csv")
+    solo1 = os.path.join(a.dir, f"{a.solo}1.csv")
+    solo2 = os.path.join(a.dir, f"{a.solo}2.csv")
     for p in (solo1, solo2):
         if not os.path.exists(p):
             print(f"UNDECIDED: no {p}")

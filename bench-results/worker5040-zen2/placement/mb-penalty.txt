@@ -1,0 +1,35 @@
+dtype  engine  or   n  geomean     min     max
+  c64      1m  AB   9    0.975   0.962   0.991
+  c64      1m  BA   9    0.972   0.958   0.992
+  c64      3m  AB   9    0.978   0.965   0.988
+  c64      3m  BA   9    0.985   0.971   0.998
+  c64  planar  AB   9    0.977   0.963   0.984
+  c64  planar  BA   9    0.976   0.965   0.993
+  f64      1m  AB   9    0.950   0.928   0.976
+  f64      1m  BA   9    0.954   0.930   0.985
+  f64      3m  AB   9    0.950   0.928   0.976
+  f64      3m  BA   9    0.954   0.930   0.985
+  f64  planar  AB   9    0.950   0.928   0.976
+  f64  planar  BA   9    0.954   0.930   0.985
+
+--- outside the +/-6% per-case noise floor (6 of 108) ---
+  0.928    abcijk-eiab-jkec  f64      1m  AB     22.7 ->    21.1
+  0.928    abcijk-eiab-jkec  f64      3m  AB     22.7 ->    21.1
+  0.928    abcijk-eiab-jkec  f64  planar  AB     22.7 ->    21.1
+  0.930    abcijk-jkmc-miab  f64      1m  BA     22.7 ->    21.1
+  0.930    abcijk-jkmc-miab  f64      3m  BA     22.7 ->    21.1
+  0.930    abcijk-jkmc-miab  f64  planar  BA     22.7 ->    21.1
+  0.928    abcijk-eiab-jkec  f64      1m  AB     22.7 ->    21.1
+  0.928    abcijk-eiab-jkec  f64      3m  AB     22.7 ->    21.1
+  0.928    abcijk-eiab-jkec  f64  planar  AB     22.7 ->    21.1
+  0.930    abcijk-jkmc-miab  f64      1m  BA     22.7 ->    21.1
+  0.930    abcijk-jkmc-miab  f64      3m  BA     22.7 ->    21.1
+  0.930    abcijk-jkmc-miab  f64  planar  BA     22.7 ->    21.1
+
+--- overall, all cases (what a user sees) ---
+  c64      1m  0.974
+  c64      3m  0.981
+  c64  planar  0.976
+  f64      1m  0.952
+  f64      3m  0.952
+  f64  planar  0.952

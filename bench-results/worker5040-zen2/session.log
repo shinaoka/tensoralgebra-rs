@@ -102,3 +102,6 @@ best per method at kc = 384:
 [2026-08-03T17:08:48-04:00] outdir: bench-results/worker5040-zen2
 [2026-08-03T17:08:48-04:00] validate: is concurrent placement safe on this node?
 [2026-08-03T17:08:48-04:00] reusing the solo pair from bench-results/worker5040-zen2/phase4f
+[2026-08-03T17:34:49-04:00] validate done -- read the decision rule in scripts/validate-placement.sh
+[2026-08-03T17:34:49-04:00] outdir: bench-results/worker5040-zen2
+[2026-08-03T17:34:49-04:00] grid: MC/KC/NC, placement=auto

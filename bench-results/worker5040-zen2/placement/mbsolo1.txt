@@ -1,0 +1,77 @@
+host        : worker5040
+target      : x86_64 / linux
+cpu features: avx2 fma 
+caches      : L1=32KiB/8-way/1sh L2=512KiB/8-way/1sh L3=16384KiB/16-way/4sh (via sysfs), blocking=legacy
+baselines   : tblis=false blas=false
+
+sweeping 18 cases at 64 MiB nominal tensor size, 3 reps, stress=none
+
+
+=== f64 ===
+             case |    m |    n |  k | regA | regB | planar GF/s | 1m GF/s | 3m GF/s 
+------------------+------+------+----+------+------+-------------+---------+---------
+ abcijk-ijma-mkbc | 9216 | 4096 | 24 | 1.00 | 0.99 |        21.8 |    21.8 |    21.8 
+ abcijk-ijmb-mkac | 6144 | 6144 | 24 | 1.00 | 0.75 |        20.0 |    20.0 |    20.0 
+ abcijk-ijmc-mkab | 6144 | 6144 | 24 | 1.00 | 0.75 |        24.3 |    24.3 |    24.3 
+ abcijk-ikma-mjbc | 9216 | 4096 | 24 | 1.00 | 0.99 |        21.7 |    21.7 |    21.7 
+ abcijk-ikmb-mjac | 6144 | 6144 | 24 | 1.00 | 0.75 |        19.9 |    19.9 |    19.9 
+ abcijk-ikmc-mjab | 6144 | 6144 | 24 | 1.00 | 0.75 |        23.7 |    23.7 |    23.7 
+ abcijk-jkma-mibc | 9216 | 4096 | 24 | 1.00 | 0.99 |        22.0 |    22.0 |    22.0 
+ abcijk-jkmb-miac | 6144 | 6144 | 24 | 1.00 | 0.75 |        19.5 |    19.5 |    19.5 
+ abcijk-jkmc-miab | 6144 | 6144 | 24 | 1.00 | 0.75 |        22.7 |    22.7 |    22.7 
+ abcijk-eiab-jkec | 6144 | 6144 | 24 | 1.00 | 0.75 |        22.7 |    22.7 |    22.7 
+ abcijk-eiac-jkeb | 6144 | 6144 | 24 | 1.00 | 0.75 |        19.5 |    19.5 |    19.5 
+ abcijk-eibc-jkea | 4096 | 9216 | 24 | 1.00 | 0.99 |        21.9 |    21.9 |    21.9 
+ abcijk-ejab-ikec | 6144 | 6144 | 24 | 1.00 | 0.75 |        24.3 |    24.3 |    24.3 
+ abcijk-ejac-ikeb | 6144 | 6144 | 24 | 1.00 | 0.75 |        19.9 |    19.9 |    19.9 
+ abcijk-ejbc-ikea | 4096 | 9216 | 24 | 1.00 | 0.99 |        21.6 |    21.6 |    21.6 
+ abcijk-ekab-ijec | 6144 | 6144 | 24 | 1.00 | 0.75 |        24.0 |    24.0 |    24.0 
+ abcijk-ekac-ijeb | 6144 | 6144 | 24 | 1.00 | 0.75 |        19.9 |    19.9 |    19.9 
+ abcijk-ekbc-ijea | 4096 | 9216 | 24 | 1.00 | 0.99 |        21.5 |    21.5 |    21.5 
+
+=== c64 ===
+             case |    m |    n |  k | regA | regB | planar GF/s | 1m GF/s | 3m GF/s 
+------------------+------+------+----+------+------+-------------+---------+---------
+ abcijk-ijma-mkbc | 9216 | 4096 | 24 | 1.00 | 0.99 |        26.8 |    29.6 |    26.5 
+ abcijk-ijmb-mkac | 6144 | 6144 | 24 | 1.00 | 0.75 |        26.9 |    29.7 |    26.1 
+ abcijk-ijmc-mkab | 6144 | 6144 | 24 | 1.00 | 0.75 |        29.7 |    33.6 |    28.6 
+ abcijk-ikma-mjbc | 9216 | 4096 | 24 | 1.00 | 0.99 |        26.9 |    29.6 |    26.6 
+ abcijk-ikmb-mjac | 6144 | 6144 | 24 | 1.00 | 0.75 |        27.0 |    29.8 |    25.8 
+ abcijk-ikmc-mjab | 6144 | 6144 | 24 | 1.00 | 0.75 |        29.6 |    33.6 |    28.9 
+ abcijk-jkma-mibc | 9216 | 4096 | 24 | 1.00 | 0.99 |        26.8 |    29.7 |    26.5 
+ abcijk-jkmb-miac | 6144 | 6144 | 24 | 1.00 | 0.75 |        26.4 |    28.6 |    26.1 
+ abcijk-jkmc-miab | 6144 | 6144 | 24 | 1.00 | 0.75 |        28.7 |    30.2 |    28.5 
+ abcijk-eiab-jkec | 6144 | 6144 | 24 | 1.00 | 0.75 |        28.7 |    30.1 |    28.3 
+ abcijk-eiac-jkeb | 6144 | 6144 | 24 | 1.00 | 0.75 |        26.4 |    28.5 |    26.1 
+ abcijk-eibc-jkea | 4096 | 9216 | 24 | 1.00 | 0.99 |        26.9 |    29.7 |    26.6 
+ abcijk-ejab-ikec | 6144 | 6144 | 24 | 1.00 | 0.75 |        29.7 |    33.3 |    28.9 
+ abcijk-ejac-ikeb | 6144 | 6144 | 24 | 1.00 | 0.75 |        26.7 |    29.3 |    26.2 
+ abcijk-ejbc-ikea | 4096 | 9216 | 24 | 1.00 | 0.99 |        26.8 |    29.8 |    26.1 
+ abcijk-ekab-ijec | 6144 | 6144 | 24 | 1.00 | 0.75 |        29.7 |    33.5 |    28.9 
+ abcijk-ekac-ijeb | 6144 | 6144 | 24 | 1.00 | 0.75 |        27.0 |    29.8 |    26.3 
+ abcijk-ekbc-ijea | 4096 | 9216 | 24 | 1.00 | 0.99 |        26.8 |    29.7 |    26.5 
+
+=== complex efficiency ratio (c64 GF/s over f64 GF/s; 1.0 = no penalty) ===
+             case | planar c64/f64 | 1m c64/f64 | 3m c64/f64 
+------------------+----------------+------------+------------
+ abcijk-ijma-mkbc |          1.230 |      1.357 |      1.216 
+ abcijk-ijmb-mkac |          1.344 |      1.487 |      1.307 
+ abcijk-ijmc-mkab |          1.220 |      1.380 |      1.177 
+ abcijk-ikma-mjbc |          1.239 |      1.364 |      1.224 
+ abcijk-ikmb-mjac |          1.360 |      1.501 |      1.302 
+ abcijk-ikmc-mjab |          1.249 |      1.417 |      1.217 
+ abcijk-jkma-mibc |          1.215 |      1.350 |      1.205 
+ abcijk-jkmb-miac |          1.356 |      1.467 |      1.337 
+ abcijk-jkmc-miab |          1.265 |      1.330 |      1.255 
+ abcijk-eiab-jkec |          1.263 |      1.326 |      1.246 
+ abcijk-eiac-jkeb |          1.354 |      1.465 |      1.339 
+ abcijk-eibc-jkea |          1.231 |      1.358 |      1.214 
+ abcijk-ejab-ikec |          1.221 |      1.368 |      1.188 
+ abcijk-ejac-ikeb |          1.344 |      1.471 |      1.318 
+ abcijk-ejbc-ikea |          1.236 |      1.375 |      1.206 
+ abcijk-ekab-ijec |          1.237 |      1.394 |      1.205 
+ abcijk-ekac-ijeb |          1.357 |      1.496 |      1.320 
+ abcijk-ekbc-ijea |          1.246 |      1.378 |      1.228 
+             MEAN |          1.276 |      1.405 |      1.250 
+
+wrote bench-results/worker5040-zen2/placement/mbsolo1.csv
