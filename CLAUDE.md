@@ -22,7 +22,7 @@ Its distinguishing feature is **three interchangeable complex methods**
 (planar, 1m, 3m) behind one switch, sharing every other line of the engine, so
 they can be benchmarked against each other and against TBLIS on equal footing.
 
-## Current state (2026-08-02)
+## Current state (2026-08-03)
 
 * **Phase 1 complete.** Design doc, repo, harness, baselines, premise check.
 * **Phase 2 complete.** Engine is correct and framework-complete.
@@ -31,15 +31,14 @@ they can be benchmarked against each other and against TBLIS on equal footing.
   Absolute performance is meaningful from here on. The three-way comparison is
   done — see below and the Phase 3 report.
 * **Phase 4 in progress.** Item 1 (the write-back) is **done**: the profiled
-  2x defect is closed in all four dtypes for +12–17% corpus geometric mean,
-  with no case left slower beyond noise. **Item 1c (the micro-tile row block)
-  is done too** — a menu of register blocks per method plus a guarded rule,
-  worth 1.026 corpus geomean in `c64` planar and 1.11–1.12x on the 20 of 392
-  case-dtype-methods it fires on. Its more important result is that it
-  **prices the row/column orientation at ~2x** on the nine known misses and
-  shows `MR` is the wrong instrument for buying it. Items 2, 3 and the rest
-  remain; **the orientation rule is now the biggest lever** — see
-  `DECISIONS.md` Phase 4 report parts 4 and 5.
+  2x defect is closed in all four dtypes for +12–17% corpus geometric mean.
+  **Item 1c (the micro-tile row block) is done** — a menu of register blocks
+  per method plus a rule needing three measured guards; worth 1.026 corpus
+  geomean in `c64` planar, and its more valuable output was pricing the
+  orientation at ~2x. **Item 1d (the orientation rule) is done** — the
+  discriminant A14 had recorded as unknown was found, worth +1.0–2.8% corpus
+  geomean in every 32-bit column and up to 1.48x per case. **Item 2
+  (`MC`/`KC`/`NC`) is next.** See `DECISIONS.md` Phase 4 report parts 5 and 6.
 * Phase 5 not started.
 
 Workspace MSRV is **1.89** (AVX-512 intrinsics stabilised there).
@@ -281,12 +280,16 @@ scripts/compare-sweeps.py BASE_CSVS NEW_CSVS
 # the *whole grid* of options once (~2 h), then score candidate rules against it
 # offline, as many as you like, for free. This is how the row-block rule was
 # derived and how the orientation rule should be.
-scripts/phase4c-rowblock.sh 4 bench-results/phase4c
+scripts/phase4c-rowblock.sh 4 bench-results/phase4c    # every register block
+scripts/phase4d-orient.sh   4 bench-results/phase4d    # both orientation arms
 scripts/rowblock-score-rules.py bench-results/phase4c/shapes.csv bench-results/phase4c
+scripts/orient-score-rules.py   bench-results/phase4d/features.csv bench-results/phase4d
 
-# What a shape choice would do, with no CPU cost and no data touched. Safe to
-# run while a benchmark is in flight.
-./target/release/tcbench shapes --csv out.csv
+# The two analyses: no CPU cost, no data touched, exactly reproducible. Safe to
+# run while a benchmark is in flight, and the right way to decide which
+# measurements are worth making.
+./target/release/tcbench shapes --csv out.csv   # what each MR does to write-back
+./target/release/tcbench orient --csv out.csv   # both arms' structural features
 ```
 
 ```bash

@@ -7,8 +7,9 @@ is auditable after the fact.
 
 ## Resume here
 
-**State as of 2026-08-02.** Phases 1, 2 and 3 are complete and their gates are
-met. **Phase 4 is in progress: item 1 (the write-back) is done.**
+**State as of 2026-08-03.** Phases 1, 2 and 3 are complete and their gates are
+met. **Phase 4 is in progress: items 1 (the write-back), 1c (the micro-tile
+row block) and 1d (the orientation rule) are done; item 2 is next.**
 
 What exists:
 
@@ -21,17 +22,25 @@ What exists:
 * `crates/tensorcontract-tapp` — TAPP C ABI, verified against the upstream
   headers, exercised end to end through the C entry points.
 * `crates/tensorcontract-bench` — `tcbench` with `verify` / `premise` /
-  `sweep` / `info`; TBLIS (1.3 and 2.x) and OpenBLAS-TTGT baselines; the TCCG
-  corpus; GEMM roofline; stride-stress modes; CSV output.
+  `sweep` / `info`, plus two *analyses* that touch no data and cost no CPU, so
+  they are safe to run while a benchmark is in flight: `shapes` (what each
+  register block would do to the write-back) and `orient` (the structural
+  features of both orientation arms). TBLIS (1.3 and 2.x) and OpenBLAS-TTGT
+  baselines; the TCCG corpus; GEMM roofline; stride-stress modes; CSV output.
 * `bench-results/` — raw CSVs for every measurement quoted in this file, all
   committed. `phase3-*` is the Phase 3 set; `phase4/rm-*` is the Phase 4
   re-measurement on an exclusive machine and is the one to compare against.
+  **`phase4c/rb-*` and `phase4d/or-*` are the two grids**: every register block,
+  and both orientation arms, for all 392 corpus case-dtype-methods. They are the
+  most valuable asset here — a candidate rule can be scored against them offline
+  for free, and that is how both Phase 4.1c and 4.1d were settled.
 * `scripts/` — `env.sh` (toolchain + single-threading), `phase3-bench.sh` (the
   Phase 3 measurement set), `phase4-remeasure.sh` (the A/B pattern to copy),
-  `phase4c-rowblock.sh` (the row-block grid), `compare-sweeps.py` (turns two
-  sweep CSVs into the ratio tables in this file), `rowblock-decompose.py` and
-  `rowblock-score-rules.py` (score a candidate rule offline against the grid,
-  which is the pattern to copy for the orientation work).
+  `phase4c-rowblock.sh` and `phase4d-orient.sh` (the two grids),
+  `compare-sweeps.py` (turns two sweep CSVs into the ratio tables in this file),
+  and `rowblock-decompose.py` / `rowblock-score-rules.py` /
+  `orient-score-rules.py` (score candidate rules offline against a grid — the
+  pattern to copy for any further discrete tuning decision).
 
 Sanity check on a fresh checkout, in this order:
 
@@ -56,7 +65,12 @@ Settled; do not re-open without new data:
 2. The real headroom is low arithmetic intensity in either domain.
 3. The TCCG corpus cannot test awkward-stride claims without `--stress`.
 4. The corpus is 49 cases, not 48.
-5. **The three-way comparison is done and planar wins**, by 3–8% geometric
+5. **Write-back regularity is not a performance predictor.** The fraction of
+   output row blocks that avoid the gather path explains the write-back path
+   and nothing else: maximising it scores 0.936 in `f32` as a row-block rule
+   (A16) and 0.936 as an orientation rule (part 6). It has now pointed the
+   wrong way three times. It is a *gate* on a change, never an objective.
+6. **The three-way comparison is done and planar wins**, by 3–8% geometric
    mean over the corpus in both precisions — but the ranking inverts on
    memory-bound shapes, where 3m wins. The mechanism is bytes moved per useful
    flop, not flop count and not shuffles. See the Phase 3 report. *Caveat added
@@ -1027,6 +1041,13 @@ is a 32-bit case where `MR` (32 or 48) exceeds the run (24). Changing `MR` to
 16 for those shapes would satisfy condition 2 and make the rule pick BA without
 any new discriminant. **Do 1c before trying to fix the orientation rule** — it
 may dissolve the problem rather than require solving it.
+
+> **Superseded by parts 5 and 6.** It did not dissolve it: shrinking `MR` does
+> flip those cases to `BA`, but they gain 1.17–1.39x *while paying ~30% in
+> kernel shape*, which prices the orientation at ~2x and makes `MR` the wrong
+> instrument. The discriminant was found in part 6 and is unrelated to
+> `run / MR`: the rule has to be **antisymmetric** under exchanging the two
+> directions. Read part 6 before acting on anything in this section.
 
 ### Part 5: item 1c, the micro-tile row block — and what it prices
 
