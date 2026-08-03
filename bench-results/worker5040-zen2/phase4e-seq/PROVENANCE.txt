@@ -19,6 +19,9 @@ What that does and does not license:
     base in the clean single-core regime -- is a within-run, within-node ratio and
     is unaffected.
   * The cross-tie to the placed grid on worker5040 through the shared `base` arm
-    spans two machines. Same configuration is not the same silicon: treat that tie
-    as context, not as evidence, and do not quote a seq-vs-placed ratio as a
-    measurement of anything.
+    spans two machines, so it was checked rather than assumed. The two nodes run
+    the *same computation* (`bl-base-f32c32`, 294 measurements) to a geomean of
+    **0.9996**, median 0.998. Matching cache descriptors did not have to imply
+    matching throughput and here it does, so the tie is usable -- but it is a
+    two-machine comparison and any per-case reading of it still carries this
+    session's 6.2% per-case floor (observed min 0.880, max 1.113 over those 294).
