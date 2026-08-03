@@ -85,6 +85,35 @@ pub fn print_environment() {
         );
         println!();
     }
+    // The cache geometry the analytical blocking model reads, and which source
+    // answered. A blocking parameter that came out of a probe should be
+    // traceable to it, and a fallback to the built-in defaults — which would
+    // make every derived parameter conservative — should be visible here rather
+    // than inferred from a disappointing number.
+    {
+        use tensorcontract::kernel::cache;
+        let h = cache::hierarchy();
+        let one = |l: &cache::CacheLevel| {
+            format!(
+                "L{}={}KiB/{}-way/{}sh",
+                l.level,
+                l.size / 1024,
+                l.ways,
+                l.shared_by
+            )
+        };
+        let levels: Vec<String> = [Some(h.l1d), h.l2, h.l3]
+            .into_iter()
+            .flatten()
+            .map(|l| one(&l))
+            .collect();
+        println!(
+            "caches      : {} (via {}), blocking={}",
+            levels.join(" "),
+            h.source.name(),
+            cache::block_model().name()
+        );
+    }
     println!(
         "baselines   : tblis={} blas={}",
         cfg!(feature = "tblis"),

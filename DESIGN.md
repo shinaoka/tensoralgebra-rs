@@ -282,6 +282,21 @@ genericity is real, not aspirational, and is exercised by the
 Defaults are derived from cache sizes (packed A ≈ half of L2, packed B ≈ 3 MiB
 of L3) and overridable per plan or via `TENSORCONTRACT_MC/KC/NC`.
 
+Those numbers are one machine's, which is the one thing in the blocking that
+does not transfer. There is therefore a second derivation,
+`TENSORCONTRACT_BLOCKMODEL=model`: the BLIS analytical model (Low, Igual, Smith
+& Quintana-Ortí, ACM TOMS 2016) over cache descriptors probed at run time from
+Linux sysfs, x86 `CPUID`, or conservative built-in defaults, in that order —
+`KC` from the L1 subject to associativity, `MC` from the L2, `NC` from the L3,
+with no machine-specific constant anywhere in it. It is **off by default**: the
+committed measurements are all against the hardcoded constants and the pending
+`MC`/`KC`/`NC` grid defines its arms relative to them, so the model is an A/B
+switch rather than a new default until it has been measured. See
+`kernel::cache` for the equations, what had to be inferred, and how the
+threading interacts (`NC`'s L3 budget is shared, not divided, because the
+packed `B` panel is shared — but each thread's packed `A` is charged against
+the same L3).
+
 Critically, `Blocking::derive` takes the **reals per element the method
 actually packs**, not `size_of::<Element>()`. 1m stores four reals per complex
 element where planar stores two, so an element-size-based rule would silently
