@@ -14,6 +14,16 @@ x86 micro-kernels are real, and performance work is partly done and
 [documented case by case](DECISIONS.md). Read "Confidence" below before quoting
 a number.
 
+### Added — crate layout
+
+* `tensorprimitives` — the facade. Depend on it and enable the primitives you
+  need; it contains no algorithms. Applications should prefer it, libraries
+  should depend on the operation crate directly, because cargo features are
+  additive across a dependency graph.
+* `tensorcontract` — the contraction engine, described below.
+* `tensortranspose` — reserved for dedicated transpose kernels. Not yet written,
+  and not published as a placeholder.
+
 ### Added — engine
 
 * **Transpose-free dense contraction** of generally-strided real and complex
@@ -146,11 +156,11 @@ one test. All four were behaviour a C caller could observe:
   the pin once sat *below* the declared floor, and the `CPUID` cache probe once
   called `__cpuid_count` outside an `unsafe` block, which is only a safe function
   from 1.94 and silently raised the real floor by five releases.
-* **Publish order is fixed by cargo**: `tensorcontract` first, then
-  `tensorprimitives-tapp` once the engine is in the index. The TAPP crate depends
-  on the engine by path and version, so it cannot even be packaged until the
-  engine is published — `cargo package -p tensorprimitives-tapp` fails at
-  "failed to prepare local package for uploading" before that.
+* **Publish order is fixed by cargo**: **`tensorcontract` first**, then
+  `tensorprimitives` and `tensorprimitives-tapp` once the engine is in the index.
+  Both of those depend on the engine by path *and* version, so neither can even
+  be packaged beforehand — `cargo package` fails at "failed to prepare local
+  package for uploading" until `tensorcontract 0.1.0` is in the registry.
 * Licensed MIT OR Apache-2.0.
 * Any statement about TBLIS in `DECISIONS.md` names a version. v1.3.0 and
   2.0-dev differ by ~5x on complex data and swap two ABI enumerators; treating

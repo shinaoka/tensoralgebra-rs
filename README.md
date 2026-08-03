@@ -208,7 +208,9 @@ test suite gives it a correspondingly looser tolerance rather than hiding it.
 
 | crate | what |
 |---|---|
-| `crates/tensorcontract` | the engine: data model, index analysis, scatter/block-scatter, packing, micro-kernels, five-loop driver, brute-force oracle |
+| `crates/tensorprimitives` | the facade: depend on this and enable the primitives you want. No algorithms of its own |
+| `crates/tensorcontract` | the contraction engine: data model, index analysis, scatter/block-scatter, packing, micro-kernels, five-loop driver, brute-force oracle |
+| `crates/tensortranspose` | dedicated transpose kernels — **planned, not yet written** |
 | `crates/tensorprimitives-tapp` | TAPP C-ABI front end (`lib` / `cdylib` / `staticlib`) |
 | `crates/tensorprimitives-bench` | `tcbench`: correctness and performance harness, TCCG corpus, TBLIS and TTGT baselines |
 
