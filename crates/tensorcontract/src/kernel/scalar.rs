@@ -6,6 +6,102 @@
 //!
 //! They are written so that LLVM can auto-vectorise the `f32`/`f64`
 //! instantiations reasonably well, but they are not the fast path.
+//!
+//! # Adding an element type
+//!
+//! Three impls, no kernel of your own: [`Real`] for the arithmetic,
+//! [`Element`](crate::element::Element) to say how a storage element decomposes
+//! into reals, and [`KernelSet`](super::KernelSet) to hand back
+//! [`config_real`] / [`config_cplx`] at a register block of your choosing.
+//! Everything else — index analysis, folding, scatter and block scatter,
+//! packing in four formats, the five-loop driver, the scattered write-back,
+//! threading — is shared and needs nothing added to it.
+//!
+//! The register block is `MR x NR` in *reals*, and 4x4 is a reasonable default:
+//! the accumulator is a stack array of `MR * NR` values, so a large block on a
+//! type that is not a machine scalar costs more than it buys.
+//!
+//! ```
+//! use core::ops::{Add, AddAssign, Div, Mul, Neg, Sub};
+//! use tensorcontract::element::{Element, Real};
+//! use tensorcontract::kernel::{scalar, ComplexMethod, KernelConfig, KernelSet};
+//! use tensorcontract::{contract, Layout, TensorView, TensorViewMut};
+//!
+//! /// A stand-in for whatever you actually have: a newtype over `f64`.
+//! #[derive(Copy, Clone, Debug, PartialEq, PartialOrd)]
+//! struct Q(f64);
+//!
+//! macro_rules! op {
+//!     ($tr:ident, $f:ident, $o:tt) => {
+//!         impl $tr for Q {
+//!             type Output = Q;
+//!             fn $f(self, r: Q) -> Q { Q(self.0 $o r.0) }
+//!         }
+//!     };
+//! }
+//! op!(Add, add, +); op!(Sub, sub, -); op!(Mul, mul, *); op!(Div, div, /);
+//! impl Neg for Q { type Output = Q; fn neg(self) -> Q { Q(-self.0) } }
+//! impl AddAssign for Q { fn add_assign(&mut self, r: Q) { self.0 += r.0 } }
+//!
+//! impl Real for Q {
+//!     const ZERO: Q = Q(0.0);
+//!     const ONE: Q = Q(1.0);
+//!     fn from_f64(v: f64) -> Q { Q(v) }
+//!     fn to_f64(self) -> f64 { self.0 }
+//!     fn abs(self) -> Q { Q(self.0.abs()) }
+//! }
+//!
+//! // A real element type: one plane, no imaginary part, two flops per MAC.
+//! impl Element for Q {
+//!     type Real = Q;
+//!     const IS_COMPLEX: bool = false;
+//!     const PLANES: usize = 1;
+//!     const FLOPS_PER_MAC: u64 = 2;
+//!     fn zero() -> Q { Q(0.0) }
+//!     fn one() -> Q { Q(1.0) }
+//!     fn re(self) -> Q { self }
+//!     fn im(self) -> Q { Q(0.0) }
+//!     fn from_parts(re: Q, _im: Q) -> Q { re }
+//!     fn conj(self) -> Q { self }
+//!     fn mul(self, r: Q) -> Q { Q(self.0 * r.0) }
+//!     fn add(self, r: Q) -> Q { Q(self.0 + r.0) }
+//!     fn sub(self, r: Q) -> Q { Q(self.0 - r.0) }
+//! }
+//!
+//! impl KernelSet for Q {
+//!     fn config_real() -> KernelConfig<Q> { scalar::config_real::<Q, 4, 4>() }
+//!     fn config_cplx(m: ComplexMethod) -> KernelConfig<Q> {
+//!         scalar::config_cplx::<Q, 4, 4>(m)
+//!     }
+//! }
+//!
+//! // D[i,j] = sum_k A[i,k] B[k,j], with A the 2x3 matrix [[1,3,5],[2,4,6]]
+//! // and B the 3x2 identity-like [[1,0],[0,1],[0,0]].
+//! let (la, lb, ld) = (
+//!     Layout::col_major(&[2, 3]),
+//!     Layout::col_major(&[3, 2]),
+//!     Layout::col_major(&[2, 2]),
+//! );
+//! let a: Vec<Q> = (1..=6).map(|i| Q(i as f64)).collect();
+//! let b: Vec<Q> = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0].iter().map(|&v| Q(v)).collect();
+//! let mut d = vec![Q(0.0); 4];
+//!
+//! contract(
+//!     Q(1.0),
+//!     TensorView::new(&a, &la, &[b'i'.into(), b'k'.into()]),
+//!     TensorView::new(&b, &lb, &[b'k'.into(), b'j'.into()]),
+//!     Q(0.0),
+//!     None,
+//!     TensorViewMut::new(&mut d, &ld, &[b'i'.into(), b'j'.into()]),
+//! )
+//! .unwrap();
+//! assert_eq!(d, vec![Q(1.0), Q(2.0), Q(3.0), Q(4.0)]);
+//! ```
+//!
+//! `Q` above is real, so [`config_cplx`] is never reached — but implementing it
+//! is not busywork: it is what makes `Complex<Q>` work too, through the same
+//! three methods and the same kernels, with the complex method still selectable
+//! per plan.
 
 use super::{Blocking, ComplexMethod, KernelConfig, PackFormat, TileFormat, Ukr};
 use crate::element::Real;
@@ -159,6 +255,10 @@ pub unsafe fn threem_ukr<T: Real, const MR: usize, const NR: usize>(
     }
 }
 
+/// Real configuration at register block `MR x NR`.
+///
+/// `MR`/`NR` are used exactly as given — unlike [`config_cplx`], which halves
+/// the row block to make room for the extra accumulator planes.
 pub fn config_real<T: Real, const MR: usize, const NR: usize>() -> KernelConfig<T> {
     KernelConfig {
         ukr: Ukr {

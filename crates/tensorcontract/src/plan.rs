@@ -70,12 +70,24 @@ pub enum Class {
 }
 
 /// One folded axis: an extent plus its stride in each operand.
+///
+/// Carrying all four strides together is what makes folding checkable: two
+/// adjacent axes may be merged only when their strides are compatible in
+/// *every* operand at once, so the test has to see them side by side. An axis
+/// absent from an operand has stride 0 there, which is not a special case —
+/// see the module docs on isolated indices.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Axis {
+    /// Length of the axis after folding, i.e. the product of the extents that
+    /// were merged into it.
     pub extent: i64,
+    /// Stride in `A`, in elements; 0 if the axis does not appear in `A`.
     pub sa: i64,
+    /// Stride in `B`.
     pub sb: i64,
+    /// Stride in `C`.
     pub sc: i64,
+    /// Stride in `D`.
     pub sd: i64,
 }
 
@@ -94,14 +106,24 @@ struct LabelInfo {
 }
 
 /// Which element-wise operation to apply to an operand.
+///
+/// Conjugation is free here: on the input side it is folded into the pass that
+/// packing has to make anyway, and on the output side into the write-back, so
+/// there is never a separate traversal for it. That is why the engine offers no
+/// way to *not* apply it lazily.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum ElementOp {
+    /// Use the values as stored. The default, and the only option that means
+    /// anything for a real element type.
     #[default]
     Identity,
+    /// Complex-conjugate while reading (inputs) or before storing (output).
+    /// A no-op for real element types.
     Conjugate,
 }
 
 impl ElementOp {
+    /// Whether this op conjugates.
     #[inline]
     pub fn is_conj(self) -> bool {
         matches!(self, ElementOp::Conjugate)
@@ -109,14 +131,23 @@ impl ElementOp {
 }
 
 /// An operand description: layout plus index labels plus element-wise op.
+///
+/// This is [`crate::TensorView`] with the data slice removed — everything
+/// [`Plan::new`] needs, and nothing it does not. A plan is built from
+/// `Operand`s and can then be executed against any data of any element type.
 #[derive(Clone, Copy, Debug)]
 pub struct Operand<'a> {
+    /// Extents and strides, in elements.
     pub layout: &'a Layout,
+    /// One index label per mode of `layout`, in the same order.
     pub idx: &'a [i64],
+    /// Element-wise operation to apply. Recorded in the plan, so a conjugated
+    /// plan and an unconjugated one are different plans.
     pub op: ElementOp,
 }
 
 impl<'a> Operand<'a> {
+    /// An operand with [`ElementOp::Identity`].
     pub fn new(layout: &'a Layout, idx: &'a [i64]) -> Self {
         Operand {
             layout,
@@ -124,6 +155,7 @@ impl<'a> Operand<'a> {
             op: ElementOp::Identity,
         }
     }
+    /// The same operand, complex-conjugated.
     pub fn conj(mut self) -> Self {
         self.op = ElementOp::Conjugate;
         self
@@ -132,15 +164,31 @@ impl<'a> Operand<'a> {
 
 /// Diagnostics about a plan, useful for benchmarking write-ups and for
 /// dispatch heuristics.
+///
+/// The four dimensions are the *matrix* shape the contraction was reduced to,
+/// after diagonals are collapsed, extent-1 axes are dropped and compatible
+/// axes are folded — so they are what the engine works on rather than what the
+/// caller wrote. Reading them is the cheapest way to see whether folding did
+/// what you expected.
 #[derive(Clone, Debug, Default)]
 pub struct PlanStats {
+    /// Rows of the matrix view: the product of the `M` extents.
     pub m: usize,
+    /// Columns: the product of the `N` extents.
     pub n: usize,
+    /// Contraction depth: the product of the `K` extents, including any
+    /// isolated (reduction) indices folded in.
     pub k: usize,
+    /// Number of independent matrix products, i.e. the product of the Hadamard
+    /// extents. 1 when there are none.
     pub batch: usize,
+    /// The folded `M` axes, fastest-varying in `D` first.
     pub m_axes: Vec<Axis>,
+    /// The folded `N` axes, fastest-varying in `D` first.
     pub n_axes: Vec<Axis>,
+    /// The folded `K` axes, fastest-varying in `A` first.
     pub k_axes: Vec<Axis>,
+    /// The folded Hadamard axes.
     pub h_axes: Vec<Axis>,
     /// True when every class folded down to at most one axis, i.e. the
     /// contraction is exactly a (batched) GEMM on strided matrices.
@@ -149,28 +197,50 @@ pub struct PlanStats {
 
 impl PlanStats {
     /// Multiply-accumulate count (batch * m * n * k).
+    ///
+    /// Multiply by [`crate::Element::FLOPS_PER_MAC`] for a flop count. This
+    /// counts *useful* work — the padding the engine does on edge blocks is
+    /// deliberately not included, so throughput computed from it is comparable
+    /// against another library's.
     pub fn macs(&self) -> u64 {
         (self.batch as u64) * (self.m as u64) * (self.n as u64) * (self.k as u64)
     }
 }
 
 /// Borrowed view of a plan's scatter vectors. Offsets are in elements.
+///
+/// Element `(i, j)` of batch `h` of operand `X` lives at
+/// `x_row[i] + x_col[j] + h_x[h]` from that operand's base pointer. The three
+/// vectors are independent, which is the whole point of the scatter
+/// representation: no arithmetic relates them, so an arbitrary permutation of
+/// modes costs a table lookup rather than a transposition.
 #[derive(Clone, Copy, Debug)]
 pub struct Scatters<'a> {
     /// Offsets of A's rows (free indices of A).
     pub a_m: &'a [i64],
     /// Offsets of A's columns (contracted indices).
     pub a_k: &'a [i64],
+    /// Offsets of B's rows (contracted indices). Parallel to `a_k`: entry `p`
+    /// of each names the same contraction index.
     pub b_k: &'a [i64],
+    /// Offsets of B's columns (free indices of B).
     pub b_n: &'a [i64],
+    /// Offsets of C's rows. Parallel to `d_m`, but with C's own strides —
+    /// C and D must share labels, not layout.
     pub c_m: &'a [i64],
+    /// Offsets of C's columns.
     pub c_n: &'a [i64],
+    /// Offsets of D's rows.
     pub d_m: &'a [i64],
+    /// Offsets of D's columns.
     pub d_n: &'a [i64],
     /// Per-batch base offsets for the Hadamard indices.
     pub h_a: &'a [i64],
+    /// Per-batch base offsets in B. Parallel to `h_a`.
     pub h_b: &'a [i64],
+    /// Per-batch base offsets in C.
     pub h_c: &'a [i64],
+    /// Per-batch base offsets in D.
     pub h_d: &'a [i64],
 }
 
@@ -211,6 +281,9 @@ pub struct Plan {
     pub(crate) method: Option<crate::kernel::ComplexMethod>,
     /// Overrides the default thread count when set.
     pub(crate) threads: Option<usize>,
+    /// The matrix shape and folded axes this plan reduced to. Public because
+    /// it is the answer to "what did the index analysis actually decide", which
+    /// nothing else reports.
     pub stats: PlanStats,
 }
 
@@ -367,6 +440,9 @@ impl Plan {
     /// [`ComplexMethod::from_env`], i.e. `TENSORCONTRACT_COMPLEX` if set and
     /// [`ComplexMethod::Planar`] otherwise.
     ///
+    /// [`ComplexMethod::from_env`]: crate::kernel::ComplexMethod::from_env
+    /// [`ComplexMethod::Planar`]: crate::kernel::ComplexMethod::Planar
+    ///
     /// ```
     /// # use tensorcontract::{Layout, Plan, Operand, ComplexMethod};
     /// # let la = Layout::col_major(&[4, 5]);
@@ -406,9 +482,12 @@ impl Plan {
     ///
     /// Parallelism is a 2-D partition of the output, `ceil(M / MR)` row panels
     /// by `ceil(N / NR)` column blocks, so it is capped at their product — see
-    /// [`Plan::partition`] for how the two axes are apportioned and the
-    /// [driver](crate::driver) for what the partition guarantees. A thread count
+    /// [`Plan::partition`] for how the two axes are apportioned. A thread count
     /// above the cap is silently reduced; `0` is treated as `1`.
+    ///
+    /// Each thread owns a disjoint set of output blocks and its own packed `A`,
+    /// and no reduction is parallelised, so the summation order over `k` is the
+    /// serial one at every thread count.
     ///
     /// Results are **bitwise identical** for every thread count, so this is
     /// never a numerical decision.
@@ -697,7 +776,7 @@ impl Plan {
     /// # Why `MR` is not just a kernel-tuning constant
     ///
     /// `MR` is the granularity at which the *output's* row scatter is blocked,
-    /// so it decides which of [`crate::writeback`]'s three paths each block
+    /// so it decides which of the write-back's three paths each block
     /// takes. When `D`'s rows come in contiguous runs of `r` elements, an
     /// aligned `MR`-block lies inside one run — and so gets the unit-stride
     /// path — only when `MR` divides into the run pattern; otherwise it
@@ -785,7 +864,7 @@ impl Plan {
     }
 
     /// Fraction of the output's row blocks that would stay off
-    /// [`crate::writeback`]'s gather path at row block `mr`, evaluated in the
+    /// the write-back's gather path at row block `mr`, evaluated in the
     /// orientation `mr` itself selects.
     ///
     /// `0.0` when the output's rows have no uniform run structure — then `MR`

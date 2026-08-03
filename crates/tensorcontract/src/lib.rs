@@ -28,7 +28,35 @@
 //!
 //! Select per plan with [`Plan::with_complex_method`], or globally with the
 //! `TENSORCONTRACT_COMPLEX` environment variable (`planar` | `1m` | `3m`).
-//! See [`kernel`] and [`pack`] for the details.
+//! See [`kernel`] for the packed formats and the micro-kernel contract.
+//!
+//! # What is API, and what it promises
+//!
+//! The public surface is deliberately in three tiers, because they carry very
+//! different promises:
+//!
+//! 1. **The contraction API** — [`contract`], [`Plan`], [`Layout`],
+//!    [`TensorView`], [`TensorViewMut`], [`Element`], [`Error`], and the
+//!    per-plan choices [`Plan::with_complex_method`], [`Plan::with_threads`],
+//!    [`Plan::with_blocking`]. Ordinary semver: a breaking change here needs a
+//!    major version.
+//! 2. **Introspection of the engine's own decisions** — [`PlanStats`],
+//!    [`plan::Scatters`], [`Plan::transposes_gemm`], [`Plan::row_block`],
+//!    [`Plan::partition`], [`kernel::selected_config`], [`kernel::cache`] and
+//!    friends. The *signatures* are semver-stable, and they exist so that a
+//!    benchmark harness or an alternative execution strategy can describe
+//!    exactly what this engine would do. The *values* are tuning outputs and
+//!    will change whenever a heuristic is re-measured; that is not a breaking
+//!    change, and no caller should encode one of these answers as a constant.
+//! 3. **`#[doc(hidden)]` internals**, which are public only because sibling
+//!    crates in this workspace need them. They are outside the semver
+//!    guarantee entirely and may change or vanish without a major bump. Today
+//!    that is `kernel::x86` — the SIMD kernels, whose register-block menus are
+//!    re-measured per machine — and the driver's block-scatter matrix view.
+//!    Neither has a page here, which is the point.
+//!
+//! [`kernel::scalar`] sits in tier 1 by intent: it is the documented route by
+//! which a foreign scalar type gets a correct, unvectorised engine.
 //!
 //! # Example
 //!
@@ -56,6 +84,8 @@
 //! assert_eq!(d, vec![1.0, 2.0, 3.0, 4.0]);
 //! ```
 
+#![warn(missing_docs)]
+
 mod buffer;
 mod driver;
 mod pack;
@@ -76,15 +106,30 @@ pub use layout::Layout;
 pub use plan::{Class, ElementOp, Operand, Plan, PlanStats};
 
 /// An immutable operand: data, layout and index labels.
+///
+/// The three parts are independent by design. `layout` describes *where* the
+/// elements are (extents and general strides), `idx` says *what each mode
+/// means* by giving it a label shared with the other operands, and `data` is
+/// merely the allocation they address. Nothing requires `data` to be exactly as
+/// long as the layout needs — only long enough, which [`Plan::run`] checks.
 #[derive(Clone, Copy, Debug)]
 pub struct TensorView<'a, T> {
+    /// The backing allocation. Indexed at `sum_k i_k * layout.strides[k]`, so
+    /// its length is checked against the largest offset the plan can generate
+    /// rather than against `layout.len()`.
     pub data: &'a [T],
+    /// Extents and strides, in elements. See [`Layout`].
     pub layout: &'a Layout,
+    /// One index label per mode of `layout`, in the same order. Labels are
+    /// arbitrary `i64`s and are matched by equality across the four operands;
+    /// [`parse_einsum`] and [`einsum_labels`] produce them from strings.
     pub idx: &'a [i64],
+    /// Element-wise operation applied while reading. Set by [`TensorView::conj`].
     pub op: ElementOp,
 }
 
 impl<'a, T> TensorView<'a, T> {
+    /// An operand read as stored, with no element-wise operation.
     pub fn new(data: &'a [T], layout: &'a Layout, idx: &'a [i64]) -> Self {
         TensorView {
             data,
@@ -108,15 +153,27 @@ impl<'a, T> TensorView<'a, T> {
 }
 
 /// A mutable output operand.
+///
+/// The exclusive borrow is what makes [`Plan::run`] safe: it is the only reason
+/// the engine may assume `D` does not alias `A`, `B` or `C`, which the
+/// scatter write-back has no way to check.
 #[derive(Debug)]
 pub struct TensorViewMut<'a, T> {
+    /// The allocation written into, exclusively borrowed.
     pub data: &'a mut [T],
+    /// Extents and strides, in elements. See [`Layout`].
     pub layout: &'a Layout,
+    /// One index label per mode of `layout`, in the same order. Every label
+    /// here must also appear in `A` or `B`; an output-only label would be a
+    /// broadcast, which is rejected ([`Error::BroadcastIndexUnsupported`]).
     pub idx: &'a [i64],
+    /// Element-wise operation applied to the result before storing. Set by
+    /// [`TensorViewMut::conj`].
     pub op: ElementOp,
 }
 
 impl<'a, T> TensorViewMut<'a, T> {
+    /// An output stored as computed, with no element-wise operation.
     pub fn new(data: &'a mut [T], layout: &'a Layout, idx: &'a [i64]) -> Self {
         TensorViewMut {
             data,
@@ -207,12 +264,28 @@ impl Plan {
         Ok(())
     }
 
-    /// Execute against raw pointers. Used by the TAPP C ABI.
+    /// Execute against raw pointers, with no bounds checking.
+    ///
+    /// This is what the TAPP C ABI calls: at an FFI boundary the caller has
+    /// already been handed raw pointers and slice lengths do not exist, so
+    /// [`Plan::run`]'s check has nothing to check against.
     ///
     /// # Safety
-    /// See [`driver::execute`]: every offset produced by the plan's scatter
-    /// vectors must be in bounds for the corresponding pointer, and `d` must
-    /// not alias `a` or `b`.
+    ///
+    /// The plan's scatter vectors ([`Plan::scatters`]) enumerate every offset
+    /// that will be touched, so the obligations are exactly:
+    ///
+    /// * for each of `a`, `b`, `d` (and `c` when `beta` is nonzero), every sum
+    ///   of one offset from each of that operand's three scatter vectors —
+    ///   row, column and Hadamard — must be a valid offset from the pointer,
+    ///   readable for `a`/`b`/`c` and writable for `d`;
+    /// * `d` must not alias `a`, `b` or `c`, except that `c == d` is allowed
+    ///   and is how an in-place update is expressed;
+    /// * `T` must be the element type the caller intends — nothing here
+    ///   validates it, and a plan is element-type independent by construction.
+    ///
+    /// When `c` is not read (`beta` zero) it is never dereferenced and may be
+    /// any pointer, including `d`.
     pub unsafe fn run_raw<T>(
         &self,
         alpha: T,

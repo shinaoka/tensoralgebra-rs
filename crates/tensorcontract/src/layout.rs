@@ -10,11 +10,22 @@ use crate::error::{Error, Result};
 /// bytes, and may be negative or zero.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct Layout {
+    /// Extent of each mode. Must be non-negative; an extent of 1 is dropped
+    /// during planning, and an extent of 0 makes the whole contraction empty.
     pub extents: Vec<i64>,
+    /// Stride of each mode, in elements, same order as `extents`. A zero stride
+    /// means the mode reads the same element repeatedly, which is legal and is
+    /// how reductions are expressed internally; a negative stride walks
+    /// backwards.
     pub strides: Vec<i64>,
 }
 
 impl Layout {
+    /// A layout from explicit extents and strides.
+    ///
+    /// The only thing validated here is that the two have the same length —
+    /// nothing else is checkable without knowing the allocation, and the
+    /// remaining conditions are checked when a plan is built or run.
     pub fn new(extents: Vec<i64>, strides: Vec<i64>) -> Result<Self> {
         if extents.len() != strides.len() {
             return Err(Error::RankMismatch {
@@ -53,16 +64,22 @@ impl Layout {
         }
     }
 
+    /// Number of modes.
     #[inline]
     pub fn ndim(&self) -> usize {
         self.extents.len()
     }
 
     /// Number of elements addressed (product of extents).
+    ///
+    /// This counts *index tuples*, not distinct memory locations: with a zero
+    /// stride somewhere, or a repeated label selecting a diagonal, several
+    /// tuples land on the same element.
     pub fn len(&self) -> i64 {
         self.extents.iter().product()
     }
 
+    /// Whether any extent is zero, so the layout addresses nothing.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }

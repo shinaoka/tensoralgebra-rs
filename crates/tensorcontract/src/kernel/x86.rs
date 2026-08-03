@@ -1,7 +1,13 @@
 //! x86-64 vectorised micro-kernels.
 //!
-//! These honour exactly the same [`PackFormat`](super::PackFormat) /
-//! [`TileFormat`](super::TileFormat) contract as
+//! **Not part of the public API.** This module is `#[doc(hidden)]` and outside
+//! the crate's semver guarantee; it is public only so that
+//! `examples/kernel_shapes` can measure one kernel family at a time. The
+//! register-block menus below are re-measured whenever the reference machine
+//! changes, so nothing here is stable. Reach the kernels through
+//! [`super::KernelSet`].
+//!
+//! These honour exactly the same [`PackFormat`] / [`TileFormat`] contract as
 //! [`scalar`](super::scalar), which is what keeps the three complex methods
 //! interchangeable: the driver, the packing traversal and the write-back do not
 //! know which kernel they are running.
@@ -61,8 +67,6 @@
 //! choice of aspect ratio, so AVX2 register blocks are 2–6x smaller than their
 //! AVX-512 counterparts and are much closer to the register bound.
 
-#![allow(clippy::missing_safety_doc)]
-
 use super::{Blocking, ComplexMethod, KernelConfig, PackFormat, TileFormat, Ukr};
 
 #[cfg(target_arch = "x86")]
@@ -86,6 +90,12 @@ use core::arch::x86_64::*;
 ///
 /// `$feats` lists the target features the kernels need; each becomes its own
 /// `#[target_feature(enable = ...)]` attribute.
+///
+/// Every generated function is `unsafe` twice over — raw pointers, and a
+/// `#[target_feature]` the CPU may not have — so each carries a `# Safety`
+/// section spelling out both. The counts differ per method because the packed
+/// formats do; they are exactly the [`Ukr`] fields `a_per_k`, `b_per_k` and
+/// `tile`, which is the invariant `panel_sizes_are_self_consistent` checks.
 macro_rules! simd_kernels {
     (
         $modname:ident, $t:ty, $v:ty, $lanes:expr, [$($feat:literal),+ $(,)?],
@@ -100,6 +110,12 @@ macro_rules! simd_kernels {
             /// `ab[j*MR + i] = sum_p a[p*MR + i] * b[p*NR + j]`, `MR = MV*L`.
             ///
             /// Also the 1m kernel: see [`onem`].
+            ///
+            /// # Safety
+            /// The CPU must support this module's target features. `a` must be
+            /// valid for `MV*L*kc` reads, `b` for `NR*kc` reads, and `ab` for
+            /// `MV*L*NR` writes. Loads and stores are unaligned, so no
+            /// alignment beyond `$t`'s own is required.
             $(#[target_feature(enable = $feat)])+
             pub unsafe fn real<const MV: usize, const NR: usize>(
                 kc: usize,
@@ -137,6 +153,12 @@ macro_rules! simd_kernels {
             /// column-major. No shuffles anywhere: the four real products of a
             /// complex FMA are four `vfmadd`/`vfnmadd` on data that is already
             /// in the right lanes.
+            ///
+            /// # Safety
+            /// The CPU must support this module's target features. `a` must be
+            /// valid for `2*MV*L*kc` reads, `b` for `2*NR*kc` reads, and `ab`
+            /// for `2*MV*L*NR` writes — twice the real kernel's, for the two
+            /// planes. Accesses are unaligned.
             $(#[target_feature(enable = $feat)])+
             pub unsafe fn planar<const MV: usize, const NR: usize>(
                 kc: usize,
@@ -183,6 +205,12 @@ macro_rules! simd_kernels {
             ///
             /// `MV` counts the vector registers of the *real* row block, so the
             /// complex micro-tile is `MV*L/2 x NR`.
+            ///
+            /// # Safety
+            /// The CPU must support this module's target features. `kc` is the
+            /// *logical* (complex) depth and each logical step is two real ones,
+            /// so `a` must be valid for `2*MV*L*kc` reads, `b` for `2*NR*kc`
+            /// reads, and `ab` for `MV*L*NR` writes. Accesses are unaligned.
             $(#[target_feature(enable = $feat)])+
             pub unsafe fn onem<const MV: usize, const NR: usize>(
                 kc: usize,
@@ -198,6 +226,11 @@ macro_rules! simd_kernels {
             /// Accumulates `M1 = Ar*Br`, `M2 = Ai*Bi`, `M3 = (Ar+Ai)*(Br+Bi)`
             /// one plane at a time, so only `MV` A-registers are live at once
             /// and the three accumulator planes fit alongside them.
+            ///
+            /// # Safety
+            /// The CPU must support this module's target features. `a` must be
+            /// valid for `3*MV*L*kc` reads, `b` for `3*NR*kc` reads, and `ab`
+            /// for `3*MV*L*NR` writes. Accesses are unaligned.
             $(#[target_feature(enable = $feat)])+
             pub unsafe fn threem<const MV: usize, const NR: usize>(
                 kc: usize,
@@ -260,6 +293,12 @@ macro_rules! simd_kernels {
             // differs), which costs one `call` per micro-tile against
             // `kc * MR * NR` FMAs of work.
 
+            /// Function-pointer form of [`real`].
+            ///
+            /// # Safety
+            /// As [`real`], including the target-feature requirement — the
+            /// wrapper drops the `#[target_feature]` attribute, not the
+            /// obligation.
             pub unsafe fn tramp_real<const MV: usize, const NR: usize>(
                 kc: usize,
                 a: *const $t,
@@ -268,6 +307,10 @@ macro_rules! simd_kernels {
             ) {
                 real::<MV, NR>(kc, a, b, ab)
             }
+            /// Function-pointer form of [`planar`].
+            ///
+            /// # Safety
+            /// As [`planar`], including the target-feature requirement.
             pub unsafe fn tramp_planar<const MV: usize, const NR: usize>(
                 kc: usize,
                 a: *const $t,
@@ -276,6 +319,10 @@ macro_rules! simd_kernels {
             ) {
                 planar::<MV, NR>(kc, a, b, ab)
             }
+            /// Function-pointer form of [`onem`].
+            ///
+            /// # Safety
+            /// As [`onem`], including the target-feature requirement.
             pub unsafe fn tramp_onem<const MV: usize, const NR: usize>(
                 kc: usize,
                 a: *const $t,
@@ -284,6 +331,10 @@ macro_rules! simd_kernels {
             ) {
                 onem::<MV, NR>(kc, a, b, ab)
             }
+            /// Function-pointer form of [`threem`].
+            ///
+            /// # Safety
+            /// As [`threem`], including the target-feature requirement.
             pub unsafe fn tramp_threem<const MV: usize, const NR: usize>(
                 kc: usize,
                 a: *const $t,
@@ -377,7 +428,7 @@ simd_kernels!(
 /// whether the write-back takes its unit-stride path or its gather path. A
 /// shape 10–20% off peak that moves whole block families onto the fast path
 /// wins on any contraction that is nowhere near kernel-bound. See
-/// [`super::row_block_for`].
+/// [`crate::Plan::row_block`].
 macro_rules! configs {
     ($t:ty, $m:ident, $isa:literal,
      real   = [$(($rmv:literal, $rnr:literal)),+ $(,)?],

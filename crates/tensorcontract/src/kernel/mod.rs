@@ -61,7 +61,7 @@
 //!
 //! A micro-kernel *overwrites* an accumulator tile with the panel product;
 //! `alpha`, `beta`, the scattered write-back to `C`/`D` and any recombination
-//! of planes are applied afterwards by [`crate::writeback`]. Keeping them
+//! of planes are applied afterwards by the write-back. Keeping them
 //! separate is what lets one kernel serve the regular fast path, the gather
 //! path and every edge block without duplication.
 //!
@@ -73,6 +73,9 @@ use crate::element::Real;
 pub mod cache;
 pub mod scalar;
 
+// The x86-64 SIMD kernels: public for `examples/kernel_shapes`, `doc(hidden)`
+// and outside the semver guarantee. See the module's own docs.
+#[doc(hidden)]
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub mod x86;
 
@@ -91,12 +94,17 @@ pub enum ComplexMethod {
 }
 
 impl ComplexMethod {
+    /// All three methods, so a harness can iterate them without spelling the
+    /// list out and silently miss one when a fourth is added.
     pub const ALL: [ComplexMethod; 3] = [
         ComplexMethod::Planar,
         ComplexMethod::OneM,
         ComplexMethod::ThreeM,
     ];
 
+    /// Parse a method name, case- and whitespace-insensitively. Accepts the
+    /// short spellings the `TENSORCONTRACT_COMPLEX` variable takes (`planar` |
+    /// `1m` | `3m`) as well as `split`, `onem`, `threem` and `karatsuba`.
     pub fn parse(s: &str) -> Option<ComplexMethod> {
         match s.trim().to_ascii_lowercase().as_str() {
             "planar" | "split" => Some(ComplexMethod::Planar),
@@ -106,6 +114,8 @@ impl ComplexMethod {
         }
     }
 
+    /// The canonical short name, which [`ComplexMethod::parse`] round-trips.
+    /// Used in kernel names and every CSV column heading.
     pub fn name(self) -> &'static str {
         match self {
             ComplexMethod::Planar => "planar",
@@ -134,7 +144,7 @@ impl ComplexMethod {
     }
 }
 
-/// What [`crate::pack`] should emit for one operand.
+/// What packing should emit for one operand.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PackFormat {
     /// One real value per element.
@@ -163,7 +173,7 @@ impl PackFormat {
     }
 }
 
-/// How [`crate::writeback`] should read a micro-kernel's accumulator tile.
+/// How the write-back should read a micro-kernel's accumulator tile.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TileFormat {
     /// `ab[j*MR + i]`, imaginary part zero.
@@ -190,15 +200,31 @@ pub struct Ukr<T> {
     pub a_per_k: usize,
     /// Reals in a B sliver per logical k-step.
     pub b_per_k: usize,
-    /// Reals in the accumulator tile.
+    /// Reals in the accumulator tile: `planes * mr * nr`.
     pub tile: usize,
+    /// Layout `func` requires of the packed A sliver.
     pub a_pack: PackFormat,
+    /// Layout `func` requires of the packed B sliver.
     pub b_pack: PackFormat,
+    /// Layout `func` leaves the accumulator tile in.
     pub tile_fmt: TileFormat,
+    /// The kernel itself, as a plain function pointer.
+    ///
+    /// It *overwrites* `ab` with the panel product and does nothing else — no
+    /// `alpha`, no `beta`, no store to `C`/`D`, no recombination of planes. See
+    /// the module's "Kernel contract" section for why that division is what
+    /// makes one kernel serve the regular path, the gather path and every edge
+    /// block.
+    ///
     /// # Safety
     /// `a` must address `a_per_k * kc` values, `b` must address `b_per_k * kc`
-    /// values, and `ab` must address `tile` values.
+    /// values, and `ab` must address `tile` values. Vectorised kernels reach
+    /// this pointer through a plain-`fn` trampoline, so the CPU-feature check
+    /// belongs to whoever built the [`Ukr`], not to the caller.
     pub func: unsafe fn(kc: usize, a: *const T, b: *const T, ab: *mut T),
+    /// Kernel name, e.g. `"avx512-planar"`. Reported by
+    /// [`selected_kernel_name`] and used to label measurements, so a number can
+    /// always be traced to the code that produced it.
     pub name: &'static str,
 }
 
@@ -218,13 +244,25 @@ impl<T> core::fmt::Debug for Ukr<T> {
 /// [`Blocking::derive`], the hardcoded Phase 2 heuristic, which is the
 /// **default**; and [`Blocking::model`], the BLIS analytical model driven by
 /// cache descriptors probed from the hardware, which is what transfers to a
-/// machine nobody measured on. The switch is applied in
-/// [`KernelConfig::normalise`], so every kernel — vectorised, scalar, default
+/// machine nobody measured on. The switch is applied on every path that
+/// produces a configuration, so every kernel — vectorised, scalar, default
 /// shape or menu alternate — goes through the same one.
+///
+/// `mc` and `nc` are always whole multiples of the micro-tile's `mr` and `nr`
+/// respectively; the driver's loop arithmetic relies on it, and
+/// [`KernelConfig::with_blocking`] re-imposes it after any change.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Blocking {
+    /// Rows of the packed `A` block, sized so `mc x kc` reals fit the L2.
+    /// Also bounds the strip of `D` that one pass over the `jr` loop revisits,
+    /// which is a *second*, opposing constraint the derivation does not model —
+    /// see A13 in `DECISIONS.md`.
     pub mc: usize,
+    /// Contraction depth of one pass. First-order for the complex method
+    /// ranking, because it decides whether the `A` sliver is an L1 resident or
+    /// an L2 stream.
     pub kc: usize,
+    /// Columns of the packed `B` block, sized so `kc x nc` reals fit the L3.
     pub nc: usize,
 }
 
@@ -303,9 +341,17 @@ impl Blocking {
 }
 
 /// Everything the driver needs for one element type and complex method.
+///
+/// This is what a [`KernelSet`] implementation returns, and the two halves are
+/// not independent: the blocking is derived from the packed footprint *this*
+/// micro-kernel produces, and `mc`/`nc` must stay aligned to its register
+/// block. Build one with [`scalar::config_real`] or [`scalar::config_cplx`]
+/// rather than by hand.
 #[derive(Clone, Copy, Debug)]
 pub struct KernelConfig<T> {
+    /// The micro-kernel and its shape.
     pub ukr: Ukr<T>,
+    /// Cache blocking that suits it.
     pub blk: Blocking,
 }
 
@@ -452,9 +498,10 @@ fn env_usize(_key: &str) -> Option<usize> {
 /// Real scalar types for which the engine has a micro-kernel.
 ///
 /// `f32` and `f64` get runtime-dispatched vectorised kernels: AVX-512F if the
-/// CPU has it, else AVX2+FMA, else the portable path below. `TENSORCONTRACT_KERNEL`
-/// pins one (`scalar` | `avx2` | `avx512`). Any other
-/// [`Real`] type can opt in with the generic scalar kernels, e.g.
+/// CPU has it, else AVX2+FMA, else the portable path in [`scalar`].
+/// `TENSORCONTRACT_KERNEL` pins one (`scalar` | `avx2` | `avx512`).
+///
+/// Any other [`Real`] type can opt in by returning the generic scalar kernels:
 ///
 /// ```ignore
 /// impl KernelSet for MyDual {
@@ -464,8 +511,19 @@ fn env_usize(_key: &str) -> Option<usize> {
 ///     }
 /// }
 /// ```
+///
+/// The two `row_block`-related methods are optional and exist only for kernel
+/// sets that have more than one shape to offer. See [`scalar`] for a complete
+/// worked example, compiled and run as a doctest.
 pub trait KernelSet: Real + Sized {
+    /// The kernel to use when the element type is this real type itself.
     fn config_real() -> KernelConfig<Self>;
+    /// The kernel to use when the element type is complex over this real type.
+    ///
+    /// Must honour `method`: the packed formats the driver produces and the
+    /// tile format the write-back reads are taken from the returned [`Ukr`], so
+    /// returning a planar kernel for [`ComplexMethod::ThreeM`] would not be
+    /// slow, it would be wrong.
     fn config_cplx(method: ComplexMethod) -> KernelConfig<Self>;
 
     /// Logical row blocks `MR` this kernel set can run, default first.

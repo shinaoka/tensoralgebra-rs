@@ -23,13 +23,26 @@
 //! | `TAPP_CONJUGATE` on any operand | supported (free: folded into packing) |
 //! | mixed precision (`prec` != storage) | accepted, computed at storage precision |
 //! | batched product | supported |
-
-// Every `extern "C"` entry point below inherits its safety contract from the
-// TAPP specification: handles must be live values produced by the matching
-// `TAPP_create_*` call, and data pointers must be valid for the extents and
-// strides recorded in the tensor infos. Restating that on each of the ~20
-// shims adds noise without adding information.
-#![allow(clippy::missing_safety_doc)]
+//!
+//! # The handle discipline, once
+//!
+//! Every `extern "C"` entry point here inherits the same safety contract from
+//! the TAPP specification, and each one's `# Safety` section says only what is
+//! specific to it on top of these three:
+//!
+//! * A handle argument (`isize`) must be either `0` or a live value produced by
+//!   the matching `TAPP_create_*` call and not yet destroyed. `0` is rejected
+//!   with `TAPP_ERROR_NULL`; a stale or foreign non-zero value is undefined
+//!   behaviour, because nothing distinguishes it from a live one.
+//! * Each handle may be destroyed once, and no other call may be in flight
+//!   against it at the time. Nothing here is internally synchronised.
+//! * Data pointers must be valid for every offset the extents and strides
+//!   recorded in the tensor infos generate — see
+//!   [`tensorcontract::Plan::run_raw`], which is what they reach.
+//!
+//! Handles are `Box::into_raw` pointers cast to `isize`, so they are *not*
+//! interchangeable between processes and must not be serialised.
+#![warn(missing_docs)]
 
 use std::os::raw::{c_char, c_int};
 
@@ -38,24 +51,53 @@ use tensorcontract::{ElementOp, Layout, Operand, Plan};
 
 // ---------------------------------------------------------------- datatypes
 
+// The `datatype_t` enumerators, in the order the upstream header declares them.
+// The numeric values are ABI and must not be reordered — TBLIS 1.3 and 2.0 differ
+// by exactly such a reordering of their own `type_t`, which produces plausible
+// wrong answers rather than an error.
+
+/// `TAPP_F32`: single-precision real. Handled by [`tensorcontract`] as `f32`.
 pub const TAPP_F32: c_int = 0;
+/// `TAPP_F64`: double-precision real, i.e. `f64`.
 pub const TAPP_F64: c_int = 1;
+/// `TAPP_C32`: single-precision complex, interleaved — layout-compatible with
+/// C99 `float _Complex` and `num_complex::Complex<f32>`.
 pub const TAPP_C32: c_int = 2;
+/// `TAPP_C64`: double-precision complex, interleaved.
 pub const TAPP_C64: c_int = 3;
+/// `TAPP_F16`: accepted by the enumeration, rejected by this implementation
+/// with [`TAPP_ERROR_DATATYPE`]. There is no [`tensorcontract::Element`] for it.
 pub const TAPP_F16: c_int = 4;
+/// `TAPP_BF16`: as [`TAPP_F16`], rejected.
 pub const TAPP_BF16: c_int = 5;
 
+/// `TAPP_IDENTITY`: read the operand as stored. The default for every operand.
 pub const TAPP_IDENTITY: c_int = 0;
+/// `TAPP_CONJUGATE`: complex-conjugate the operand. Free here — it is folded
+/// into packing or into the write-back, never a separate pass.
 pub const TAPP_CONJUGATE: c_int = 1;
 
 // ------------------------------------------------------------------- errors
 
+/// No error. The only value for which `TAPP_check_success` returns `true`.
 pub const TAPP_SUCCESS: c_int = 0;
+/// A required pointer was null, or a handle was `0` / not live.
 pub const TAPP_ERROR_NULL: c_int = 1;
+/// An unsupported element type, or the four operands did not agree on one.
 pub const TAPP_ERROR_DATATYPE: c_int = 2;
+/// Extents or strides are inconsistent: a label with two different extents, or
+/// a negative extent.
 pub const TAPP_ERROR_SHAPE: c_int = 3;
+/// The index labels do not describe a contraction: wrong count for the rank, or
+/// `C` and `D` labelled differently.
 pub const TAPP_ERROR_LABELS: c_int = 4;
+/// A well-formed operation this implementation declines. Currently only TAPP
+/// case 5, an output-only index (broadcast), which the standard does not
+/// require.
 pub const TAPP_ERROR_UNSUPPORTED: c_int = 5;
+/// A failure with no more specific code. Nothing raises it today; it exists so
+/// that a future [`tensorcontract::Error`] variant has a mapping rather than
+/// being silently misreported.
 pub const TAPP_ERROR_INTERNAL: c_int = 6;
 
 fn explain(e: c_int) -> &'static str {
@@ -83,6 +125,7 @@ fn map_err(e: tensorcontract::Error) -> c_int {
     }
 }
 
+/// Whether `error` is [`TAPP_SUCCESS`].
 #[no_mangle]
 pub extern "C" fn TAPP_check_success(error: c_int) -> bool {
     error == TAPP_SUCCESS
@@ -117,10 +160,25 @@ struct HandleState {
 }
 
 /// Execution resources. `nthreads == 0` means "engine default".
+///
+/// Public because it is what a `TAPP_executor` handle points at, so a caller
+/// holding one can set the field directly. TAPP defines no portable way to say
+/// "use this many threads", and the engine's default is
+/// `TENSORCONTRACT_THREADS` — see [`tensorcontract::Plan::threads`].
 pub struct ExecutorState {
+    /// Threads to execute with, or 0 for the engine's own default.
+    ///
+    /// Not yet plumbed through: [`TAPP_execute_product`] ignores its executor
+    /// argument. Set `TENSORCONTRACT_THREADS` to thread the engine today.
     pub nthreads: usize,
 }
 
+/// Create a library handle.
+///
+/// # Safety
+/// `handle` must be a valid, writable `*mut isize` (or null, which is rejected).
+/// On success it receives a handle to be released with
+/// [`TAPP_destroy_handle`].
 #[no_mangle]
 pub unsafe extern "C" fn TAPP_create_handle(handle: *mut isize) -> c_int {
     if handle.is_null() {
@@ -130,6 +188,11 @@ pub unsafe extern "C" fn TAPP_create_handle(handle: *mut isize) -> c_int {
     TAPP_SUCCESS
 }
 
+/// Release a handle from [`TAPP_create_handle`].
+///
+/// # Safety
+/// `handle` must be live and not already destroyed. See the crate docs on the
+/// handle discipline.
 #[no_mangle]
 pub unsafe extern "C" fn TAPP_destroy_handle(handle: isize) -> c_int {
     if handle == 0 {
@@ -139,6 +202,11 @@ pub unsafe extern "C" fn TAPP_destroy_handle(handle: isize) -> c_int {
     TAPP_SUCCESS
 }
 
+/// Create an executor, i.e. an [`ExecutorState`] with `nthreads == 0`.
+///
+/// # Safety
+/// `exec` must be a valid, writable `*mut isize` (or null, which is rejected).
+/// Release with [`TAPP_destroy_executor`].
 #[no_mangle]
 pub unsafe extern "C" fn TAPP_create_executor(exec: *mut isize) -> c_int {
     if exec.is_null() {
@@ -148,6 +216,10 @@ pub unsafe extern "C" fn TAPP_create_executor(exec: *mut isize) -> c_int {
     TAPP_SUCCESS
 }
 
+/// Release an executor from [`TAPP_create_executor`].
+///
+/// # Safety
+/// `exec` must be live and not already destroyed.
 #[no_mangle]
 pub unsafe extern "C" fn TAPP_destroy_executor(exec: isize) -> c_int {
     if exec == 0 {
@@ -157,6 +229,12 @@ pub unsafe extern "C" fn TAPP_destroy_executor(exec: isize) -> c_int {
     TAPP_SUCCESS
 }
 
+/// Release a status object. A no-op: execution here is synchronous, so it never
+/// produces a status to release. Provided because the header declares it and a
+/// conforming caller will call it.
+///
+/// # Safety
+/// Trivially safe; `unsafe` only to match the declared C signature.
 #[no_mangle]
 pub unsafe extern "C" fn TAPP_destroy_status(_status: isize) -> c_int {
     TAPP_SUCCESS
@@ -169,6 +247,16 @@ struct TensorInfo {
     layout: Layout,
 }
 
+/// Describe one tensor: element type, rank, extents and strides (in elements).
+///
+/// Strides may be negative or zero; extents may not be negative. A rank of 0 is
+/// legal and describes a scalar, in which case `extents` and `strides` are not
+/// read and may be null.
+///
+/// # Safety
+/// `info` must be a valid, writable `*mut isize`. When `nmode > 0`, `extents`
+/// and `strides` must each be valid for `nmode` `i64` reads. On success `*info`
+/// receives a handle to release with [`TAPP_destroy_tensor_info`].
 #[no_mangle]
 pub unsafe extern "C" fn TAPP_create_tensor_info(
     info: *mut isize,
@@ -205,6 +293,14 @@ pub unsafe extern "C" fn TAPP_create_tensor_info(
     TAPP_SUCCESS
 }
 
+/// Release a tensor info from [`TAPP_create_tensor_info`].
+///
+/// A [`TAPP_create_tensor_product`] built from it does **not** borrow it — the
+/// plan copies everything it needs — so an info may be destroyed while products
+/// derived from it are still in use.
+///
+/// # Safety
+/// `info` must be live and not already destroyed.
 #[no_mangle]
 pub unsafe extern "C" fn TAPP_destroy_tensor_info(info: isize) -> c_int {
     if info == 0 {
@@ -214,6 +310,10 @@ pub unsafe extern "C" fn TAPP_destroy_tensor_info(info: isize) -> c_int {
     TAPP_SUCCESS
 }
 
+/// The rank recorded in `info`, or `-1` if the handle is `0`.
+///
+/// # Safety
+/// `info` must be `0` or live.
 #[no_mangle]
 pub unsafe extern "C" fn TAPP_get_nmodes(info: isize) -> c_int {
     match (info as *const TensorInfo).as_ref() {
@@ -222,6 +322,15 @@ pub unsafe extern "C" fn TAPP_get_nmodes(info: isize) -> c_int {
     }
 }
 
+/// Change the rank in place, truncating or extending.
+///
+/// New modes get extent 1 and stride 0, which is the identity for this engine:
+/// extent-1 axes are dropped during planning. So growing the rank and then
+/// setting extents and strides is well defined, but growing it and *not* doing
+/// so leaves the tensor describing the same elements it did before.
+///
+/// # Safety
+/// `info` must be `0` or live.
 #[no_mangle]
 pub unsafe extern "C" fn TAPP_set_nmodes(info: isize, nmodes: c_int) -> c_int {
     let Some(t) = (info as *mut TensorInfo).as_mut() else {
@@ -235,6 +344,12 @@ pub unsafe extern "C" fn TAPP_set_nmodes(info: isize, nmodes: c_int) -> c_int {
     TAPP_SUCCESS
 }
 
+/// Copy `info`'s extents out. Returns nothing, as TAPP declares it, so query
+/// the rank with [`TAPP_get_nmodes`] first.
+///
+/// # Safety
+/// `info` must be `0` or live, and `extents` must be null or valid for
+/// `TAPP_get_nmodes(info)` `i64` writes.
 #[no_mangle]
 pub unsafe extern "C" fn TAPP_get_extents(info: isize, extents: *mut i64) {
     if let Some(t) = (info as *const TensorInfo).as_ref() {
@@ -244,6 +359,11 @@ pub unsafe extern "C" fn TAPP_get_extents(info: isize, extents: *mut i64) {
     }
 }
 
+/// Replace `info`'s extents, keeping its rank.
+///
+/// # Safety
+/// `info` must be `0` or live, and `extents` must be null or valid for
+/// `TAPP_get_nmodes(info)` `i64` reads.
 #[no_mangle]
 pub unsafe extern "C" fn TAPP_set_extents(info: isize, extents: *const i64) -> c_int {
     let Some(t) = (info as *mut TensorInfo).as_mut() else {
@@ -259,6 +379,12 @@ pub unsafe extern "C" fn TAPP_set_extents(info: isize, extents: *const i64) -> c
     TAPP_SUCCESS
 }
 
+/// Copy `info`'s strides out, in elements. As [`TAPP_get_extents`], this
+/// returns nothing.
+///
+/// # Safety
+/// `info` must be `0` or live, and `strides` must be null or valid for
+/// `TAPP_get_nmodes(info)` `i64` writes.
 #[no_mangle]
 pub unsafe extern "C" fn TAPP_get_strides(info: isize, strides: *mut i64) {
     if let Some(t) = (info as *const TensorInfo).as_ref() {
@@ -268,6 +394,11 @@ pub unsafe extern "C" fn TAPP_get_strides(info: isize, strides: *mut i64) {
     }
 }
 
+/// Replace `info`'s strides, keeping its rank.
+///
+/// # Safety
+/// `info` must be `0` or live, and `strides` must be null or valid for
+/// `TAPP_get_nmodes(info)` `i64` reads.
 #[no_mangle]
 pub unsafe extern "C" fn TAPP_set_strides(info: isize, strides: *const i64) -> c_int {
     let Some(t) = (info as *mut TensorInfo).as_mut() else {
@@ -298,6 +429,27 @@ fn op_of(op: c_int) -> ElementOp {
     }
 }
 
+/// Plan `D = alpha * op_A(A) * op_B(B) + beta * op_C(C)` from four tensor infos
+/// and their index labels.
+///
+/// All the work that depends only on shapes, strides and labels happens here —
+/// index classification, folding, and building the scatter vectors — so this is
+/// the call to hoist out of a loop. `_prec` is accepted and ignored: TAPP allows
+/// a compute precision distinct from storage, and this engine computes at the
+/// storage precision, which the crate docs record as the deviation it is.
+///
+/// The four infos must agree on the element type; TAPP permits mixed storage
+/// types and this engine does not. `C` is required, unlike
+/// [`tensorcontract::Plan::new`], because the C signature has no way to omit
+/// it — pass `beta == 0` at execution time to have it ignored, or pass `D`'s
+/// info for it.
+///
+/// # Safety
+/// `plan_out` must be a valid, writable `*mut isize`. `a`, `b`, `c`, `d` must be
+/// live tensor infos. Each `idx_*` must be valid for the corresponding info's
+/// rank in `i64` reads, or may be null when that rank is 0. On success
+/// `*plan_out` receives a handle to release with
+/// [`TAPP_destroy_tensor_product`].
 #[allow(clippy::too_many_arguments)]
 #[no_mangle]
 pub unsafe extern "C" fn TAPP_create_tensor_product(
@@ -388,6 +540,10 @@ pub unsafe extern "C" fn TAPP_create_tensor_product(
     }
 }
 
+/// Release a product from [`TAPP_create_tensor_product`].
+///
+/// # Safety
+/// `plan` must be live and not already destroyed.
 #[no_mangle]
 pub unsafe extern "C" fn TAPP_destroy_tensor_product(plan: isize) -> c_int {
     if plan == 0 {
@@ -397,6 +553,23 @@ pub unsafe extern "C" fn TAPP_destroy_tensor_product(plan: isize) -> c_int {
     TAPP_SUCCESS
 }
 
+/// Execute a planned product against data.
+///
+/// Synchronous: it returns when the contraction is done, `_status` is never
+/// written and `_exec` is ignored (see [`ExecutorState::nthreads`]). `alpha` and
+/// `beta` are read as the plan's element type, so they are pointers to an
+/// `f32`, `f64`, `float _Complex` or `double _Complex` accordingly.
+///
+/// `c` may be null, which is taken to mean `beta == 0` regardless of what
+/// `beta` says — TAPP's documented way to express "the output is overwritten".
+///
+/// # Safety
+/// `plan` must be live. `alpha` and `beta` must each be valid for one read of
+/// the plan's element type. `a` and `b` must be readable, and `d` writable, at
+/// every offset the plan generates — the same obligation as
+/// [`tensorcontract::Plan::run_raw`], which this forwards to unchanged, and it
+/// is *not* checked here. `d` must not alias `a` or `b`. `c` must satisfy the
+/// same read obligation unless it is null or `beta` is zero.
 #[allow(clippy::too_many_arguments)]
 #[no_mangle]
 pub unsafe extern "C" fn TAPP_execute_product(
@@ -446,6 +619,19 @@ pub unsafe extern "C" fn TAPP_execute_product(
     }
 }
 
+/// Execute the same plan against `num_batches` sets of data pointers.
+///
+/// A loop over [`TAPP_execute_product`], stopping at the first error and
+/// returning it, so a partial batch may already have been written when it does.
+/// One `alpha` and one `beta` apply to every batch. This is not the same thing
+/// as a Hadamard (batch) index inside the plan, which is handled by the engine's
+/// own loop nest and shares packed panels; this shares only the plan.
+///
+/// # Safety
+/// `plan` must be live and `num_batches` non-negative. `a`, `b` and `d` must
+/// each be valid for `num_batches` pointer reads, and `c` likewise unless it is
+/// null. Every pointer so obtained must satisfy [`TAPP_execute_product`]'s
+/// obligations.
 #[allow(clippy::too_many_arguments)]
 #[no_mangle]
 pub unsafe extern "C" fn TAPP_execute_batched_product(
