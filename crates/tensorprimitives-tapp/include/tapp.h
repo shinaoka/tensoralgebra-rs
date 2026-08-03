@@ -278,7 +278,7 @@ TAPP_EXPORT TAPP_error TAPP_destroy_tensor_product(TAPP_tensor_product plan);
  *
  * `C` may be `TAPP_IN_PLACE` (null), meaning "no C term". This implementation
  * accepts that **only with `beta == 0`**: a non-zero `beta` against a null `C`
- * is refused with `TAPP_ERROR_NULL` rather than being reinterpreted as
+ * is refused with `TAPP_ERROR_UNSUPPORTED` rather than being reinterpreted as
  * `C == D`, because guessing which the caller meant is how a silent wrong
  * answer happens. Pass `C = D` explicitly for accumulation in place.
  *

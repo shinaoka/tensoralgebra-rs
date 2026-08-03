@@ -14,11 +14,14 @@ members = [
 version = "0.1.0"
 edition = "2021"
 # 1.89 stabilised the AVX-512 intrinsics and `is_x86_feature_detected!` (D20),
-# but the floor is now set by `core::arch::__cpuid_count`, which `kernel::cache`
-# calls without an `unsafe` block: that became a safe function in **1.94**, not
-# in 1.87 as the comment there claims. Measured, not assumed — 1.89 through 1.93
-# all fail with E0133 and 1.94 is the first that builds. The MSRV job in CI pins
-# exactly this version, so the claim cannot drift again.
+# and that is the whole floor. It briefly was not: `kernel::cache` called
+# `core::arch::__cpuid_count` outside an `unsafe` block on the strength of a
+# comment claiming it had been safe since 1.87. It had not — 1.89 through 1.93
+# fail with E0133 and 1.94 is the first that compiles — so the real floor was
+# silently 1.94 for as long as that stood. The fix was the `unsafe` block
+# (`kernel/cache.rs`, with `allow(unused_unsafe)` for toolchains where it is
+# redundant), not five releases of downstream compatibility; see D31. The MSRV
+# job in CI pins exactly 1.89, so neither direction of drift is possible again.
 rust-version = "1.89"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/lkdvos/tensorprimitives-rs"

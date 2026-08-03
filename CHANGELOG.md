@@ -151,6 +151,10 @@ one test. All four were behaviour a C caller could observe:
 * `TAPP_execute_product` writes `0` through a non-null `status`, so the idiomatic
   create/execute/`TAPP_destroy_status` sequence no longer passes an uninitialised
   value.
+* `<tapp.h>`'s prose named the wrong error code for a null `C` with a non-zero
+  `beta` — `TAPP_ERROR_NULL`, where the library returns and the conformance suite
+  asserts `TAPP_ERROR_UNSUPPORTED`. Prose is the one part of the header nothing
+  tested; see the header/library agreement checks added for this release.
 
 ### Notes
 
