@@ -131,7 +131,7 @@ TAPP itself.
 | Complex scalar | `num-complex` | **Reuse.** `#[repr(C)]`, matches `TAPP_C32/C64`, C99 `_Complex` and `std::complex` layout exactly, and is the ecosystem standard. Verified interleaved by a layout test. |
 | SIMD abstraction | `pulp`, `macerator`, `std::simd`, raw `core::arch` | **Raw `core::arch` with runtime dispatch.** `std::simd` (`portable_simd`) is still unstable on the pinned toolchain (1.97). `pulp` is mature and powers `faer`, but a register-blocked micro-kernel needs explicit control over which values live in which registers, and an abstraction layer mostly gets in the way. The `Ukr` function-pointer indirection means a `pulp` or `macerator` backend can be added later without touching the driver. |
 | GEMM micro-kernels | `gemm`, `matrixmultiply`, `microgemm`, `faer` | **Own kernels.** All of these expose *matrix* multiplication, not a panel-panel kernel operating on externally packed buffers, and none has a planar-complex path. `matrixmultiply` does now ship AVX-512 `cgemm`/`zgemm` kernels; it is the right thing to benchmark against, not to build on. |
-| Threading | `rayon`, `std::thread::scope` | **`std::thread::scope`** when Phase 4 arrives. BLIS-style parallelism wants static partitioning with a *shared* packed-B panel; work-stealing fights that. No dependency needed. |
+| Threading | `rayon`, `std::thread::scope` | **`std::thread::scope`**, now implemented (§4). BLIS-style parallelism wants static partitioning with a *shared* packed-B panel; work-stealing fights that. No dependency needed, and the call turned out right. |
 | Path optimisation | `opt-einsum-path` | Out of scope. This engine executes one binary contraction; contraction *ordering* is a caller concern. |
 | Baselines | `tblis`/`tblis-ffi` crates, hand-rolled FFI | **Hand-rolled, ~100 lines.** The benchmark must control which TBLIS is measured — version, branch, and above all which BLIS configuration its kernels were built for (`skx` here). The published crates vendor their own build. Struct layout is pinned by a test against a `sizeof`/`offsetof` probe. |
 | Benchmark stats | `criterion`, custom | **Custom.** Criterion's model is many fast iterations of a cache-resident routine. These measurements are 0.1–5 s each on 64–200 MiB working sets; the useful estimator is best-of-N after a warm-up, and the useful output is a CSV of GF/s. |
@@ -327,12 +327,32 @@ conjugation on all four operands are supported, case 5 is rejected,
 
 ---
 
-## 4. Threading (deferred to Phase 4)
+## 4. Threading
 
-BLIS-style: parallelise loop 3 (`ic`) and loop 2 (`jr`), with threads in the
-same `jc`/`pc` iteration sharing one packed B panel. `std::thread::scope` with
-static partitioning; NUMA-aware first-touch for the packed buffers. Not
-implemented — all measurements in this repository are single-core.
+**Implemented in Phase 4, and this section's Phase 1 prediction held**:
+parallelise loop 3 (`ic`) and loop 2 (`jr`), with the threads of one `jc`/`pc`
+iteration sharing a single packed B panel, `std::thread::scope`, static
+partitioning, first-touch of the per-thread buffers inside the thread that uses
+them. That is what shipped.
+
+Two things the prediction did not say, both of which turned out to matter:
+
+* Both parallel axes cut the **output**, never the contraction index. Loop 4
+  accumulates into `D` in place, so splitting it would need per-thread
+  temporaries or atomics; splitting `M` and `N` instead gives every output
+  element one owning thread, accumulating over the whole contraction in the
+  original order. Consequence: results are **bitwise identical to serial at any
+  thread count and any partition**, which the test suite asserts directly.
+* The `N` axis is cut *inside* loop 5, per `NC` block. Cutting it outside would
+  need one packed B panel per column group, and `NC` is sized for a whole L3.
+
+`K`-parallelism — the one axis that would need accumulators and a reduction — is
+**deliberately not implemented**: see assumption A21 in `DECISIONS.md`, which
+argues the shapes needing it are bounded away from being compute-bound and
+measures that none in the benchmark corpus needs it.
+
+Threading is **off by default** while its scaling is unmeasured, so every
+performance number in `DECISIONS.md` remains a single-core measurement.
 
 ---
 
