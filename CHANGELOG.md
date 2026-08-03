@@ -117,6 +117,28 @@ see `DECISIONS.md` A21.
   baselines, the GEMM roofline and the stride-stress modes) is in the repository
   but `publish = false`.
 
+### Fixed before first release
+
+Found by the new TAPP conformance suite, which was written because the C ABI had
+one test. All four were behaviour a C caller could observe:
+
+* Extents whose product overflows are now a `TAPP_ERROR_SHAPE` error. Previously
+  the product wrapped: a release build reported success and computed nothing, and
+  a debug build aborted the calling process from inside `extern "C"`.
+* A null `C` (`TAPP_IN_PLACE`) with a non-zero `beta` is now
+  `TAPP_ERROR_UNSUPPORTED` instead of silently overwriting `D`. With `beta == 0`
+  it still overwrites, as before; in-place accumulation is expressible by passing
+  `D`'s own pointer as `C`.
+* Library handles are now distinct allocations. They were all the value `1`
+  (`HandleState` was zero-sized), so two handles were indistinguishable and
+  destroying both was a double free — harmless only while the state stayed empty.
+* `TAPP_attr_set` / `TAPP_attr_get` / `TAPP_attr_clear` are exported and return
+  `TAPP_ERROR_UNSUPPORTED`. They were declared by `<tapp.h>` and missing from the
+  library, so calling one was a link failure.
+* `TAPP_execute_product` writes `0` through a non-null `status`, so the idiomatic
+  create/execute/`TAPP_destroy_status` sequence no longer passes an uninitialised
+  value.
+
 ### Notes
 
 * **MSRV is 1.89**, where the AVX-512 intrinsics and `is_x86_feature_detected!`

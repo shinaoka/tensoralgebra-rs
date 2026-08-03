@@ -302,6 +302,7 @@ effectively the same ceiling, as expected.
 | D24 | The instruction set is a **parameter of the kernel macro**, not a second set of bodies. `simd_kernels!` takes the lane count, a target-feature list and six intrinsics; AVX-512 and AVX2 are two instantiations of the same four bodies. | D17's argument — a three-method comparison must not also be a comparison between three hand-tunings — applies unchanged to two instruction sets, and would be violated the moment somebody hand-tuned AVX2 planar and not AVX2 3m. It also made the change auditable: because the AVX-512 arm expands from unchanged source text, its instruction stream is *verifiably* untouched (7816 zmm instructions, byte-identical, checked independently at merge). |
 | D25 | Dispatch is `avx512f` → `avx2 + fma` → scalar, and `TENSORCONTRACT_KERNEL` grows to `scalar\|avx2\|avx512\|auto`. A pinned ISA the CPU lacks falls back to scalar rather than faulting. | Without the pin, AVX2 kernels could be compiled on the reference machine and never executed on it, leaving the only coverage on hardware nobody here has. Same rule as `_ORIENT`/`_WRITEBACK`/`_ROWBLOCK`: every new fast path gets a run-time switch, because a build-to-build diff has already produced one wrong sign here (A15). Both `avx2` and `fma` are detected — separate CPUID bits, and the FMAs need the second. |
 | D26 | AVX2 register blocks are **provisional and explicitly unmeasured**, chosen from the register budget and the uop model, with a menu of alternates and `examples/kernel_shapes` extended to an AVX2 grid as the calibration path. | D19 splits this cleanly and the split was honoured: `live <= 16` and `acc >= 10` are load-bearing and were *verified in the disassembly at no CPU cost* (all shipped defaults allocate 15–16 distinct ymm with zero stack traffic; `planar 1x6` at `live=16` spills one register, `planar 2x3` at `live=18` spills seven — the cliff is exactly where the count puts it), while "which of the shapes that fit is fastest" is recorded as a guess. Publishing a modelled shape as measured would corrupt the one thing the register-block table is good for. |
+| D32 | The TAPP conformance suite drives the **C symbols**, checks against the oracle *plus* hand-computed anchors, and is **falsified by perturbation** before being believed. | Testing the layer through its Rust types would exercise exactly the code that cannot be wrong. Two anchors sit alongside the oracle so a shared engine/oracle bug cannot pass, and both mechanisms were confirmed live by breaking them and checking *which* tests fail: one constant broke one test, a perturbed oracle broke 33 of 34. `abi_layout.rs` re-declares the upstream header so symbol export is a link error here rather than downstream. Where the ABI *cannot* detect an error — any non-zero bogus handle, a data buffer shorter than its extents — that is a comment rather than a test, because a test that invokes undefined behaviour is not evidence of anything. |
 | D30 | The published surface is **three tiers**, stated in the crate docs, not one flat `pub`. Tier 1 is the contraction API (`contract`, `Plan`, `Layout`, `TensorView`/`TensorViewMut`, `Element`/`Real`, `Error`, the `with_*` builders, `kernel::scalar` as the documented extension point) under ordinary semver. Tier 2 is introspection of the engine's own decisions — `PlanStats`, `plan::Scatters`, `Plan::{transposes_gemm, row_block, partition, oriented_scatters, ..}`, `kernel::{selected_config, plan_config, selected_kernel_name}`, `kernel::cache`, the `scatter` builders — where **signatures are semver-stable and values are not**. Tier 3 is `#[doc(hidden)]`. | 158 undocumented public items across seven `pub` modules was the symptom; the disease was that nothing had decided which of them a user may depend on, and publishing settles that whether or not we answer it. Tier 2 is the load-bearing part and exists because of how this project works: every one of those functions returns the output of a measured heuristic, and Phase 4 has already moved three of them (A14 moved `transposes_gemm`, A16–A18 moved `row_block`, item 2 will move `Blocking`). Without saying outright that a tier-2 *value* is not part of the contract, the project must either freeze its own tuning or break semver every phase. The corollary is why they stay public at all: a harness or an alternative execution strategy can ask the engine what it would do instead of guessing, which is exactly what `tcbench orient` and `tcbench shapes` rely on. Only `kernel::x86` (register-block menus *are* per-machine measurements) and `scatter::BlockScatterMatrix` (not correctly constructible from outside) went to tier 3. |
 | D31 | MSRV stays **1.89** (D20), and CI pins exactly it. | The floor briefly became 1.94 by accident: the `CPUID` cache probe called `__cpuid_count` outside `unsafe` on the strength of a comment claiming it had been safe since 1.87. It had not — 1.89 through 1.93 fail with `E0133` and 1.94 is the first that compiles. Since that regression arrived with the probe rather than with any requirement, the fix is the `unsafe` block (plus `allow(unused_unsafe)` for toolchains where it is redundant), not five releases of downstream compatibility. The pin had already drifted the other way — it read 1.75, *below* the declared floor, so that job could never have passed. |
 | D27 | Threading partitions the output in **two dimensions**: `pm` row strips of whole `MR` panels by `pn` column groups of whole `NR` blocks, with `pn > 1` only when `ceil(M/MR) < p`. The `N` cut is made *inside* loop 5, per `NC` block, not over the whole range. | D21's 1-D cap costs real throughput on the 16 case-dtype-methods whose row axis cannot fill 8 threads (part 8). Both axes partition the *output*, so D21's invariant survives intact — one owning thread per element, accumulating over the full `K` in the original order, hence bitwise identical to serial at every thread count *and* every `(pm, pn)`. Cutting `N` inside loop 5 is what keeps the packed `B` panel single and L3-sized (a top-level split would want `pn` panels and `pn` times the L3 budget) and keeps loops 5 and 4 identical across threads, which is what makes the barrier counts agree structurally rather than by bookkeeping. Barriers become per column group and `pm`-way; a pure `N` split synchronises nowhere at all. |
@@ -1865,6 +1866,68 @@ compiles and runs as a doctest for 0.11 s. And both blanket
 hiding that the four generated kernels have *different* panel and tile bounds
 (1x, 2x, 3x the real kernel's, by packing format) and that the plain-`fn`
 trampolines drop the `#[target_feature]` attribute but not the obligation.
+
+### The TAPP conformance suite, and the four gaps it found
+
+`crates/tensorcontract-tapp` had **one test** — a happy-path `c64` contraction —
+behind a coverage table claiming four datatypes, TAPP cases 1–4, conjugation on
+any operand, two documented rejections and mixed precision. For the crate whose
+entire purpose is that a C caller can swap this engine for TBLIS behind one
+header, that was the thinnest-tested part of the workspace, and every claim in
+the table was unverified. It is now **84 tests**, all through the `extern "C"`
+entry points rather than the Rust `Plan` behind them, because the bugs this layer
+can have are exactly the ones invisible from there.
+
+Two design points worth copying. Numerics go against the brute-force oracle
+*plus* two hand-computed anchors, so a shared engine/oracle bug cannot pass. And
+the suite was **falsified before it was trusted**: perturbing one hand-computed
+constant failed exactly the hand-checked test, while perturbing the oracle call's
+`alpha` failed 33 of 34, leaving only the anchor — which is the correct pattern
+and confirms the two mechanisms are independent. A conformance suite nobody has
+watched fail is not evidence, which is A15's lesson in a third domain.
+`abi_layout.rs` additionally re-declares the whole upstream header in an
+`extern "C"` block and drives a contraction through it, so a renamed `#[no_mangle]`
+is a link error in our own tests rather than a downstream C build's discovery.
+
+**Four gaps, all fixed rather than filed** (none was a wrong number):
+
+1. **An extent product could abort the caller's process.** Nothing between
+   `TAPP_create_tensor_info` and `build_scatter` checked that a tensor's extents
+   multiply to something representable. The product wrapped: in release the plan
+   built, reported success and computed *nothing*; in debug the multiply panicked
+   inside an `extern "C"` function, which the compiler turns into a process abort.
+   `reduce_tensor` now folds with `checked_mul` and reports
+   `Error::ExtentProductOverflow` → `TAPP_ERROR_SHAPE`. Checking per tensor bounds
+   every scatter vector, since each is as long as the product of some *subset* of
+   one tensor's axes.
+2. **A null `C` silently discarded `D`.** Upstream defines `TAPP_IN_PLACE` as
+   `NULL` and leaves its meaning an open `//TODO`; this crate read it as
+   `beta = 0`, so `beta = 1, C = TAPP_IN_PLACE` — precisely what a caller writes
+   for `D += alpha*A*B` — overwrote `D` and reported success. The ambiguous
+   combination is now refused; in-place accumulation is expressible by passing
+   `D`'s own pointer as `C`.
+3. **Every library handle was the value `1`.** `HandleState` was zero-sized, so
+   `Box::into_raw` returned `NonNull::dangling()`: two live handles were
+   indistinguishable and a C program creating two and destroying both was
+   double-freeing — harmlessly, for exactly as long as the state stayed empty.
+   It has a reserved field now, and the comment claiming this made handle
+   validity *checkable* is gone: it never did, and nothing can.
+4. **Three declared symbols did not exist.** `TAPP_attr_set`/`_get`/`_clear` were
+   absent, so a C program including `<tapp.h>` and calling one failed to **link**
+   — the least diagnosable failure available. Now exported as refusals, which is
+   conformant (upstream specifies no keys) and diagnosable. Prototypes fetched
+   from the upstream header, not reconstructed.
+
+Also corrected: `execute` now writes `0` through a non-null `status`, so the
+idiomatic create/execute/destroy sequence stops handing an uninitialised value to
+the destructor; and the coverage table now admits that mixed *storage* types are
+rejected (§1.6 of `DESIGN.md` lists them as in TAPP's scope, and they are — just
+not here), and that `TAPP_ERROR_*` beyond zero are this crate's own numbering,
+since upstream `error.h` fixes only `TAPP_SUCCESS`.
+
+| # | Assumption | Status |
+|---|---|---|
+| A26 | The TAPP layer is thin enough that the engine's own correctness tests cover it. | **Refuted.** Everything the layer can get wrong — datatype-tag dispatch, `intptr_t` handle casts, label arrays read at a rank the info supplies, `beta` on a null `C`, the `status` and `prec` arguments — is invisible from the Rust API and had no test. Four gaps on first contact, one of which aborted the caller's process. **Test an FFI layer as its caller, not as its callee.** |
 
 ### Still open before publishing
 
