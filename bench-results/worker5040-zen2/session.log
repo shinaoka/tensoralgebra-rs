@@ -98,3 +98,7 @@ best per method at kc = 384:
 [2026-08-03T15:10:53-04:00] shapes done
 [2026-08-03T15:10:53-04:00] outdir: bench-results/worker5040-zen2
 [2026-08-03T15:10:53-04:00] threads: scaling curve plus the two partition arms
+[2026-08-03T17:08:48-04:00] threads done
+[2026-08-03T17:08:48-04:00] outdir: bench-results/worker5040-zen2
+[2026-08-03T17:08:48-04:00] validate: is concurrent placement safe on this node?
+[2026-08-03T17:08:48-04:00] reusing the solo pair from bench-results/worker5040-zen2/phase4f

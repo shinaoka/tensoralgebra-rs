@@ -1610,9 +1610,111 @@ shape, the feature is *cheap* precisely where it is needed — the output being
 tiny is what makes per-thread accumulator tiles L1-resident and the final
 reduction negligible. So this is a demand-driven feature, not a Phase 4 item.
 
+### Measured, on `worker5040` (Zen2, 64 cores of one socket, AVX2)
+
+**Everything in this subsection is within-session.** Nothing in it is comparable
+to the single-core numbers elsewhere in this file. Each arm ran on exactly as many
+cores as it had threads, taken in order so that `t4` is one 4-core L3 domain and
+`t8` is two; occupancy over all 128 cores was recorded per arm and the 64–127
+cores outside the cpuset were idle at **0.0% mean, 1.1% max** throughout, so the
+node was genuinely exclusive rather than nominally so.
+
+#### The noise floor, and a defect in the A/B/A' pattern itself
+
+| pair | `t1` vs `t1b` | when both ran |
+|---|---|---|
+| `f64`/`c64` | **0.953–0.966** | `t1` first thing, `t1b` after ~50 min of 64-core load |
+| `f32`/`c32` | **0.981–0.989** | both after the node was already hot |
+
+The first pair's repeat is 3.4–4.7% slower than its opening arm, uniformly across
+every case, dtype and method — a direction, not a spread, so it is drift and not
+noise. The second pair, measured entirely on a hot node, drifts only 1.1–1.9%.
+That difference is the diagnosis: **the opening arm of the session was measured at
+single-core boost on a cold package and nothing else was.**
+
+This is a real limitation of the `A, B, A'` pattern this project standardised on
+(A15, and the header of `phase4-remeasure.sh`): bracketing detects drift, but when
+the drift is a *cold-start* transient the bracket reports it as a floor of ±4.7%
+and silently inflates every ratio measured against `A`. On `ccqlin038` the effect
+was invisible because a shared workstation is never cold. **Future sessions on a
+boost-happy machine need a warm-up arm that is run and discarded**, and until one
+exists the honest floor for the `f64`/`c64` column below is asymmetric: its
+scaling ratios are understated by roughly 4%.
+
+A second floor, and the one that matters more, comes free from the partition arms:
+on the 270 case-dtype-methods where `TENSORCONTRACT_PARTITION=m` and the rule
+chose *bit-for-bit the same partition*, two adjacent hot arms differ by
+
+| | geomean | median case | p95 case |
+|---|---|---|---|
+| `f64`/`c64` | 0.980 | 6% | **31%** |
+| `f32`/`c32` | 0.994 | 6% | **26%** |
+
+So at 64 threads the per-case median floor is ±6% — the same as `ccqlin038`'s
+single-core figure — but the **tail explodes to ±26–31%**. Per-case claims at high
+thread counts are close to worthless here; geomeans over the corpus are good to
+about ±2%.
+
+#### Scaling saturates at 16–32 threads and then declines
+
+Per-case geometric mean against the same session's `t1`:
+
+| threads | 2 | 4 | 8 | 16 | 32 | 64 | cores busy at 64 |
+|---|---|---|---|---|---|---|---|
+| `f64` | 1.90 | 3.41 | 4.72 | **5.76** | 5.68 | 5.37 | 36% |
+| `c64` planar | 1.96 | 3.73 | 6.22 | 7.80 | **8.39** | 7.65 | 36% |
+| `f32` | 1.90 | 3.51 | 5.53 | 6.36 | **6.56** | 6.01 | 29% |
+| `c32` planar | 1.95 | 3.75 | 6.14 | 7.72 | **8.37** | 7.55 | 29% |
+
+Four things follow, and the occupancy column is doing most of the work:
+
+1. **Scaling is clean to 8 threads** (4.7–6.2x) and saturates by 16–32. Beyond the
+   peak it *declines*: 64 cores are slower than 32 in every dtype.
+2. **The cores are idle, not saturated.** Busy fraction falls 98% → 95% → 88% →
+   73% → 49% → 36% as threads double. At `t64` roughly two thirds of the wall
+   clock is not compute, which rules out memory bandwidth as the primary limit and
+   points at the two structural limits part 8 listed in advance: threads spawned
+   per `execute` call rather than pooled, and two barriers per `(jc, pc)`
+   iteration now crossing 16 separate L3 domains. **Limit #2 was named before this
+   run and is now the leading suspect, priced.**
+3. **Complex scales better than real** at every thread count (7.65 against 5.37 at
+   64 in 64-bit). That is the twice-arithmetic-intensity argument from Phase 1
+   appearing somewhere it was never claimed — complex is less exposed to the
+   memory system, so it holds up longer as cores are added. A *new* instance of a
+   settled result, not a re-derivation of it.
+4. **Per case at 64 threads: median 5.89x, zero cases above 32x, 193 of 294 below
+   8x.** The best case reaches 17.8x. Nothing in this corpus scales well at 64
+   threads.
+
+#### The prediction, scored
+
+Part 10 predicted, before the run, that the genuinely partition-limited family at
+64 threads would be `ij-ikl-ljk` and `ij-kil-lkj`, and that if anything else
+flattened it would be contention or a bug rather than the partition. Scored:
+
+* **Right about those two.** They are the two worst cases in the whole corpus at
+  `t64` — 2.13x and 2.29x — and the CSV's notes column confirms they ran `27x2`,
+  the clamped partition the prediction named.
+* **Wrong about the rest, and the miss is the more valuable half.** The next worst
+  are the `abcijk` family at 2.43–2.47x running `64x1` — full parallel width, no
+  partition limit at all. They are the memory-bound `k = 24` cases, and the reason
+  they flatten turns out not to be contention either. See part 8b.
+
+#### The default stays off, with numbers
+
+Threading is off by default (D22) purely because it was unmeasured. It is now
+measured, and the recommendation is **still off** — but for a specific and fixable
+reason rather than a general one. It scales cleanly to 8 threads in every dtype;
+what fails is 16 and beyond, where the loss is concentrated in per-call thread
+spawning, barrier cost across 16 L3 domains, and one wrong branch in
+`Plan::partition` (part 8b). None of those is structural. Turning it on is a
+decision for the user, per D22, and is deliberately not taken in the same commit
+as the measurement.
+
 | # | Assumption | Status |
 |---|---|---|
-| A21 | Some compute-bound contractions will need `K`-parallelism, hence per-thread accumulators and a reduction. | **Refuted for this corpus, and argued structurally.** 20 of 392 case-dtype-methods cannot fill 8 threads from `M`, all 20 can from `M x N`, and needing `K` requires fewer than `p` micro-tiles in the whole output — which bounds arithmetic intensity at `~2MN/((M+N)*bytes)` and so bounds the case away from compute-bound. Build the 2-D partition; leave `K` unbuilt until a real shape demands it. |
+| A21 | Some compute-bound contractions will need `K`-parallelism, hence per-thread accumulators and a reduction. | **Refuted for this corpus, and argued structurally.** 20 of 392 case-dtype-methods cannot fill 8 threads from `M`, all 20 can from `M x N`, and needing `K` requires fewer than `p` micro-tiles in the whole output — which bounds arithmetic intensity at `~2MN/((M+N)*bytes)` and so bounds the case away from compute-bound. Build the 2-D partition; leave `K` unbuilt until a real shape demands it. *Confirmed again in part 10 at every thread count to 128 in both instruction sets, i.e. 16x the width it was argued at.* |
+| A31 | `A, B, A'` bracketing is enough to establish a session's noise floor. | **Refuted on a machine with boost headroom.** The session's opening arm ran at single-core boost on a cold package and nothing else did, so its repeat came back 3.4–4.7% slower *uniformly* — reported by the bracket as a ±4.7% floor, while every ratio measured against that opening arm was inflated by the same amount. The second dtype pair, measured entirely hot, drifts 1.1–1.9%. Invisible on `ccqlin038` because a shared workstation is never cold. **Run and discard a warm-up arm.** |
 
 ## Phase 4 report, part 8b (item 4): the partition becomes 2-D
 
@@ -1663,6 +1765,81 @@ estimate, which is why `TENSORCONTRACT_PARTITION` exists and why
 scaling curve. Verified behaviourally at merge: `aqrs-pa-pqrs` runs `2x4` in
 `f64` and `1x8` in `c64`, a wide case stays `8x1`, and the sweep CSV records
 `t<threads>/<pm>x<pn>` so the partition is recoverable from the data.
+
+### Measured, on `worker5040` at 64 threads: the 2-D split is right and the rule's first line is wrong
+
+Two arms, both against the rule at the same thread count, on the cases where they
+actually change the partition (everything else is a control group and is what the
+±2% geomean / ±6% median-case floor in part 8 was derived from).
+
+**`TENSORCONTRACT_PARTITION=m` — forcing the old 1-D `M` split — loses everywhere
+the 2-D rule fires:**
+
+| dtype | cases changed | geomean |
+|---|---|---|
+| `f64` | 12 | **0.607** |
+| `f32` | 12 | **0.607** |
+| `c64` | 6 | **0.297** |
+| `c32` | 12 | **0.521** |
+
+So the 2-D extension is worth **1.6x to 3.4x** on exactly the population it was
+built for, in all four dtypes, far outside any floor. D27–D29 are vindicated, and
+part 8b's hand estimate that leaving two cases 1-D on 7 of 8 threads was worth
+~2.6% turns out to have been the wrong thing to worry about — at 64 threads the
+axis choice is worth factors, not percent.
+
+**`TENSORCONTRACT_PARTITION=n` — forcing 1-D `N` — beats the rule in the real
+dtypes and loses badly in the complex ones:**
+
+| dtype | cases changed | geomean | max |
+|---|---|---|---|
+| `f64` | 141 | **1.055** | 4.32 |
+| `f32` | 144 | **1.100** | 3.14 |
+| `c64` | 147 | 0.678 | 1.82 |
+| `c32` | 141 | 0.748 | 2.34 |
+
+And the real-dtype gain is not spread thinly — it is concentrated on the
+memory-bound `abcijk` family (18 cases, `k = 24`), which gains a **geomean 2.25–2.26x
+and up to 4.32x**:
+
+```
+4.32x  abcijk-jkmc-miab  f64   rule t64/64x1 -> t64/1x64
+4.23x  abcijk-ijmc-mkab  f64   rule t64/64x1 -> t64/1x64
+```
+
+**The diagnosis is sharper than A28 guessed, and it is not `PACK_WEIGHT`.** These
+cases have 768 row panels against 64 threads, so `Plan::partition` never reaches
+the cost model at all — it returns from the first line:
+
+```rust
+if panels >= p { return (p, 1); }
+```
+
+That early return encodes "if `M` alone can fill the threads, `M` is the right
+axis". At 8 threads on a socket-wide L3 that was true and cheap. At 64 threads on
+Zen2's sixteen 4-core L3 domains it costs **up to 4.3x on 18 of 49 corpus cases**,
+and it is the same population — the `k = 24` memory-bound family — that part 8's
+scaling curve showed flattening at 2.43x for no visible reason. The two findings
+are one finding.
+
+**`PACK_WEIGHT`'s direction is right, which is why the fix is not "always consult
+the cost model".** The complex methods *lose* 25–32% from the same `1x64` switch,
+and that is exactly what the packing term predicts: a complex packed `A` carries
+two to four reals per element, so duplicating it across 64 column groups costs more
+than the real path pays. So the rule is right for complex and wrong for real on
+this family, and a corrected rule needs the early return removed *and* a term that
+captures whatever makes the real path prefer `N` here — which this run has not
+identified. Two candidates, both cheap to test with the switch that already exists:
+write-back locality (under `64x1` sixty-four threads write interleaved row strips
+of `D`, and false sharing across separate L3s is expensive on this topology, where
+under `1x64` each thread owns a contiguous column group), and the cost of the two
+barriers per `(jc, pc)` iteration now spanning 16 L3 domains. **Do not change the
+rule until one of those is measured** — this is the third time in Phase 4 that a
+plausible mechanism for a real effect turned out to be the wrong one.
+
+| # | Assumption | Status |
+|---|---|---|
+| A28 | The 2-D partition rule and `PACK_WEIGHT` behave at node scale as they do at 8 threads. | **Refuted, but not where predicted.** `PACK_WEIGHT` is fine — it correctly keeps the complex methods off the `N` axis, which costs them 25–32% when forced. What fails is the `panels >= p` early return that precedes it: worth up to 4.3x on the 18 memory-bound `abcijk` cases in the real dtypes at 64 threads. The 2-D machinery itself is vindicated at 1.6–3.4x on the cases it fires on. |
 
 Correctness is unchanged in kind and stronger in coverage: bitwise identity with
 serial at every thread count *and* every partition, plus a `Split` expectation on
