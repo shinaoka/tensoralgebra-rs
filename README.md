@@ -44,17 +44,29 @@ algorithm is Matthews' block-scatter-matrix tensor contraction
 
 Efficiency here is contraction GF/s divided by same-shape vendor GEMM GF/s.
 Because a complex MAC is exactly four real FMAs, the achievable GF/s ceiling is
-the same in both domains (measured: `dgemm` 96 GF/s, `zgemm` 96 GF/s), so a
-complex/real efficiency ratio of 1.0 means "no complex penalty". Single-core,
-Xeon Gold 6244, 12 TCCG contractions:
+the same in both domains (measured: `dgemm` 96 GF/s, `zgemm` 96 GF/s), so the
+number below — **each engine's own complex efficiency divided by its own real
+efficiency** — is 1.0 when that engine treats complex data as well as it treats
+real data. Single-core, Xeon Gold 6244, 12 TCCG contractions:
 
-| | mean complex efficiency / real efficiency |
+| | complex ÷ real efficiency, **within the same engine** |
 |---|---|
 | **TBLIS v1.3.0** — latest *stable* release | **0.215** |
 | TBLIS 2.0-dev | **1.06** |
 | TBLIS 2.0-dev, irregular strides forced | **1.03** |
 | TBLIS 2.0-dev, f32→c32 | **1.15** |
 | TTGT (OpenBLAS) | **1.17** |
+
+**This is not a speed comparison between engines, and it must not be read as
+one.** An engine can score well by being uniformly bad. TTGT has the *highest*
+ratio in the table and is by a wide margin the *slowest* of the three: on those
+same 12 cases its median `c64` throughput is 17.4 GF/s against TBLIS 2.0's 42.4.
+Its ratio is high because its **real** path is worse still — 6.8 GF/s median in
+`f64`, where the transpose-transpose-GEMM-transpose overhead dominates a small
+GEMM — and complex, with twice the arithmetic intensity, amortises that overhead
+better. That is the same mechanism as everywhere else in this project, and here
+it produces a flattering ratio for the slowest engine. The ratio answers exactly
+one question: *is complex penalised relative to real, in this engine?*
 
 Against the released TBLIS, complex tensor contraction really is roughly **5x
 less efficient** than real. But the cause is not the subtle one usually
@@ -85,6 +97,13 @@ shapes where complex was predicted to be worst are where it looks best.
 The remaining headroom is **low arithmetic intensity in either domain**: TBLIS
 2.0's efficiency against the GEMM ceiling ranges from 0.85 on large
 compute-bound contractions down to **0.34** on small-`k` skinny ones.
+
+For orientation, since the table above deliberately says nothing about it: on
+those same 12 cases, measured in the same run, median `c64` throughput was
+**42.5 GF/s for this engine, 42.4 for TBLIS 2.0-dev and 17.4 for TTGT**; in
+`f64`, 30.7 / 21.8 / 6.8. Twelve cases are not the corpus and these predate the
+Phase 4 work, so the 49-case numbers below are the ones to quote — but parity
+with TBLIS 2.0 on complex is roughly where this engine sits.
 
 A methodological note worth carrying forward: the standard TCCG corpus rounds
 every stride-1 extent up to a multiple of 24, which divides every plausible
