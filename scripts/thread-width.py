@@ -17,11 +17,20 @@ the target width once both `M` and `N` are available — and, if so, whether tho
 cases are compute-bound, since that is the only regime where the extra machinery
 would pay.
 
-Answered on 2026-08-03 (see the Phase 4 report, part 8): **none are**. 20 of 392
-case-dtype-methods cannot fill 8 threads from `M` alone, all 20 reach 8 with `M x
-N`, and the shapes that would need `K` are bounded away from compute-bound —
-needing it means fewer than `p` micro-tiles in the whole output, and an output
-that small caps arithmetic intensity at roughly `2MN/((M+N) * bytes)`.
+Answered on 2026-08-03 (see the Phase 4 report, part 8): **none are**. 16 of 392
+case-dtype-methods cannot fill 8 threads from `M` alone, all 16 reach 8 with `M x
+N` (the narrowest has 26 `NR` blocks), and the shapes that would need `K` are
+bounded away from compute-bound — needing it means fewer than `p` micro-tiles in
+the whole output, and an output that small caps arithmetic intensity at roughly
+`2MN/((M+N) * bytes)`.
+
+Count the entries in the project's convention — one per case-dtype-method, so
+real dtypes appear once and each complex dtype once per method, 392 in total.
+Aggregating to case-dtypes and multiplying by the method count overcounts,
+because the register block differs per method and so does the panel count; that
+error is how this file first reported 20. Note also that these are the *default*
+register blocks, which is what `tcbench orient` emits — the shipped row-block
+rule changes `MR` on some cases, so a case near the boundary can move.
 
 "frac of best" is a crude compute-bound proxy: throughput as a fraction of the
 fastest the engine achieves anywhere in that dtype on this corpus. It is not a
@@ -44,11 +53,13 @@ with open(sys.argv[1]) as f:
     for r in csv.DictReader(f):
         if r["rule_picks"] != "true":
             continue
-        methods = ["planar", "1m", "3m"] if r["method"] == "real" else [r["method"]]
-        for me in methods:
-            feats[(r["case"], r["dtype"], me)] = {
-                k: int(r[k]) for k in ("mr", "nr", "m", "n", "k")
-            }
+        # One entry per case-dtype-method, the project's 392 convention: the real
+        # path is one entry (it is method-independent), each complex dtype is one
+        # per method. `perf` is keyed by engine name, so the real path's single
+        # entry is looked up under whichever engine name reported it.
+        feats[(r["case"], r["dtype"], r["method"])] = {
+            k: int(r[k]) for k in ("mr", "nr", "m", "n", "k")
+        }
 
 perf = {}
 for p in sys.argv[2:]:
@@ -56,7 +67,8 @@ for p in sys.argv[2:]:
         for r in csv.DictReader(f):
             if r["engine"] in ("ttgt", "tblis"):
                 continue
-            perf[(r["case"], r["dtype"], r["engine"])] = float(r["gflops"])
+            me = r["engine"] if r["dtype"].startswith("c") else "real"
+            perf[(r["case"], r["dtype"], me)] = float(r["gflops"])
 
 # Empirical per-dtype ceiling: the fastest thing the engine achieves on this
 # corpus. Used only to say "compute-bound" relative to what the machine can do,
