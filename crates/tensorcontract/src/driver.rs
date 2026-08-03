@@ -31,35 +31,78 @@
 //!
 //! # Threading
 //!
-//! BLIS-style, over the `M` direction only. The `M` range is cut once into `p`
-//! contiguous strips at `MR` granularity; each thread runs loops 3, 2 and 1
-//! over its own strip with its own packed-`A` block, and the packed-`B` panel is
-//! **shared**: every thread packs a slice of its `NR` slivers and then all of
-//! them stream the whole panel out of L3, which is what the L3-sized `NC`
-//! budget is for. Two barriers per `(jc, pc)` iteration bracket the packing —
-//! one so nobody is still reading the previous panel, one so the new one is
-//! complete.
+//! BLIS-style, and two-dimensional: the output is cut into a `pm x pn` grid of
+//! contiguous row strips of whole `MR` panels by column groups of whole `NR`
+//! blocks, one thread each. [`Plan::partition`] decides `(pm, pn)` and is the
+//! single definition of it; `pn > 1` only when `ceil(M / MR) < p`, so on all but
+//! four of the 49 corpus cases this is still a 1-D partition of `M` and behaves
+//! exactly as the first version did.
 //!
-//! Three properties this buys, all of them deliberate:
+//! The two axes are cut in different places, and deliberately:
+//!
+//! * The **row strips** are cut once, outside everything, and each thread runs
+//!   loops 3, 2 and 1 over its own strip with its own packed-`A` block.
+//! * The **column groups** are cut *inside* loop 5, per `NC` block: every thread
+//!   iterates the same `(h, jc, pc)` sequence over the whole of `N` and `K`, and
+//!   within each `jc` block takes its group's contiguous range of `NR` slivers.
+//!
+//! Cutting `N` inside loop 5 rather than over the whole range is what keeps the
+//! packed-`B` panel single and shared. It stays exactly the L3-sized panel the
+//! `NC` budget is derived for — a top-level split of `N` would need `pn` panels
+//! and `pn` times the L3 — and it keeps loops 5 and 4 identical across all `p`
+//! threads, which is what makes the barrier counts agree without anyone tracking
+//! them (see `run_strip`).
+//!
+//! `B` is packed cooperatively: within a column group, the `pm` threads that
+//! share it split its slivers, so each thread packs slivers it will itself read
+//! and no thread packs anything it will not. Two barriers per `(jc, pc)` bracket
+//! the packing — one so nobody is still reading the previous panel, one so the
+//! new one is complete — and they are **per column group**, of `pm` threads,
+//! because a group's slice of the panel is written and read only by its own
+//! threads. A one-thread column group therefore needs no barrier at all, which
+//! is the case a pure `N` split (`pm == 1`) degenerates to: no synchronisation
+//! anywhere in the loop nest.
+//!
+//! The packed `A` block is per thread and so is **duplicated `pn` times**: the
+//! `pn` threads of one row strip each pack that strip for themselves. That is
+//! deliberate rather than merely convenient. It costs `ceil(panels/pm) * MR * K`
+//! element moves per thread against `ceil(panels/pm) * ceil(blocks/pn) * MR * NR
+//! * K` lane-FMAs, i.e. one packed element per `NR * ceil(blocks/pn)` FMA slots,
+//! and it buys back the alternative's cost: a single packer per row strip needs a
+//! barrier *inside* loop 3, at `M/MC` times the frequency of the ones above it,
+//! and leaves the block in one thread's L2 for the others to pull across L3
+//! instead of each having it in its own. `Plan::partition` prices the duplication
+//! explicitly and will not split `N` when a thread would be left with too few
+//! `NR` blocks to amortise it over.
+//!
+//! Four properties this buys, all of them deliberate:
 //!
 //! * **No reduction.** Loop 4 (`pc`) accumulates into `D` in place, so
 //!   parallelising it would need either a temporary per thread or atomics.
-//!   Parallelising `M` instead gives every output element a single owning
-//!   thread, which accumulates over the full `K` in the original order.
-//! * **Bitwise identical to serial**, therefore, for any thread count — the
-//!   floating-point operations per output element are the same operations in the
-//!   same order. That is a strong enough invariant to test directly, and
-//!   `threaded_matches_serial_bitwise` does.
-//! * **The serial path is unchanged.** With `p == 1` the only difference from
-//!   the pre-threading driver is two `Option` checks per `(jc, pc)` iteration,
-//!   nowhere near the hot loops. Every measurement committed in `DECISIONS.md`
-//!   was taken single-threaded and stays comparable.
+//!   Partitioning the *output* instead gives every element a single owning
+//!   thread, which accumulates over the full `K` in the original order. Both
+//!   axes have this property; `K` is the one that does not, and it is left
+//!   serial.
+//! * **Bitwise identical to serial**, therefore, for any thread count and any
+//!   `(pm, pn)` — the floating-point operations per output element are the same
+//!   operations in the same order. That is a strong enough invariant to test
+//!   directly, and the `threaded_matches_serial_*` tests do.
+//! * **Blocks stay aligned with the block scatter.** Strips are whole `MR`
+//!   panels and groups whole `NR` slivers, so every thread's micro-tiles are the
+//!   ones the serial driver would have used. The write-back fast path, the
+//!   row-block rule and the orientation rule are untouched by threading.
+//! * **The serial path is unchanged.** With `pm == pn == 1` the only difference
+//!   from the pre-threading driver is two `Option` checks and a handful of
+//!   integer divisions per `(jc, pc)` iteration, nowhere near the hot loops.
+//!   Every measurement committed in `DECISIONS.md` was taken single-threaded and
+//!   stays comparable.
 //!
 //! Known limits, in the order they will bite (see the Phase 4 report):
-//! parallelism is capped at `ceil(M / MR)` strips, so a skinny-`M` contraction
-//! cannot use the cores no matter how much other work it has; `std::thread::scope`
-//! spawns per `execute` call rather than reusing a pool; and `NC`'s L3 budget is
-//! still charged as if one core owned the cache.
+//! parallelism is capped at `ceil(M / MR) * ceil(N / NR)`, and a column group can
+//! only be as wide as the `jc` block it is cut from, so a tail `NC` block with
+//! fewer slivers than groups leaves some threads idle for that block;
+//! `std::thread::scope` spawns per `execute` call rather than reusing a pool; and
+//! `NC`'s L3 budget is still charged as if one core owned the cache.
 
 use std::sync::Barrier;
 
@@ -76,8 +119,11 @@ use crate::writeback::{scale_only, writeback};
 /// Rust will not send a bare pointer between threads, and rightly, so the
 /// promise is made explicitly here rather than silently at each use: the
 /// operands are read-only for the duration, and every thread writes only the
-/// output rows in its own strip. The strips are disjoint by construction, so no
-/// two threads address the same byte of `D`.
+/// output elements of its own `(row strip, column group)` cell. The cells
+/// partition the output's `(i, j)` index space by construction, so no two
+/// threads write the same element — and no two write the same *byte*, because
+/// `D`'s scatter is injective, which the serial write-back's read-modify-write
+/// on every `pc` block past the first already requires.
 #[derive(Clone, Copy)]
 struct Shared<T>(*mut T);
 
@@ -103,6 +149,9 @@ where
     m: usize,
     n: usize,
     k: usize,
+    /// Reals between one column group's slice of the packed `B` panel and the
+    /// next. See `execute` for why the panel is cut per group and not per sliver.
+    b_group: usize,
     am: &'a [i64],
     ak: &'a [i64],
     bk: &'a [i64],
@@ -129,11 +178,62 @@ where
     bp: Shared<T::Real>,
 }
 
-/// How one thread participates in packing the shared `B` panel: which slice of
-/// the `NR` slivers it takes, and the barrier that brackets the packing. `None`
-/// is the serial case — one thread packs all of them and synchronises with
-/// nobody.
-type BShare<'a> = Option<(&'a Barrier, usize, usize)>;
+/// Where one thread sits in the `pm x pn` partition, as far as loop 5 and the
+/// shared packed-`B` panel are concerned.
+///
+/// Each `jc` block of `nsliv` slivers is cut into `pn` contiguous groups; this
+/// thread computes over group `g`'s slivers and packs the fraction `r` of `pm`
+/// of them. Both ranges come from [`BPart::ranges`], which is the only place the
+/// arithmetic lives, so "which slivers do I own" and "which slivers do I pack"
+/// cannot drift apart.
+///
+/// [`BPart::SERIAL`] is the degenerate `1 x 1` case and reproduces the
+/// pre-threading driver exactly: one thread, all the slivers, no barrier.
+#[derive(Clone, Copy)]
+struct BPart<'a> {
+    /// This thread's column group, in `0..pn`.
+    g: usize,
+    pn: usize,
+    /// This thread's row strip, in `0..pm` — its index *within* the column
+    /// group, which is what decides its share of the group's packing.
+    r: usize,
+    pm: usize,
+    /// Barrier shared by the `pm` threads of this column group, and by nobody
+    /// else: they are the only threads that touch the group's slice of the
+    /// panel. `None` when the group has one thread, which then packs and reads
+    /// only what it wrote and needs no synchronisation at all.
+    bar: Option<&'a Barrier>,
+}
+
+impl BPart<'_> {
+    /// The serial partition: one cell covering everything, no barrier.
+    const SERIAL: BPart<'static> = BPart {
+        g: 0,
+        pn: 1,
+        r: 0,
+        pm: 1,
+        bar: None,
+    };
+
+    /// `(compute, pack)` sliver ranges out of a `jc` block's `nsliv` slivers:
+    /// this thread's whole column group, and its share of packing that group.
+    ///
+    /// Both are half-open and both partition exactly — the `pn` groups tile
+    /// `0..nsliv` and the `pm` packing shares tile their group — which is what
+    /// makes every output element owned once and every sliver packed once. A
+    /// group can come out empty when a tail `jc` block has fewer slivers than
+    /// there are groups; that thread then does no work for the block, but still
+    /// takes its barriers.
+    #[inline]
+    fn ranges(&self, nsliv: usize) -> ((usize, usize), (usize, usize)) {
+        let q0 = self.g * nsliv / self.pn;
+        let q1 = (self.g + 1) * nsliv / self.pn;
+        let span = q1 - q0;
+        let w0 = q0 + self.r * span / self.pm;
+        let w1 = q0 + (self.r + 1) * span / self.pm;
+        ((q0, q1), (w0, w1))
+    }
+}
 
 /// Execute a plan.
 ///
@@ -257,13 +357,39 @@ pub unsafe fn execute<T>(
     let mc = mc.min(m.next_multiple_of(mr));
     let nc = nc.min(n.next_multiple_of(nr));
 
+    // Row strips are whole `MR` panels and column groups whole `NR` slivers, so
+    // every thread's micro-tiles line up with the block scatter and with the
+    // write-back's fast path. `Plan::partition` owns the choice of how many of
+    // each; it caps them at the panel and block counts, so a contraction with
+    // three row panels and two column blocks uses six threads at most however
+    // many were asked for and however much work it contains.
+    let npanels = m.div_ceil(mr);
+    let (pm, pn) = plan.partition(mr, nr);
+    let p = pm * pn;
+
     // Panel sizes come from the kernel's declared per-k sliver widths, so a
     // method that packs more reals per element (1m's "1e", 3m's sum plane)
     // automatically gets a correspondingly larger buffer. `A` is per thread and
     // allocated inside it, so it is first-touched on the node that will use it;
     // `B` is shared and allocated here.
+    //
+    // The `B` panel is cut into one slice per *column group*, not indexed by
+    // absolute sliver, and the two differ: a group's sliver range moves between
+    // `jc` blocks, because a tail block has fewer slivers to divide, so with
+    // absolute indexing one group's next block would land on top of another
+    // group's current one. There is nothing to order them — the barriers are per
+    // group by design, and at `pm == 1` there are none at all — so it has to be
+    // structural. It costs at most one sliver of padding per group, and it is
+    // also a small win: a group's slice is contiguous, so groups do not share
+    // cache lines at their boundaries.
+    //
+    // The stride between slices is the *worst-case* sliver size, `kc` deep and
+    // not `pc_len` deep, precisely so that two groups sitting on different `pc`
+    // blocks at the same moment still cannot overlap.
     let ap_len = panel_len(mc, mr, kc, ukr.a_pack);
-    let mut bp = Panel::<T::Real>::new(panel_len(nc, nr, kc, ukr.b_pack));
+    let group_cap = nc.div_ceil(nr).div_ceil(pn);
+    let b_group = panel_len(group_cap * nr, nr, kc, ukr.b_pack);
+    let mut bp = Panel::<T::Real>::new(pn * b_group);
 
     let cx = Ctx::<T> {
         plan,
@@ -276,6 +402,7 @@ pub unsafe fn execute<T>(
         m,
         n,
         k,
+        b_group,
         am,
         ak,
         bk,
@@ -301,64 +428,69 @@ pub unsafe fn execute<T>(
         bp: Shared(bp.as_mut_ptr()),
     };
 
-    // Strips are whole `MR` panels, so every thread's row blocks line up with
-    // the block scatter and with the write-back's fast path. That caps the
-    // useful thread count at the number of panels — a contraction with three
-    // row blocks cannot use eight cores here however much work it contains.
-    let npanels = m.div_ceil(mr);
-    let p = plan.strips(mr);
-
     if p == 1 {
         let mut ap = Panel::<T::Real>::new(ap_len);
         let mut tile = Panel::<T::Real>::new(ukr.tile);
-        run_strip::<T>(&cx, 0, m, ap.as_mut_ptr(), tile.as_mut_ptr(), None);
+        run_strip::<T>(&cx, 0, m, ap.as_mut_ptr(), tile.as_mut_ptr(), BPart::SERIAL);
         return;
     }
 
-    let bar = Barrier::new(p);
+    // One barrier per column group, each shared by exactly the `pm` threads
+    // that write and read that group's slice of the packed `B` panel. Groups
+    // never need to synchronise with each other, so they do not: the barrier is
+    // `pm`-way, not `p`-way. At `pm == 1` there is nothing to synchronise and
+    // the threads take no barrier at all.
+    let bars: Vec<Barrier> = (0..pn).map(|_| Barrier::new(pm)).collect();
+    let bars = &bars;
     std::thread::scope(|scope| {
         for t in 0..p {
             let cx = &cx;
-            let bar = &bar;
+            let (r, g) = (t / pn, t % pn);
+            let bpart = BPart {
+                g,
+                pn,
+                r,
+                pm,
+                bar: (pm > 1).then(|| &bars[g]),
+            };
             scope.spawn(move || {
-                let lo = (t * npanels / p) * mr;
-                let hi = (((t + 1) * npanels / p) * mr).min(cx.m);
+                let lo = (r * npanels / pm) * mr;
+                let hi = (((r + 1) * npanels / pm) * mr).min(cx.m);
                 let mut ap = Panel::<T::Real>::new(ap_len);
                 let mut tile = Panel::<T::Real>::new(cx.ukr.tile);
                 // SAFETY: `execute`'s contract covers the accesses; the strips
-                // partition the output rows, so this thread's writes are
-                // disjoint from every other thread's.
-                unsafe {
-                    run_strip::<T>(
-                        cx,
-                        lo,
-                        hi,
-                        ap.as_mut_ptr(),
-                        tile.as_mut_ptr(),
-                        Some((bar, t, p)),
-                    )
-                };
+                // and column groups partition the output, so this thread's
+                // writes are disjoint from every other thread's.
+                unsafe { run_strip::<T>(cx, lo, hi, ap.as_mut_ptr(), tile.as_mut_ptr(), bpart) };
             });
         }
     });
 }
 
-/// Loops 5 through 1 over one strip of the `M` range.
+/// Loops 5 through 1 over one cell of the `pm x pn` partition.
 ///
-/// `[m_lo, m_hi)` are whole `MR` panels. Everything above loop 3 is identical
-/// across threads, which is what makes the barrier counts match without
-/// tracking them.
+/// `[m_lo, m_hi)` are whole `MR` panels; `bpart` selects whole `NR` slivers
+/// within each `jc` block.
+///
+/// **Loops 5 and 4 are traversed identically by every thread** — the same `h`,
+/// the same `jc`, the same `pc`, over the whole of `N` and `K` — and the
+/// barriers live between them and loop 3. That is what makes the barrier counts
+/// match without anyone counting: a thread's cell affects only *how much work it
+/// does inside* an iteration, never how many iterations there are. Nothing here
+/// may make a barrier conditional on `m_lo`, `m_hi` or `bpart`; a thread with an
+/// empty cell in some `jc` block still takes that block's barriers and then does
+/// nothing, which is why the skip below sits after them and not before.
 ///
 /// # Safety
 /// As [`execute`], plus: `ap` and `tile` must be this thread's alone, and no
-/// other thread may own an overlapping row strip.
+/// other thread may own an overlapping cell.
 unsafe fn run_strip<T>(
     cx: &Ctx<'_, T>,
     m_lo: usize,
     m_hi: usize,
     ap_ptr: *mut T::Real,
     tile_ptr: *mut T::Real,
-    bshare: BShare<'_>,
+    bpart: BPart<'_>,
 ) where
     T: Element,
     T::Real: KernelSet,
@@ -373,6 +505,7 @@ unsafe fn run_strip<T>(
         nc,
         n,
         k,
+        b_group,
         am,
         ak,
         bk,
@@ -414,22 +547,30 @@ unsafe fn run_strip<T>(
                 let first_k_block = pc == 0;
                 let b_sliver = ukr.b_per_k * pc_len;
 
-                // Pack the shared `B` panel. Threaded, each thread takes a
-                // slice of the `NR` slivers; the two barriers say "nobody is
+                // Pack the shared `B` panel. `(q0, q1)` are the slivers this
+                // thread will compute over — its column group — and `(w0, w1)`
+                // its share of packing them. The two barriers say "nobody is
                 // still reading the previous panel" and "the new one is
-                // complete". Serially this is one call over all of them, with
-                // the same arguments the pre-threading driver used.
+                // complete", and they bracket only the group's own slice
+                // because only the group's own threads touch it. Serially both
+                // ranges are all the slivers and there are no barriers, which
+                // is exactly the call the pre-threading driver made.
                 let nsliv = jc_len.div_ceil(nr);
-                let (q0, q1) = match bshare {
-                    Some((bar, t, p)) => {
-                        bar.wait();
-                        (t * nsliv / p, (t + 1) * nsliv / p)
-                    }
-                    None => (0, nsliv),
-                };
-                if q1 > q0 {
-                    let c0 = jc + q0 * nr;
-                    let c1 = (jc + q1 * nr).min(jc + jc_len);
+                let ((q0, q1), (w0, w1)) = bpart.ranges(nsliv);
+                // This column group's private slice of the panel. Sliver `s` of
+                // the group lives at `(s - q0)` within it, not at `s`: see
+                // `execute` for why the panel is cut per group.
+                debug_assert!(
+                    (q1 - q0) * b_sliver <= b_group,
+                    "column group overruns its slice of the packed B panel"
+                );
+                let bp_ptr = bp_ptr.add(bpart.g * b_group);
+                if let Some(bar) = bpart.bar {
+                    bar.wait();
+                }
+                if w1 > w0 {
+                    let c0 = jc + w0 * nr;
+                    let c1 = (jc + w1 * nr).min(jc + jc_len);
                     pack_panel::<T>(
                         bh,
                         &bn[c0..c1],
@@ -438,15 +579,23 @@ unsafe fn run_strip<T>(
                         nr,
                         conj_b,
                         ukr.b_pack,
-                        bp_ptr.add(q0 * b_sliver),
+                        bp_ptr.add((w0 - q0) * b_sliver),
                     );
                 }
-                if let Some((bar, _, _)) = bshare {
+                if let Some(bar) = bpart.bar {
                     bar.wait();
                 }
 
+                // This thread's slice of loop 2, in columns of the `jc` block.
+                let (jr_lo, jr_hi) = (q0 * nr, (q1 * nr).min(jc_len));
+
                 // ---- loop 3: M blocking -----------------------------------
-                let mut ic = m_lo;
+                // Skipped wholesale when this thread's column group is empty in
+                // this `jc` block — possible only in a tail block with fewer
+                // slivers than groups — since there is no point packing an `A`
+                // block no micro-kernel call will read. Both barriers above have
+                // already been taken, which is what keeps their counts equal.
+                let mut ic = if jr_lo < jr_hi { m_lo } else { m_hi };
                 while ic < m_hi {
                     let ic_len = mc.min(m_hi - ic);
 
@@ -463,11 +612,11 @@ unsafe fn run_strip<T>(
                     let a_sliver = ukr.a_per_k * pc_len;
 
                     // ---- loop 2: NR ---------------------------------------
-                    let mut jr = 0;
-                    while jr < jc_len {
+                    let mut jr = jr_lo;
+                    while jr < jr_hi {
                         let nrem = nr.min(jc_len - jr);
                         let j0 = jc + jr;
-                        let bpan = bp_ptr.add((jr / nr) * b_sliver);
+                        let bpan = bp_ptr.add((jr / nr - q0) * b_sliver);
 
                         // ---- loop 1: MR -----------------------------------
                         let mut ir = 0;

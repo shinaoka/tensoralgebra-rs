@@ -774,15 +774,50 @@ fn conjugation_matrix_is_consistent() {
 
 // ----------------------------------------------------------------- threading
 //
-// The driver parallelises the `M` direction only, cutting it into contiguous
-// strips of whole `MR` panels. Every output element therefore has exactly one
-// owning thread, which accumulates over the full `K` range in the original
-// order, so the result must be **identical for every thread count** — not
-// merely equal to a tolerance. That is a far stronger invariant than agreeing
-// with the reference oracle, and it is what these tests check: a strip
-// partition that dropped a row, double-counted one, or let a thread read the
-// shared `B` panel across a barrier would all break it, while a tolerance-based
-// check could easily miss the last of those.
+// The driver partitions the output into a `pm x pn` grid: contiguous row strips
+// of whole `MR` panels by column groups of whole `NR` blocks. Every output
+// element therefore has exactly one owning thread, which accumulates over the
+// full `K` range in the original order, so the result must be **identical for
+// every thread count and every partition** — not merely equal to a tolerance.
+// That is a far stronger invariant than agreeing with the reference oracle, and
+// it is what these tests check: a partition that dropped a row or a column,
+// double-counted one, or let a thread read the shared `B` panel across a barrier
+// would all break it, while a tolerance-based check could easily miss the last
+// of those.
+//
+// The second thing these tests have to do is prove the partition they are named
+// after is really the one that ran, so `Split` below is asserted on every case.
+// A barrier-count mismatch across threads *hangs* rather than failing, so the
+// cases that stress the barriers are kept separately identifiable.
+
+/// What the partition must look like, asserted rather than hoped for.
+///
+/// Every variant also checks the universal invariants. They differ in what else
+/// they demand, and each extra demand is *guarded* by the regime in which it is
+/// meaningful, because `MR` and `NR` differ by dtype, by complex method, and
+/// between the AVX-512 and the portable kernels — a shape that is two row panels
+/// deep in `f32` is seven in `c64` 3m and fourteen under
+/// `TENSORCONTRACT_KERNEL=scalar`, so a bare literal here would be asserting the
+/// register block rather than the rule.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Split {
+    /// The universal invariants only.
+    Any,
+    /// Wherever the threads outnumber the row panels the column axis must be in
+    /// use. This is the whole point of the 2-D partition, and the reason it is
+    /// asserted and not assumed is that a shape can lose it silently — put the
+    /// short direction in the column role and `M` fills the threads again.
+    TwoD,
+    /// As `TwoD`, and wherever the row axis is saturated many times over while
+    /// the column axis still has room for a thread per group, *both* factors
+    /// must exceed 1 — so the suite covers a genuine grid, with the
+    /// per-column-group barriers live, and not only the two 1-D degenerate
+    /// cases.
+    Grid,
+    /// Neither axis can be split at all: one panel by one block, which must run
+    /// on a single thread however many were asked for.
+    Serial,
+}
 
 /// Run one `A[m,k,h] B[k,n,h] -> D[m,n,h]` product at each thread count in
 /// `threads` and require every result to match the serial one exactly.
@@ -791,6 +826,7 @@ fn threaded_case<T>(
     blocking: Option<Blocking>,
     method: ComplexMethod,
     threads: &[usize],
+    want: Split,
     seed: u64,
 ) where
     T: Element,
@@ -823,22 +859,75 @@ fn threaded_case<T>(
         };
         let plan = plan.with_threads(nthreads);
         assert_eq!(plan.threads(), nthreads.max(1));
-        // Assert the case actually splits, and by how much, so a partition that
-        // quietly stopped engaging cannot leave these tests green and empty.
-        let (mr, ..) = tensorcontract::kernel::selected_config::<T>(method);
-        // The strips are panels of the *oriented* row direction: when the plan
-        // computes `D^T = B^T A^T` the split runs along `n`. Getting this wrong
-        // is how the first version of this assertion failed — usefully, since it
-        // means a skinny-`M` contraction can still parallelise, as long as it is
-        // skinny in the direction that ends up in the column role.
-        let rows = if plan.transposes_gemm(mr) { n } else { m };
-        let cap = (rows as usize).div_ceil(mr).max(1);
-        assert_eq!(
-            plan.strips(mr),
-            nthreads.min(cap).max(1),
-            "{m}x{n}x{k} [{}]: {nthreads} threads over {cap} panels of {mr} in the row direction",
-            method.name()
+        // Assert the case really splits, and how, so a partition that quietly
+        // stopped engaging cannot leave these tests green and empty.
+        //
+        // `plan_config` and not `selected_config`: the row-block rule can pick a
+        // shape other than the kernel set's default, and the partition is
+        // quantised to the shape the driver will actually run.
+        let (mr, nr, _) = tensorcontract::kernel::plan_config::<T>(&plan);
+        // Both axes are the *oriented* ones: when the plan computes
+        // `D^T = B^T A^T` the row strips run along `n` and the column groups
+        // along `m`. Getting this wrong is how the first version of this
+        // assertion failed — usefully, since it means a skinny-`M` contraction
+        // can still parallelise along `M`, as long as it is skinny in the
+        // direction that ends up in the column role.
+        let swap = plan.transposes_gemm(mr);
+        let (rows, cols) = if swap { (n, m) } else { (m, n) };
+        let panels = (rows as usize).div_ceil(mr).max(1);
+        let blocks = (cols as usize).div_ceil(nr).max(1);
+        let (pm, pn) = plan.partition(mr, nr);
+        let p = nthreads.max(1);
+        let what = format!(
+            "{m}x{n}x{k} [{}] {mr}x{nr} {} {panels}p x {blocks}b on {p} threads -> {pm}x{pn}",
+            method.name(),
+            if swap { "BA" } else { "AB" }
         );
+        assert!(pm >= 1 && pn >= 1, "{what}: partition is empty");
+        assert!(
+            pm <= panels && pn <= blocks,
+            "{what}: partition exceeds the panel/block counts, so some thread gets nothing"
+        );
+        // Everything else here is about the *rule*, and `TENSORCONTRACT_PARTITION`
+        // deliberately overrides the rule and the thread count both, so it is
+        // skipped when that is set. The two assertions above and the bitwise
+        // comparison are not: running the whole suite under a pinned partition is
+        // a cheap way to test an arm no shape would otherwise reach.
+        if std::env::var_os("TENSORCONTRACT_PARTITION").is_none() {
+            assert!(
+                pm * pn <= p,
+                "{what}: partition oversubscribes the thread count"
+            );
+            if panels >= p {
+                // The regime the whole corpus but four cases is in: the row axis
+                // fills the threads by itself, and then the partition must be
+                // exactly the 1-D one, unchanged from before `N` was split.
+                assert_eq!(
+                    (pm, pn),
+                    (p, 1),
+                    "{what}: the row axis alone fills the threads, so this must stay 1-D"
+                );
+            }
+            if matches!(want, Split::TwoD | Split::Grid) && p > panels {
+                assert!(
+                    pn >= 2,
+                    "{what}: more threads than row panels, so the column axis must be used"
+                );
+            }
+            if want == Split::Grid && panels >= 2 && p >= 8 * panels && blocks >= p {
+                assert!(
+                    pm >= 2 && pn >= 2,
+                    "{what}: both axes have room, so both must be split"
+                );
+            }
+            if want == Split::Serial {
+                assert_eq!(
+                    (pm, pn),
+                    (1, 1),
+                    "{what}: one panel by one block cannot be split at all"
+                );
+            }
+        }
         let mut d = start.clone();
         unsafe {
             plan.run_raw::<T>(
@@ -883,76 +972,240 @@ fn threaded_case<T>(
 /// Thread counts that bracket the interesting cases: 2 (an even split), 3 (an
 /// uneven one, since the panel count is not divisible by it), 8 (a realistic
 /// core count) and 64 (far more threads than there are row panels, which must
-/// clamp rather than produce empty strips).
+/// spill onto the column axis or clamp, never produce empty cells).
 const THREAD_COUNTS: &[usize] = &[2, 3, 8, 64];
 
 /// Blocking that forces many `jc`/`pc` iterations, hence many barriers and many
 /// re-packings of the shared `B` panel, on a problem small enough to stay fast.
+///
+/// Note what it does to a 2-D partition: `nc` is rounded up to one whole `NR`
+/// sliver, so most `jc` blocks have fewer slivers than there are column groups
+/// and most groups come out empty. That is the path where a thread takes both of
+/// a block's barriers and then does no work at all, which is precisely the one
+/// whose failure mode is a hang rather than a wrong answer.
 const BARRIER_STRESS: Blocking = Blocking {
     mc: 1, // rounded up to MR
     kc: 3,
     nc: 1, // rounded up to NR
 };
 
+/// Wide in `M`: hundreds of row panels, so the partition stays 1-D at every
+/// thread count here and the universal invariant pins it to `(p, 1)`.
 #[test]
 fn threaded_matches_serial_f64() {
     for method in ComplexMethod::ALL {
-        threaded_case::<f64>((301, 197, 523, 1), None, method, THREAD_COUNTS, 11);
-        threaded_case::<f64>((200, 40, 60, 1), Some(BARRIER_STRESS), method, &[2, 8], 12);
+        threaded_case::<f64>(
+            (301, 197, 523, 1),
+            None,
+            method,
+            THREAD_COUNTS,
+            Split::Any,
+            11,
+        );
+        let stress = Some(BARRIER_STRESS);
+        threaded_case::<f64>((200, 40, 60, 1), stress, method, &[2, 8], Split::Any, 12);
     }
 }
 
 #[test]
 fn threaded_matches_serial_f32() {
     for method in ComplexMethod::ALL {
-        threaded_case::<f32>((401, 233, 797, 1), None, method, THREAD_COUNTS, 13);
-        threaded_case::<f32>((200, 40, 60, 1), Some(BARRIER_STRESS), method, &[2, 8], 14);
+        threaded_case::<f32>(
+            (401, 233, 797, 1),
+            None,
+            method,
+            THREAD_COUNTS,
+            Split::Any,
+            13,
+        );
+        let stress = Some(BARRIER_STRESS);
+        threaded_case::<f32>((200, 40, 60, 1), stress, method, &[2, 8], Split::Any, 14);
     }
 }
 
 #[test]
 fn threaded_matches_serial_c64() {
+    type C = Complex<f64>;
     for method in ComplexMethod::ALL {
-        threaded_case::<Complex<f64>>((211, 143, 401, 1), None, method, THREAD_COUNTS, 15);
-        threaded_case::<Complex<f64>>((200, 40, 60, 1), Some(BARRIER_STRESS), method, &[2, 8], 16);
+        threaded_case::<C>(
+            (211, 143, 401, 1),
+            None,
+            method,
+            THREAD_COUNTS,
+            Split::Any,
+            15,
+        );
+        let stress = Some(BARRIER_STRESS);
+        threaded_case::<C>((200, 40, 60, 1), stress, method, &[2, 8], Split::Any, 16);
     }
 }
 
 #[test]
 fn threaded_matches_serial_c32() {
+    type C = Complex<f32>;
     for method in ComplexMethod::ALL {
-        threaded_case::<Complex<f32>>((277, 181, 613, 1), None, method, THREAD_COUNTS, 17);
-        threaded_case::<Complex<f32>>((200, 40, 60, 1), Some(BARRIER_STRESS), method, &[2, 8], 18);
+        threaded_case::<C>(
+            (277, 181, 613, 1),
+            None,
+            method,
+            THREAD_COUNTS,
+            Split::Any,
+            17,
+        );
+        let stress = Some(BARRIER_STRESS);
+        threaded_case::<C>((200, 40, 60, 1), stress, method, &[2, 8], Split::Any, 18);
+    }
+}
+
+/// Narrow `M`, wide `N` — the shape the 2-D partition exists for, and the one
+/// the corpus has four of (`aqrs-pa-pqrs`, `ij-ikl-ljk`, `ij-kil-lkj`,
+/// `ijk-il-jlk`, none of which can fill eight threads from `M`).
+///
+/// `m = 56` is chosen to be at least the largest `MR` in the build (48, `f32`
+/// real) so the orientation rule leaves the narrow direction in the row role —
+/// otherwise the swap would put the wide one there and the case would fill the
+/// threads from `M` after all, testing nothing. It is also below `8 * MR` for
+/// every register block in the AVX-512 set, so eight threads already overflow
+/// the row axis; the portable kernels have a smaller `MR` and reach the same
+/// regime at 64.
+///
+/// `n = 2000` exceeds the default `NC` in every dtype, so this also covers a
+/// *tail* `jc` block, where the last group is narrower than the others.
+#[test]
+fn threaded_two_d_narrow_m_wide_n() {
+    const SHAPE: (i64, i64, i64, i64) = (56, 2000, 61, 1);
+    for method in ComplexMethod::ALL {
+        threaded_case::<f64>(SHAPE, None, method, THREAD_COUNTS, Split::Grid, 51);
+        threaded_case::<f32>(SHAPE, None, method, THREAD_COUNTS, Split::Grid, 52);
+        threaded_case::<Complex<f64>>(SHAPE, None, method, THREAD_COUNTS, Split::Grid, 53);
+        threaded_case::<Complex<f32>>(SHAPE, None, method, THREAD_COUNTS, Split::Grid, 54);
+    }
+}
+
+/// The same 2-D partition under the barrier-stressing blocking: hundreds of
+/// `(jc, pc)` iterations, one `NR` sliver each, so most column groups are empty
+/// in most of them. Kept as its own test because its failure mode is a hang.
+#[test]
+fn threaded_two_d_barrier_stress() {
+    for method in ComplexMethod::ALL {
+        let stress = Some(BARRIER_STRESS);
+        threaded_case::<f64>((56, 900, 7, 1), stress, method, &[8, 64], Split::TwoD, 55);
+        threaded_case::<Complex<f32>>((56, 900, 5, 1), stress, method, &[8], Split::TwoD, 56);
     }
 }
 
 /// A batch (Hadamard) axis puts the whole loop nest, barriers included, inside
 /// an outer loop that every thread must traverse in lockstep. If the barrier
 /// counts ever went out of step across threads this deadlocks rather than
-/// failing, which is worth being able to tell apart from a wrong answer.
+/// failing, which is worth being able to tell apart from a wrong answer — so the
+/// 2-D shape is exercised here too, since it is the one that changed loop 5.
 #[test]
 fn threaded_matches_serial_batched() {
     for method in ComplexMethod::ALL {
-        threaded_case::<f64>((157, 31, 47, 5), None, method, &[2, 3, 8], 21);
-        threaded_case::<Complex<f64>>((157, 31, 47, 5), Some(BARRIER_STRESS), method, &[3], 22);
-        threaded_case::<Complex<f32>>((88, 24, 19, 3), None, method, &[2, 8], 23);
+        threaded_case::<f64>((157, 31, 47, 5), None, method, &[2, 3, 8], Split::Any, 21);
+        let stress = Some(BARRIER_STRESS);
+        threaded_case::<Complex<f64>>((157, 31, 47, 5), stress, method, &[3], Split::Any, 22);
+        threaded_case::<Complex<f32>>((88, 24, 19, 3), None, method, &[2, 8], Split::Any, 23);
+        threaded_case::<f64>((56, 800, 41, 3), None, method, &[3, 8], Split::TwoD, 24);
+        threaded_case::<Complex<f64>>((56, 800, 41, 3), None, method, &[8], Split::TwoD, 25);
     }
 }
 
-/// Fewer row panels than threads, down to a single-row output: the partition
-/// must clamp to the panel count instead of handing some thread an empty strip
-/// (which would be harmless) or two threads the same one (which would not).
+/// Fewer cells than threads, down to a one-panel-by-one-block output: the
+/// partition must clamp to what the shape has instead of handing some thread an
+/// empty cell (which would be harmless) or two threads the same one (which would
+/// not).
 ///
-/// Both extents are small, because the strips run along whichever direction
-/// ends up in the row role — a 1x33 output splits into two strips of 33 after
-/// the orientation swap, so keeping only `m` small would not exercise the clamp
-/// at all.
+/// Both extents are small, because both axes are the *oriented* ones — a 1x33
+/// output splits into two strips of 33 after the orientation swap, and would
+/// split along the column axis even without it, so keeping only `m` small would
+/// not exercise the clamp at all. The `2x2` case is within one register block in
+/// both directions for *every* shape in either kernel path (the smallest are
+/// `MR = 2`, `NR = 4`, from the portable complex kernels), so it must come out
+/// fully serial however many threads are asked for.
 #[test]
-fn threaded_clamps_below_one_panel_per_thread() {
+fn threaded_clamps_below_one_cell_per_thread() {
     for method in ComplexMethod::ALL {
         for m in [1, 2, 7, 25, 49] {
-            threaded_case::<f64>((m, 14, 17, 1), None, method, &[2, 8, 64], 31 + m as u64);
-            threaded_case::<Complex<f32>>((m, 12, 9, 2), None, method, &[8], 41 + m as u64);
+            let (many, one) = (&[2, 8, 64][..], &[8][..]);
+            threaded_case::<f64>(
+                (m, 14, 17, 1),
+                None,
+                method,
+                many,
+                Split::Any,
+                31 + m as u64,
+            );
+            threaded_case::<Complex<f32>>(
+                (m, 12, 9, 2),
+                None,
+                method,
+                one,
+                Split::Any,
+                41 + m as u64,
+            );
         }
+        threaded_case::<f64>((2, 2, 37, 1), None, method, &[2, 8, 64], Split::Serial, 61);
+        threaded_case::<Complex<f64>>((2, 2, 5, 3), None, method, &[8], Split::Serial, 62);
     }
+}
+
+/// The partition rule itself, in isolation: it is a pure function of the panel
+/// count, the block count and the thread count, so it can be pinned directly
+/// rather than only through its effects on a result.
+///
+/// The expectations are written in units of `MR` and `NR` rather than as literal
+/// extents, so this test says the same thing in every dtype and on both kernel
+/// paths — see [`Split`] for why that matters.
+#[test]
+fn thread_partition_rule() {
+    if std::env::var_os("TENSORCONTRACT_PARTITION").is_some() {
+        return; // the rule is pinned away; there is nothing of it to check
+    }
+    // A col-major `m x n` output with `m >= MR` keeps the row role with `M`, so
+    // the panel and block counts are exactly `m/MR` and `n/NR`.
+    let case = |panels: usize, blocks: usize, p: usize| -> (usize, usize) {
+        let (mr, nr, _) = tensorcontract::kernel::selected_config::<f64>(ComplexMethod::Planar);
+        let (m, n, k) = ((panels * mr) as i64, (blocks * nr) as i64, 8);
+        let la = Layout::col_major(&[m, k]);
+        let lb = Layout::col_major(&[k, n]);
+        let ld = Layout::col_major(&[m, n]);
+        let plan = Plan::new(
+            Operand::new(&la, &[0, 2]),
+            Operand::new(&lb, &[2, 1]),
+            None,
+            Operand::new(&ld, &[0, 1]),
+        )
+        .expect("plan")
+        .with_threads(p);
+        let (mr2, nr2, _) = tensorcontract::kernel::plan_config::<f64>(&plan);
+        assert_eq!((mr, nr), (mr2, nr2), "row-block rule moved the shape");
+        assert!(
+            !plan.transposes_gemm(mr),
+            "{panels}x{blocks}: unexpected swap"
+        );
+        plan.partition(mr, nr)
+    };
+
+    // One thread is one cell, always, whatever the shape.
+    assert_eq!(case(40, 40, 1), (1, 1));
+    assert_eq!(case(1, 1, 1), (1, 1));
+    // The row axis fills the threads: 1-D, exactly as before `N` was split.
+    assert_eq!(case(40, 40, 8), (8, 1));
+    assert_eq!(case(8, 400, 8), (8, 1));
+    // Nothing to split: clamp, do not oversubscribe.
+    assert_eq!(case(1, 1, 8), (1, 1));
+    // Narrow row axis against a wide column axis: spill onto `N`. With only
+    // three panels, three strips of one panel against 400 blocks is worse
+    // balanced than one strip of three against 50, so the rule takes the latter.
+    assert_eq!(case(3, 400, 8), (1, 8));
+    assert_eq!(case(1, 400, 8), (1, 8));
+    // ... but a column axis with little in it is not worth splitting: seven
+    // strips of one panel beats one strip of seven against four blocks, even
+    // though it leaves a thread idle.
+    assert_eq!(case(7, 4, 8), (7, 1));
+    // Both axes saturated: the product is the thread count, not more.
+    let (pm, pn) = case(4, 400, 64);
+    assert_eq!((pm, pn), (4, 16));
+    assert!(pm * pn <= 64);
 }

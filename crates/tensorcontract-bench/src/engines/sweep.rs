@@ -185,12 +185,16 @@ where
         // the blocking, for the same reason — the item 2 grid varies it per arm
         // and a coupled `kc` gives each dtype and method a different `mc`.
         // The thread count appears only when it is not 1, so single-core CSVs
-        // keep the exact format every committed measurement was written in.
+        // keep the exact format every committed measurement was written in. With
+        // it goes the partition actually used, `pm x pn`, because a case that
+        // cannot fill the threads from one axis is exactly what a scaling run is
+        // looking for and the CSV should say so without re-deriving it.
         let threads = p.threads();
         let tag = if threads == 1 {
             String::new()
         } else {
-            format!("t{threads}/{} ", p.strips(mr))
+            let (pm, pn) = p.partition(mr, nr);
+            format!("t{threads}/{pm}x{pn} ")
         };
         let notes = format!(
             "{} {mr}x{nr} {orient} {}x{}x{} {tag}{}",
