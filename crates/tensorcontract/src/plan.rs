@@ -816,7 +816,11 @@ fn row_block_override() -> RowBlock {
 /// process. Unset means **1**: see [`Plan::threads`] for why that is the default
 /// while Phase 4 is still measuring, and note that it keeps every committed
 /// single-core number reproducible from a bare checkout.
-fn env_threads() -> usize {
+///
+/// Visible to the crate because the blocking model needs a thread count when it
+/// is asked for a configuration without a plan — one definition of the default,
+/// rather than two readers of one variable.
+pub(crate) fn env_threads() -> usize {
     #[cfg(feature = "std")]
     {
         use std::sync::OnceLock;

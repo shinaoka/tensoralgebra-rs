@@ -70,6 +70,7 @@
 
 use crate::element::Real;
 
+pub mod cache;
 pub mod scalar;
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -211,6 +212,15 @@ impl<T> core::fmt::Debug for Ukr<T> {
 ///
 /// * `mc x kc` is the packed A block, sized for L2.
 /// * `kc x nc` is the packed B block, sized for L3.
+///
+/// There are two derivations, chosen at run time by
+/// `TENSORCONTRACT_BLOCKMODEL` (see [`cache::block_model`]):
+/// [`Blocking::derive`], the hardcoded Phase 2 heuristic, which is the
+/// **default**; and [`Blocking::model`], the BLIS analytical model driven by
+/// cache descriptors probed from the hardware, which is what transfers to a
+/// machine nobody measured on. The switch is applied in
+/// [`KernelConfig::normalise`], so every kernel — vectorised, scalar, default
+/// shape or menu alternate — goes through the same one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Blocking {
     pub mc: usize,
@@ -265,6 +275,31 @@ impl Blocking {
         let nc = (B_BUDGET / (kc * b_reals * real_bytes)).max(1);
         Blocking { mc, kc, nc }
     }
+
+    /// The analytical alternative to [`Blocking::derive`]: BLIS's model over
+    /// cache descriptors probed at run time, with no machine-specific constant
+    /// anywhere in it.
+    ///
+    /// Everything it needs about the kernel is already on the [`Ukr`] — the
+    /// micro-tile shape and the packing formats, from which the reals per
+    /// element follow — so a kernel gets the right blocking without declaring
+    /// anything new. `threads` is the count the plan will run with, and it
+    /// matters only for `nc`; see [`cache::analytical`].
+    ///
+    /// Off by default. See [`cache::block_model`] for the switch and why.
+    pub fn model<T>(ukr: &Ukr<T>, threads: usize) -> Blocking {
+        cache::analytical(
+            cache::PanelGeom {
+                real_bytes: core::mem::size_of::<T>(),
+                a_reals: ukr.a_pack.reals_per_element(),
+                b_reals: ukr.b_pack.reals_per_element(),
+                mr: ukr.mr,
+                nr: ukr.nr,
+            },
+            threads,
+            &cache::hierarchy(),
+        )
+    }
 }
 
 /// Everything the driver needs for one element type and complex method.
@@ -275,10 +310,37 @@ pub struct KernelConfig<T> {
 }
 
 impl<T> KernelConfig<T> {
-    /// Apply any environment override, then round `mc`/`nc` to whole multiples
-    /// of the register block (the driver's loop arithmetic relies on that).
+    /// Apply the blocking derivation in force and any environment override,
+    /// then round `mc`/`nc` to whole multiples of the register block (the
+    /// driver's loop arithmetic relies on that).
+    ///
+    /// Uses the process-default thread count, which is what a configuration
+    /// obtained without a plan (diagnostics, `selected_config`) can know.
+    /// Execution goes through [`KernelConfig::normalise_for`] with the plan's
+    /// own count instead.
     pub(crate) fn normalise(self) -> Self {
-        let mut blk = self.blk;
+        self.normalise_for(crate::plan::env_threads())
+    }
+
+    /// [`KernelConfig::normalise`] at a known thread count.
+    ///
+    /// The thread count reaches the blocking *here* rather than through
+    /// [`Blocking::derive`]'s arguments, which is the smallest place it can
+    /// enter: `normalise` is already on every path that produces a config, and
+    /// the [`Ukr`] it has in hand carries every other input the model needs.
+    /// Under the legacy derivation the count is ignored, so the default path is
+    /// byte-for-byte what it was.
+    pub(crate) fn normalise_for(self, threads: usize) -> Self {
+        let mut blk = match cache::block_model() {
+            cache::BlockModel::Legacy => self.blk,
+            cache::BlockModel::Analytical => Blocking::model(&self.ukr, threads),
+        };
+        // NB: under the analytical model this starts from the model's output
+        // every time, which is what makes re-normalising at a plan's thread
+        // count safe. Under the legacy constants it starts from `self.blk`,
+        // which the percentage overrides below have already scaled — so
+        // `normalise` must *not* be applied twice there. See
+        // [`KernelConfig::retarget_threads`].
         if let Some(o) = env_blocking() {
             if let Some(v) = o.mc {
                 blk.mc = v;
@@ -304,6 +366,22 @@ impl<T> KernelConfig<T> {
             }
         }
         self.with_blocking(blk)
+    }
+
+    /// Re-derive the blocking for a plan's thread count, if the derivation in
+    /// force actually depends on it.
+    ///
+    /// A deliberate no-op under the legacy constants, and not merely as an
+    /// optimisation: `_MC_PCT`/`_NC_PCT` scale *whatever the derivation
+    /// produced*, so applying [`KernelConfig::normalise`] a second time to an
+    /// already-scaled `blk` would square the scaling and silently corrupt the
+    /// arms of the pending `MC`/`KC`/`NC` grid. The analytical path recomputes
+    /// from the model each time and so is safe to re-run.
+    pub(crate) fn retarget_threads(self, threads: usize) -> Self {
+        match cache::block_model() {
+            cache::BlockModel::Legacy => self,
+            cache::BlockModel::Analytical => self.normalise_for(threads),
+        }
     }
 
     /// Replace the blocking parameters, re-imposing the register-block
@@ -549,6 +627,11 @@ where
 /// output's stride pattern makes a shape other than the kernel set's default
 /// worth having — see [`crate::Plan::row_block`] — and falls back to the
 /// default whenever the requested shape does not exist.
+///
+/// The plan's thread count is applied to the blocking here, because `nc` is a
+/// share of a cache the threads of one call contend for and the process default
+/// is not necessarily what this plan runs with. Under the legacy derivation this
+/// changes nothing.
 pub(crate) fn config_for_plan<T>(plan: &crate::plan::Plan) -> KernelConfig<T::Real>
 where
     T: crate::element::Element,
@@ -559,6 +642,7 @@ where
     plan.row_block(menu)
         .and_then(|mr| <T::Real as KernelSet>::config_at(T::IS_COMPLEX, method, mr))
         .unwrap_or_else(|| config_for::<T>(method))
+        .retarget_threads(plan.threads())
 }
 
 /// The register block `(MR, NR)` and cache blocking a *plan* will execute with.
@@ -829,6 +913,58 @@ mod tests {
         // 3 planes of accumulator instead of 2, but 3 products instead of 4.
         assert_eq!(threem.ukr.tile, 3 * threem.ukr.mr * threem.ukr.nr);
         assert_eq!(planar.ukr.tile, 2 * planar.ukr.mr * planar.ukr.nr);
+    }
+
+    /// The shipped blocking, spelled out.
+    ///
+    /// Every performance number in `DECISIONS.md` was taken against exactly
+    /// these, and the pending `MC`/`KC`/`NC` grid defines its arms relative to
+    /// them, so changing one is changing what those measurements mean. The
+    /// analytical model is the reason to have this test: it must stay opt-in,
+    /// and if it ever becomes the default that is a decision recorded in
+    /// `DECISIONS.md`, not a diff that slips through here.
+    #[test]
+    fn legacy_blocking_is_unchanged() {
+        if env_usize("TENSORCONTRACT_KC_COUPLE").is_some() {
+            return; // the sweep's coupled arm moves `kc` on purpose
+        }
+        let d = |real_bytes, a, b| {
+            let x = Blocking::derive(real_bytes, a, b);
+            (x.mc, x.kc, x.nc)
+        };
+        // 8-byte reals: `kc = 256`, half a 1 MiB L2 for A, 3 MiB of L3 for B.
+        assert_eq!(d(8, 1, 1), (256, 256, 1536), "f64 real");
+        assert_eq!(d(8, 2, 2), (128, 256, 768), "c64 planar");
+        assert_eq!(d(8, 4, 2), (64, 256, 768), "c64 1m");
+        assert_eq!(d(8, 3, 3), (85, 256, 512), "c64 3m");
+        // 4-byte reals: `kc = 384`, same two budgets.
+        assert_eq!(d(4, 1, 1), (341, 384, 2048), "f32 real");
+        assert_eq!(d(4, 2, 2), (170, 384, 1024), "c32 planar");
+        assert_eq!(d(4, 4, 2), (85, 384, 1024), "c32 1m");
+        assert_eq!(d(4, 3, 3), (113, 384, 682), "c32 3m");
+    }
+
+    /// Re-deriving a config at a plan's thread count must be safe to do on top
+    /// of the derivation that already happened. Under the legacy constants that
+    /// means doing nothing at all — the percentage overrides scale the derived
+    /// value, so a second pass would square them.
+    #[test]
+    fn retargeting_threads_is_stable() {
+        for m in ComplexMethod::ALL {
+            let cfg = f64::config_cplx(m);
+            let again = cfg.retarget_threads(8);
+            match cache::block_model() {
+                cache::BlockModel::Legacy => assert_eq!(cfg.blk, again.blk),
+                // The model may legitimately give eight threads a narrower `nc`
+                // — they crowd each other's packed `A` out of the shared L3 —
+                // but never a different `mc` or `kc`, and a second application
+                // must be a fixed point.
+                cache::BlockModel::Analytical => {
+                    assert_eq!((cfg.blk.mc, cfg.blk.kc), (again.blk.mc, again.blk.kc));
+                    assert_eq!(again.blk, again.retarget_threads(8).blk);
+                }
+            }
+        }
     }
 
     #[test]

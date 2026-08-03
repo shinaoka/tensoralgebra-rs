@@ -347,6 +347,67 @@ impl std::fmt::Display for Problem {
     }
 }
 
+/// The blocking the analytical model derives for this machine, for one element
+/// type and complex method, at a given thread count.
+fn model_blocking<T>(method: ComplexMethod, threads: usize) -> Blocking
+where
+    T: Element,
+    T::Real: KernelSet,
+{
+    let ukr = if T::IS_COMPLEX {
+        <T::Real as KernelSet>::config_cplx(method).ukr
+    } else {
+        <T::Real as KernelSet>::config_real().ukr
+    };
+    Blocking::model(&ukr, threads)
+}
+
+/// Run the oracle against the analytical model's blocking.
+///
+/// The model ships **off** (`TENSORCONTRACT_BLOCKMODEL=model` opts in), so
+/// nothing else in this suite exercises the numbers it derives — and they are a
+/// different regime from the constants, not a nudge: a `kc` two to eight times
+/// shallower, an `mc` four to six times wider, an `nc` in the tens of thousands
+/// where the constant is under a thousand. All of that lands in the driver's
+/// loop arithmetic and its buffer sizing, so it is checked directly rather than
+/// only when someone sets the variable. Both thread counts are covered because
+/// the model derives a different `nc` for each.
+fn model_blocking_sweep<T>(seed: u64, iters: usize, complex: bool)
+where
+    T: Element,
+    T::Real: KernelSet,
+{
+    let methods: &[ComplexMethod] = if complex {
+        &ComplexMethod::ALL
+    } else {
+        &[ComplexMethod::Planar]
+    };
+    let mut rng = ChaCha8Rng::seed_from_u64(seed);
+    for i in 0..iters {
+        let p = random_problem(&mut rng, complex);
+        for &method in methods {
+            for threads in [1, 8] {
+                let blk = model_blocking::<T>(method, threads);
+                let err = check_problem::<T>(&p, &mut rng, Some(blk), method);
+                assert!(
+                    err <= tol::<T>(method),
+                    "iteration {i} method {} model blocking {blk:?} at {threads} thread(s): \
+                     relative error {err:e}\n{p}",
+                    method.name(),
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn analytical_blocking_matches_the_oracle() {
+    model_blocking_sweep::<f64>(0xA11A, 40, false);
+    model_blocking_sweep::<f32>(0xA11B, 40, false);
+    model_blocking_sweep::<Complex<f64>>(0xA11C, 40, true);
+    model_blocking_sweep::<Complex<f32>>(0xA11D, 40, true);
+}
+
 #[test]
 fn randomised_f64() {
     randomised_sweep::<f64>(0xC0FFEE, 300, false);
