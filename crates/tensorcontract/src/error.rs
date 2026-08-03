@@ -61,6 +61,20 @@ pub enum Error {
         /// The extent as supplied.
         extent: i64,
     },
+    /// The product of a tensor's extents does not fit an `i64`, so the scatter
+    /// vector it implies cannot be addressed — let alone allocated.
+    ///
+    /// Checked because the alternative is worse than an error. The engine sizes
+    /// each scatter vector by that product; unchecked, a wrapping product yields
+    /// a plan that silently computes nothing in release and aborts the process
+    /// in debug, and neither is an acceptable answer to give a C caller who
+    /// passed extents that merely do not fit. Found by the TAPP conformance
+    /// suite, which is the only caller that can supply extents this large
+    /// without also allocating the memory for them.
+    ExtentProductOverflow {
+        /// Which operand: `"A"`, `"B"`, `"C"` or `"D"`.
+        tensor: &'static str,
+    },
     /// The requested element type is not supported by this entry point.
     /// Raised at the TAPP boundary for `TAPP_F16` / `TAPP_BF16`, which have no
     /// [`crate::Element`] impl here.
@@ -106,6 +120,9 @@ impl fmt::Display for Error {
             }
             Error::NegativeExtent { label, extent } => {
                 write!(f, "index label {label} has negative extent {extent}")
+            }
+            Error::ExtentProductOverflow { tensor } => {
+                write!(f, "extents of tensor {tensor} overflow when multiplied")
             }
             Error::UnsupportedDatatype => write!(f, "unsupported element type"),
             Error::NullPointer { tensor } => {

@@ -24,6 +24,7 @@ use std::slice;
 use num_complex::Complex;
 
 use common::{explain_status, TAPP_DEFAULT_PREC};
+use tensorcontract_tapp::TAPP_ERROR_UNSUPPORTED;
 
 /// The upstream header, transcribed. Types follow `tapp/*.h`: every handle is
 /// `intptr_t`, `TAPP_error` / `TAPP_datatype` / `TAPP_prectype` /
@@ -110,15 +111,44 @@ mod c_abi {
 
         // Non-standard extension, documented in the crate.
         pub fn TAPP_implementation_name() -> *const c_char;
+
+        // `api/include/tapp/attributes.h`. These were missing entirely when this
+        // suite was written — a C program including `<tapp.h>` and calling one
+        // failed to *link*, the least diagnosable failure available — and are now
+        // exported as refusals. Declared here so their absence would once again
+        // be a link error in this crate's own tests rather than downstream.
+        pub fn TAPP_attr_set(attr: isize, key: c_int, value: *mut c_void) -> c_int;
+        pub fn TAPP_attr_get(attr: isize, key: c_int, value: *mut *mut c_void) -> c_int;
+        pub fn TAPP_attr_clear(attr: isize, key: c_int) -> c_int;
     }
 }
 
-// `TAPP_attr_set` / `TAPP_attr_get` / `TAPP_attr_clear` from
-// `api/include/tapp/attributes.h` are *not* declared above, because this crate
-// does not export them: a C program that includes `<tapp.h>` and calls them
-// fails to link. They are omitted here deliberately — declaring an unresolved
-// symbol would break the build rather than record the gap — and the gap is in
-// the report instead.
+/// The attribute API links, refuses, and does not touch anything on the way.
+///
+/// Upstream specifies no attribute keys, so refusing every key is conformant;
+/// what is not conformant is failing to export the symbols at all, which is what
+/// this crate did until this suite transcribed the header and noticed.
+/// `TAPP_attr_get` must also leave a defined value behind, so that a caller who
+/// ignores the return code does not read its own uninitialised stack slot.
+#[test]
+fn the_attribute_api_links_and_refuses() {
+    const SENTINEL: *mut c_void = usize::MAX as *mut c_void;
+    unsafe {
+        assert_eq!(
+            c_abi::TAPP_attr_set(0, 7, std::ptr::null_mut()),
+            TAPP_ERROR_UNSUPPORTED
+        );
+        assert_eq!(c_abi::TAPP_attr_clear(0, 7), TAPP_ERROR_UNSUPPORTED);
+        let mut out = SENTINEL;
+        assert_eq!(c_abi::TAPP_attr_get(0, 7, &mut out), TAPP_ERROR_UNSUPPORTED);
+        assert!(out.is_null(), "attr_get left the out-parameter unwritten");
+        // A null out-parameter must not be dereferenced.
+        assert_eq!(
+            c_abi::TAPP_attr_get(0, 7, std::ptr::null_mut()),
+            TAPP_ERROR_UNSUPPORTED
+        );
+    }
+}
 
 // -------------------------------------------------------- linkage and symbols
 
@@ -427,39 +457,40 @@ fn stateful_handles_are_distinct_nonzero_and_aligned() {
     }
 }
 
-/// The *library* handle is not a distinct allocation, and every one this
-/// implementation hands out is the same value.
+/// Library handles are distinct, non-zero, and destroyable independently.
 ///
-/// `TAPP_create_handle` boxes `struct HandleState { _private: () }`, which is
-/// zero-sized, and a `Box` of a zero-sized type allocates nothing:
-/// `Box::into_raw` yields `NonNull::dangling()`, i.e. the type's alignment. So
-/// the handle is `1`, always, and `src/lib.rs`'s stated reason for boxing it —
-/// "kept as a real allocation so that handle validity can be checked and future
-/// state has somewhere to live" — does not hold today. The only handle value the
-/// ABI can reject is `0`.
+/// This test used to assert the opposite, and finding that out is what changed
+/// the code. `HandleState` was `struct HandleState { _private: () }` — a
+/// zero-sized type, for which `Box::into_raw` returns `NonNull::dangling()`, so
+/// every library handle the crate ever issued was the value `1`. Two live
+/// handles were indistinguishable, and a C program that created two and
+/// destroyed both was double-freeing — harmlessly, but only for as long as the
+/// state stayed empty. `src/lib.rs` then gained a reserved field.
 ///
-/// This is sound rather than a bug: creating and destroying a zero-sized box is
-/// well defined, and the shim ignores the library handle anyway (see
-/// `a_zero_library_handle_is_accepted_by_create_tensor_product`). It is pinned
-/// because the day `HandleState` gains a field the allocation becomes real, two
-/// handles stop being equal, and this test is where somebody finds out that a C
-/// program which creates two handles and destroys both has been double-freeing
-/// harmlessly all along.
+/// What is still *not* true, and the old comment in `src/lib.rs` claimed it, is
+/// that handle validity can be checked: nothing distinguishes a pointer this
+/// crate produced from an arbitrary non-zero `intptr_t`, so `0` remains the only
+/// value the ABI can reject.
 #[test]
-fn the_library_handle_is_a_zero_sized_box_and_so_always_the_same_value() {
+fn library_handles_are_distinct_and_independently_destroyable() {
     unsafe {
         let mut h1 = 0isize;
         let mut h2 = 0isize;
         assert_eq!(c_abi::TAPP_create_handle(&mut h1), 0);
         assert_eq!(c_abi::TAPP_create_handle(&mut h2), 0);
         assert_ne!(h1, 0);
-        assert_eq!(
+        assert_ne!(h2, 0);
+        assert_ne!(
             h1, h2,
-            "library handles have become distinct: re-read this test's comment"
+            "library handles have collapsed to one value: is HandleState zero-sized again?"
         );
-        // Destroyed once, not twice: with `h1 == h2` a second destroy is a
-        // double free of the same value, which is a no-op only for as long as
-        // the state stays zero-sized.
+        assert_eq!(
+            h1 % (std::mem::align_of::<u64>() as isize),
+            0,
+            "unaligned handle"
+        );
+        // Each is a real allocation, so each can and must be destroyed once.
         assert_eq!(c_abi::TAPP_destroy_handle(h1), 0);
+        assert_eq!(c_abi::TAPP_destroy_handle(h2), 0);
     }
 }

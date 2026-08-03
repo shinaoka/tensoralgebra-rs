@@ -22,7 +22,15 @@
 //! | Case 5 isolated *output* indices (broadcast) | rejected, as TAPP permits |
 //! | `TAPP_CONJUGATE` on any operand | supported (free: folded into packing) |
 //! | mixed precision (`prec` != storage) | accepted, computed at storage precision |
+//! | mixed *storage* types across operands | **rejected** (`TAPP_ERROR_DATATYPE`) — one element type per plan |
 //! | batched product | supported |
+//! | `TAPP_IN_PLACE` (a null `C`) | only with `beta == 0`; a non-zero `beta` is refused rather than reinterpreted |
+//! | `TAPP_attr_set` / `_get` / `_clear` | exported, and refuse every key: upstream specifies none |
+//!
+//! Note that `TAPP_ERROR_*` beyond `TAPP_SUCCESS` are **this crate's own
+//! numbering**. Upstream `error.h` is a bare `typedef int TAPP_error` with no
+//! enumerators, so zero is the only value the standard fixes and a portable
+//! caller must go through [`TAPP_check_success`] rather than compare codes.
 //!
 //! # The handle discipline, once
 //!
@@ -117,6 +125,7 @@ fn map_err(e: tensorcontract::Error) -> c_int {
     match e {
         RankMismatch { .. } | LabelCountMismatch { .. } => TAPP_ERROR_LABELS,
         ExtentMismatch { .. } | NegativeExtent { .. } => TAPP_ERROR_SHAPE,
+        ExtentProductOverflow { .. } => TAPP_ERROR_SHAPE,
         BroadcastIndexUnsupported { .. } => TAPP_ERROR_UNSUPPORTED,
         OutputLabelMismatch => TAPP_ERROR_LABELS,
         UnsupportedDatatype => TAPP_ERROR_DATATYPE,
@@ -153,10 +162,21 @@ pub unsafe extern "C" fn TAPP_explain_error(
 
 // ------------------------------------------------------------------ handles
 
-/// Library handle. Stateless here, but kept as a real allocation so that
-/// handle validity can be checked and future state has somewhere to live.
+/// Library handle. Stateless so far, but a *non*-zero-sized allocation on
+/// purpose: with an empty struct `Box::into_raw` returns `NonNull::dangling()`,
+/// so every handle the library ever issued was the same value, two live handles
+/// were indistinguishable, and a C program that created two and destroyed both
+/// was performing a double free — harmless only for as long as the state stayed
+/// empty. The field costs eight bytes once per library handle.
+///
+/// Note what this does *not* buy, since an earlier comment here claimed it:
+/// handle validity still cannot be checked. Nothing can distinguish a pointer
+/// this crate produced from an arbitrary non-zero `intptr_t`, so `0` remains the
+/// only value the ABI can reject.
 struct HandleState {
-    _private: (),
+    /// Reserved for state a future version needs; also what keeps the type
+    /// non-zero-sized. Not read.
+    _reserved: u64,
 }
 
 /// Execution resources. `nthreads == 0` means "engine default".
@@ -184,7 +204,7 @@ pub unsafe extern "C" fn TAPP_create_handle(handle: *mut isize) -> c_int {
     if handle.is_null() {
         return TAPP_ERROR_NULL;
     }
-    *handle = Box::into_raw(Box::new(HandleState { _private: () })) as isize;
+    *handle = Box::into_raw(Box::new(HandleState { _reserved: 0 })) as isize;
     TAPP_SUCCESS
 }
 
@@ -227,6 +247,61 @@ pub unsafe extern "C" fn TAPP_destroy_executor(exec: isize) -> c_int {
     }
     drop(Box::from_raw(exec as *mut ExecutorState));
     TAPP_SUCCESS
+}
+
+// ------------------------------------------------------------- attributes
+//
+// `api/include/tapp/attributes.h` declares three functions over an opaque
+// `TAPP_attr` (`intptr_t`) and a `TAPP_key` (`int`), and specifies no keys. They
+// are implemented here as refusals rather than left out, because a symbol that
+// is merely absent turns a C program that includes `<tapp.h>` and calls one into
+// a **link** failure — the least diagnosable kind — whereas a refusal is a value
+// the caller can check and explain. Found by the conformance suite, which
+// re-declares the whole header and so notices what is missing from it.
+//
+// Prototypes verified against the upstream header (TAPPorg/reference-implementation,
+// api/include/tapp/attributes.h), not reconstructed.
+
+/// Set an attribute. Always fails with [`TAPP_ERROR_UNSUPPORTED`]: this
+/// implementation defines no attribute keys, and upstream specifies none.
+///
+/// # Safety
+/// Trivially safe — no argument is dereferenced — and `unsafe` only to match the
+/// declared C signature.
+#[no_mangle]
+pub unsafe extern "C" fn TAPP_attr_set(
+    _attr: isize,
+    _key: c_int,
+    _value: *mut std::ffi::c_void,
+) -> c_int {
+    TAPP_ERROR_UNSUPPORTED
+}
+
+/// Get an attribute. Always fails with [`TAPP_ERROR_UNSUPPORTED`]; `value` is
+/// set to null first if it is non-null, so a caller that ignores the return code
+/// reads a defined value rather than whatever was on its stack.
+///
+/// # Safety
+/// `value` must be null or valid for one pointer-sized write.
+#[no_mangle]
+pub unsafe extern "C" fn TAPP_attr_get(
+    _attr: isize,
+    _key: c_int,
+    value: *mut *mut std::ffi::c_void,
+) -> c_int {
+    if !value.is_null() {
+        *value = std::ptr::null_mut();
+    }
+    TAPP_ERROR_UNSUPPORTED
+}
+
+/// Clear an attribute. Always fails with [`TAPP_ERROR_UNSUPPORTED`].
+///
+/// # Safety
+/// Trivially safe; `unsafe` only to match the declared C signature.
+#[no_mangle]
+pub unsafe extern "C" fn TAPP_attr_clear(_attr: isize, _key: c_int) -> c_int {
+    TAPP_ERROR_UNSUPPORTED
 }
 
 /// Release a status object. A no-op: execution here is synchronous, so it never
@@ -555,13 +630,24 @@ pub unsafe extern "C" fn TAPP_destroy_tensor_product(plan: isize) -> c_int {
 
 /// Execute a planned product against data.
 ///
-/// Synchronous: it returns when the contraction is done, `_status` is never
-/// written and `_exec` is ignored (see [`ExecutorState::nthreads`]). `alpha` and
-/// `beta` are read as the plan's element type, so they are pointers to an
-/// `f32`, `f64`, `float _Complex` or `double _Complex` accordingly.
+/// Synchronous: it returns when the contraction is done, and `_exec` is ignored
+/// (see [`ExecutorState::nthreads`]). `alpha` and `beta` are read as the plan's
+/// element type, so they are pointers to an `f32`, `f64`, `float _Complex` or
+/// `double _Complex` accordingly.
 ///
-/// `c` may be null, which is taken to mean `beta == 0` regardless of what
-/// `beta` says — TAPP's documented way to express "the output is overwritten".
+/// `status`, if non-null, is set to `0` before the work starts. Upstream's own
+/// reference implementation leaves it untouched, and `status.h` declares no
+/// `TAPP_create_status`, so a caller following the idiomatic
+/// `TAPP_status s; execute(.., &s, ..); TAPP_destroy_status(s);` would otherwise
+/// pass an uninitialised value to the destructor. Writing zero costs a branch
+/// and makes that sequence defined.
+///
+/// `c` may be null — upstream's `TAPP_IN_PLACE` — **only together with
+/// `beta == 0`**, meaning `D` is overwritten. A null `c` with a non-zero `beta`
+/// returns [`TAPP_ERROR_UNSUPPORTED`] rather than silently discarding `D`,
+/// because `product.h` leaves the meaning of that combination an open question
+/// and the constant's name suggests the opposite of what this engine would do.
+/// In-place accumulation is expressible today: pass `D`'s own pointer as `c`.
 ///
 /// # Safety
 /// `plan` must be live. `alpha` and `beta` must each be valid for one read of
@@ -575,7 +661,7 @@ pub unsafe extern "C" fn TAPP_destroy_tensor_product(plan: isize) -> c_int {
 pub unsafe extern "C" fn TAPP_execute_product(
     plan: isize,
     _exec: isize,
-    _status: *mut isize,
+    status: *mut isize,
     alpha: *const std::ffi::c_void,
     a: *const std::ffi::c_void,
     b: *const std::ffi::c_void,
@@ -583,18 +669,31 @@ pub unsafe extern "C" fn TAPP_execute_product(
     c: *const std::ffi::c_void,
     d: *mut std::ffi::c_void,
 ) -> c_int {
+    if !status.is_null() {
+        *status = 0;
+    }
     let Some(p) = (plan as *const Product).as_ref() else {
         return TAPP_ERROR_NULL;
     };
     if a.is_null() || b.is_null() || d.is_null() || alpha.is_null() || beta.is_null() {
         return TAPP_ERROR_NULL;
     }
-    // `beta == 0` is the documented way to say "C is not read"; honour it even
-    // if `C` is null.
+    // A null `C` is upstream's `TAPP_IN_PLACE`, whose meaning `product.h` leaves
+    // as an open `//TODO`. Reading it as "beta is zero" — which this did — turns
+    // `beta = 1, C = TAPP_IN_PLACE`, i.e. the request a caller would write for
+    // `D += alpha*A*B`, into a silent overwrite of `D`. Rather than guess which
+    // way upstream will settle it, reject the ambiguous combination and keep the
+    // unambiguous one: a null `C` with `beta == 0` overwrites `D`, and in-place
+    // accumulation is expressible today by passing `D`'s own pointer for `C`.
+    // Turning a wrong answer into a diagnosable error costs a caller nothing it
+    // can already express.
     macro_rules! run {
         ($t:ty) => {{
             let al = *(alpha as *const $t);
             let be = *(beta as *const $t);
+            if c.is_null() && be != <$t as tensorcontract::Element>::zero() {
+                return TAPP_ERROR_UNSUPPORTED;
+            }
             let cp = if c.is_null() {
                 d as *const $t
             } else {

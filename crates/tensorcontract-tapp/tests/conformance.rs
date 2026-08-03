@@ -559,34 +559,38 @@ fn c_may_have_a_different_layout_from_d() {
     every_dtype!(one);
 }
 
-/// `C = NULL` is upstream's `TAPP_IN_PLACE`, and this crate treats it as
-/// `beta = 0` rather than as "accumulate into `D`".
+/// `C = NULL` with a non-zero `beta` is refused, not silently reinterpreted.
 ///
-/// Upstream `tapp/product.h` defines `TAPP_IN_PLACE` as `NULL` but leaves the
-/// meaning open: `//TODO: in-place operation: set C = NULL or TAPP_IN_PLACE?`.
-/// This crate resolves the ambiguity in the direction that ignores `beta`, so a
-/// caller who writes `beta = 1, C = TAPP_IN_PLACE` expecting `D += alpha*A*B`
-/// gets `D = alpha*A*B` and silently loses `D`. This test pins the behaviour
-/// that ships rather than the name's suggestion; see the accompanying report.
+/// Upstream `tapp/product.h` defines `TAPP_IN_PLACE` as `NULL` and leaves its
+/// meaning an open `//TODO: in-place operation: set C = NULL or TAPP_IN_PLACE?`.
+/// This test used to pin the old behaviour — `beta` ignored — under which a
+/// caller writing `beta = 1, C = TAPP_IN_PLACE` and expecting `D += alpha*A*B`
+/// got `D` silently overwritten. Since the constant's *name* suggests the
+/// opposite of what the engine would do, the ambiguous combination now returns
+/// `TAPP_ERROR_UNSUPPORTED`; a null `C` with `beta == 0` still overwrites `D`,
+/// and in-place accumulation is expressible by passing `D`'s own pointer as `C`
+/// (see `accumulation_into_a_nonzero_d`).
 #[test]
-fn null_c_pointer_is_treated_as_beta_zero() {
+fn null_c_with_nonzero_beta_is_rejected() {
     fn one<T: Dtype>() {
         let a = CTensor::new(&[4, 3], &[1, 4], &[I, K]);
         let b = CTensor::new(&[3, 5], &[1, 3], &[K, J]);
         let d = CTensor::new(&[4, 5], &[1, 4], &[I, J]);
         let av = seq::<T>(a.storage(), 191);
         let bv = seq::<T>(b.storage(), 192);
-        let reference = Case::plain(a, &av, b, &bv, d).check_zeroed();
+        // A null `C` with `beta == 0` is the unambiguous half and still works.
+        let overwritten = Case::plain(a, &av, b, &bv, d).check_zeroed();
 
-        // Same call with a non-zero `beta` and `C = TAPP_IN_PLACE`, into a `D`
-        // that already holds data. `Case::plain` uses `CData::Null`, and the
-        // oracle is told there is no `C`, so `check` asserts exactly that the
-        // pre-existing `D` and the `beta` were both discarded.
-        let mut dv = seq::<T>(d.storage(), 193);
+        // The ambiguous half: non-zero `beta` with `C = TAPP_IN_PLACE`. It must
+        // report rather than compute, and must leave `D` alone while doing so.
+        let before = seq::<T>(d.storage(), 193);
+        let mut dv = before.clone();
         let mut case = Case::plain(a, &av, b, &bv, d);
         case.beta = scalar::<T>(1.0, 0.0);
-        case.check(&mut dv);
-        assert_exact::<T>(&dv, &reference);
+        let e = unsafe { case.run(&mut dv) };
+        assert_eq!(e, TAPP_ERROR_UNSUPPORTED, "{}", explain_status(e));
+        assert_exact::<T>(&dv, &before);
+        let _ = overwritten;
     }
     every_dtype!(one);
 }

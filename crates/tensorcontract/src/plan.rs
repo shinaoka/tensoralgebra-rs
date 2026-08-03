@@ -1102,6 +1102,15 @@ fn reduce_tensor(name: &'static str, layout: &Layout, idx: &[i64]) -> Result<Vec
             }
             None => out.push((l, e, s)),
         }
+        // Every scatter vector the plan builds is as long as the product of the
+        // extents of *some subset* of one tensor's axes, so checking each
+        // tensor's whole product here bounds all of them at once. Unchecked, the
+        // product wraps: `Vec::with_capacity` of a wrapped length then gives a
+        // plan that computes nothing and reports success in release, and aborts
+        // the process in debug. A C caller cannot be given either.
+        if product_overflows(&out) {
+            return Err(Error::ExtentProductOverflow { tensor: name });
+        }
     }
     Ok(out)
 }
@@ -1161,6 +1170,22 @@ fn fold_axes(axes: Vec<Axis>) -> Vec<Axis> {
         out.push(ax);
     }
     out
+}
+
+/// Whether the extents of these `(label, extent, stride)` triples overflow an
+/// `i64` (or a `usize`) when multiplied.
+///
+/// `usize` matters as well as `i64` on 32-bit targets, where a product that fits
+/// an `i64` can still exceed an allocation's addressable length.
+fn product_overflows(axes: &[(i64, i64, i64)]) -> bool {
+    let mut total: i64 = 1;
+    for &(_, e, _) in axes {
+        total = match total.checked_mul(e) {
+            Some(t) => t,
+            None => return true,
+        };
+    }
+    usize::try_from(total).is_err()
 }
 
 fn build_scatter_for(axes: &[Axis], pick: impl Fn(&Axis) -> i64) -> Vec<i64> {

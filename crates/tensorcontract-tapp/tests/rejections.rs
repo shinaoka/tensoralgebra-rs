@@ -839,17 +839,17 @@ fn destroy_status_accepts_any_value() {
     }
 }
 
-/// `TAPP_execute_product` never writes through its `status` out-parameter.
+/// `TAPP_execute_product` writes `0` through a non-null `status`.
 ///
-/// Upstream's own reference implementation does not either, and `status.h`
-/// declares no `TAPP_create_status`, so there is nothing a conforming caller can
-/// do with the value except pass it to `TAPP_destroy_status`. Pinned so that a
-/// future implementation which *does* start writing it has to notice this test
-/// and decide deliberately: today a caller who writes the idiomatic
-/// `TAPP_status s; execute(..., &s, ...); TAPP_destroy_status(s);` passes an
-/// uninitialised value, which is only harmless because the destructor ignores it.
+/// This test used to assert the opposite, and asserting it is what got the
+/// behaviour changed. Upstream's reference implementation leaves `status`
+/// untouched and `status.h` declares no `TAPP_create_status`, so a caller writing
+/// the idiomatic `TAPP_status s; execute(.., &s, ..); TAPP_destroy_status(s);`
+/// was handing an uninitialised value to the destructor — harmless only because
+/// the destructor ignores every value. Writing zero costs a branch and makes the
+/// sequence defined.
 #[test]
-fn execute_never_writes_the_status_out_parameter() {
+fn execute_writes_zero_through_a_non_null_status() {
     let (a, b, d) = good();
     let av = seq::<f64>(a.storage(), 121);
     let bv = seq::<f64>(b.storage(), 122);
@@ -875,8 +875,8 @@ fn execute_never_writes_the_status_out_parameter() {
         );
         assert_eq!(e, TAPP_SUCCESS);
         assert_eq!(
-            status, SENTINEL,
-            "the status out-parameter is now written; decide what it means"
+            status, 0,
+            "status should be zeroed on success; it read back as the sentinel"
         );
         assert_eq!(TAPP_destroy_tensor_product(plan), TAPP_SUCCESS);
         assert_eq!(TAPP_destroy_handle(handle), TAPP_SUCCESS);
@@ -1062,14 +1062,16 @@ fn implementation_name_is_a_nul_terminated_string() {
 /// representable are worse still: they reach a multi-terabyte allocation and
 /// abort.
 ///
-/// This is `#[ignore]`d rather than fixed because `src/lib.rs` is off limits in
-/// the change that added this suite, and rather than run because either outcome
-/// takes the test process with it. The fix belongs in the engine: a checked
-/// product in `Plan::new` reported as `Error::NegativeExtent`-style shape error,
-/// which `map_err` already turns into `TAPP_ERROR_SHAPE`.
+/// **Fixed**, and this test is what holds it fixed. `reduce_tensor` now folds
+/// each tensor's extents with `checked_mul` and reports
+/// `Error::ExtentProductOverflow`, which `map_err` turns into
+/// `TAPP_ERROR_SHAPE`. Checking per tensor is enough for every scatter vector,
+/// because each one is as long as the product of some *subset* of one tensor's
+/// axes. Note the panic was an abort rather than undefined behaviour — a panic
+/// crossing `extern "C"` is turned into a process abort by the compiler — which
+/// is no more shippable for being defined.
 #[test]
-#[ignore = "aborts or panics by construction; see the doc comment"]
-fn an_overflowing_extent_product_should_be_a_shape_error() {
+fn an_overflowing_extent_product_is_a_shape_error() {
     const BIG: i64 = 1 << 32;
     let a = CTensor::new(&[BIG, BIG, 3], &[1, BIG, 0], &[I, X, K]);
     let b = CTensor::new(&[3, 5], &[1, 3], &[K, J]);
