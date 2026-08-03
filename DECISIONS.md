@@ -138,6 +138,12 @@ debug build):
 * **2-D threading** (part 8b, D27–D29), still off by default.
 * **The corpus's parallel width and the case against K-parallelism** (A21).
 
+**v0.1 packaging is in progress** — see the Phase 5 report, part 1, which is
+mostly a list of quality gates that had never run. CI is fixed and expanded,
+docs and the public API surface are settled (D30), the README is current, the
+CHANGELOG exists, `cargo package` succeeds for all three crates, and MSRV is
+verified at 1.89 (D31). Publishing is a human step and is not automated.
+
 **Then two measurements are pending.** Both are written, smoke-tested and waiting
 for an idle machine; neither needs a rebuild.
 
@@ -296,6 +302,8 @@ effectively the same ceiling, as expected.
 | D24 | The instruction set is a **parameter of the kernel macro**, not a second set of bodies. `simd_kernels!` takes the lane count, a target-feature list and six intrinsics; AVX-512 and AVX2 are two instantiations of the same four bodies. | D17's argument — a three-method comparison must not also be a comparison between three hand-tunings — applies unchanged to two instruction sets, and would be violated the moment somebody hand-tuned AVX2 planar and not AVX2 3m. It also made the change auditable: because the AVX-512 arm expands from unchanged source text, its instruction stream is *verifiably* untouched (7816 zmm instructions, byte-identical, checked independently at merge). |
 | D25 | Dispatch is `avx512f` → `avx2 + fma` → scalar, and `TENSORCONTRACT_KERNEL` grows to `scalar\|avx2\|avx512\|auto`. A pinned ISA the CPU lacks falls back to scalar rather than faulting. | Without the pin, AVX2 kernels could be compiled on the reference machine and never executed on it, leaving the only coverage on hardware nobody here has. Same rule as `_ORIENT`/`_WRITEBACK`/`_ROWBLOCK`: every new fast path gets a run-time switch, because a build-to-build diff has already produced one wrong sign here (A15). Both `avx2` and `fma` are detected — separate CPUID bits, and the FMAs need the second. |
 | D26 | AVX2 register blocks are **provisional and explicitly unmeasured**, chosen from the register budget and the uop model, with a menu of alternates and `examples/kernel_shapes` extended to an AVX2 grid as the calibration path. | D19 splits this cleanly and the split was honoured: `live <= 16` and `acc >= 10` are load-bearing and were *verified in the disassembly at no CPU cost* (all shipped defaults allocate 15–16 distinct ymm with zero stack traffic; `planar 1x6` at `live=16` spills one register, `planar 2x3` at `live=18` spills seven — the cliff is exactly where the count puts it), while "which of the shapes that fit is fastest" is recorded as a guess. Publishing a modelled shape as measured would corrupt the one thing the register-block table is good for. |
+| D30 | The published surface is **three tiers**, stated in the crate docs, not one flat `pub`. Tier 1 is the contraction API (`contract`, `Plan`, `Layout`, `TensorView`/`TensorViewMut`, `Element`/`Real`, `Error`, the `with_*` builders, `kernel::scalar` as the documented extension point) under ordinary semver. Tier 2 is introspection of the engine's own decisions — `PlanStats`, `plan::Scatters`, `Plan::{transposes_gemm, row_block, partition, oriented_scatters, ..}`, `kernel::{selected_config, plan_config, selected_kernel_name}`, `kernel::cache`, the `scatter` builders — where **signatures are semver-stable and values are not**. Tier 3 is `#[doc(hidden)]`. | 158 undocumented public items across seven `pub` modules was the symptom; the disease was that nothing had decided which of them a user may depend on, and publishing settles that whether or not we answer it. Tier 2 is the load-bearing part and exists because of how this project works: every one of those functions returns the output of a measured heuristic, and Phase 4 has already moved three of them (A14 moved `transposes_gemm`, A16–A18 moved `row_block`, item 2 will move `Blocking`). Without saying outright that a tier-2 *value* is not part of the contract, the project must either freeze its own tuning or break semver every phase. The corollary is why they stay public at all: a harness or an alternative execution strategy can ask the engine what it would do instead of guessing, which is exactly what `tcbench orient` and `tcbench shapes` rely on. Only `kernel::x86` (register-block menus *are* per-machine measurements) and `scatter::BlockScatterMatrix` (not correctly constructible from outside) went to tier 3. |
+| D31 | MSRV stays **1.89** (D20), and CI pins exactly it. | The floor briefly became 1.94 by accident: the `CPUID` cache probe called `__cpuid_count` outside `unsafe` on the strength of a comment claiming it had been safe since 1.87. It had not — 1.89 through 1.93 fail with `E0133` and 1.94 is the first that compiles. Since that regression arrived with the probe rather than with any requirement, the fix is the `unsafe` block (plus `allow(unused_unsafe)` for toolchains where it is redundant), not five releases of downstream compatibility. The pin had already drifted the other way — it read 1.75, *below* the declared floor, so that job could never have passed. |
 | D27 | Threading partitions the output in **two dimensions**: `pm` row strips of whole `MR` panels by `pn` column groups of whole `NR` blocks, with `pn > 1` only when `ceil(M/MR) < p`. The `N` cut is made *inside* loop 5, per `NC` block, not over the whole range. | D21's 1-D cap costs real throughput on the 16 case-dtype-methods whose row axis cannot fill 8 threads (part 8). Both axes partition the *output*, so D21's invariant survives intact — one owning thread per element, accumulating over the full `K` in the original order, hence bitwise identical to serial at every thread count *and* every `(pm, pn)`. Cutting `N` inside loop 5 is what keeps the packed `B` panel single and L3-sized (a top-level split would want `pn` panels and `pn` times the L3 budget) and keeps loops 5 and 4 identical across threads, which is what makes the barrier counts agree structurally rather than by bookkeeping. Barriers become per column group and `pm`-way; a pure `N` split synchronises nowhere at all. |
 | D28 | The packed `A` block stays per thread, duplicated `pn` times, rather than packed once per row strip behind a barrier. | The duplication costs one packed element per `NR * ceil(blocks/pn)` lane-FMAs and is only ever paid when `M` is narrow; `Plan::partition` prices it and refuses to split `N` when a thread would have too few `NR` blocks to amortise it. The alternative needs a barrier *inside* loop 3 — `M/MC` times more often than the ones above it — and leaves the block in one thread's L2 for the others to pull across L3, when `MC` exists precisely to make it an L2 resident. |
 | D29 | In the narrow-`M` regime `(pm, pn)` minimises `ceil(panels/pm) * (NR*ceil(blocks/pn) + PACK_WEIGHT)` with `PACK_WEIGHT = 8`, and `TENSORCONTRACT_PARTITION=m\|n\|<pm>x<pn>` pins the partition. | Maximising thread count alone either oversubscribes (3 panels, 8 threads → `3x3` = 9) or wastes threads; balancing tiles alone ignores the `A` duplication and takes an 8th thread that costs more than it returns. The weight is the rule's only modelled quantity, so it is one named constant and its insensitivity was checked offline against the committed feature table: **every weight in `[4, 64]` gives an identical partition on all 392 case-dtype-methods at 2/4/8/16/32 threads**. The env switch makes the axis choice a run-time A/B rather than a build diff (A15). |
@@ -1794,6 +1802,77 @@ hardware, only its forced equivalent.
 |---|---|---|
 | A24 | The AVX-512 method ranking (planar > 1m > 3m at the operating `kc`) carries over to AVX2. | **Open, and probably not.** 16 ymm forces `MR` down to 4 complex rows in `f64`, which is the L1-resident regime where Phase 3 measured 3m *fastest*. AVX2's ranking is a separate experiment, not a re-run — and note the analytical model (part 9) pushes in the same direction on AVX-512. |
 | A25 | Smaller register blocks are purely a cost. | **Refuted, at zero CPU cost.** They are worse for the kernel and better for the write-back, and on AVX2 the write-back side of the trade is simply won: 81 of 392 case-dtype-methods have no AVX-512 menu shape that clears the gather path, against none on AVX2. |
+
+## Phase 5 report, part 1: what preparing v0.1 found
+
+Packaging was expected to be tidying. It was mostly **discovering that the
+project's own quality gates had never run**, which is a more useful result and
+worth recording in full so the lesson survives.
+
+### CI was not gating anything it claimed to gate
+
+Three of five jobs could not have been passing, each for an independent reason,
+and none had ever been noticed because nobody had run the commands locally with
+the flags the workflow uses:
+
+| job | why it could not pass |
+|---|---|
+| `msrv` | pinned toolchain **1.75** against a declared `rust-version` of 1.89, so cargo refuses before compiling anything |
+| `lint` | `cargo fmt --all -- --check` against a tree with drift in five files, mostly macro-adjacent code in `kernel/x86.rs` and `plan.rs` |
+| `docs` | `cargo doc` under `-D warnings` against **17 rustdoc errors**, nine of them public documentation linking into private modules |
+
+The general lesson, which is the same one A15 and A20 taught in the measurement
+domain: **a gate nobody has watched fail is not a gate.** Every command in the
+workflow was re-verified locally before being trusted, and the new job set is
+smaller and states what each job proves.
+
+Two of the new jobs cover code paths that had **never been exercised in CI at
+all**: the threaded driver (threading is off by default, so no test ran it) and
+the analytical blocking model. The x86 runners have AVX2 but not AVX-512, so
+CI's default path is now the AVX2 kernels — the ones whose register blocks are
+provisional (D26) — which makes the untuned path the *automatically* tested one.
+
+### Defects that would have shipped
+
+* **`examples/kernel_shapes` did not compile off x86**, and `cargo test` builds
+  examples, so the suite failed for every aarch64 user. Now a cfg-gated module.
+* **The declared MSRV was wrong** in the other direction too — see D31.
+* **The `trace` feature was declared, described, and implemented nowhere.**
+  Removed rather than advertised.
+* **`cargo package -p tensorcontract-tapp` alone fails**, because it depends on
+  the engine by path *and* version and that version is not yet on crates.io.
+  `--workspace` resolves it through a temporary registry. This is also the
+  publish-order constraint: engine first, then the TAPP front end.
+* **The `std` feature promised something it does not deliver.** Disabling it
+  compiles, but the crate has no `#![no_std]` and uses `Vec`, so it is not a
+  no-std build. The feature is now documented as the seam a future port would
+  widen rather than as a claim.
+* **The README described the Phase 2 engine** — scalar kernels, "performance not
+  yet meaningful" — two phases and two instruction sets out of date.
+
+### What the API decision cost and bought
+
+D30's three tiers. The part worth carrying forward is that this project *needs*
+a tier whose values are explicitly unstable: it ships measured heuristics, and it
+re-measures them every phase. Publishing without saying so would have forced a
+choice between freezing the tuning and breaking semver at each phase boundary.
+
+Two side effects of the documentation pass are worth keeping. `kernel::scalar`
+had been *documented* as the route by which a foreign scalar type gets a correct
+engine for free and never demonstrated; it now carries a worked example that
+compiles and runs as a doctest for 0.11 s. And both blanket
+`allow(clippy::missing_safety_doc)` attributes are gone — the x86 one had been
+hiding that the four generated kernels have *different* panel and tile bounds
+(1x, 2x, 3x the real kernel's, by packing format) and that the plain-`fn`
+trampolines drop the `#[target_feature]` attribute but not the obligation.
+
+### Still open before publishing
+
+* **Defaults.** Threading and the blocking model are both off, which is honest
+  but means a 64-core machine gets one thread and a foreign cache hierarchy gets
+  constants fitted to `ccqlin038`. Flipping either needs the two pending
+  measurements, not a decision.
+* Publication itself, which is a human step and deliberately not automated.
 
 ## Phases 4 (rest) – 5
 

@@ -19,6 +19,12 @@ num-complex.workspace = true
 
 [features]
 default = ["std"]
+# Gates the standard-library conveniences: the environment-variable overrides
+# (`TENSORCONTRACT_*`), the cache-descriptor probe's sysfs source, and the
+# `OnceLock` caches behind them. Turning it off compiles and keeps every default
+# reachable in code, but it does **not** yet produce a `no_std` build -- the
+# crate has no `#![no_std]` and uses `Vec` for the scatter vectors. Treat this as
+# the seam a future `no_std` port would widen, not as a claim of one.
 std = []
 
 [dev-dependencies]
