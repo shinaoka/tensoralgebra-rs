@@ -404,10 +404,11 @@ impl Plan {
 
     /// Execute on `n` threads.
     ///
-    /// Parallelism is over the `M` direction, so it is capped at
-    /// `ceil(M / MR)` — see the [driver](crate::driver) for the partition and
-    /// what it guarantees. A thread count above that cap is silently reduced;
-    /// `0` is treated as `1`.
+    /// Parallelism is a 2-D partition of the output, `ceil(M / MR)` row panels
+    /// by `ceil(N / NR)` column blocks, so it is capped at their product — see
+    /// [`Plan::partition`] for how the two axes are apportioned and the
+    /// [driver](crate::driver) for what the partition guarantees. A thread count
+    /// above the cap is silently reduced; `0` is treated as `1`.
     ///
     /// Results are **bitwise identical** for every thread count, so this is
     /// never a numerical decision.
@@ -428,21 +429,112 @@ impl Plan {
         self.threads.unwrap_or_else(env_threads)
     }
 
-    /// How many row strips execution will actually split into, which is the
-    /// thread count capped by the number of `MR` panels in the `M` direction.
+    /// How execution will split the output across threads: `(pm, pn)`, the
+    /// number of contiguous row strips of whole `MR` panels and the number of
+    /// column groups of whole `NR` blocks. Their product is the number of
+    /// threads that will actually run, and never exceeds [`Plan::threads`].
     ///
-    /// The driver calls this rather than recomputing the cap, so it is one
-    /// definition; tests call it to assert that a case which is *meant* to
-    /// exercise the threaded path really does. A test that silently stopped
+    /// Both counts are in the **oriented** directions, i.e. after the
+    /// [`Plan::transposes_gemm`] swap: on a plan that computes `D^T = B^T A^T`
+    /// the row strips run along `N`, so a `1 x 33` output parallelises 33 ways
+    /// and not one way.
+    ///
+    /// The driver calls this rather than deriving the partition itself, so there
+    /// is one definition; tests call it to assert that a case which is *meant*
+    /// to exercise the 2-D path really does. A test that silently stopped
     /// splitting would otherwise still pass while testing nothing — the same
     /// trap the orientation tests guard against.
-    pub fn strips(&self, mr: usize) -> usize {
-        let m = if self.transposes_gemm(mr) {
-            self.b_n.len()
+    ///
+    /// # The rule
+    ///
+    /// `pn == 1` whenever the `M` direction alone can fill the threads, which is
+    /// the overwhelmingly common case — at eight threads, all of the TCCG corpus
+    /// but four cases, 382 of its 392 case-dtype-methods — and is exactly the 1-D
+    /// partition Phase 4 item 4 shipped first. Only when `ceil(M / MR) < p` does
+    /// the `N` direction get involved,
+    /// and then `(pm, pn)` is chosen to minimise
+    ///
+    /// ```text
+    /// cost(pm, pn) = ceil(panels/pm) * (NR * ceil(blocks/pn) + PACK_WEIGHT)
+    /// ```
+    ///
+    /// over `pm in 1..=panels` with `pn = min(p / pm, blocks)`, ties going to
+    /// the larger `pm`. That is one thread's share of the work in units of
+    /// micro-kernel lane-slots per unit of `k`: it owns `ceil(panels/pm) *
+    /// ceil(blocks/pn)` micro-tiles of `MR * NR` lanes each, and — because the
+    /// packed `A` block is per thread — it also packs `ceil(panels/pm) * MR`
+    /// rows for itself no matter how few columns it owns. That second term is
+    /// what stops the rule from splitting `N` when a thread would be left with a
+    /// handful of `NR` blocks to amortise its own packing over, and it is the
+    /// only reason the objective is not simply "balance the tiles".
+    ///
+    /// `PACK_WEIGHT` is the cost of packing one element relative to one
+    /// lane-FMA, and it is a **model, not a measurement**: 8 is the conservative
+    /// end of the plausible range (a strided load plus an aligned store, against
+    /// two FMA units), and conservative here means biased towards the `M` axis,
+    /// which is the axis every committed measurement was designed around. Its
+    /// exact value is not load-bearing. Replayed over all 392 corpus
+    /// case-dtype-methods at 2, 4, 8, 16 and 32 threads, every weight in
+    /// `[4, 64]` gives the *same* partition everywhere; only two
+    /// case-dtype-methods move at all between `w <= 2` and `w >= 4`
+    /// (`ij-ikl-ljk` and `ij-kil-lkj`, 7 row panels against 37 column blocks at
+    /// 8 threads), and there the two candidate partitions are within 1.4% of
+    /// each other in modelled cost.
+    ///
+    /// What the rule does to the corpus, at 8 threads: 10 of 392 have fewer row
+    /// panels than threads, and the column axis is used on 8 of them — 1x8 or
+    /// 2x4 in place of a 1-D 2, 3, 5 or 6. The other two are the `ij-*` pair
+    /// above, which stay 1-D on 7 threads *by choice*: 37 column blocks split
+    /// eight ways is five per thread, which does not amortise a packed `A` block
+    /// each, so the eighth thread is not worth having. Whether that is the right
+    /// call is a question for `scripts/phase4f-threads.sh`, and
+    /// `TENSORCONTRACT_PARTITION=n` is the arm to measure it against.
+    ///
+    /// `TENSORCONTRACT_PARTITION=m` restores the 1-D `M` partition exactly, `=n`
+    /// forces a 1-D `N` partition, and `=<pm>x<pn>` pins both — so the axis
+    /// choice is a run-time A/B rather than a diff between two builds (A15), and
+    /// `scripts/phase4f-threads.sh` can measure the rule against both extremes
+    /// in one session.
+    pub fn partition(&self, mr: usize, nr: usize) -> (usize, usize) {
+        /// Cost of packing one `A` element relative to one micro-kernel lane-FMA.
+        /// See [`Plan::partition`]; deliberately at the conservative end.
+        const PACK_WEIGHT: usize = 8;
+
+        let (rows, cols) = if self.transposes_gemm(mr) {
+            (self.b_n.len(), self.a_m.len())
         } else {
-            self.a_m.len()
+            (self.a_m.len(), self.b_n.len())
         };
-        self.threads().clamp(1, m.div_ceil(mr.max(1)).max(1))
+        let panels = rows.div_ceil(mr.max(1)).max(1);
+        let blocks = cols.div_ceil(nr.max(1)).max(1);
+        let p = self.threads();
+
+        match partition_override() {
+            PartitionMode::Rule => {}
+            PartitionMode::Rows => return (p.min(panels), 1),
+            PartitionMode::Cols => return (1, p.min(blocks)),
+            PartitionMode::Pin(pm, pn) => {
+                return (pm.clamp(1, panels), pn.clamp(1, blocks));
+            }
+        }
+        // The row direction alone fills the threads: the 1-D partition, bit for
+        // bit the pre-2-D behaviour, and the only case the corpus mostly needs.
+        if panels >= p {
+            return (p, 1);
+        }
+        let mut best = (1, 1);
+        let mut best_cost = usize::MAX;
+        for pm in 1..=panels {
+            let pn = (p / pm).min(blocks);
+            let cost = panels.div_ceil(pm) * (nr.max(1) * blocks.div_ceil(pn) + PACK_WEIGHT);
+            // `<=`, so among equal-cost partitions the largest `pm` wins: the
+            // `M` split needs no duplicated packing and is the measured one.
+            if cost <= best_cost {
+                best = (pm, pn);
+                best_cost = cost;
+            }
+        }
+        best
     }
 
     /// The plan's scatter vectors.
@@ -809,6 +901,56 @@ fn row_block_override() -> RowBlock {
     #[cfg(not(feature = "std"))]
     {
         RowBlock::Auto
+    }
+}
+
+/// What `TENSORCONTRACT_PARTITION` asked for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PartitionMode {
+    /// [`Plan::partition`]'s rule.
+    Rule,
+    /// One-dimensional over the oriented `M` direction — the partition Phase 4
+    /// item 4 shipped, kept reachable so the 2-D rule can be measured against
+    /// it as a run-time A/B rather than a diff between two builds.
+    Rows,
+    /// One-dimensional over the oriented `N` direction, which is the other
+    /// extreme and the one that duplicates the packed `A` block the most.
+    Cols,
+    /// A pinned `(pm, pn)`, clamped only by the panel and block counts — so a
+    /// pin also sets the thread count, rather than being capped by it.
+    Pin(usize, usize),
+}
+
+/// `TENSORCONTRACT_PARTITION=m|n|<pm>x<pn>` pins how the threads are laid out
+/// over the output instead of deriving it from the shape. Read once per process;
+/// for measurement only, and none of it affects correctness — every partition
+/// gives bitwise identical results.
+fn partition_override() -> PartitionMode {
+    #[cfg(feature = "std")]
+    {
+        use std::sync::OnceLock;
+        static ENV: OnceLock<PartitionMode> = OnceLock::new();
+        *ENV.get_or_init(|| {
+            let Ok(v) = std::env::var("TENSORCONTRACT_PARTITION") else {
+                return PartitionMode::Rule;
+            };
+            let v = v.trim().to_ascii_lowercase();
+            match v.as_str() {
+                "m" | "rows" | "1d" => PartitionMode::Rows,
+                "n" | "cols" => PartitionMode::Cols,
+                _ => match v.split_once('x') {
+                    Some((pm, pn)) => match (pm.parse::<usize>(), pn.parse::<usize>()) {
+                        (Ok(pm), Ok(pn)) => PartitionMode::Pin(pm.max(1), pn.max(1)),
+                        _ => PartitionMode::Rule,
+                    },
+                    None => PartitionMode::Rule,
+                },
+            }
+        })
+    }
+    #[cfg(not(feature = "std"))]
+    {
+        PartitionMode::Rule
     }
 }
 
