@@ -782,7 +782,7 @@ pub unsafe extern "C" fn TAPP_execute_batched_product(
 /// several TAPP implementations are linked into one benchmark driver.
 #[no_mangle]
 pub extern "C" fn TAPP_implementation_name() -> *const c_char {
-    c"tensorcontract-rs (planar-complex BSMTC)".as_ptr()
+    c"tensorprimitives-rs: tensorcontract (planar-complex BSMTC)".as_ptr()
 }
 
 #[cfg(test)]

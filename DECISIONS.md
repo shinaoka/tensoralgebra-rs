@@ -19,9 +19,9 @@ What exists:
   Micro-kernels are **AVX-512 for `f32`/`f64` and all three complex methods**,
   runtime-dispatched, with the portable scalar path retained behind
   `TENSORCONTRACT_KERNEL=scalar`. No AVX2 path yet.
-* `crates/tensorcontract-tapp` — TAPP C ABI, verified against the upstream
+* `crates/tensorprimitives-tapp` — TAPP C ABI, verified against the upstream
   headers, exercised end to end through the C entry points.
-* `crates/tensorcontract-bench` — `tcbench` with `verify` / `premise` /
+* `crates/tensorprimitives-bench` — `tcbench` with `verify` / `premise` /
   `sweep` / `info`, plus two *analyses* that touch no data and cost no CPU, so
   they are safe to run while a benchmark is in flight: `shapes` (what each
   register block would do to the write-back) and `orient` (the structural
@@ -48,7 +48,7 @@ Sanity check on a fresh checkout, in this order:
 cargo test --workspace --release              # 6 green suites
 TENSORCONTRACT_KERNEL=scalar cargo test --workspace --release
 cargo clippy --workspace --all-targets        # silent
-cargo build --release -p tensorcontract-bench
+cargo build --release -p tensorprimitives-bench
 cd bench-results/phase4 && python3 ../../scripts/compare-sweeps.py \
     rm-A-f64c64.csv,rm-A-f32c32.csv rm-A2-f64c64.csv,rm-A2-f32c32.csv
 ```
@@ -326,8 +326,8 @@ repo; working harness with baselines wired in.
 * `DESIGN.md` — literature review (cited), ecosystem survey with per-layer
   build-vs-reuse calls, full engine design, benchmark/test framework,
   self-scrutiny.
-* Cargo workspace: `tensorcontract` (core), `tensorcontract-tapp` (C ABI),
-  `tensorcontract-bench` (harness). CI (build/test/clippy/fmt/docs/MSRV +
+* Cargo workspace: `tensorcontract` (core), `tensorprimitives-tapp` (C ABI),
+  `tensorprimitives-bench` (harness). CI (build/test/clippy/fmt/docs/MSRV +
   a scalar-fallback job), dual MIT/Apache-2.0, MSRV 1.75.
 * Working engine, correct end-to-end (this is the Phase 2 gate, met early — see
   the Phase 2 report).
@@ -1843,7 +1843,7 @@ provisional (D26) — which makes the untuned path the *automatically* tested on
 * **The TAPP crate cannot be packaged at all before the engine is published.**
   It depends on the engine by path *and* version, and packaging rewrites that
   into a registry dependency which must then resolve — so
-  `cargo package -p tensorcontract-tapp` fails at "failed to prepare local
+  `cargo package -p tensorprimitives-tapp` fails at "failed to prepare local
   package for uploading" until `tensorcontract 0.1.0` is in the index.
   `cargo package --workspace` appears to work, and does set up a temporary
   registry to satisfy the dependency, but it is **not a reliable gate**: it was
@@ -1879,7 +1879,7 @@ trampolines drop the `#[target_feature]` attribute but not the obligation.
 
 ### The TAPP conformance suite, and the four gaps it found
 
-`crates/tensorcontract-tapp` had **one test** — a happy-path `c64` contraction —
+`crates/tensorprimitives-tapp` had **one test** — a happy-path `c64` contraction —
 behind a coverage table claiming four datatypes, TAPP cases 1–4, conjugation on
 any operand, two documented rejections and mixed precision. For the crate whose
 entire purpose is that a C caller can swap this engine for TBLIS behind one

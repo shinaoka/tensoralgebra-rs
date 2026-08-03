@@ -107,7 +107,7 @@ or a genuine blocker you cannot resolve after a documented attempt.
 - Prefer maintained crates over reinvention where they fit; justify every
   build-vs-reuse call in `DECISIONS.md`.
 - **Primary integration surface: TAPP.** Implemented in
-  `crates/tensorcontract-tapp` and verified against the real headers from
+  `crates/tensorprimitives-tapp` and verified against the real headers from
   `TAPPorg/reference-implementation`. Note: despite the TAPP paper's claim,
   TBLIS has **no in-tree TAPP support**, so the benchmark drives TBLIS through
   `tblis_tensor_mult` directly.
@@ -283,7 +283,7 @@ source scripts/env.sh                    # pins everything single-threaded
 
 cargo test --workspace --release
 TENSORCONTRACT_KERNEL=scalar cargo test --workspace --release
-cargo build --release -p tensorcontract-bench --features tblis,blas
+cargo build --release -p tensorprimitives-bench --features tblis,blas
 ```
 
 `scripts/env.sh` documents how to build TBLIS 2.x. For TBLIS 1.3.0 use

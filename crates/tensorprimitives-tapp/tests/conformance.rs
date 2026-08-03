@@ -16,7 +16,7 @@ mod common;
 use std::ffi::c_void;
 
 use common::*;
-use tensorcontract_tapp::*;
+use tensorprimitives_tapp::*;
 
 type C32 = num_complex::Complex<f32>;
 type C64 = num_complex::Complex<f64>;

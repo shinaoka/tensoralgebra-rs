@@ -1,6 +1,6 @@
 //! Scaffolding shared by the TAPP C-ABI conformance suite.
 //!
-//! Everything here drives `tensorcontract-tapp` the way a C caller does:
+//! Everything here drives `tensorprimitives-tapp` the way a C caller does:
 //! `intptr_t` handles, `int64_t*` extent / stride / label arrays, `void*` data
 //! and scalars, an `int` status back, and one `TAPP_*` call per step. Nothing
 //! reaches for the `tensorcontract::Plan` API behind the shims, deliberately —
@@ -25,7 +25,7 @@ use tensorcontract::kernel::ComplexMethod;
 use tensorcontract::layout::Layout;
 use tensorcontract::plan::ElementOp;
 use tensorcontract::reference::{contract_reference, RefOperand};
-use tensorcontract_tapp::*;
+use tensorprimitives_tapp::*;
 
 /// `TAPP_DEFAULT_PREC` from upstream `tapp/datatype.h`.
 ///

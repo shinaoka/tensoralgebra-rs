@@ -1,4 +1,4 @@
-# tensorcontract-rs
+# tensorprimitives-rs
 
 A native-Rust, transpose-free dense tensor contraction engine with **three
 interchangeable complex methods** (planar, 1m, 3m) behind one switch, plus a
@@ -209,8 +209,8 @@ test suite gives it a correspondingly looser tolerance rather than hiding it.
 | crate | what |
 |---|---|
 | `crates/tensorcontract` | the engine: data model, index analysis, scatter/block-scatter, packing, micro-kernels, five-loop driver, brute-force oracle |
-| `crates/tensorcontract-tapp` | TAPP C-ABI front end (`lib` / `cdylib` / `staticlib`) |
-| `crates/tensorcontract-bench` | `tcbench`: correctness and performance harness, TCCG corpus, TBLIS and TTGT baselines |
+| `crates/tensorprimitives-tapp` | TAPP C-ABI front end (`lib` / `cdylib` / `staticlib`) |
+| `crates/tensorprimitives-bench` | `tcbench`: correctness and performance harness, TCCG corpus, TBLIS and TTGT baselines |
 
 ## Usage
 
@@ -247,7 +247,7 @@ kernels.
 
 ## TAPP
 
-`crates/tensorcontract-tapp` implements the C interface of
+`crates/tensorprimitives-tapp` implements the C interface of
 [TAPP](https://github.com/TAPPorg/reference-implementation) (arXiv:2601.07827),
 so this engine is swappable with TBLIS and cuTENSOR behind one header. Covered:
 datatypes `F32`/`F64`/`C32`/`C64`, conjugation on any operand, and TAPP cases
@@ -270,7 +270,7 @@ mismatch.
 export TBLIS_ROOT=/path/to/tblis-install
 source scripts/env.sh
 
-cargo build --release -p tensorcontract-bench --features tblis,blas
+cargo build --release -p tensorprimitives-bench --features tblis,blas
 
 # correctness: whole corpus vs TBLIS and TTGT, all dtypes
 ./target/release/tcbench verify --size 4
@@ -280,7 +280,7 @@ cargo build --release -p tensorcontract-bench --features tblis,blas
     --engines tblis,ttgt --csv bench-results/premise-f64c64.csv
 
 # the same against the last stable TBLIS release (note the feature and ABI)
-cargo build --release -p tensorcontract-bench --features tblis13,blas
+cargo build --release -p tensorprimitives-bench --features tblis13,blas
 TBLIS_ROOT=/path/to/tblis-1.3.0-install \
     ./target/release/tcbench premise --size 64 --dtype f64,c64 --engines tblis
 

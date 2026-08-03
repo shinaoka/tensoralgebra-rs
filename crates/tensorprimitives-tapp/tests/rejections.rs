@@ -24,7 +24,7 @@ use std::ffi::c_void;
 use std::os::raw::{c_char, c_int};
 
 use common::*;
-use tensorcontract_tapp::*;
+use tensorprimitives_tapp::*;
 
 type C64 = num_complex::Complex<f64>;
 
@@ -1040,9 +1040,16 @@ fn implementation_name_is_a_nul_terminated_string() {
     let s = unsafe { std::ffi::CStr::from_ptr(p) };
     let s = s.to_str().expect("not UTF-8");
     assert!(!s.is_empty());
+    // Names the *engine* doing the work, not just the family: a C caller
+    // choosing between TAPP providers wants to know which implementation it got,
+    // and the family will eventually contain more than one.
     assert!(
         s.contains("tensorcontract"),
-        "the backend should name itself: {s:?}"
+        "the name should identify the engine: {s:?}"
+    );
+    assert!(
+        s.contains("tensorprimitives"),
+        "the name should identify the project: {s:?}"
     );
     // Static storage: two calls give the same pointer, so a C caller may keep it.
     assert_eq!(TAPP_implementation_name(), p);

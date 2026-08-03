@@ -38,7 +38,7 @@ run() { echo -e "\n\n########## $* ##########\n" | tee -a $LOG; "$@" 2>&1 | tee 
 # ---- against TBLIS 2.0-dev ------------------------------------------------
 export TBLIS_ROOT=$TBLIS_ROOT_2X
 export LD_LIBRARY_PATH="$TBLIS_ROOT/lib:${OPENBLAS_ROOT:+$OPENBLAS_ROOT/lib:}${LD_LIBRARY_PATH:-}"
-cargo build --release -p tensorcontract-bench --features tblis,blas
+cargo build --release -p tensorprimitives-bench --features tblis,blas
 B=./target/release/tcbench
 
 # 1. Correctness of the new kernels against both baselines, all methods.
@@ -65,7 +65,7 @@ run $B sweep --size "$SWEEP_SIZE" --reps "$REPS" --stress ragged \
 # ---- against TBLIS v1.3.0 -------------------------------------------------
 export TBLIS_ROOT=$TBLIS_ROOT_13
 export LD_LIBRARY_PATH="$TBLIS_ROOT/lib:${OPENBLAS_ROOT:+$OPENBLAS_ROOT/lib:}${LD_LIBRARY_PATH:-}"
-cargo build --release -p tensorcontract-bench --features tblis13,blas
+cargo build --release -p tensorprimitives-bench --features tblis13,blas
 run $B premise --size "$PREMISE_SIZE" --reps "$REPS" \
     --engines planar,tblis --dtype f64,c64 --csv $OUT/phase3-premise-tblis130-f64c64.csv
 

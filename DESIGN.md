@@ -318,7 +318,7 @@ a fall-back to TTGT) belongs, in Phase 4.
 
 ### 3.7 TAPP export
 
-`crates/tensorcontract-tapp` exports the C ABI as `lib`, `cdylib` and
+`crates/tensorprimitives-tapp` exports the C ABI as `lib`, `cdylib` and
 `staticlib`. Handles are `Box::into_raw` pointers cast to `isize`. A single
 dtype-erased `Plan` is stored and `TAPP_execute_product` dispatches on the
 recorded datatype. Coverage table is in the crate docs; cases 1–4 and

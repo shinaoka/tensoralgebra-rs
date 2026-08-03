@@ -29,7 +29,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo test --workspace
       - run: cargo test --workspace --release
-      - run: cargo run --release -p tensorcontract-bench -- info
+      - run: cargo run --release -p tensorprimitives-bench -- info
 
   # MSRV, pinned to exactly `[workspace.package] rust-version`: **1.89**, where
   # the AVX-512 intrinsics and `is_x86_feature_detected!` stabilised (D20).
@@ -141,7 +141,7 @@ jobs:
   # generated manifests, the README and licence texts that live above the crate
   # directories, and a verify build of each unpacked tarball.
   #
-  # `--workspace` rather than `-p`, and this is not cosmetic: `tensorcontract-tapp`
+  # `--workspace` rather than `-p`, and this is not cosmetic: `tensorprimitives-tapp`
   # depends on `tensorcontract` by path *and* version, so packaging it alone fails
   # with "no matching package named `tensorcontract` found" until that version is
   # on crates.io. A workspace run resolves the sibling through a temporary local
@@ -149,10 +149,10 @@ jobs:
   # Packaging, i.e. that what would be uploaded builds from its own tarball.
   #
   # Only the engine can be gated this way, and that is a fact about cargo rather
-  # than a shortcut. `tensorcontract-tapp` depends on the engine by path *and*
+  # than a shortcut. `tensorprimitives-tapp` depends on the engine by path *and*
   # version, so packaging it requires rewriting that into a registry dependency
   # and resolving it — which cannot succeed until the engine exists on crates.io.
-  # Before the first release `cargo package -p tensorcontract-tapp` therefore
+  # Before the first release `cargo package -p tensorprimitives-tapp` therefore
   # fails at "failed to prepare local package for uploading", and
   # `cargo package --workspace` is unreliable in the same situation: its temporary
   # registry does satisfy the dependency, but the verify build has been observed
@@ -162,7 +162,7 @@ jobs:
   #
   # So: gate the engine properly, and let the ordering constraint stand as the
   # publish procedure. Publish `tensorcontract` first, wait for the index, then
-  # `tensorcontract-tapp` — at which point this job can package both.
+  # `tensorprimitives-tapp` — at which point this job can package both.
   package:
     runs-on: ubuntu-latest
     steps:
@@ -186,7 +186,7 @@ jobs:
   # second keeps the unpublished harness's doc comments covered as well.
   #
   # `--workspace --all-features` cannot be used for the docs.rs arm: it would
-  # enable `tensorcontract-bench`'s `tblis` feature, whose build script panics
+  # enable `tensorprimitives-bench`'s `tblis` feature, whose build script panics
   # without `TBLIS_ROOT`.
   docs:
     runs-on: ubuntu-latest
@@ -195,5 +195,5 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo doc -p tensorcontract -p tensorcontract-tapp --no-deps --all-features
+      - run: cargo doc -p tensorcontract -p tensorprimitives-tapp --no-deps --all-features
       - run: cargo doc --workspace --no-deps

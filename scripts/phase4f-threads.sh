@@ -52,7 +52,7 @@ SIZE=${3:-64}
 REPS=${4:-3}
 FILTER=${5:-}
 BIN=./target/release/tcbench
-[ -x "$BIN" ] || { echo "no $BIN in $PWD -- cargo build --release -p tensorcontract-bench" >&2; exit 1; }
+[ -x "$BIN" ] || { echo "no $BIN in $PWD -- cargo build --release -p tensorprimitives-bench" >&2; exit 1; }
 FILT=()
 [ -n "$FILTER" ] && FILT=(--case "$FILTER")
 mkdir -p "$OUT"

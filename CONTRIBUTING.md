@@ -26,7 +26,7 @@ check against TBLIS and TTGT:
 
 ```bash
 source scripts/env.sh
-cargo build --release -p tensorcontract-bench --features tblis,blas
+cargo build --release -p tensorprimitives-bench --features tblis,blas
 ./target/release/tcbench verify --size 4
 ./target/release/tcbench verify --size 4 --stress ragged
 ./target/release/tcbench verify --size 4 --stress padded

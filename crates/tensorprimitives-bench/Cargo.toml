@@ -1,5 +1,5 @@
 [package]
-name = "tensorcontract-bench"
+name = "tensorprimitives-bench"
 description = "Benchmark and correctness harness for tensorcontract (not published)"
 version.workspace = true
 edition.workspace = true

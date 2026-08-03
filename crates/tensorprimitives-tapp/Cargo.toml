@@ -1,10 +1,10 @@
 [package]
-name = "tensorcontract-tapp"
-description = "TAPP (Tensor Algebra Processing Primitives) C-ABI front end for tensorcontract"
+name = "tensorprimitives-tapp"
+description = "TAPP (Tensor Algebra Processing Primitives) C-ABI front end for the tensorprimitives engines"
 keywords = ["tensor", "contraction", "tapp", "ffi", "abi"]
 categories = ["mathematics", "science", "external-ffi-bindings"]
 readme = "../../README.md"
-documentation = "https://docs.rs/tensorcontract-tapp"
+documentation = "https://docs.rs/tensorprimitives-tapp"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -13,7 +13,7 @@ repository.workspace = true
 authors.workspace = true
 
 [lib]
-name = "tensorcontract_tapp"
+name = "tensorprimitives_tapp"
 crate-type = ["lib", "cdylib", "staticlib"]
 
 [dependencies]

@@ -1,9 +1,12 @@
 [workspace]
 resolver = "2"
 members = [
+    # The facade users depend on, and the per-operation crates it re-exports.
+    # `tensortranspose` joins this list when it exists.
+    "crates/tensorprimitives",
     "crates/tensorcontract",
-    "crates/tensorcontract-tapp",
-    "crates/tensorcontract-bench",
+    "crates/tensorprimitives-tapp",
+    "crates/tensorprimitives-bench",
 ]
 
 [workspace.package]
@@ -17,7 +20,7 @@ edition = "2021"
 # exactly this version, so the claim cannot drift again.
 rust-version = "1.89"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/lkdvos/tensorcontract-rs"
+repository = "https://github.com/lkdvos/tensorprimitives-rs"
 authors = ["Lukas Devos <ldevos@flatironinstitute.org>"]
 
 [workspace.dependencies]

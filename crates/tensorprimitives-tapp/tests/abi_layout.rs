@@ -24,7 +24,7 @@ use std::slice;
 use num_complex::Complex;
 
 use common::{explain_status, TAPP_DEFAULT_PREC};
-use tensorcontract_tapp::TAPP_ERROR_UNSUPPORTED;
+use tensorprimitives_tapp::TAPP_ERROR_UNSUPPORTED;
 
 /// The upstream header, transcribed. Types follow `tapp/*.h`: every handle is
 /// `intptr_t`, `TAPP_error` / `TAPP_datatype` / `TAPP_prectype` /
@@ -299,15 +299,15 @@ fn every_documented_symbol_resolves_and_runs() {
 fn the_c_symbols_are_the_crate_functions() {
     assert_eq!(
         c_abi::TAPP_implementation_name as *const () as usize,
-        tensorcontract_tapp::TAPP_implementation_name as *const () as usize
+        tensorprimitives_tapp::TAPP_implementation_name as *const () as usize
     );
     assert_eq!(
         c_abi::TAPP_check_success as *const () as usize,
-        tensorcontract_tapp::TAPP_check_success as *const () as usize
+        tensorprimitives_tapp::TAPP_check_success as *const () as usize
     );
     assert_eq!(
         c_abi::TAPP_execute_product as *const () as usize,
-        tensorcontract_tapp::TAPP_execute_product as *const () as usize
+        tensorprimitives_tapp::TAPP_execute_product as *const () as usize
     );
 }
 
@@ -328,7 +328,7 @@ fn the_c_symbols_are_the_crate_functions() {
 /// kind of constant that must be pinned rather than assumed.
 #[test]
 fn enumerator_values_match_the_upstream_headers() {
-    use tensorcontract_tapp::*;
+    use tensorprimitives_tapp::*;
     assert_eq!(TAPP_F32, 0);
     assert_eq!(TAPP_F64, 1);
     assert_eq!(TAPP_C32, 2);

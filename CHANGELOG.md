@@ -1,11 +1,11 @@
 # Changelog
 
-All notable changes to `tensorcontract` and `tensorcontract-tapp`. The reasoning
+All notable changes to `tensorcontract` and `tensorprimitives-tapp`. The reasoning
 behind every entry, and all of the data, lives in
 [`DECISIONS.md`](DECISIONS.md) — this file records *what* changed and how well
 it is known, not why.
 
-The two crates share a version. `tensorcontract-bench` is not published.
+The two crates share a version. `tensorprimitives-bench` is not published.
 
 ## 0.1.0 — unreleased
 
@@ -58,7 +58,7 @@ a number.
   every environment-variable read, and the crate compiles without it. It is not
   a `#![no_std]` crate.
 
-### Added — `tensorcontract-tapp`
+### Added — `tensorprimitives-tapp`
 
 * TAPP (Tensor Algebra Processing Primitives, arXiv:2601.07827) C ABI over the
   engine, as `lib`, `cdylib` and `staticlib`, verified against the upstream
@@ -113,7 +113,7 @@ see `DECISIONS.md` A21.
   justify it is measured.
 * No thread pool, no `pc`-loop fusion, no pack-free fast path for already
   unit-stride block scatter, no software prefetch.
-* `tensorcontract-bench` (the TCCG harness, the TBLIS and OpenBLAS-TTGT
+* `tensorprimitives-bench` (the TCCG harness, the TBLIS and OpenBLAS-TTGT
   baselines, the GEMM roofline and the stride-stress modes) is in the repository
   but `publish = false`.
 
@@ -147,9 +147,9 @@ one test. All four were behaviour a C caller could observe:
   called `__cpuid_count` outside an `unsafe` block, which is only a safe function
   from 1.94 and silently raised the real floor by five releases.
 * **Publish order is fixed by cargo**: `tensorcontract` first, then
-  `tensorcontract-tapp` once the engine is in the index. The TAPP crate depends
+  `tensorprimitives-tapp` once the engine is in the index. The TAPP crate depends
   on the engine by path and version, so it cannot even be packaged until the
-  engine is published — `cargo package -p tensorcontract-tapp` fails at
+  engine is published — `cargo package -p tensorprimitives-tapp` fails at
   "failed to prepare local package for uploading" before that.
 * Licensed MIT OR Apache-2.0.
 * Any statement about TBLIS in `DECISIONS.md` names a version. v1.3.0 and
