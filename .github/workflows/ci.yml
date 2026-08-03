@@ -10,25 +10,147 @@ env:
   RUSTFLAGS: -D warnings
 
 jobs:
+  # The default path, on the profile users get. Two runs, because the profiles
+  # check different things: the debug build has overflow checks and
+  # `debug_assertions` on, which is a real gate for an engine whose hot loops are
+  # stride and scatter-index arithmetic, and the release build is the one with
+  # `lto = "thin"` and `codegen-units = 1` that the micro-kernels are written for.
+  #
+  # Note what instruction set this is. GitHub's x86 runners have AVX2 and FMA but
+  # not AVX-512, so the automatic dispatch lands on the **AVX2** kernels — the
+  # ones whose register blocks are still provisional and unmeasured. That makes
+  # this job the only routine check they get, so `tcbench info` records the
+  # features and the cache probe in the log: a failure here has to be
+  # attributable to a kernel rather than to an unknown runner.
   test:
-    name: test (${{ matrix.os }}, ${{ matrix.rust }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-        rust: [stable]
-        include:
-          # MSRV check on one platform only.
-          - os: ubuntu-latest
-            rust: "1.75"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test --workspace
+      - run: cargo test --workspace --release
+      - run: cargo run --release -p tensorcontract-bench -- info
+
+  # MSRV, pinned to exactly `[workspace.package] rust-version`.
+  #
+  # That is **1.94**, not the 1.89 of D20. 1.89 is where the AVX-512 intrinsics
+  # and `is_x86_feature_detected!` stabilised, but the floor is now set by
+  # `kernel::cache`, which calls `core::arch::__cpuid_count` outside an `unsafe`
+  # block: that only became a safe function in 1.94. Measured, not assumed —
+  # 1.89, 1.90, 1.91, 1.92 and 1.93 all fail with E0133 and 1.94 is the first
+  # that builds. This job exists so the claim cannot drift again.
+  #
+  # Compiling is the whole of an MSRV claim, so this builds every target and
+  # leaves running them to the stable jobs.
+  msrv:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: ${{ matrix.rust }}
+          toolchain: "1.94.0"
       - run: cargo build --workspace --all-targets
+
+  # Portability, not performance. macOS runners are aarch64, where the crate has
+  # no vectorised kernel at all — there is no NEON path — so this is the portable
+  # `kernel::scalar` fallback on a non-x86 architecture, and a check that nothing
+  # outside `kernel::x86` quietly assumes x86.
+  #
+  # The targets are named explicitly rather than with `--all-targets` for one
+  # reason: `examples/kernel_shapes` is x86-only by construction. It imports
+  # `kernel::x86` and calls `is_x86_feature_detected!`, neither of which exists
+  # here, so it cannot compile off x86 and `cargo test` (which builds examples)
+  # cannot be used unqualified. Doc tests are a separate step because `--doc`
+  # cannot be combined with a target filter.
+  portable:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test --workspace --release --lib --bins --tests
+      - run: cargo test --workspace --release --doc
+
+  # Every runtime switch that selects a different code path, over the same test
+  # suite. One release build serves all of them — the switches are read from the
+  # environment, not compiled in — so this is nearly free, and each arm is a path
+  # that otherwise nothing in CI would enter.
+  #
+  # There is no `TENSORCONTRACT_KERNEL=avx512` arm on purpose. A pinned ISA the
+  # CPU does not have falls back to scalar by design, and these runners have no
+  # AVX-512, so such an arm would re-test the scalar path and prove nothing about
+  # the AVX-512 kernels. Those are covered by measurement on the reference
+  # machine, not here.
+  switches:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      # The portable kernels, checked against the same assertions the vectorised
+      # ones pass.
       - run: cargo test --workspace --release
+        env:
+          TENSORCONTRACT_KERNEL: scalar
+      # AVX2 pinned rather than merely selected. On an AVX2-only runner this is
+      # the same code the `test` job runs; it is written down so the AVX2 kernels
+      # stay covered by name if the runner fleet ever gains AVX-512 and the
+      # automatic dispatch moves off them.
+      - run: cargo test --workspace --release
+        env:
+          TENSORCONTRACT_KERNEL: avx2
+      # The threaded driver, which is off by default and which nothing else here
+      # enters. Results are bitwise identical to serial at every thread count and
+      # every partition — no reduction is parallelised — so the existing
+      # assertions are an exact check on the partitioning, not a tolerance test.
+      - run: cargo test --workspace --release
+        env:
+          TENSORCONTRACT_THREADS: 4
+      # The 2-D partition specifically. `Plan::partition` only reaches for it when
+      # the row axis cannot fill the threads, which most corpus shapes can, so it
+      # has to be pinned to be exercised.
+      - run: cargo test --workspace --release
+        env:
+          TENSORCONTRACT_THREADS: 4
+          TENSORCONTRACT_PARTITION: 2x2
+      # The analytical cache-blocking model instead of the hardcoded constants.
+      # Also off by default and otherwise unexercised, and it is the one arm whose
+      # blocking is derived from the *runner's* cache descriptors rather than from
+      # the reference machine's, so it exercises the CPUID/sysfs probe too.
+      - run: cargo test --workspace --release
+        env:
+          TENSORCONTRACT_BLOCKMODEL: model
+
+  # Feature combinations of the published crate. Nothing else checks either end
+  # of the range.
+  #
+  # `--no-default-features` drops `std`, which is what every environment-variable
+  # read is gated on; the point is that each of those readers still has a
+  # compiling non-`std` fallback. It is *not* a `no_std` check — the crate has no
+  # `#![no_std]` and still uses `Vec` freely — so do not read it as one.
+  # `--all-features` is what docs.rs builds, per the `[package.metadata.docs.rs]`
+  # sections, so it needs to keep working for the documentation to appear at all.
+  features:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build -p tensorcontract --no-default-features
+      - run: cargo build -p tensorcontract --all-features
+
+  # What `cargo publish` would upload, without publishing it: the file list, the
+  # generated manifests, the README and licence texts that live above the crate
+  # directories, and a verify build of each unpacked tarball.
+  #
+  # `--workspace` rather than `-p`, and this is not cosmetic: `tensorcontract-tapp`
+  # depends on `tensorcontract` by path *and* version, so packaging it alone fails
+  # with "no matching package named `tensorcontract` found" until that version is
+  # on crates.io. A workspace run resolves the sibling through a temporary local
+  # registry instead. Nothing here needs a crates.io token.
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo package --workspace
 
   lint:
     runs-on: ubuntu-latest
@@ -40,22 +162,20 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets
 
-  # The vectorised kernels are runtime-dispatched, so the portable scalar path
-  # must stay correct and must stay in agreement with them.
-  scalar-fallback:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - run: cargo test --workspace --release
-        env:
-          TENSORCONTRACT_KERNEL: scalar
-
+  # Documentation, in the two configurations that matter. The first is what
+  # docs.rs will build for the published crates — the two publishable packages,
+  # all features, one target — so a docs.rs failure shows up here first. The
+  # second keeps the unpublished harness's doc comments covered as well.
+  #
+  # `--workspace --all-features` cannot be used for the docs.rs arm: it would
+  # enable `tensorcontract-bench`'s `tblis` feature, whose build script panics
+  # without `TBLIS_ROOT`.
   docs:
     runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: -D warnings
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - run: cargo doc -p tensorcontract -p tensorcontract-tapp --no-deps --all-features
       - run: cargo doc --workspace --no-deps
-        env:
-          RUSTDOCFLAGS: -D warnings

@@ -9,7 +9,13 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.89"   # AVX-512 intrinsics + std feature detection stabilised here
+# 1.89 stabilised the AVX-512 intrinsics and `is_x86_feature_detected!` (D20),
+# but the floor is now set by `core::arch::__cpuid_count`, which `kernel::cache`
+# calls without an `unsafe` block: that became a safe function in **1.94**, not
+# in 1.87 as the comment there claims. Measured, not assumed — 1.89 through 1.93
+# all fail with E0133 and 1.94 is the first that builds. The MSRV job in CI pins
+# exactly this version, so the claim cannot drift again.
+rust-version = "1.94"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/lkdvos/tensorcontract-rs"
 authors = ["Lukas Devos <ldevos@flatironinstitute.org>"]
