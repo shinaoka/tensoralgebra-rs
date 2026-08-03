@@ -9,8 +9,9 @@
 //! # Register blocking
 //!
 //! Write `MV` for the number of vector registers an `A` sliver occupies per
-//! plane per k-step, `L` for the lane count (8 for AVX-512 `f64`, 16 for `f32`)
-//! and `NR` for the column block. Then per logical k-step a kernel issues
+//! plane per k-step, `L` for the lane count (8 for AVX-512 `f64`, 16 for
+//! AVX-512 `f32`; 4 and 8 for AVX2) and `NR` for the column block. Then per
+//! logical k-step a kernel issues
 //!
 //! | | accumulator registers | load-port uops | FMA uops |
 //! |---|---|---|---|
@@ -26,7 +27,8 @@
 //! in opposite directions:
 //!
 //! 1. **The register file.** Accumulators plus one A plane plus the live
-//!    broadcasts must fit in 32 zmm. Every candidate that does not spills and
+//!    broadcasts must fit in the architectural register file — 32 zmm under
+//!    AVX-512, **16 ymm under AVX2**. Every candidate that does not spills and
 //!    loses 30–50% — the sweep is full of these cliffs, and they are the reason
 //!    3m cannot simply be given a big block.
 //! 2. **Bytes per useful flop.** Once a shape is issue-bound the A sliver is a
@@ -47,9 +49,17 @@
 //!   roughly the margin its flop saving predicts; at the `kc` the engine
 //!   actually uses it is no longer FMA-bound and the saving evaporates.
 //!
-//! Shapes were chosen by measuring, not by the reasoning above:
+//! The **AVX-512** shapes were chosen by measuring, not by the reasoning above:
 //! `cargo run --release -p tensorcontract --example kernel_shapes`, raw output
 //! in `bench-results/phase3-kernel-shapes.txt`.
+//!
+//! The **AVX2** shapes are *provisional and unmeasured* — see
+//! [`cfg_avx2_f64`] — because the reference machine has no AVX2-only CPU to
+//! measure them on and the same `examples/kernel_shapes` run is the calibration
+//! path once one is available. Halving the register file is not a small change:
+//! with 16 ymm, planar's two accumulator planes and 3m's three leave almost no
+//! choice of aspect ratio, so AVX2 register blocks are 2–6x smaller than their
+//! AVX-512 counterparts and are much closer to the register bound.
 
 #![allow(clippy::missing_safety_doc)]
 
@@ -60,15 +70,25 @@ use core::arch::x86::*;
 #[cfg(target_arch = "x86_64")]
 use core::arch::x86_64::*;
 
-/// Generate the four AVX-512 kernels for one real type.
+/// Generate the four micro-kernels for one real type on one instruction set.
 ///
 /// The bodies are written once, over `MV`/`NR` const generics, so that a shape
 /// change is a one-line edit and every method is expressed in the same style —
 /// a comparison between methods should not also be a comparison between two
-/// people's hand-written assembly.
-macro_rules! avx512_kernels {
+/// people's hand-written assembly (D17).
+///
+/// The same argument applies across instruction sets, so the ISA is *also* a
+/// macro parameter rather than a second copy of the bodies: `$lanes` and the
+/// six intrinsics are all that differ between AVX-512 and AVX2. That keeps the
+/// AVX2 path from becoming a comparison between two people's kernels too, and —
+/// more practically — means the AVX-512 kernels the project's whole measurement
+/// record rests on are generated from *unchanged* source text.
+///
+/// `$feats` lists the target features the kernels need; each becomes its own
+/// `#[target_feature(enable = ...)]` attribute.
+macro_rules! simd_kernels {
     (
-        $modname:ident, $t:ty, $v:ty, $lanes:expr,
+        $modname:ident, $t:ty, $v:ty, $lanes:expr, [$($feat:literal),+ $(,)?],
         $zero:ident, $load:ident, $set1:ident, $fmadd:ident, $fnmadd:ident, $store:ident
     ) => {
         pub mod $modname {
@@ -80,7 +100,7 @@ macro_rules! avx512_kernels {
             /// `ab[j*MR + i] = sum_p a[p*MR + i] * b[p*NR + j]`, `MR = MV*L`.
             ///
             /// Also the 1m kernel: see [`onem`].
-            #[target_feature(enable = "avx512f")]
+            $(#[target_feature(enable = $feat)])+
             pub unsafe fn real<const MV: usize, const NR: usize>(
                 kc: usize,
                 a: *const $t,
@@ -117,7 +137,7 @@ macro_rules! avx512_kernels {
             /// column-major. No shuffles anywhere: the four real products of a
             /// complex FMA are four `vfmadd`/`vfnmadd` on data that is already
             /// in the right lanes.
-            #[target_feature(enable = "avx512f")]
+            $(#[target_feature(enable = $feat)])+
             pub unsafe fn planar<const MV: usize, const NR: usize>(
                 kc: usize,
                 a: *const $t,
@@ -163,7 +183,7 @@ macro_rules! avx512_kernels {
             ///
             /// `MV` counts the vector registers of the *real* row block, so the
             /// complex micro-tile is `MV*L/2 x NR`.
-            #[target_feature(enable = "avx512f")]
+            $(#[target_feature(enable = $feat)])+
             pub unsafe fn onem<const MV: usize, const NR: usize>(
                 kc: usize,
                 a: *const $t,
@@ -178,7 +198,7 @@ macro_rules! avx512_kernels {
             /// Accumulates `M1 = Ar*Br`, `M2 = Ai*Bi`, `M3 = (Ar+Ai)*(Br+Bi)`
             /// one plane at a time, so only `MV` A-registers are live at once
             /// and the three accumulator planes fit alongside them.
-            #[target_feature(enable = "avx512f")]
+            $(#[target_feature(enable = $feat)])+
             pub unsafe fn threem<const MV: usize, const NR: usize>(
                 kc: usize,
                 a: *const $t,
@@ -276,11 +296,12 @@ macro_rules! avx512_kernels {
     };
 }
 
-avx512_kernels!(
+simd_kernels!(
     avx512_f64,
     f64,
     __m512d,
     8,
+    ["avx512f"],
     _mm512_setzero_pd,
     _mm512_loadu_pd,
     _mm512_set1_pd,
@@ -289,17 +310,50 @@ avx512_kernels!(
     _mm512_storeu_pd
 );
 
-avx512_kernels!(
+simd_kernels!(
     avx512_f32,
     f32,
     __m512,
     16,
+    ["avx512f"],
     _mm512_setzero_ps,
     _mm512_loadu_ps,
     _mm512_set1_ps,
     _mm512_fmadd_ps,
     _mm512_fnmadd_ps,
     _mm512_storeu_ps
+);
+
+// AVX2 needs `fma` as well as `avx2`: the 256-bit loads, broadcasts and stores
+// come from AVX/AVX2 but `_mm256_fmadd_*` / `_mm256_fnmadd_*` are FMA3. Every
+// CPU that has AVX2 has FMA3 in practice, but they are separate CPUID bits, so
+// both are detected and both are enabled here.
+simd_kernels!(
+    avx2_f64,
+    f64,
+    __m256d,
+    4,
+    ["avx2", "fma"],
+    _mm256_setzero_pd,
+    _mm256_loadu_pd,
+    _mm256_set1_pd,
+    _mm256_fmadd_pd,
+    _mm256_fnmadd_pd,
+    _mm256_storeu_pd
+);
+
+simd_kernels!(
+    avx2_f32,
+    f32,
+    __m256,
+    8,
+    ["avx2", "fma"],
+    _mm256_setzero_ps,
+    _mm256_loadu_ps,
+    _mm256_set1_ps,
+    _mm256_fmadd_ps,
+    _mm256_fnmadd_ps,
+    _mm256_storeu_ps
 );
 
 // ---------------------------------------------------------------------------
@@ -450,6 +504,29 @@ macro_rules! configs {
             }
         }
 
+        /// The menu for either domain, which is the shape `IsaConfigs` and the
+        /// `KernelSet::row_blocks` impls both want.
+        pub fn row_blocks(complex: bool, method: ComplexMethod) -> &'static [usize] {
+            if complex {
+                cplx_row_blocks(method)
+            } else {
+                REAL_ROW_BLOCKS
+            }
+        }
+
+        /// The config at a chosen row block in either domain.
+        pub fn config_at(
+            complex: bool,
+            method: ComplexMethod,
+            mr: usize,
+        ) -> Option<KernelConfig<$t>> {
+            if complex {
+                cplx_config_at(method, mr)
+            } else {
+                real_config_at(mr)
+            }
+        }
+
         pub fn real_config() -> KernelConfig<$t> {
             real_config_at(REAL_ROW_BLOCKS[0]).expect("default shape is on the menu")
         }
@@ -541,9 +618,165 @@ pub mod cfg_avx512_f32 {
     );
 }
 
+/// AVX2 shapes for `f64` / `c64` (`L = 4`). **Provisional and unmeasured** — see
+/// the note below on which half of the choice is modelled.
+///
+/// 16 ymm instead of 32 zmm, and the same accumulator-plane counts, so the
+/// register bound bites much harder than it does on AVX-512. With `live =
+/// accumulators + one A plane + the live broadcasts`:
+///
+/// | kernel | `MV x NR` | `MR x NR` (logical) | acc | live | load | FMA | f/l | bytes/flop |
+/// |---|---|---|---|---|---|---|---|---|
+/// | real | `2 x 6` | `8 x 6` | 12 | 15 | 8 | 12 | 1.50 | **1.17** |
+/// | planar | `1 x 5` | `4 x 5` | 10 | 14 | 12 | 20 | 1.67 | **0.90** |
+/// | 1m | `2 x 6` | `4 x 6` | 12 | 15 | 16 | 24 | 1.50 | 1.17 |
+/// | 3m | `1 x 4` | `4 x 4` | 12 | 14 | 15 | 12 | 0.80 | 1.50 |
+///
+/// # What is modelled and what is guessed
+///
+/// **Modelled, and trustworthy** (D19: the uop model gets the *cliffs* right):
+///
+/// * `live <= 16` for every shape on every menu. That is the only hard
+///   statement here, and it is the one that matters most, because a spill costs
+///   30–50% — far more than any ranking error among shapes that fit. It was
+///   **checked in the disassembly**, which needs no benchmark: every shipped
+///   default in both precisions (six distinct kernels — 1m reuses `real`)
+///   allocates 15–16 distinct ymm with *zero* stack traffic in the loop, while
+///   `planar 1 x 6` (`live = 16`) spills one register and `planar 2 x 3`
+///   (`live = 18`) spills seven. The model's cliff is where the model says.
+/// * `acc >= 10`, i.e. enough independent accumulator chains to cover an FMA
+///   latency of ~5 cycles against two FMA ports. Below that the kernel is
+///   latency-bound however good its byte traffic is. Both survive only just:
+///   planar's default has exactly 10 and 3m's exactly 12.
+/// * Which shape has the lowest bytes-per-useful-flop within each method, which
+///   is the quantity Phase 3 measured to be decisive at the operating `kc`.
+///
+/// **Guessed** (D19: the same model gets the *ranking* wrong):
+///
+/// * That the byte-traffic argument still picks the winner when the register
+///   file is half as large. It may not: with `MR` down to 4 complex rows the A
+///   sliver is small enough that it could stay L1-resident, which is precisely
+///   the regime where Phase 3 measured 3m to be *fastest*. So the ranking
+///   between the three complex methods is genuinely open on AVX2, more open
+///   than it was on AVX-512.
+/// * `NR` for planar — though less than it was. `1 x 6` reaches `live = 16`
+///   exactly and would give 12 accumulators and 0.83 bytes/flop, strictly
+///   better on both counts *if* it allocated cleanly; the disassembly says it
+///   does not quite (one spill/reload pair per k-step, against `1 x 5`'s none),
+///   which settles the choice without a measurement. What stays guessed is the
+///   *price*: one spill of a broadcast is nothing like the 30–50% a spilled
+///   accumulator costs, so `1 x 6` might still win. It cannot go on the menu as
+///   an alternate either way, because the menu is keyed by `MR` and both shapes
+///   have `MR = 4`; changing it is a one-line edit here.
+/// * 3m's default. `1 x 4` is load-port-bound (`f/l = 0.80`) and `2 x 2`
+///   (`MR = 8`, on the menu) is exactly balanced at `f/l = 1.00` but moves 25%
+///   more bytes per flop. `1 x 4` follows the AVX-512 precedent, where the
+///   measured 3m winner `1 x 10` was *also* load-bound and *also* the lowest
+///   bytes/flop of its candidates — but that is an analogy, not a measurement.
+/// * That one shape per method can be right for all AVX2 hardware at all. The
+///   AVX2 microarchitectures spread wider than the AVX-512 ones: FMA latency is
+///   5 on Haswell/Broadwell and 4 on later Intel and Zen 3, which moves the
+///   `acc >= 10` floor, and Zen 1 splits every 256-bit op into two 128-bit
+///   halves, which moves everything. These shapes are a starting point on
+///   whatever machine gets measured first, not a tuning.
+///
+/// Calibrate with `cargo run --release -p tensorcontract --example
+/// kernel_shapes` **on an AVX2 machine** — the example sweeps the AVX2 grid too
+/// and prints `acc`/`load`/`FMA`/`bytes-per-flop` next to measured GF/s, so the
+/// menus below can be replaced from its output the way the AVX-512 ones were.
+///
+/// # The menus
+///
+/// | method | menu, `MR` (`NR`) | why the alternates exist |
+/// |---|---|---|
+/// | real | 8 (6), 12 (4), 4 (8) | `12 (4)` is `live = 16` with a better `f/l`; `4 (8)` is load-bound and only there for the row-block rule |
+/// | planar | 4 (5), 8 (2) | `8 (2)` is the only other aspect ratio that fits at all |
+/// | 1m | 4 (6), 6 (4), 2 (8) | as real, halved: 1m's complex tile is half its real row block |
+/// | 3m | 4 (4), 8 (2) | the load-bound / balanced pair described above |
+///
+/// Note what the small blocks do to the write-back: **every** `MR` on every
+/// menu here (2, 4, 6, 8, 12) divides 24, and the TCCG corpus rounds every
+/// stride-1 extent up to a multiple of 24, so the gather-path problem that
+/// motivated the row-block menu on AVX-512 does not arise at all in `f64` on
+/// AVX2, which is one reason these menus can stay short.
+///
+/// `tcbench shapes` says so quantitatively, and it costs no CPU to re-check
+/// (`TENSORCONTRACT_KERNEL=avx2 tcbench shapes`). Over the 392 corpus
+/// case-dtype-methods, `Plan::row_block` would change shape on **26 under
+/// AVX-512 and 12 under AVX2**, and the 12 are all `f32` — it is inert in `f64`
+/// and in all three complex methods in both precisions. The sharper number is
+/// the other one: **81** case-dtype-methods have no shape on their AVX-512 menu
+/// that clears the gather path at all, and **0** on their AVX2 menu. Smaller
+/// register blocks are worse for the kernel and better for the write-back, and
+/// on AVX2 the write-back side of that trade is simply won.
+pub mod cfg_avx2_f64 {
+    use super::*;
+    configs!(
+        f64, avx2_f64, "avx2",
+        real   = [(2, 6), (3, 4), (1, 8)],
+        planar = [(1, 5), (2, 2)],
+        onem   = [(2, 6), (3, 4), (1, 8)],
+        threem = [(1, 4), (2, 2)],
+    );
+}
+
+/// AVX2 shapes for `f32` / `c32` (`L = 8`). **Provisional and unmeasured**; the
+/// reasoning, and the modelled/guessed split, is in [`cfg_avx2_f64`].
+///
+/// The `MV x NR` grid is deliberately *identical* to the `f64` one, so that a
+/// single-vs-double comparison on AVX2 is a comparison of the hardware and not
+/// of two shape choices — the same reason `examples/kernel_shapes` sweeps one
+/// candidate list for both types. (AVX-512 1m is the one place the project
+/// departed from that, and it departed from it on measured evidence, which
+/// there is none of here.) So the logical row blocks are twice the `f64` ones:
+///
+/// | kernel | `MV x NR` | `MR x NR` (logical) | acc | live | bytes/flop |
+/// |---|---|---|---|---|---|
+/// | real | `2 x 6` | `16 x 6` | 12 | 15 | 0.46 |
+/// | planar | `1 x 5` | `8 x 5` | 10 | 14 | **0.33** |
+/// | 1m | `2 x 6` | `8 x 6` | 12 | 15 | 0.46 |
+/// | 3m | `1 x 4` | `8 x 4` | 12 | 14 | 0.56 |
+///
+/// Menus: real 16 (6), 24 (4), 8 (8); planar 8 (5), 16 (2); 1m 8 (6), 12 (4),
+/// 4 (8); 3m 8 (4), 16 (2). Here `real 24 (4)`, `1m 12 (4)` and the `8`s divide
+/// the corpus's multiple-of-24 extents while the `16`s do not, so the row-block
+/// rule has a real choice to make in `f32` on AVX2 as it does on AVX-512 —
+/// unlike `f64`, where every shape on every menu divides 24 already.
+pub mod cfg_avx2_f32 {
+    use super::*;
+    configs!(
+        f32, avx2_f32, "avx2",
+        real   = [(2, 6), (3, 4), (1, 8)],
+        planar = [(1, 5), (2, 2)],
+        onem   = [(2, 6), (3, 4), (1, 8)],
+        threem = [(1, 4), (2, 2)],
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Runtime dispatch
 // ---------------------------------------------------------------------------
+
+/// An instruction set this file has kernels for, widest first.
+///
+/// Not a CPU-feature bitset: it names a *kernel family*, i.e. one instantiation
+/// of `simd_kernels!` plus the register-block menus that go with it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Isa {
+    /// AVX-512F. Measured; the reference machine.
+    Avx512,
+    /// AVX2 + FMA3. Provisional register blocks — see [`cfg_avx2_f64`].
+    Avx2,
+}
+
+impl Isa {
+    pub fn name(self) -> &'static str {
+        match self {
+            Isa::Avx512 => "avx512",
+            Isa::Avx2 => "avx2",
+        }
+    }
+}
 
 /// Whether AVX-512F is usable. Checked once per process.
 fn have_avx512() -> bool {
@@ -561,40 +794,141 @@ fn have_avx512() -> bool {
     }
 }
 
-/// The four entry points the [`super::KernelSet`] impls call, per type: the
-/// default shape, the menu of row blocks, and the config at a chosen one. Each
-/// yields `None` when the CPU has no AVX-512, which sends the caller to the
-/// portable scalar path.
+/// Whether AVX2 *and* FMA3 are usable. Checked once per process.
+///
+/// Both bits are required and neither implies the other in CPUID, even though
+/// no shipping CPU has one without the other: the kernels' loads and broadcasts
+/// are AVX/AVX2 and their `vfmadd`/`vfnmadd` are FMA3.
+fn have_avx2() -> bool {
+    #[cfg(feature = "std")]
+    {
+        use std::sync::OnceLock;
+        static YES: OnceLock<bool> = OnceLock::new();
+        *YES.get_or_init(|| is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma"))
+    }
+    #[cfg(not(feature = "std"))]
+    {
+        cfg!(all(target_feature = "avx2", target_feature = "fma"))
+    }
+}
+
+/// Every ISA whose kernels this CPU can execute, widest first, **ignoring
+/// `TENSORCONTRACT_KERNEL`**.
+///
+/// Dispatch uses [`selected_isa`]; this exists for the kernel-contract tests,
+/// which must check every kernel the machine can run rather than only the one
+/// it would choose. That is the only way the AVX2 kernels get exercised at all
+/// on an AVX-512 reference machine under a plain `cargo test`.
+pub fn available_isas() -> &'static [Isa] {
+    match (have_avx512(), have_avx2()) {
+        (true, true) => &[Isa::Avx512, Isa::Avx2],
+        (true, false) => &[Isa::Avx512],
+        (false, true) => &[Isa::Avx2],
+        (false, false) => &[],
+    }
+}
+
+/// The ISA the engine will actually dispatch to, or `None` for the portable
+/// scalar path. Cached for the process, like the feature detection it wraps.
+///
+/// `TENSORCONTRACT_KERNEL` overrides the choice: `scalar` takes the portable
+/// path, `avx2` and `avx512` pin a family. A pinned family the CPU cannot run
+/// falls through to scalar rather than faulting — pinning is a testing and A/B
+/// facility, not a promise that the hardware exists.
+pub fn selected_isa() -> Option<Isa> {
+    #[cfg(feature = "std")]
+    {
+        use std::sync::OnceLock;
+        static ISA: OnceLock<Option<Isa>> = OnceLock::new();
+        *ISA.get_or_init(pick_isa)
+    }
+    #[cfg(not(feature = "std"))]
+    {
+        pick_isa()
+    }
+}
+
+fn pick_isa() -> Option<Isa> {
+    use super::KernelForce;
+    match super::kernel_force() {
+        KernelForce::Scalar => None,
+        KernelForce::Avx2 => have_avx2().then_some(Isa::Avx2),
+        KernelForce::Avx512 => have_avx512().then_some(Isa::Avx512),
+        // Widest first. AVX-512 is measured and AVX2 is not, so there is no
+        // shape-dependent choice between them to make here.
+        KernelForce::Auto => available_isas().first().copied(),
+    }
+}
+
+/// One ISA's five kernel-set entry points for one element type.
+///
+/// A table of function pointers rather than five `match isa` statements per
+/// type, because everything that wants this wants *all* of it at once: dispatch
+/// wants the selected ISA's five, and the contract tests want each available
+/// ISA's five in turn.
+#[derive(Clone, Copy)]
+pub struct IsaConfigs<T> {
+    pub isa: Isa,
+    pub real: fn() -> KernelConfig<T>,
+    pub cplx: fn(ComplexMethod) -> KernelConfig<T>,
+    pub row_blocks: fn(bool, ComplexMethod) -> &'static [usize],
+    pub config_at: fn(bool, ComplexMethod, usize) -> Option<KernelConfig<T>>,
+}
+
+/// The five entry points the [`super::KernelSet`] impls call, per type: the
+/// default shape, the menu of row blocks, and the config at a chosen one, each
+/// resolved through [`selected_isa`]. All yield `None`/`&[]` when no vectorised
+/// ISA is available or `TENSORCONTRACT_KERNEL=scalar` is set, which sends the
+/// caller to the portable scalar path.
 macro_rules! dispatch {
-    ($t:ty, $cfg:ident, $real:ident, $cplx:ident, $rows:ident, $real_at:ident, $cplx_at:ident) => {
+    ($t:ty, $cfg512:ident, $cfg2:ident, $sets:ident,
+     $real:ident, $cplx:ident, $rows:ident, $real_at:ident, $cplx_at:ident) => {
+        /// This type's kernel set for a named ISA, whether or not the CPU has it.
+        pub fn $sets(isa: Isa) -> IsaConfigs<$t> {
+            match isa {
+                Isa::Avx512 => IsaConfigs {
+                    isa,
+                    real: $cfg512::real_config,
+                    cplx: $cfg512::cplx_config,
+                    row_blocks: $cfg512::row_blocks,
+                    config_at: $cfg512::config_at,
+                },
+                Isa::Avx2 => IsaConfigs {
+                    isa,
+                    real: $cfg2::real_config,
+                    cplx: $cfg2::cplx_config,
+                    row_blocks: $cfg2::row_blocks,
+                    config_at: $cfg2::config_at,
+                },
+            }
+        }
+
         pub fn $real() -> Option<KernelConfig<$t>> {
-            have_avx512().then($cfg::real_config)
+            let s = $sets(selected_isa()?);
+            Some((s.real)())
         }
 
         pub fn $cplx(method: ComplexMethod) -> Option<KernelConfig<$t>> {
-            have_avx512().then(|| $cfg::cplx_config(method))
+            let s = $sets(selected_isa()?);
+            Some((s.cplx)(method))
         }
 
         /// Row blocks with a kernel, default first; empty when unavailable.
         pub fn $rows(complex: bool, method: ComplexMethod) -> &'static [usize] {
-            if !have_avx512() {
-                return &[];
-            }
-            if complex {
-                $cfg::cplx_row_blocks(method)
-            } else {
-                $cfg::REAL_ROW_BLOCKS
+            match selected_isa() {
+                Some(isa) => ($sets(isa).row_blocks)(complex, method),
+                None => &[],
             }
         }
 
         pub fn $real_at(mr: usize) -> Option<KernelConfig<$t>> {
-            have_avx512().then(|| $cfg::real_config_at(mr)).flatten()
+            let s = $sets(selected_isa()?);
+            (s.config_at)(false, ComplexMethod::Planar, mr)
         }
 
         pub fn $cplx_at(method: ComplexMethod, mr: usize) -> Option<KernelConfig<$t>> {
-            have_avx512()
-                .then(|| $cfg::cplx_config_at(method, mr))
-                .flatten()
+            let s = $sets(selected_isa()?);
+            (s.config_at)(true, method, mr)
         }
     };
 }
@@ -602,6 +936,8 @@ macro_rules! dispatch {
 dispatch!(
     f64,
     cfg_avx512_f64,
+    cfg_avx2_f64,
+    isa_configs_f64,
     config_real_f64,
     config_cplx_f64,
     row_blocks_f64,
@@ -611,6 +947,8 @@ dispatch!(
 dispatch!(
     f32,
     cfg_avx512_f32,
+    cfg_avx2_f32,
+    isa_configs_f32,
     config_real_f32,
     config_cplx_f32,
     row_blocks_f32,
