@@ -1518,13 +1518,43 @@ bite:
 
 1. **Parallelism is capped at `ceil(M / MR)` strips.** A contraction whose
    oriented row direction is short cannot use the cores however much work it
-   contains. The fix is `N`-direction parallelism; the point of measuring first
-   is to size how much of the corpus needs it.
+   contains. **Now sized, from committed data and at no CPU cost**
+   (`scripts/thread-width.py`): **20 of 392 case-dtype-methods cannot fill 8
+   threads from `M` alone** — four distinct cases, `aqrs-pa-pqrs`,
+   `ij-ikl-ljk`, `ij-kil-lkj` and `ijk-il-jlk`. They are not the slow ones:
+   `ijk-il-jlk` in `c32` runs at 0.86 of the fastest throughput the engine
+   reaches in that dtype, so this is real work, not a corner. **All 20 reach
+   width 8 from `M x N` together**, which needs no accumulators and no
+   reduction, so the fix is a 2-D partition and not a `K` split.
 2. **Threads are spawned per `execute` call** via `std::thread::scope`, not
    reused from a pool. Irrelevant at corpus sizes, first-order for small
    repeated contractions — which is exactly the low-arithmetic-intensity
    population Phase 1 identified as the real headroom.
 3. **`NC`'s L3 budget is still per-core**, as above.
+
+### `K`-parallelism is not needed, and the reason is structural
+
+Worth recording so it is not re-opened: parallelising the `pc` loop — the one
+axis that would require per-thread accumulators and a reduction — is **not
+needed by anything in this corpus**, and the argument generalises beyond it.
+
+Needing it means the output has fewer than `p` micro-tiles in total, i.e. an
+output of order 1–3 thousand elements while `K` is large. But arithmetic
+intensity at the matrix level is bounded by roughly `2MN / ((M + N) * bytes)`,
+so small `M` *and* small `N` cap it from above. Compute-bound requires a large
+output, and a large output has plenty of tiles: the two conditions are in
+tension, which is why the intersection is empty here rather than merely
+unpopulated.
+
+Measured confirmation is in `scripts/thread-width.py` above: every case short of
+width 8 in `M` has `ceil(N / NR) >= 8`. And if a user ever does bring such a
+shape, the feature is *cheap* precisely where it is needed — the output being
+tiny is what makes per-thread accumulator tiles L1-resident and the final
+reduction negligible. So this is a demand-driven feature, not a Phase 4 item.
+
+| # | Assumption | Status |
+|---|---|---|
+| A21 | Some compute-bound contractions will need `K`-parallelism, hence per-thread accumulators and a reduction. | **Refuted for this corpus, and argued structurally.** 20 of 392 case-dtype-methods cannot fill 8 threads from `M`, all 20 can from `M x N`, and needing `K` requires fewer than `p` micro-tiles in the whole output — which bounds arithmetic intensity at `~2MN/((M+N)*bytes)` and so bounds the case away from compute-bound. Build the 2-D partition; leave `K` unbuilt until a real shape demands it. |
 
 ## Phases 4 (rest) – 5
 
