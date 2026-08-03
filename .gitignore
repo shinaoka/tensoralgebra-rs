@@ -3,3 +3,7 @@
 Cargo.lock
 *.perf
 perf.data*
+
+# Byte-compiled Python from the analysis scripts.
+__pycache__/
+*.pyc
