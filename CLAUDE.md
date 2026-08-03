@@ -280,10 +280,12 @@ scripts/compare-sweeps.py BASE_CSVS NEW_CSVS
 # the *whole grid* of options once (~2 h), then score candidate rules against it
 # offline, as many as you like, for free. This is how the row-block rule was
 # derived and how the orientation rule should be.
-scripts/phase4c-rowblock.sh 4 bench-results/phase4c    # every register block
-scripts/phase4d-orient.sh   4 bench-results/phase4d    # both orientation arms
+scripts/phase4c-rowblock.sh  4 bench-results/phase4c   # every register block
+scripts/phase4d-orient.sh    4 bench-results/phase4d   # both orientation arms
+scripts/phase4e-blocking.sh  4 bench-results/phase4e   # the MC/KC/NC grid, ~7 h
 scripts/rowblock-score-rules.py bench-results/phase4c/shapes.csv bench-results/phase4c
 scripts/orient-score-rules.py   bench-results/phase4d/features.csv bench-results/phase4d
+scripts/blocking-score-rules.py bench-results/phase4e/features.csv bench-results/phase4e
 
 # The two analyses: no CPU cost, no data touched, exactly reproducible. Safe to
 # run while a benchmark is in flight, and the right way to decide which
@@ -327,7 +329,9 @@ Useful environment variables:
 |---|---|
 | `TENSORCONTRACT_COMPLEX` | `planar` \| `1m` \| `3m` |
 | `TENSORCONTRACT_KERNEL` | `scalar` forces the portable kernels |
-| `TENSORCONTRACT_MC/_KC/_NC` | override cache blocking |
+| `TENSORCONTRACT_MC/_KC/_NC` | override cache blocking absolutely |
+| `TENSORCONTRACT_MC_PCT/_NC_PCT` | scale the *derived* `mc`/`nc`, so each dtype and method keeps its budget share |
+| `TENSORCONTRACT_KC_COUPLE` | set `kc` *and* re-derive `mc`/`nc` at that depth; the item 2 grid's second arm |
 | `TENSORCONTRACT_ORIENT` | `none` \| `swap`: pin the row/column orientation; `legacy`: the Phase 4.1 rule |
 | `TENSORCONTRACT_WRITEBACK` | `gather` forces the general scatter write-back |
 | `TENSORCONTRACT_ROWBLOCK` | `base` \| `auto` \| `mr=<n>` \| `idx=<i>`: pin the micro-tile row block |

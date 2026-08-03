@@ -228,6 +228,12 @@ impl Blocking {
     /// the comparison meaningless.
     pub fn derive(real_bytes: usize, a_reals: usize, b_reals: usize) -> Blocking {
         let kc = if real_bytes <= 4 { 384 } else { 256 };
+        // A *coupled* `kc` override re-derives `mc`/`nc` against the same cache
+        // budgets at the new depth; the plain `TENSORCONTRACT_KC` override
+        // changes `kc` alone and leaves the `D` strip a `jr` pass revisits
+        // exactly as wide as it was. The item 2 grid needs both arms, because
+        // `MC` is bounded from two sides and only the pair separates them (A13).
+        let kc = env_usize("TENSORCONTRACT_KC_COUPLE").unwrap_or(kc);
         Blocking::derive_at_depth(real_bytes, a_reals, b_reals, kc)
     }
 
@@ -283,6 +289,19 @@ impl<T> KernelConfig<T> {
             if let Some(v) = o.nc {
                 blk.nc = v;
             }
+            // Percentage forms scale whatever the derivation produced. An
+            // absolute `MC` means different fractions of the L2 budget in each
+            // dtype and method — 1m derives half the `mc` planar does, by
+            // design — so pinning one number across a sweep arm would rig the
+            // comparison the same way getting `Blocking::derive` wrong would.
+            // The percentage stays budget-proportional, so one arm is one
+            // question.
+            if let Some(p) = o.mc_pct {
+                blk.mc = (blk.mc * p / 100).max(1);
+            }
+            if let Some(p) = o.nc_pct {
+                blk.nc = (blk.nc * p / 100).max(1);
+            }
         }
         self.with_blocking(blk)
     }
@@ -302,25 +321,49 @@ struct BlockingOverride {
     mc: Option<usize>,
     kc: Option<usize>,
     nc: Option<usize>,
+    mc_pct: Option<usize>,
+    nc_pct: Option<usize>,
 }
 
-/// `TENSORCONTRACT_MC` / `_KC` / `_NC` override the cache blocking. Read once
-/// per process; used for Phase 4 parameter sweeps and to exercise every level
-/// of the loop nest on small test problems.
+/// `TENSORCONTRACT_MC` / `_KC` / `_NC` override the cache blocking absolutely;
+/// `_MC_PCT` / `_NC_PCT` scale the derived value instead, and
+/// `_KC_COUPLE` (read in [`Blocking::derive`]) sets `kc` *and* re-derives
+/// `mc`/`nc` against the cache budgets at that depth. Read once per process;
+/// used for the Phase 4 parameter sweeps and to exercise every level of the
+/// loop nest on small test problems.
 fn env_blocking() -> Option<BlockingOverride> {
     #[cfg(feature = "std")]
     {
         use std::sync::OnceLock;
         static ENV: OnceLock<Option<BlockingOverride>> = OnceLock::new();
         *ENV.get_or_init(|| {
-            let get = |k: &str| std::env::var(k).ok().and_then(|v| v.parse::<usize>().ok());
             let o = BlockingOverride {
-                mc: get("TENSORCONTRACT_MC"),
-                kc: get("TENSORCONTRACT_KC"),
-                nc: get("TENSORCONTRACT_NC"),
+                mc: env_usize("TENSORCONTRACT_MC"),
+                kc: env_usize("TENSORCONTRACT_KC"),
+                nc: env_usize("TENSORCONTRACT_NC"),
+                mc_pct: env_usize("TENSORCONTRACT_MC_PCT"),
+                nc_pct: env_usize("TENSORCONTRACT_NC_PCT"),
             };
-            (o.mc.is_some() || o.kc.is_some() || o.nc.is_some()).then_some(o)
+            (o.mc.is_some()
+                || o.kc.is_some()
+                || o.nc.is_some()
+                || o.mc_pct.is_some()
+                || o.nc_pct.is_some())
+            .then_some(o)
         })
+    }
+    #[cfg(not(feature = "std"))]
+    {
+        None
+    }
+}
+
+/// One `usize`-valued environment variable, or `None` if unset or unparseable.
+/// Not cached: the callers that use it directly run once per configuration.
+fn env_usize(_key: &str) -> Option<usize> {
+    #[cfg(feature = "std")]
+    {
+        std::env::var(_key).ok().and_then(|v| v.parse().ok())
     }
     #[cfg(not(feature = "std"))]
     {

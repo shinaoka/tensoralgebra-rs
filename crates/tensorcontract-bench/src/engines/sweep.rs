@@ -164,7 +164,7 @@ where
         }
 
         let p = plan.clone().with_complex_method(method);
-        let (mr, nr, _blk) = plan_config::<T>(&p);
+        let (mr, nr, blk) = plan_config::<T>(&p);
         let psc = p.oriented_scatters(mr);
         let orient = if p.transposes_gemm(mr) { "BA" } else { "AB" };
         let reg_a = regular_fraction(&build_block_scatter(psc.a_m, mr));
@@ -181,10 +181,15 @@ where
             )
         });
         // `MR x NR` goes in the notes because it is no longer a constant per
-        // dtype and method: a CSV without it cannot be re-read later.
+        // dtype and method: a CSV without it cannot be re-read later. So does
+        // the blocking, for the same reason — the item 2 grid varies it per arm
+        // and a coupled `kc` gives each dtype and method a different `mc`.
         let notes = format!(
-            "{} {mr}x{nr} {orient} {}",
+            "{} {mr}x{nr} {orient} {}x{}x{} {}",
             selected_kernel_name::<T>(method),
+            blk.mc,
+            blk.kc,
+            blk.nc,
             check(name, &d, &mut reference)
         )
         .trim()
