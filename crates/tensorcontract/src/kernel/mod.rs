@@ -552,7 +552,16 @@ pub trait KernelSet: Real + Sized {
 /// the AVX2 path could not be *executed* here at all, only compiled. Every
 /// other Phase 4 fast path got a runtime switch for the same reason — a
 /// build-to-build diff has already produced one wrong sign in this project.
+///
+/// Two configurations reach none of this and must not warn about it: without
+/// `std` there is no environment to read, so only [`KernelForce::Auto`] is ever
+/// constructed, and off x86 there is no ISA to pin, so nothing consults the
+/// answer. `not(all(std, x86))` is exactly that pair.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    not(all(feature = "std", any(target_arch = "x86", target_arch = "x86_64"))),
+    allow(dead_code)
+)]
 pub(crate) enum KernelForce {
     /// Widest available instruction set. The default.
     Auto,
@@ -569,6 +578,10 @@ pub(crate) enum KernelForce {
 /// An unrecognised value is [`KernelForce::Auto`], and a pinned instruction set
 /// the CPU does not have falls back to scalar rather than faulting — see
 /// `x86::selected_isa`.
+#[cfg_attr(
+    not(all(feature = "std", any(target_arch = "x86", target_arch = "x86_64"))),
+    allow(dead_code)
+)]
 pub(crate) fn kernel_force() -> KernelForce {
     #[cfg(feature = "std")]
     {
@@ -589,6 +602,11 @@ pub(crate) fn kernel_force() -> KernelForce {
 
 /// Force the portable scalar kernels regardless of CPU features.
 /// Set `TENSORCONTRACT_KERNEL=scalar` to compare against the reference path.
+/// Only the x86 dispatch asks; off x86 every kernel is already the scalar one.
+#[cfg_attr(
+    not(all(feature = "std", any(target_arch = "x86", target_arch = "x86_64"))),
+    allow(dead_code)
+)]
 fn force_scalar() -> bool {
     kernel_force() == KernelForce::Scalar
 }

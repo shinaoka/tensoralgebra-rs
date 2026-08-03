@@ -457,10 +457,21 @@ fn probe_cpuid() -> Option<CacheHierarchy> {
     #[cfg(target_arch = "x86_64")]
     use core::arch::x86_64 as arch;
 
-    // No `unsafe` needed: `__cpuid`/`__cpuid_count` have been safe since Rust
-    // 1.87 (stdarch #1935 — every x86 target feature postdates `CPUID`, so its
-    // availability is implied), and the workspace MSRV is 1.89.
-    let leaf = |leaf: u32, sub: u32| arch::__cpuid_count(leaf, sub);
+    // `__cpuid_count` became a *safe* function only in Rust 1.94 (stdarch #1935
+    // — every x86 target feature postdates `CPUID`, so its availability is
+    // implied). It is `unsafe` on the workspace MSRV of 1.89, so the block is
+    // required there; `unused_unsafe` is allowed because the same block is
+    // redundant from 1.94 on, and CI compiles with `-D warnings` on both.
+    //
+    // Keeping the block rather than raising the MSRV is deliberate: D20 chose
+    // 1.89 because that is where the AVX-512 intrinsics stabilised, and paying
+    // five Rust releases of compatibility for two braces is the wrong trade.
+    //
+    // SAFETY: `CPUID` is unconditionally available on every x86 CPU that can
+    // run this code — it predates every target feature the dispatch tests for —
+    // and the instruction only reads processor identification registers.
+    #[allow(unused_unsafe)]
+    let leaf = |leaf: u32, sub: u32| unsafe { arch::__cpuid_count(leaf, sub) };
 
     let max_basic = leaf(0, 0).eax;
     let max_ext = leaf(0x8000_0000, 0).eax;

@@ -895,8 +895,10 @@ impl Plan {
     }
 }
 
-/// What `TENSORCONTRACT_ORIENT` asked for.
+/// What `TENSORCONTRACT_ORIENT` asked for. Without `std` there is no
+/// environment to read, so only `Rule` is ever constructed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(not(feature = "std"), allow(dead_code))]
 enum Orient {
     /// [`Plan::transposes_gemm`]'s rule.
     Rule,
@@ -932,8 +934,10 @@ fn orient_override() -> Orient {
     }
 }
 
-/// What `TENSORCONTRACT_ROWBLOCK` asked for.
+/// What `TENSORCONTRACT_ROWBLOCK` asked for. Without `std` there is no
+/// environment to read, so only `Auto` is ever constructed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(not(feature = "std"), allow(dead_code))]
 enum RowBlock {
     /// The kernel set's default shape — the Phase 3 choice.
     Base,
@@ -986,8 +990,10 @@ fn row_block_override() -> RowBlock {
     }
 }
 
-/// What `TENSORCONTRACT_PARTITION` asked for.
+/// What `TENSORCONTRACT_PARTITION` asked for. Without `std` there is no
+/// environment to read, so only `Rule` is ever constructed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(not(feature = "std"), allow(dead_code))]
 enum PartitionMode {
     /// [`Plan::partition`]'s rule.
     Rule,
