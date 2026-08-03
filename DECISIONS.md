@@ -121,7 +121,18 @@ worth another 1.218 on six `c32` 1m cases. End to end against Phase 4.1:
 **`f32` 1.028, `c32` 1m 1.022, `c32` planar 1.013, `c32` 3m 1.010**, 64-bit
 flat, best case 1.48x, one genuine per-case regression at 7%.
 
-**The immediate next task is item 2.** In priority order:
+**Item 2 is in progress: the grid is measuring.** Launched 2026-08-03 08:11 on
+`ccqlin038` cpu4, 19 arms x 2 dtype pairs, ~7 h, writing
+`bench-results/phase4e/bl-*`. Read Phase 4 report **part 7** for the design and
+for what the grid deliberately does not cover. On resume: if
+`bench-results/phase4e/run.log` ends in `grid complete`, run
+`scripts/blocking-score-rules.py bench-results/phase4e/features.csv
+bench-results/phase4e` and write the results into part 7; if it does not, the
+run was interrupted and the arms that exist are still valid (each arm is one
+independent CSV) — re-run the missing ones with the same script, but **not**
+while anything else uses the machine.
+
+**Item 2, in priority order:**
 
 1. **Sweep `MC`/`KC`/`NC`.** Still the untouched Phase 2 heuristic. Phase 3
    showed the whole method ranking turns on whether the `A` sliver is an L1
@@ -1327,6 +1338,88 @@ so the next candidate costs nothing to score.
 | A12 | Write-back overhead matters equally in both precisions. | **Refuted.** It is per output element and the kernel work it hides behind scales with element size, so removing it is worth ~5x more in `f32`/`c32` (7–15%) than in `f64`/`c64` (2–3%). |
 | A14 | The orientation rule's `run >= MR` condition is the right discriminant. | **Refuted, and unresolved.** It is right 63/72 but misses 9 cases by 1.18–1.47x, all 32-bit, including shapes with the same post-swap row structure as the ones it correctly rejects. The true discriminant is unknown; `rm-orient-{none,swap}.csv` hold both arms for all 72 case-dtypes to score candidates against. |
 | A15 | A sequential build-to-build A/B is good enough for a few-percent effect. | **Refuted.** It reported `c64` 3m at 0.973 where a paired runtime A/B gives 1.020. Put the switch behind an environment variable and interleave the arms. |
+
+## Phase 4 report, part 7 (item 2): the `MC`/`KC`/`NC` grid
+
+**Status: the grid is measuring. Design and rationale below; results follow in
+this section when it lands.** Started 2026-08-03 08:11 on `ccqlin038` cpu4,
+19 arms x 2 dtype pairs, ~7 h. If this section still says "measuring" and
+`bench-results/phase4e/run.log` ends in `grid complete`, the run finished and
+the analysis is what is missing — `scripts/blocking-score-rules.py
+bench-results/phase4e/features.csv bench-results/phase4e` reproduces it.
+
+### Why this shape of experiment
+
+The blocking is the last untouched Phase 2 heuristic: `kc` is 384 for 4-byte
+reals and 256 otherwise, and `mc`/`nc` follow from a 512 KiB L2 budget for the
+packed `A` block and 3 MiB of L3 for `B`, divided by the packed footprint each
+method actually produces. Three earlier results dictate how it has to be
+measured rather than leaving it a free choice:
+
+1. **`KC` is first-order, not a tuning knob.** Phase 3 traced the entire
+   complex-method ranking to whether the `A` sliver is an L1 resident or an L2
+   stream at the operating `kc` — 3m is the *fastest* of the three when panels
+   are L1-resident and third when they are not. `kc` is the parameter that
+   decides which regime the engine is in.
+2. **`MC` is bounded from both sides (A13).** Below by packed-`A` residency in
+   L2, above by the strip of `D` that one `jr` pass touches and the next
+   revisits. A sweep that varies the two together sees only their sum, and
+   part 3's three-case experiment — which found +13% on one case and −18% on
+   another and was backed out — is what that confound looks like. So the `kc`
+   axis is measured **twice**: `_KC` moves the panel depth with `mc`/`nc`
+   pinned, `_KC_COUPLE` re-derives them against the same budgets at the new
+   depth. The pair separates the bounds; either arm alone does not.
+3. **An absolute `MC` rigs the method comparison.** 1m derives half of planar's
+   `mc` because its packed `A` carries four reals per complex element instead of
+   two, and that proportionality is exactly what keeps the three-way comparison
+   honest. So the `mc`/`nc` axes are swept as **percentages** of the derived
+   value (`_MC_PCT`, `_NC_PCT`), not as absolute numbers.
+
+The 19 arms: `base` (three times — first, middle, last, so drift over seven
+hours is measured and every treatment is bracketed), `kc` ∈ {64, 128, 256, 384,
+512} pinned, the same five coupled, `mc` ∈ {25, 50, 200, 400}% and `nc` ∈ {25,
+400}%. Every arm is a runtime switch, so no arm is a rebuild (A15), and the
+shipped row-block and orientation rules stay **on** — neither reads the
+blocking, so there is no confound to pin away, and leaving them on means the
+grid is measured in the configuration that ships (A20).
+
+This is the *whole-grid* pattern from items 1c and 1d, for the third time and
+for the same reason: a candidate rule scored against a grid that already exists
+costs nothing, so the eventual A/B is spent on a rule that survived all 392
+case-dtype-methods rather than on the first plausible one. `_MC_PCT` and
+`_KC_COUPLE` exist so that a rule about `mc` can be *expressed* against the
+grid at all.
+
+Two properties of the design worth knowing when reading the output:
+
+* A third of the corpus contracts over `k <= 24`, so for those cases every
+  pinned-`kc` arm is bit-for-bit the same computation. Their spread across arms
+  is a **per-case noise floor measured inside this very run**, alongside the
+  three `base` repeats — not one imported from another session.
+* The sweep CSV's `notes` column now records the `mc x kc x nc` each row
+  actually ran with, so an arm is self-describing and a mislabelled one is
+  detectable after the fact. Same reason `MR x NR` went in there in 4.1c.
+
+### What the grid cannot answer
+
+The truly depth-adaptive rule — `kc = min(k, KC)`, re-derived — is not an arm,
+because `Blocking::derive` is per element type and does not know the
+contraction's depth; expressing it needs the *driver* to re-derive, which is a
+code change and not a switch. `ck64` is the closest the grid gets (for a `k =
+24` case it widens `mc` fourfold where true adaptation would widen it tenfold),
+so the coupled family brackets that rule's *direction* without measuring it.
+That is deliberately the cheap half: if moderate coupled widening is broadly
+bad, the adaptive rule is dead and agrees with part 3; if it is broadly good,
+the driver-level switch is worth building and measuring.
+
+Also not in the grid: the depth-conditional *register block* (A18). `c64` 3m
+prefers a wider `MR` at `k <= 24` than at the operating `kc`, so the shape and
+`kc` interact, and the honest version of this experiment varies both. The grid
+holds the shape at whatever the shipped row-block rule picks. Sweeping the
+product of the two grids is 19 x 5 arms, which is a week; the intended order is
+to settle `kc` first and then re-run the row-block grid at the chosen `kc`,
+because that is the direction the coupling runs — `kc` decides the regime, and
+the shape is chosen inside it.
 
 ## Phases 4 (rest) – 5
 

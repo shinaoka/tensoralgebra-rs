@@ -1,0 +1,7 @@
+host        : ccqlin038.flatironinstitute.org
+target      : x86_64 / linux
+cpu features: avx2 fma avx512f avx512dq 
+baselines   : tblis=false blas=false
+
+sweeping 49 cases at 64 MiB nominal tensor size, 3 reps, stress=none
+
