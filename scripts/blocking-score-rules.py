@@ -41,8 +41,9 @@ KC = ["kc64", "kc128", "kc256", "kc384", "kc512"]
 CK = ["ck64", "ck128", "ck256", "ck384", "ck512"]
 MC = ["mc25", "mc50", "mc200", "mc400"]
 NC = ["nc25", "nc400"]
+MODEL = ["model"]  # the analytical derivation (part 9), not a point in the grid
 BASES = ["base", "basem", "base2"]
-ARMS = BASES + KC + CK + MC + NC
+ARMS = BASES + KC + CK + MC + NC + MODEL
 
 DTYPES = ["f32", "f64", "c32", "c64"]
 METHODS = ["planar", "1m", "3m"]
@@ -232,6 +233,7 @@ def main():
         ("kc coupled only", ["base"] + [a for a in CK if arms[a]]),
         ("mc only", ["base"] + [a for a in MC if arms[a]]),
         ("nc only", ["base"] + [a for a in NC if arms[a]]),
+        ("analytical model", ["base"] + [a for a in MODEL if arms[a]]),
     ):
         cells = []
         for dt, me in COLS:

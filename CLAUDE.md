@@ -29,7 +29,11 @@ they can be benchmarked against each other and against TBLIS on equal footing.
 * **Phase 3 complete.** AVX-512 micro-kernels for `f32`/`f64` and all three
   complex methods, runtime-dispatched; register blocks chosen by measurement.
   Absolute performance is meaningful from here on. The three-way comparison is
-  done — see below and the Phase 3 report.
+  done — see below and the Phase 3 report. **AVX2 kernels now exist too** (one
+  macro body per method across both ISAs, dispatch `avx512f` → `avx2+fma` →
+  scalar), correct but with *provisional, unmeasured* register blocks — Phase 5's
+  multi-arch item is no longer empty. The AVX-512 instruction stream is
+  byte-identical to before, so all Phase 3/4 numbers stand.
 * **Phase 4 in progress.** Item 1 (the write-back) is **done**: the profiled
   2x defect is closed in all four dtypes for +12–17% corpus geometric mean.
   **Item 1c (the micro-tile row block) is done** — a menu of register blocks
@@ -345,7 +349,8 @@ Useful environment variables:
 | variable | effect |
 |---|---|
 | `TENSORCONTRACT_COMPLEX` | `planar` \| `1m` \| `3m` |
-| `TENSORCONTRACT_KERNEL` | `scalar` forces the portable kernels |
+| `TENSORCONTRACT_KERNEL` | `scalar` \| `avx2` \| `avx512` \| `auto`: pin the instruction set. A pinned ISA the CPU lacks falls back to scalar, so `avx2` is how the AVX2 kernels get exercised on this AVX-512 machine |
+| `TENSORCONTRACT_BLOCKMODEL` | `legacy` (default) \| `model`: the analytical cache model instead of the hardcoded constants |
 | `TENSORCONTRACT_MC/_KC/_NC` | override cache blocking absolutely |
 | `TENSORCONTRACT_MC_PCT/_NC_PCT` | scale the *derived* `mc`/`nc`, so each dtype and method keeps its budget share |
 | `TENSORCONTRACT_KC_COUPLE` | set `kc` *and* re-derive `mc`/`nc` at that depth; the item 2 grid's second arm |

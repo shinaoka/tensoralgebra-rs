@@ -38,7 +38,7 @@
 # the same computation. Their spread across arms is therefore a direct per-case
 # noise measurement inside this very run, not one imported from another session.
 #
-# Cost: ~22 min per arm for both dtype pairs, 19 arms, so ~7 h. Single core.
+# Cost: ~22 min per arm for both dtype pairs, 20 arms, so ~7.5 h. Single core.
 # Nothing else may run on the machine (not even a compile) while it is in
 # flight: the pinned core's hyperthread sibling shares the L1d and L2 that all
 # of this is about.
@@ -126,6 +126,15 @@ ARMS=(
     "mc400  TENSORCONTRACT_MC_PCT=400"
     "nc25   TENSORCONTRACT_NC_PCT=25"
     "nc400  TENSORCONTRACT_NC_PCT=400"
+    # The analytical model (part 9), which is the arm that matters most now: it
+    # is not a point in this grid but a whole different derivation, and it moves
+    # all three parameters at once — `kc` down 2.4-8x, `mc` up 4-6x, `nc` up
+    # ~20x. Its `kc` makes the `A` sliver an L1 resident where the constants make
+    # it an L2 stream, which Phase 3 found the method ranking to turn on; its
+    # `mc` is exactly what A13's missing upper bound would punish. Both effects
+    # land in one arm, which is why the single-parameter arms above are still
+    # needed to attribute whatever it does.
+    "model  TENSORCONTRACT_BLOCKMODEL=model"
     "base2"
 )
 

@@ -272,6 +272,10 @@ effectively the same ceiling, as expected.
 | D17 | Micro-kernels are macro-generated over `(MV, NR)` const generics from one body per method, not hand-written per shape. | A comparison between three methods must not also be a comparison between three hand-tunings. One body per method, one shape parameterisation, and the shape is then chosen by measurement. It also made the shape sweep possible at all. |
 | D18 | `#[target_feature]` kernels are reached through one-line plain-`fn` trampolines. | A `#[target_feature]` function cannot be coerced to a function pointer, which the `Ukr` contract requires. Cost is one `call` per micro-tile against `kc*MR*NR` FMAs — unmeasurable. |
 | D19 | Register blocks were chosen by measured throughput at the `kc` the engine actually uses, per method and per element type. | The uop model gets the *cliffs* right (spills above 32 live vector registers) but the *ranking* wrong: it predicts 3m fastest, and 3m is fastest only when the panels are L1-resident. See the Phase 3 report. |
+| D23 | The cache blocking is computed from **probed cache descriptors** via BLIS's analytical model, not from constants — and ships **off by default** behind `TENSORCONTRACT_BLOCKMODEL=legacy\|model`. | `Blocking::derive` held the only three machine-specific numbers in the engine: `kc = 384/256` by real size, a 512 KiB packed-`A` budget and a 3 MiB packed-`B` budget — half of `ccqlin038`'s L2 and a slice of its L3. Nothing about them transfers. `kernel::cache` probes sysfs (no `unsafe`, no dependency, and the only source that reports cache *sharing*), then x86 `CPUID` leaf 4 / `0x8000001D`, then conservative built-ins; a failed probe degrades to the next source and can never fail a contraction. The model is driven by the **reals per element the kernel packs**, not `size_of::<Element>()`, so 1m still gets half the rows planar does out of one L2 — the invariant the three-way comparison rests on. Off by default because the pending grid defines its arms *relative to the derived defaults*, so changing the derivation would silently change what that measurement means, and because A15 requires the old behaviour stay reachable as a run-time switch rather than a build-to-build diff. Build-vs-reuse: no crate, because `raw-cpuid`/`num_cpus`-style crates do not report per-level sharing and sysfs is ~100 lines of parsing. |
+| D24 | The instruction set is a **parameter of the kernel macro**, not a second set of bodies. `simd_kernels!` takes the lane count, a target-feature list and six intrinsics; AVX-512 and AVX2 are two instantiations of the same four bodies. | D17's argument — a three-method comparison must not also be a comparison between three hand-tunings — applies unchanged to two instruction sets, and would be violated the moment somebody hand-tuned AVX2 planar and not AVX2 3m. It also made the change auditable: because the AVX-512 arm expands from unchanged source text, its instruction stream is *verifiably* untouched (7816 zmm instructions, byte-identical, checked independently at merge). |
+| D25 | Dispatch is `avx512f` → `avx2 + fma` → scalar, and `TENSORCONTRACT_KERNEL` grows to `scalar\|avx2\|avx512\|auto`. A pinned ISA the CPU lacks falls back to scalar rather than faulting. | Without the pin, AVX2 kernels could be compiled on the reference machine and never executed on it, leaving the only coverage on hardware nobody here has. Same rule as `_ORIENT`/`_WRITEBACK`/`_ROWBLOCK`: every new fast path gets a run-time switch, because a build-to-build diff has already produced one wrong sign here (A15). Both `avx2` and `fma` are detected — separate CPUID bits, and the FMAs need the second. |
+| D26 | AVX2 register blocks are **provisional and explicitly unmeasured**, chosen from the register budget and the uop model, with a menu of alternates and `examples/kernel_shapes` extended to an AVX2 grid as the calibration path. | D19 splits this cleanly and the split was honoured: `live <= 16` and `acc >= 10` are load-bearing and were *verified in the disassembly at no CPU cost* (all shipped defaults allocate 15–16 distinct ymm with zero stack traffic; `planar 1x6` at `live=16` spills one register, `planar 2x3` at `live=18` spills seven — the cliff is exactly where the count puts it), while "which of the shapes that fit is fastest" is recorded as a guess. Publishing a modelled shape as measured would corrupt the one thing the register-block table is good for. |
 | D21 | Threading parallelises the `M` direction only, into contiguous strips of whole `MR` panels, with a per-thread packed `A` and a **shared** packed `B`. | The `pc` loop accumulates into `D` in place, so parallelising it would need a per-thread temporary or atomics; `M` instead gives every output element one owning thread. That makes the result **bitwise identical to serial at every thread count** — a stronger invariant than agreeing with the oracle, and one a test can assert directly. Strips of whole panels keep each thread's row blocks aligned with the block scatter, so the write-back fast path and the orientation rule are unaffected. `B` is shared because `NC` is sized for L3, which is a per-socket resource. |
 | D22 | The default thread count stays **1** until scaling is measured on the reference machine. | Every performance number in this file is a single-core measurement, and the item 2 blocking grid is designed against the serial engine. A default that changed with the machine's core count would make committed numbers irreproducible from a bare checkout. `TENSORCONTRACT_THREADS` and `Plan::with_threads` opt in; flipping the default is one line in `Plan::threads`. |
 | D20 | Workspace MSRV raised `1.75` → `1.89`. | AVX-512 intrinsics and `is_x86_feature_detected!("avx512f")` were stabilised in Rust 1.89. The alternative — feature-gating the AVX-512 path so 1.75 still builds — would make the project's headline measurement an opt-in extra. 1.89 is a year old. |
@@ -1555,6 +1559,161 @@ reduction negligible. So this is a demand-driven feature, not a Phase 4 item.
 | # | Assumption | Status |
 |---|---|---|
 | A21 | Some compute-bound contractions will need `K`-parallelism, hence per-thread accumulators and a reduction. | **Refuted for this corpus, and argued structurally.** 20 of 392 case-dtype-methods cannot fill 8 threads from `M`, all 20 can from `M x N`, and needing `K` requires fewer than `p` micro-tiles in the whole output — which bounds arithmetic intensity at `~2MN/((M+N)*bytes)` and so bounds the case away from compute-bound. Build the 2-D partition; leave `K` unbuilt until a real shape demands it. |
+
+## Phase 4 report, part 9: blocking that transfers
+
+Item 2's grid measures *this* machine, and nothing in it makes the result
+transfer, because three constants in `Blocking::derive` are `ccqlin038`'s cache
+sizes written down by hand. This removes them (D23): descriptors are probed at
+run time — sysfs, then `CPUID`, then built-ins, with the source reported by
+`tcbench info` so a number is traceable to a probe rather than to a guess — and
+fed to BLIS's analytical model, whose thesis is precisely that this layer needs
+no empirical search.
+
+Source: Low, Igual, Smith & Quintana-Ortí, "Analytical Modeling Is Enough for
+High-Performance BLIS", ACM TOMS 43(2):12, 2016 (DOI 10.1145/2925987), read as
+the actual PDF plus FLAME Working Note #74, not from memory.
+
+**What is the paper's and what is not** — worth stating precisely, because the
+two halves have different standing:
+
+* **As written:** `kc` from eq. (4)–(6) — whole L1 ways for the `A` micro-panel
+  so the next one evicts the last, one way reserved for the unpacked `C`
+  micro-tile, and the 2-way fallback. Equations (1)–(3), which choose `mr`/`nr`,
+  are deliberately *not* used: this project measures register blocks (D19).
+* **Reconstructed:** §4.3.1 says only that `mc` and `nc` follow "in a similar
+  manner" and never writes the inequalities. The reconstruction — reserve the
+  ways the streaming operand needs plus one for `C`, give the rest to the
+  resident block — is not a guess: it reproduces the paper's own Table III `mc`
+  **exactly** for SandyBridge (96), Kaveri (1792) and the TI C6678 (128), two of
+  which are asserted as unit tests. The SandyBridge row is BLIS's real shipped
+  configuration (`mr=8, nr=4, kc=256, mc=96`) recovered from cache geometry
+  alone, which is better evidence than matching a table would be.
+* **Does not reproduce:** the Intel Dunnington row (model 1280 against the
+  paper's 384). Its `kc` does not follow eq. (4) either — the paper uses 2 ways
+  of `A_r` where the formula asks for 3 — so that row appears to carry a
+  constraint the paper never states. Recorded rather than fudged.
+* **Unvalidated inference:** `nc`, by the same symmetry one level out. The paper
+  declines to validate `nc` because three of its four machines have no L3.
+
+### What it predicts here, which is a computation and not a measurement
+
+`cargo run --release --example blocking_model` prints it; safe to run while a
+benchmark is in flight. Post-rounding, i.e. what execution would use:
+
+| dtype | method | legacy `mc/kc/nc` | model `mc/kc/nc` |
+|---|---|---|---|
+| `f64` | – | 264 / 256 / 1536 | 1104 / **106** / 25040 |
+| `f32` | – | 384 / 384 / 2048 | 1824 / **128** / 41472 |
+| `c64` | planar | 128 / 256 / 768 | 720 / **80** / 16590 |
+| `c64` | 1m | 72 / 256 / 768 | 540 / **53** / 25040 |
+| `c32` | 1m | 96 / 384 / 1026 | 1216 / **48** / 55296 |
+
+One prediction dominates: **`kc` falls everywhere**, 2.4x in `f64` and 8x in
+`c32` 1m, whose fat "1e" panel is what forces it. That converts the `A` sliver
+from an L2 stream into an **L1 resident** — exactly the quantity Phase 3 found
+the entire method ranking to turn on, and in the direction that favours 3m. `mc`
+rises 4–6x (the model gives `A_c` 14 of 16 L2 ways) and `nc` about 20x, which
+for most corpus cases means one `jc` block. The packed-`A` footprint stays
+equalised across methods (894–914 KiB against legacy's 512–576), so the
+1m-versus-planar fairness invariant holds and 1m's `mc` is still the smaller.
+
+### Status
+
+The **portability** problem is solved — uniformly decent with no hand tuning on
+any machine whose cache hierarchy it can see. The **optimality** question on this
+machine is untouched and deliberately so. `A13`'s upper bound on `mc` — the strip
+of `D` a `jr` pass revisits — is still absent from the model, marked in the code
+where it would go, and `mc` rising 4–6x is exactly the arm that bound would
+punish. So the model is now a *second arm of the pending grid* rather than a
+change: `phase4e-blocking.sh` gained a `model` arm, and the two are only
+comparable once measured end to end in the shipping configuration (A20).
+
+| # | Assumption | Status |
+|---|---|---|
+| A22 | The model may assume one thread per physical core. | **Assumed, and the project's own rules justify it.** `cores_sharing` divides a level's logical-CPU sharing by the logical CPUs per core, so here a `shared_by = 2` L2 is one core's and a `shared_by = 16` L3 is eight cores'. Oversubscribing hyperthread siblings really would halve a thread's L1/L2, and is not modelled — the measurement rules already treat that configuration as invalid. |
+| A23 | Under threading, every cache budget must be divided by the thread count. | **Refuted; it is asymmetric.** The packed `B` panel is *shared*, so `nc`'s L3 budget is a per-socket resource used cooperatively and must **not** be divided. What shrinks `nc` is the per-thread packed `A` blocks, all of which sit in the same L3: the model charges `min(t, cores sharing that L3)` of them. This corrects the limit part 8 recorded as "`NC`'s L3 budget is still charged per core" — in the model arm only. |
+
+## Phase 4/5 interlude: AVX2 kernels, and where the model can be trusted
+
+Dispatch was a single `is_x86_feature_detected!("avx512f")`, so Zen2/Zen3, most
+laptops and the *largest partition of the cluster* ran this engine at **scalar**
+speed. That is the widest gap between what this document measures and what a
+user would experience, and it blocks any prerelease. It is now closed for
+`f32`/`f64` and all three complex methods.
+
+`avx512_kernels!` became `simd_kernels!` with the instruction set as a further
+macro parameter (D24); the four bodies are not duplicated, and 1m is still
+literally `real::<MV,NR>(2*kc, ..)` on both ISAs. Dispatch resolves through a
+`OnceLock`-cached `selected_isa()`, and `TENSORCONTRACT_KERNEL` now takes
+`scalar|avx2|avx512|auto` (D25).
+
+**The AVX-512 path is unchanged, and that is checked rather than argued:** its
+7816 zmm instructions in `examples/kernel_shapes` are byte-identical to the
+pre-merge tree, verified independently at merge time by disassembling both. So
+every AVX-512 number in this file stands, and tonight's grid still measures the
+engine it was designed against.
+
+### The register blocks, and the line between model and guess
+
+16 ymm instead of 32 zmm with the same accumulator-plane counts, so the register
+bound binds much harder. Defaults, as `MV x NR` and logical `MR x NR`:
+
+| method | `MV x NR` | f64/c64 | f32/c32 | acc | live |
+|---|---|---|---|---|---|
+| real | `2 x 6` | `8 x 6` | `16 x 6` | 12 | 15 |
+| planar | `1 x 5` | `4 x 5` | `8 x 5` | 10 | 14 |
+| 1m | `2 x 6` | `4 x 6` | `8 x 6` | 12 | 15 |
+| 3m | `1 x 4` | `4 x 4` | `8 x 4` | 12 | 14 |
+
+`real`/`1m` at `2 x 6` is BLIS's `haswell` `dgemm 6x8` / `sgemm 6x16` with the
+operand roles swapped. **These are not measured and must not be quoted as if they
+were** (D26). The modelled half — register budget and accumulator count — was
+confirmed in the disassembly at zero CPU cost, which is the fourth time the uop
+model has been right about *cliffs*. The guessed half is which of the fitting
+shapes is fastest; notably `planar 1x6` is better on both accumulator count and
+bytes/flop and is rejected only on a single spill, and 3m's `1x4` is chosen by
+analogy with the measured AVX-512 winner `1x10` (also load-bound, also lowest
+bytes/flop). Alternates are on the menu, so the whole-grid pattern applies
+unchanged once AVX2 hardware is available.
+
+### One real result that needed no machine time
+
+`tcbench shapes` under both ISAs, which is exactly what the zero-cost analyses
+were built for:
+
+| | AVX-512 | AVX2 |
+|---|---|---|
+| case-dtype-methods where `Plan::row_block` changes shape | 26 / 392 | 12 / 392 (all `f32`) |
+| case-dtype-methods with **no** menu shape that clears the gather path | 81 | **0** |
+
+Every `f64` AVX2 row block on every menu (2, 4, 6, 8, 12) divides 24, and the
+corpus rounds every stride-1 extent to a multiple of 24. So Phase 4.1c's
+row-block rule is **inert** in `f64` and in all three complex methods on AVX2,
+and still has work to do only in `f32`.
+
+### Correctness, and what is not done
+
+Every kernel family the CPU can execute — default shape plus every menu entry,
+real plus three complex methods, both precisions — is checked against the
+mathematical definition under a plain `cargo test`, so the AVX2 kernels are
+*executed* on this AVX-512 machine rather than merely compiled. A second test
+pins what must not drift between ISAs: shapes may differ, pack formats, tile
+formats and sliver arithmetic may not, because the driver, packing traversal and
+write-back are shared and know nothing about the ISA. The `Ukr` contract carried
+a second instruction set unmodified, which discharges the Phase 2 design claim
+again.
+
+Not done: **no AVX2 performance number of any kind.** Register blocks, the method
+ranking, and the cache budgets on an AVX2 machine's hierarchy are all unmeasured
+— run `examples/kernel_shapes` then `scripts/phase3-bench.sh` on a Haswell or Zen
+box. The `avx2`-without-`avx512` auto-selection branch has also never run on real
+hardware, only its forced equivalent.
+
+| # | Assumption | Status |
+|---|---|---|
+| A24 | The AVX-512 method ranking (planar > 1m > 3m at the operating `kc`) carries over to AVX2. | **Open, and probably not.** 16 ymm forces `MR` down to 4 complex rows in `f64`, which is the L1-resident regime where Phase 3 measured 3m *fastest*. AVX2's ranking is a separate experiment, not a re-run — and note the analytical model (part 9) pushes in the same direction on AVX-512. |
+| A25 | Smaller register blocks are purely a cost. | **Refuted, at zero CPU cost.** They are worse for the kernel and better for the write-back, and on AVX2 the write-back side of the trade is simply won: 81 of 392 case-dtype-methods have no AVX-512 menu shape that clears the gather path, against none on AVX2. |
 
 ## Phases 4 (rest) – 5
 
