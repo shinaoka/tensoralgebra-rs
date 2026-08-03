@@ -152,7 +152,17 @@ stage_shapes() {
 stage_validate() {
     say "validate: is concurrent placement safe on this node?"
     guard_nothing_else
-    scripts/validate-placement.sh "" "$OUT/placement" "$SIZE" "$REPS" \
+    # The threads stage's `t1`/`t1b` arms are already a solo single-core pair over
+    # the full corpus at this size and reps, so reuse them rather than spending
+    # another hour of the allocation measuring the same thing.
+    local reuse=""
+    if [ -s "$OUT/phase4f/th-t1-f64c64.csv" ] && [ -s "$OUT/phase4f/th-t1b-f64c64.csv" ]; then
+        reuse="$OUT/phase4f"
+        say "reusing the solo pair from $reuse"
+    else
+        say "no finished threads run to reuse; measuring the solo pair here (+1 arm)"
+    fi
+    REUSE_SOLO="$reuse" scripts/validate-placement.sh "" "$OUT/placement" "$SIZE" "$REPS" \
         2>&1 | tee -a "$OUT/placement.log"
     say "validate done -- read the decision rule in scripts/validate-placement.sh"
 }

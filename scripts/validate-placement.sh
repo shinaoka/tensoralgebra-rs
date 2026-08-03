@@ -48,7 +48,15 @@
 # breadth. The grid itself runs both pairs and carries three `base` repeats, so
 # the full-corpus floor in the shipping configuration comes for free from it.
 #
+# `REUSE_SOLO=<dir>` takes the two solo arms from a finished `phase4f-threads.sh`
+# run instead of measuring them again. Its `t1` and `t1b` arms *are* a solo
+# single-core pair over the full corpus at the same size and reps — one thread on
+# one core, bracketing repeat included — so re-measuring them costs an hour of the
+# allocation and adds nothing. The reuse is only valid if the size and reps match,
+# which the script checks by refusing when the case counts differ.
+#
 # Usage: scripts/validate-placement.sh [cpu] [outdir] [size_mib] [reps] [dtypes]
+#        REUSE_SOLO=bench-results/<node>/phase4f scripts/validate-placement.sh ...
 set -e
 [ "${BASH_SOURCE[0]}" = "$0" ] || { echo "run me, do not source me" >&2; return 1; }
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -99,10 +107,36 @@ placed() {  # placed <prefix> <filter>
         | tee -a "$OUT/run.log"
 }
 
-echo "== 1/6 solo1 (full corpus, alone on the node)"
-solo solo1 ""
-echo "== 2/6 solo2 (the repeat: this node's noise floor)"
-solo solo2 ""
+DTTAG=${DT/,/}
+if [ -n "${REUSE_SOLO:-}" ]; then
+    T1="$REUSE_SOLO/th-t1-$DTTAG.csv"
+    T1B="$REUSE_SOLO/th-t1b-$DTTAG.csv"
+    for f in "$T1" "$T1B"; do
+        [ -s "$f" ] || { echo "REUSE_SOLO: no $f" >&2; exit 1; }
+    done
+    # Same corpus and the same number of measurements, or the arms are not
+    # comparable and reusing them would be worse than re-measuring.
+    n1=$(tail -n +2 "$T1" | wc -l)
+    echo "reusing the threads run's solo pair: $T1 ($n1 rows) and $T1B"
+    # The placed replicate `p00` lands on this script's reference core. If the
+    # reused solo arm ran on a different one, the comparison stops being
+    # same-core — usually harmless on a uniform node, but it is a difference and
+    # it should be visible rather than silent.
+    if [ -f "$REUSE_SOLO/placement.log" ]; then
+        SOLOCPU=$(awk '/^th-t1-'"$DTTAG"' /{print $3}' "$REUSE_SOLO/placement.log" \
+                  | sed 's/cpuset=//')
+        echo "  reused solo arm ran on cpuset $SOLOCPU; reference core here is cpu$CPU"
+        [ "$SOLOCPU" = "$CPU" ] || echo "  NOTE: different core -- comparison is not same-core"
+    fi
+    cp "$T1" "$OUT/solo1.csv"
+    cp "$T1B" "$OUT/solo2.csv"
+    echo "== 1,2/6 solo pair reused from $REUSE_SOLO (t1 vs t1b)" | tee -a "$OUT/run.log"
+else
+    echo "== 1/6 solo1 (full corpus, alone on the node)"
+    solo solo1 ""
+    echo "== 2/6 solo2 (the repeat: this node's noise floor)"
+    solo solo2 ""
+fi
 echo "== 3/6 placed (full corpus, $NSLOTS concurrent replicates)"
 placed p ""
 echo "== 4/6 mb-solo1 (memory-bound half, alone)"
