@@ -13,18 +13,30 @@ No transposed copies, no temporary workspace, no FFI in the hot path. The
 algorithm is Matthews' block-scatter-matrix tensor contraction
 (arXiv:1607.00291) inside BLIS's five-loop, two-level-packing structure.
 
-> **Status.** The engine is correct and framework-complete (Phase 2 gate met);
-> the micro-kernels are still the portable scalar fallback, so absolute
-> performance and the method-vs-method ranking are **not yet meaningful**.
-> Vectorised kernels are Phase 3.
+> **Status: prerelease.** The engine is correct, vectorised and benchmarked
+> against TBLIS on a single machine. It is *not* yet tuned for machines other
+> than that one, and the table under [Performance](#performance-and-what-is-actually-measured) says exactly which claims are measured and which are not.
+> The API may still change.
+>
+> What you get today, by hardware:
+>
+> | | micro-kernels | tuned? |
+> |---|---|---|
+> | x86-64 with AVX-512F | AVX-512, per method | register blocks **measured** on a Cascade Lake Xeon; cache blocking hand-set for that machine and not yet swept |
+> | x86-64 with AVX2+FMA | AVX2, per method | correct; register blocks **modelled, not measured** |
+> | anything else | portable scalar | correct; slow by design |
+>
+> Threading and an analytical cache-blocking model are implemented and **off by
+> default**, because neither has been measured yet — see
+> [Switches](#switches). Turning them on is one call or one environment
+> variable, and results are bitwise identical either way.
 >
 > The project's original thesis — that complex contraction is where existing
 > engines leave the most on the table, because interleaved storage compounds
 > with scatter/gather — did not survive the Phase 1 premise check. The observed
 > weakness is real against the *released* TBLIS but has a much more mundane
 > cause, and is already fixed in TBLIS 2.0. See the headline finding below and
-> [`DECISIONS.md`](DECISIONS.md) for the data and the recommended change of
-> direction.
+> [`DECISIONS.md`](DECISIONS.md) for the data.
 
 ## Headline finding
 
@@ -79,6 +91,66 @@ every stride-1 extent up to a multiple of 24, which divides every plausible
 register block, so its block-scatter vectors are **fully regular** and the
 irregular gather path never runs. Any claim about awkward strides needs the
 `--stress ragged` / `--stress padded` modes added here.
+
+## Performance, and what is actually measured
+
+Single core, Xeon Gold 6244 (Cascade Lake, AVX-512), full 49-case TCCG corpus at
+64 MiB nominal tensor size, planar method, GF/s counting 2 flops per real MAC and
+8 per complex one. Raw CSVs in [`bench-results/`](bench-results/):
+
+| dtype | min | median | geomean | max |
+|---|---|---|---|---|
+| `f32` | 4.8 | 61.4 | 62.3 | **161.2** |
+| `f64` | 1.5 | 35.4 | 34.4 | **70.7** |
+| `c32` | 8.1 | 93.7 | 89.2 | **168.4** |
+| `c64` | 4.0 | 49.5 | 48.7 | **83.5** |
+
+For scale, OpenBLAS on the same core reaches ~96 GF/s for both `dgemm` and
+`zgemm` on large square shapes. The corpus deliberately spans compute-bound and
+badly memory-bound contractions, which is why the min and max differ by 20x or
+more; the single worst case (`adbjc-cbdka-kj`) is memory-bound for every engine
+measured, TBLIS included.
+
+**The counterintuitive part, and the project's main technical result:** complex
+throughput is *higher* than real on the same shapes — 49.5 against 35.4 GF/s in
+double, 93.7 against 61.4 in single, at the median. A complex MAC is four real
+FMAs on twice the bytes, so complex contraction has **twice the arithmetic
+intensity** and amortises packing and indexing overhead better. Complex is not
+the weak spot; low arithmetic intensity is, in either domain.
+
+**On the three methods:** planar wins on the corpus geometric mean in both
+precisions, by single-digit percent, and the ranking **inverts on memory-bound
+shapes** where 3m's 25% flop saving wins. The deciding quantity is bytes moved
+per useful flop, not flop count and not in-register shuffles. Exact margins moved
+during optimisation work and are being re-measured, so this README does not quote
+a number for them — see the Phase 3 and Phase 4 reports in
+[`DECISIONS.md`](DECISIONS.md), which record the mechanism and every measurement.
+
+**Not measured, and so not claimed:** anything on AVX2 hardware; anything
+threaded; anything with the analytical cache-blocking model enabled; any machine
+whose cache hierarchy differs from the one above while the default (hardcoded)
+blocking is in force.
+
+## Switches
+
+Every performance-relevant choice is reachable at run time, so an A/B is a
+process restart rather than a rebuild. None of them changes results.
+
+| variable | effect |
+|---|---|
+| `TENSORCONTRACT_COMPLEX` | `planar` \| `1m` \| `3m` — the complex method |
+| `TENSORCONTRACT_THREADS` | thread count, default **1**. Results are bitwise identical at any count |
+| `TENSORCONTRACT_KERNEL` | `auto` (default) \| `scalar` \| `avx2` \| `avx512` — pin the instruction set |
+| `TENSORCONTRACT_BLOCKMODEL` | `legacy` (default) \| `model` — derive cache blocking from probed cache descriptors instead of hardcoded constants |
+
+`Plan::with_complex_method`, `Plan::with_threads` and `Plan::with_blocking` are
+the programmatic equivalents, and take precedence.
+
+Threading partitions the *output* — row strips of micro-panels by column groups,
+never the contraction index — so every output element has exactly one owning
+thread accumulating over the full contraction in the original order. That is why
+the result is bitwise identical to serial at every thread count, and it is
+asserted in the test suite rather than assumed.
 
 ## Three complex methods, one engine
 
