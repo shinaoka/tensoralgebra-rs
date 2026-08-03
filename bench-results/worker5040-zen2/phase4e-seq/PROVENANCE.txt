@@ -1,0 +1,24 @@
+These arms were measured on worker5175, not worker5040.
+
+Job 6745978 (scripts/rusty-phase4-seq.sbatch) was submitted with
+OUT=bench-results/worker5040-zen2 so that its results would sit beside the placed
+grid, but worker5040 was still held exclusively by job 6745376, so Slurm allocated
+worker5175. The directory name is therefore wrong and this file exists so the fact
+is not lost if the directory is never renamed. `topology.json` here records the
+real host, as does the head of slurm-tp-phase4-seq-6745978.out.
+
+The two nodes are the same configuration -- verified by diffing the probed cache
+descriptors, not assumed from `sinfo`:
+
+  32 KiB L1d 8-way private, 512 KiB L2 8-way private, 16 MiB L3 16-way per 4
+  cores, 32 L3 domains, SMT off, 2 sockets x 64 cores, 8 NUMA nodes of 16 cores.
+
+What that does and does not license:
+
+  * Every conclusion this run is *for* -- how nc25, nc400 and model compare against
+    base in the clean single-core regime -- is a within-run, within-node ratio and
+    is unaffected.
+  * The cross-tie to the placed grid on worker5040 through the shared `base` arm
+    spans two machines. Same configuration is not the same silicon: treat that tie
+    as context, not as evidence, and do not quote a seq-vs-placed ratio as a
+    measurement of anything.

@@ -1411,12 +1411,129 @@ so the next candidate costs nothing to score.
 
 ## Phase 4 report, part 7 (item 2): the `MC`/`KC`/`NC` grid
 
-**Status: the grid is measuring. Design and rationale below; results follow in
-this section when it lands.** Started 2026-08-03 08:11 on `ccqlin038` cpu4,
-19 arms x 2 dtype pairs, ~7 h. If this section still says "measuring" and
-`bench-results/phase4e/run.log` ends in `grid complete`, the run finished and
-the analysis is what is missing — `scripts/blocking-score-rules.py
-bench-results/phase4e/features.csv bench-results/phase4e` reproduces it.
+**Status: measured on `worker5040` (Zen2, AVX2), 40 arms in 34.6 min wall against
+707 min of arm-time — a 20.4x return on the concurrent placement.** Results
+first, then the design that produced them. The `ccqlin038` run this section was
+written for never happened; it was stopped after two arms (see "Resume here") and
+the grid moved to a cluster node, which changed the machine and the instruction
+set. **Nothing here is comparable to a single-core number elsewhere in this file.**
+
+### The floor, and why this grid supports global conclusions only
+
+Three independent estimates from inside the run:
+
+| estimate | `f64`/`c64` | `f32`/`c32` |
+|---|---|---|
+| `basem` vs `base` (mid-run repeat) | 1.000–1.004 | 0.997–1.004 |
+| `base2` vs `base` (end-run repeat) | 0.991–0.996 | 0.983–0.999 |
+| arms that are **bit-for-bit identical** to `base` (`kc256` in 8-byte, `kc384` in 4-byte) | 0.995–0.999 | 0.979–0.992 |
+| per-case spread over pinned-`kc` arms at `k <= 64`, where they are the same computation | **6.2%** | 1.9% |
+
+The third row is the sharpest instrument in the grid and it was free: for the
+4-byte dtypes `TENSORCONTRACT_KC=384` *is* the default, so that arm must read
+1.000 and reads 0.979–0.992. So the geomean floor is **~0.5% in 64-bit and ~2% in
+32-bit**, and the per-case floor is **6.2% in `f64`**.
+
+That last number governs how the rest of this section may be read. The grid has 19
+arms, so choosing the best per case harvests noise: the "oracle" row below claims
+1.077 for `f64` against the best *global* arm's 1.050, and with a 6.2% per-case
+floor that 2.7% gap is not distinguishable from picking maxima out of noise. The
+demonstration is in the run itself — the top of the per-case wins list includes
+`kc64` beating `base` by 1.130 on `ajbdc-ckbad-jk`, a case with `k = 24` where
+**every pinned-`kc` arm is bit-for-bit the same computation.** A third of the
+corpus is in that position. So: `193 of 588 case-dtype-methods gain more than the
+per-case floor` is substantially noise, no per-case blocking rule is supportable
+from this run, and every conclusion below is a *global* one.
+
+### `KC` is first-order, and the direction is deeper — the opposite of what part 9 predicts
+
+Geomean against `base`, per dtype and method (identical across methods in the real
+dtypes because the real path is method-independent):
+
+| arm | `f32` | `f64` | `c32` planar / 1m / 3m | `c64` planar / 1m / 3m |
+|---|---|---|---|---|
+| `kc64` | 0.760 | 0.848 | 0.798 / 0.794 / 0.783 | 0.883 / 0.889 / 0.891 |
+| `kc128` | 0.885 | 0.948 | 0.915 / 0.916 / 0.903 | 0.956 / 0.969 / 0.960 |
+| `kc256` | 0.960 | *0.995* | 0.982 / 0.989 / 0.981 | *0.997 / 0.999 / 0.999* |
+| `kc384` | *0.979* | 1.038 | *0.992 / 0.991 / 0.990* | 1.026 / 1.021 / 1.029 |
+| `kc512` | 0.985 | **1.050** | 1.000 / 0.999 / 0.999 | **1.033 / 1.034 / 1.033** |
+
+*Italic* entries are the arms that are bit-for-bit `base`, i.e. the floor.
+
+1. **Shallow `kc` is catastrophic**: `kc64` costs 15–24%. The Phase 2 heuristic is
+   nowhere near that bad, but it is on the wrong side of the optimum.
+2. **`f64` gains 5.0% at `kc512`** — ten times the 64-bit floor — and `c64` gains
+   3.3% in all three methods. `f32` and `c32` are already at their optimum
+   (`base` is `kc = 384` there) and go nowhere.
+3. **This contradicts part 9's central prediction.** The analytical model wants
+   `kc` *smaller* — on this machine 256→128 for `c64` 1m and 384→160 for `c32` 1m —
+   to make the `A` sliver an L1 resident, which Phase 3 found the method ranking to
+   turn on. Measured, the complex methods prefer `kc` **deeper or unchanged**, and
+   nothing prefers it shallower. Whatever the L1-residency argument buys, on Zen2
+   it is smaller than what deeper panels buy.
+4. `kc512`-`f64c64` is one of the 13 arms that crossed a socket boundary from
+   `base`, and crossing reads ~1.1% *low*, so the 1.050 is if anything an
+   underestimate.
+
+### Coupling adds nothing, and `MC` is a plateau
+
+| arm | `f32` | `f64` | `c64` planar |
+|---|---|---|---|
+| `ck512` (depth + re-derived `mc`/`nc`) | 0.988 | 1.031 | 1.006 |
+| `kc512` (depth alone) | 0.985 | **1.050** | **1.033** |
+| `mc25` | 0.981 | 1.019 | 0.998 |
+| `mc50` | 0.971 | 1.029 | 1.005 |
+| `mc200` | 0.986 | 1.015 | 1.013 |
+| `mc400` | 0.987 | 1.020 | 1.017 |
+
+Two answers to questions part 7 was built to separate:
+
+* **The coupled arms are no better than the pinned ones and in `f64` are 1.9%
+  worse.** Re-deriving `mc`/`nc` at the new depth is not where the effect is —
+  panel depth alone is. The pair of axes did its job: the two bounds are
+  separable and only one of them matters.
+* **`MC` is a wide plateau.** Scaling the derived `mc` from 25% to 400% — a
+  sixteenfold range — moves the geomean by at most 3%, all of it within about two
+  floors. A13's two-sided bound is presumably real, but **the interval between the
+  bounds is wide enough that `MC` is not worth tuning.** That is a clean negative
+  result and it retires an item.
+* The per-case rules the scorer tries (`couple kc at k <= 32/64`) reach at most
+  1.018–1.025 in `f64` — *worse* than simply setting `kc = 512` globally. Combined
+  with the 6.2% per-case floor, there is no case for a per-case blocking rule here.
+
+### Held back: the `nc` arms and the `model` arm
+
+`nc25`, `nc400` and `model` change how much memory traffic an arm generates, and
+the concurrent placement is **not** neutral for such arms — it was rejected at
+−3.2% on the memory-bound half (part 10). A uniform penalty cancels in `arm /
+base`; a traffic-dependent one does not. What the placed grid shows for them is
+recorded here for completeness and **must not be quoted** until the sequential
+re-run lands:
+
+| arm | `f32` | `f64` | `c32` planar / 1m / 3m | `c64` planar / 1m / 3m |
+|---|---|---|---|---|
+| `nc25` | 0.966 | 0.991 | 0.977 / 0.972 / 0.942 | 0.972 / 0.974 / 0.948 |
+| `nc400` | 0.970 | 0.994 | 0.995 / 0.994 / 0.996 | 0.996 / 0.993 / 0.998 |
+| `model` | 0.984 | 1.024 | 0.991 / 0.947 / 0.938 | 0.977 / 0.975 / 0.959 |
+
+If those survive the clean re-run they say something important — that the
+analytical model helps `f64` by 2.4% and *hurts* the complex methods by 2–6%, which
+would make part 9's portability claim conditional rather than general. That is
+exactly why they are being re-measured rather than reported.
+`scripts/rusty-phase4-seq.sbatch` is the run; the `nc` oracle row (1.008–1.016)
+suggests `nc` has almost nothing in it either way.
+
+### What this means for the default `KC`
+
+The recommendation is **`kc = 512` for 8-byte reals**, worth 5.0% in `f64` and
+3.3% in `c64` against floors of 0.5%, with the 4-byte default already correct at
+384. It is a one-line change to `Blocking::derive` and it is deliberately **not**
+made in the same commit as the measurement. Note it is also a change measured on
+*Zen2 with AVX2 register blocks*: on `ccqlin038` the same question was never
+answered, so this is a recommendation for this machine class and an argument for
+the model arm rather than for a new hardcoded constant everywhere.
+
+### Why this shape of experiment
 
 ### Why this shape of experiment
 

@@ -1,0 +1,7 @@
+# arm bl-mc25-f32c32 on cpu52, L3 domain 13 = cpus 52-55, numa 3
+# window 661.2s; env TENSORCONTRACT_MC_PCT=25
+cpu52 busy 100.0% <- measurement thread
+cpu53 busy 0.0%
+cpu54 busy 0.0%
+cpu55 busy 0.0%
+# domain co-tenancy: none above 5%

@@ -105,3 +105,5 @@ best per method at kc = 384:
 [2026-08-03T17:34:49-04:00] validate done -- read the decision rule in scripts/validate-placement.sh
 [2026-08-03T17:34:49-04:00] outdir: bench-results/worker5040-zen2
 [2026-08-03T17:34:49-04:00] grid: MC/KC/NC, placement=auto
+[2026-08-03T18:09:28-04:00] grid done
+[2026-08-03T18:09:28-04:00] outdir: bench-results/worker5040-zen2
