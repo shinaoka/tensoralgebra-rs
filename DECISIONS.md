@@ -121,16 +121,26 @@ worth another 1.218 on six `c32` 1m cases. End to end against Phase 4.1:
 **`f32` 1.028, `c32` 1m 1.022, `c32` planar 1.013, `c32` 3m 1.010**, 64-bit
 flat, best case 1.48x, one genuine per-case regression at 7%.
 
-**Item 2 is in progress: the grid is measuring.** Launched 2026-08-03 08:11 on
-`ccqlin038` cpu4, 19 arms x 2 dtype pairs, ~7 h, writing
-`bench-results/phase4e/bl-*`. Read Phase 4 report **part 7** for the design and
-for what the grid deliberately does not cover. On resume: if
-`bench-results/phase4e/run.log` ends in `grid complete`, run
-`scripts/blocking-score-rules.py bench-results/phase4e/features.csv
-bench-results/phase4e` and write the results into part 7; if it does not, the
-run was interrupted and the arms that exist are still valid (each arm is one
-independent CSV) — re-run the missing ones with the same script, but **not**
-while anything else uses the machine.
+**Two things are pending, one measurement and one measurement.** Both are
+written, smoke-tested and waiting for an idle machine; neither needs a rebuild.
+
+1. **Item 2, the blocking grid** (part 7). `scripts/phase4e-blocking.sh 4
+   bench-results/phase4e`, 19 arms x 2 dtype pairs, ~7 h. It was launched
+   2026-08-03 08:11 and **stopped after two arms** because the workstation was
+   needed; the partial arms were discarded rather than mixed with a later
+   regime. Nothing of it is measured. On completion, `run.log` ends in `grid
+   complete` and `scripts/blocking-score-rules.py
+   bench-results/phase4e/features.csv bench-results/phase4e` produces the
+   tables for part 7. Note part 8's caveat: the `nc` arms are single-core
+   results, because threading makes `NC` a per-socket question.
+2. **Item 4, thread scaling** (part 8). `scripts/phase4f-threads.sh 0-7
+   bench-results/phase4f`, ~1 h, wants a whole socket rather than one core.
+   Threading itself is **implemented, correct and off by default** — see part 8
+   for the scheme and D21/D22 for why.
+
+Neither may run while anything else uses the machine — not even a compile. Both
+scripts are the only thing that needs to happen; everything they depend on is
+committed and built.
 
 **Item 2, in priority order:**
 
@@ -262,6 +272,8 @@ effectively the same ceiling, as expected.
 | D17 | Micro-kernels are macro-generated over `(MV, NR)` const generics from one body per method, not hand-written per shape. | A comparison between three methods must not also be a comparison between three hand-tunings. One body per method, one shape parameterisation, and the shape is then chosen by measurement. It also made the shape sweep possible at all. |
 | D18 | `#[target_feature]` kernels are reached through one-line plain-`fn` trampolines. | A `#[target_feature]` function cannot be coerced to a function pointer, which the `Ukr` contract requires. Cost is one `call` per micro-tile against `kc*MR*NR` FMAs — unmeasurable. |
 | D19 | Register blocks were chosen by measured throughput at the `kc` the engine actually uses, per method and per element type. | The uop model gets the *cliffs* right (spills above 32 live vector registers) but the *ranking* wrong: it predicts 3m fastest, and 3m is fastest only when the panels are L1-resident. See the Phase 3 report. |
+| D21 | Threading parallelises the `M` direction only, into contiguous strips of whole `MR` panels, with a per-thread packed `A` and a **shared** packed `B`. | The `pc` loop accumulates into `D` in place, so parallelising it would need a per-thread temporary or atomics; `M` instead gives every output element one owning thread. That makes the result **bitwise identical to serial at every thread count** — a stronger invariant than agreeing with the oracle, and one a test can assert directly. Strips of whole panels keep each thread's row blocks aligned with the block scatter, so the write-back fast path and the orientation rule are unaffected. `B` is shared because `NC` is sized for L3, which is a per-socket resource. |
+| D22 | The default thread count stays **1** until scaling is measured on the reference machine. | Every performance number in this file is a single-core measurement, and the item 2 blocking grid is designed against the serial engine. A default that changed with the machine's core count would make committed numbers irreproducible from a bare checkout. `TENSORCONTRACT_THREADS` and `Plan::with_threads` opt in; flipping the default is one line in `Plan::threads`. |
 | D20 | Workspace MSRV raised `1.75` → `1.89`. | AVX-512 intrinsics and `is_x86_feature_detected!("avx512f")` were stabilised in Rust 1.89. The alternative — feature-gating the AVX-512 path so 1.75 still builds — would make the project's headline measurement an opt-in extra. 1.89 is a year old. |
 
 ---
@@ -1420,6 +1432,99 @@ product of the two grids is 19 x 5 arms, which is a week; the intended order is
 to settle `kc` first and then re-run the row-block grid at the chosen `kc`,
 because that is the direction the coupling runs — `kc` decides the regime, and
 the shape is chosen inside it.
+
+## Phase 4 report, part 8 (item 4): threading, implemented and unmeasured
+
+**Status: built, correct, and not yet measured.** It ships **off** (D22): the
+default thread count is 1, so nothing in this file changes and the item 2 grid
+still measures the engine it was designed against.
+
+### Why this got done before item 2 finished
+
+The workstation was needed for other work, which made a seven-hour
+noise-sensitive measurement the wrong thing to be holding the machine for and a
+structural implementation the right one — threading's *design and correctness*
+cost almost no CPU, while its measurement wants more of the machine than the
+blocking grid does (a whole socket, not one core).
+
+There is also an ordering argument, and it is worth recording because it cuts
+one way and not the other. Under this parallelisation the packed `A` block stays
+per-thread in L2, so item 2's `kc` and `mc` conclusions will carry over
+unchanged. The packed `B` panel is **shared**, and `B_BUDGET` currently charges
+3 MiB of a 25 MiB L3 as though one core owned the cache — so `NC` becomes a
+per-socket question the moment threading is on. **Tonight's `nc` arms are
+therefore single-core results and must be labelled as such**; the `kc` and `mc`
+arms are not affected.
+
+### The scheme
+
+`M` is cut once into `p` contiguous strips of whole `MR` panels. Each thread
+runs loops 3, 2 and 1 over its own strip with its own packed `A` block; the
+packed `B` panel is shared, packed cooperatively (each thread takes a slice of
+its `NR` slivers), and bracketed by two barriers per `(jc, pc)` iteration — one
+so nobody is still reading the previous panel, one so the new one is complete.
+Loops 5 and 4 are identical across threads, which is what makes the barrier
+counts agree without tracking them.
+
+Consequences, all deliberate (D21):
+
+* **No reduction anywhere.** Every output element has one owning thread which
+  accumulates over the full `K` in the original order.
+* **Bitwise identical to serial at any thread count**, therefore. This is the
+  strongest available correctness invariant and it is asserted directly, not
+  approximated by a tolerance: a strip that dropped a row, one that
+  double-counted, or a thread reading `B` across a barrier would each break it,
+  and the last of those is exactly the kind of bug a tolerance check waves
+  through.
+* **Strips are whole `MR` panels**, so each thread's row blocks stay aligned
+  with the block scatter. The write-back fast path, the row-block rule and the
+  orientation rule are all untouched — threading does not re-open any of
+  Phase 4.1.
+* **The serial path is unchanged**: at `p == 1` the difference from the
+  pre-threading driver is two `Option` checks per `(jc, pc)`, nowhere near the
+  hot loops.
+
+### Correctness
+
+`cargo test --workspace --release` green, and green again under
+`TENSORCONTRACT_KERNEL=scalar`, at `TENSORCONTRACT_THREADS` of 1, 2, 4 and 8 —
+i.e. the *entire* existing suite, oracle comparisons included, also runs through
+the threaded driver, which was free coverage worth taking. Five new tests cover
+bitwise agreement with serial across all four dtypes and all three methods, a
+blocking that forces hundreds of barrier round-trips, a batch axis (whose
+failure mode is a deadlock rather than a wrong answer, so it is worth isolating),
+and thread counts far exceeding the panel count.
+
+`Plan::strips` reports how many strips a plan will really use, and the tests
+assert it — following the precedent of the orientation tests, which assert the
+heuristic actually fires so that a test cannot quietly stop testing anything.
+That assertion earned itself immediately: it caught that the strips run along
+the **oriented** row direction, so a `1 x 33` output parallelises into two
+strips along 33. Skinny-`M` is therefore not automatically serial; skinny in
+*both* directions is.
+
+### What is not known yet
+
+Everything quantitative. `scripts/phase4f-threads.sh` is written and
+smoke-tested and measures 1/2/4/8 threads on physical cores of one socket
+(it refuses a cpuset containing hyperthread siblings, since that measures a
+different question). The only number in hand is from that smoke test — one case,
+8 MiB, one rep, on a shared machine, so an indication and nothing more:
+`ijkl-imjn-lnkm` at **3.63–3.73x on 4 threads** in `f64`/`c64` and 2.69x in
+`c32` planar. Treat as evidence that the parallelism is real, not as a result.
+
+Three limits are structural and known in advance, listed in the order they will
+bite:
+
+1. **Parallelism is capped at `ceil(M / MR)` strips.** A contraction whose
+   oriented row direction is short cannot use the cores however much work it
+   contains. The fix is `N`-direction parallelism; the point of measuring first
+   is to size how much of the corpus needs it.
+2. **Threads are spawned per `execute` call** via `std::thread::scope`, not
+   reused from a pool. Irrelevant at corpus sizes, first-order for small
+   repeated contractions — which is exactly the low-arithmetic-intensity
+   population Phase 1 identified as the real headroom.
+3. **`NC`'s L3 budget is still per-core**, as above.
 
 ## Phases 4 (rest) – 5
 

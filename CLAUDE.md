@@ -38,8 +38,15 @@ they can be benchmarked against each other and against TBLIS on equal footing.
   orientation at ~2x. **Item 1d (the orientation rule) is done** — the
   discriminant A14 had recorded as unknown was found, worth +1.0–2.8% corpus
   geomean in every 32-bit column and up to 1.48x per case. **Item 2
-  (`MC`/`KC`/`NC`) is next.** See `DECISIONS.md` Phase 4 report parts 5 and 6.
+  (`MC`/`KC`/`NC`) is built but unmeasured** — the grid is written and
+  smoke-tested and needs ~7 h of an idle machine. **Item 4's threading is
+  implemented, correct and off by default**, also unmeasured. See
+  `DECISIONS.md` Phase 4 report parts 5–8.
 * Phase 5 not started.
+
+**Two measurements are pending and both need an exclusive machine**;
+`DECISIONS.md`'s "Resume here" says which script and what to do with the output.
+Do not start either while anything else runs — a compile counts.
 
 Workspace MSRV is **1.89** (AVX-512 intrinsics stabilised there).
 
@@ -204,8 +211,16 @@ three counts. No AVX2 path yet; deferred to Phase 5's multi-arch work.
    rather than holding the Phase 3 table fixed.
 3. **Dispatch the complex method by shape** — 3m on memory-bound shapes,
    planar otherwise. The inversion is measured and large enough to exploit.
-4. Then: threading (BLIS-style, `std::thread::scope`, static partitioning with
-   a shared packed-B panel), small-`k` handling, prefetch, block-scatter
+4. **Threading — implemented, unmeasured.** BLIS-style over `M` only:
+   contiguous strips of whole `MR` panels, per-thread packed `A`, shared packed
+   `B`, `std::thread::scope`, static partitioning. Results are **bitwise
+   identical to serial at every thread count** (no reduction is parallelised),
+   which is the invariant the tests assert. Off by default (`TENSORCONTRACT_THREADS`
+   or `Plan::with_threads` opts in) so every committed single-core number stays
+   reproducible. Known limits: parallelism caps at `ceil(M / MR)` strips, threads
+   are spawned per call rather than pooled, and `NC`'s L3 budget is still charged
+   per core. Measure with `scripts/phase4f-threads.sh` — it wants a whole socket.
+   Then: small-`k` handling, prefetch, block-scatter
    regularity exploitation, and the rest of the low-arithmetic-intensity work
    from Phase 1 (fusing the `pc` loop so `C` is touched once rather than
    `K/KC` times; a pack-free fast path when block scatter is already
@@ -283,6 +298,8 @@ scripts/compare-sweeps.py BASE_CSVS NEW_CSVS
 scripts/phase4c-rowblock.sh  4 bench-results/phase4c   # every register block
 scripts/phase4d-orient.sh    4 bench-results/phase4d   # both orientation arms
 scripts/phase4e-blocking.sh  4 bench-results/phase4e   # the MC/KC/NC grid, ~7 h
+scripts/phase4f-threads.sh 0-7 bench-results/phase4f   # thread scaling, ~1 h,
+                                                       # wants a whole socket
 scripts/rowblock-score-rules.py bench-results/phase4c/shapes.csv bench-results/phase4c
 scripts/orient-score-rules.py   bench-results/phase4d/features.csv bench-results/phase4d
 scripts/blocking-score-rules.py bench-results/phase4e/features.csv bench-results/phase4e
@@ -332,6 +349,7 @@ Useful environment variables:
 | `TENSORCONTRACT_MC/_KC/_NC` | override cache blocking absolutely |
 | `TENSORCONTRACT_MC_PCT/_NC_PCT` | scale the *derived* `mc`/`nc`, so each dtype and method keeps its budget share |
 | `TENSORCONTRACT_KC_COUPLE` | set `kc` *and* re-derive `mc`/`nc` at that depth; the item 2 grid's second arm |
+| `TENSORCONTRACT_THREADS` | thread count, default **1**. Results are bitwise identical at any value, so this is never a correctness or accuracy decision. Also runs the whole test suite through the threaded driver, which is worth doing after any driver change |
 | `TENSORCONTRACT_ORIENT` | `none` \| `swap`: pin the row/column orientation; `legacy`: the Phase 4.1 rule |
 | `TENSORCONTRACT_WRITEBACK` | `gather` forces the general scatter write-back |
 | `TENSORCONTRACT_ROWBLOCK` | `base` \| `auto` \| `mr=<n>` \| `idx=<i>`: pin the micro-tile row block |

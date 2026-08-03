@@ -710,3 +710,188 @@ fn conjugation_matrix_is_consistent() {
         }
     }
 }
+
+// ----------------------------------------------------------------- threading
+//
+// The driver parallelises the `M` direction only, cutting it into contiguous
+// strips of whole `MR` panels. Every output element therefore has exactly one
+// owning thread, which accumulates over the full `K` range in the original
+// order, so the result must be **identical for every thread count** — not
+// merely equal to a tolerance. That is a far stronger invariant than agreeing
+// with the reference oracle, and it is what these tests check: a strip
+// partition that dropped a row, double-counted one, or let a thread read the
+// shared `B` panel across a barrier would all break it, while a tolerance-based
+// check could easily miss the last of those.
+
+/// Run one `A[m,k,h] B[k,n,h] -> D[m,n,h]` product at each thread count in
+/// `threads` and require every result to match the serial one exactly.
+fn threaded_case<T>(
+    shape: (i64, i64, i64, i64),
+    blocking: Option<Blocking>,
+    method: ComplexMethod,
+    threads: &[usize],
+    seed: u64,
+) where
+    T: Element,
+    T::Real: KernelSet,
+{
+    let (m, n, k, batch) = shape;
+    let mut rng = ChaCha8Rng::seed_from_u64(seed);
+    let la = Layout::col_major(&[m, k, batch]);
+    let lb = Layout::col_major(&[k, n, batch]);
+    let ld = Layout::col_major(&[m, n, batch]);
+    let a: Vec<T> = fill(la.storage_len() as usize, &mut rng);
+    let b: Vec<T> = fill(lb.storage_len() as usize, &mut rng);
+    let alpha = sample::<T>(&mut rng);
+    // Non-zero starting contents, so a strip that never gets written shows up
+    // as leftover garbage rather than as a plausible zero.
+    let start: Vec<T> = fill(ld.storage_len() as usize, &mut rng);
+
+    let run = |nthreads: usize| -> Vec<T> {
+        let plan = Plan::new(
+            Operand::new(&la, &[0, 2, 3]),
+            Operand::new(&lb, &[2, 1, 3]),
+            None,
+            Operand::new(&ld, &[0, 1, 3]),
+        )
+        .expect("plan")
+        .with_complex_method(method);
+        let plan = match blocking {
+            Some(blk) => plan.with_blocking(blk),
+            None => plan,
+        };
+        let plan = plan.with_threads(nthreads);
+        assert_eq!(plan.threads(), nthreads.max(1));
+        // Assert the case actually splits, and by how much, so a partition that
+        // quietly stopped engaging cannot leave these tests green and empty.
+        let (mr, ..) = tensorcontract::kernel::selected_config::<T>(method);
+        // The strips are panels of the *oriented* row direction: when the plan
+        // computes `D^T = B^T A^T` the split runs along `n`. Getting this wrong
+        // is how the first version of this assertion failed — usefully, since it
+        // means a skinny-`M` contraction can still parallelise, as long as it is
+        // skinny in the direction that ends up in the column role.
+        let rows = if plan.transposes_gemm(mr) { n } else { m };
+        let cap = (rows as usize).div_ceil(mr).max(1);
+        assert_eq!(
+            plan.strips(mr),
+            nthreads.min(cap).max(1),
+            "{m}x{n}x{k} [{}]: {nthreads} threads over {cap} panels of {mr} in the row direction",
+            method.name()
+        );
+        let mut d = start.clone();
+        unsafe {
+            plan.run_raw::<T>(
+                alpha,
+                a.as_ptr(),
+                b.as_ptr(),
+                T::zero(),
+                d.as_ptr(),
+                d.as_mut_ptr(),
+            )
+        };
+        d
+    };
+
+    let serial = run(1);
+    for &p in threads {
+        let got = run(p);
+        let bad = serial
+            .iter()
+            .zip(&got)
+            .enumerate()
+            .find(|(_, (s, g))| s != g)
+            .map(|(i, _)| i);
+        assert!(
+            bad.is_none(),
+            "{m}x{n}x{k} batch {batch} [{}] on {p} threads differs from serial at element {:?}",
+            method.name(),
+            bad.unwrap()
+        );
+    }
+
+    // And the serial answer itself is right, per batch slice — so "identical to
+    // serial" is anchored to something rather than to itself.
+    if batch == 1 {
+        let want = naive_gemm::<T>(m as usize, n as usize, k as usize, &a, &b);
+        let want: Vec<T> = want.iter().map(|&v| alpha.mul(v)).collect();
+        let err = rel_error(&serial, &want);
+        assert!(err <= tol::<T>(method), "serial anchor: rel error {err:e}");
+    }
+}
+
+/// Thread counts that bracket the interesting cases: 2 (an even split), 3 (an
+/// uneven one, since the panel count is not divisible by it), 8 (a realistic
+/// core count) and 64 (far more threads than there are row panels, which must
+/// clamp rather than produce empty strips).
+const THREAD_COUNTS: &[usize] = &[2, 3, 8, 64];
+
+/// Blocking that forces many `jc`/`pc` iterations, hence many barriers and many
+/// re-packings of the shared `B` panel, on a problem small enough to stay fast.
+const BARRIER_STRESS: Blocking = Blocking {
+    mc: 1, // rounded up to MR
+    kc: 3,
+    nc: 1, // rounded up to NR
+};
+
+#[test]
+fn threaded_matches_serial_f64() {
+    for method in ComplexMethod::ALL {
+        threaded_case::<f64>((301, 197, 523, 1), None, method, THREAD_COUNTS, 11);
+        threaded_case::<f64>((200, 40, 60, 1), Some(BARRIER_STRESS), method, &[2, 8], 12);
+    }
+}
+
+#[test]
+fn threaded_matches_serial_f32() {
+    for method in ComplexMethod::ALL {
+        threaded_case::<f32>((401, 233, 797, 1), None, method, THREAD_COUNTS, 13);
+        threaded_case::<f32>((200, 40, 60, 1), Some(BARRIER_STRESS), method, &[2, 8], 14);
+    }
+}
+
+#[test]
+fn threaded_matches_serial_c64() {
+    for method in ComplexMethod::ALL {
+        threaded_case::<Complex<f64>>((211, 143, 401, 1), None, method, THREAD_COUNTS, 15);
+        threaded_case::<Complex<f64>>((200, 40, 60, 1), Some(BARRIER_STRESS), method, &[2, 8], 16);
+    }
+}
+
+#[test]
+fn threaded_matches_serial_c32() {
+    for method in ComplexMethod::ALL {
+        threaded_case::<Complex<f32>>((277, 181, 613, 1), None, method, THREAD_COUNTS, 17);
+        threaded_case::<Complex<f32>>((200, 40, 60, 1), Some(BARRIER_STRESS), method, &[2, 8], 18);
+    }
+}
+
+/// A batch (Hadamard) axis puts the whole loop nest, barriers included, inside
+/// an outer loop that every thread must traverse in lockstep. If the barrier
+/// counts ever went out of step across threads this deadlocks rather than
+/// failing, which is worth being able to tell apart from a wrong answer.
+#[test]
+fn threaded_matches_serial_batched() {
+    for method in ComplexMethod::ALL {
+        threaded_case::<f64>((157, 31, 47, 5), None, method, &[2, 3, 8], 21);
+        threaded_case::<Complex<f64>>((157, 31, 47, 5), Some(BARRIER_STRESS), method, &[3], 22);
+        threaded_case::<Complex<f32>>((88, 24, 19, 3), None, method, &[2, 8], 23);
+    }
+}
+
+/// Fewer row panels than threads, down to a single-row output: the partition
+/// must clamp to the panel count instead of handing some thread an empty strip
+/// (which would be harmless) or two threads the same one (which would not).
+///
+/// Both extents are small, because the strips run along whichever direction
+/// ends up in the row role — a 1x33 output splits into two strips of 33 after
+/// the orientation swap, so keeping only `m` small would not exercise the clamp
+/// at all.
+#[test]
+fn threaded_clamps_below_one_panel_per_thread() {
+    for method in ComplexMethod::ALL {
+        for m in [1, 2, 7, 25, 49] {
+            threaded_case::<f64>((m, 14, 17, 1), None, method, &[2, 8, 64], 31 + m as u64);
+            threaded_case::<Complex<f32>>((m, 12, 9, 2), None, method, &[8], 41 + m as u64);
+        }
+    }
+}

@@ -184,8 +184,16 @@ where
         // dtype and method: a CSV without it cannot be re-read later. So does
         // the blocking, for the same reason — the item 2 grid varies it per arm
         // and a coupled `kc` gives each dtype and method a different `mc`.
+        // The thread count appears only when it is not 1, so single-core CSVs
+        // keep the exact format every committed measurement was written in.
+        let threads = p.threads();
+        let tag = if threads == 1 {
+            String::new()
+        } else {
+            format!("t{threads}/{} ", p.strips(mr))
+        };
         let notes = format!(
-            "{} {mr}x{nr} {orient} {}x{}x{} {}",
+            "{} {mr}x{nr} {orient} {}x{}x{} {tag}{}",
             selected_kernel_name::<T>(method),
             blk.mc,
             blk.kc,

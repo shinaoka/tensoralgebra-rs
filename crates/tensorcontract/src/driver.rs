@@ -28,14 +28,112 @@
 //!
 //! `beta` and the `C` operand are consumed on the first `pc` iteration only;
 //! later iterations accumulate into `D`.
+//!
+//! # Threading
+//!
+//! BLIS-style, over the `M` direction only. The `M` range is cut once into `p`
+//! contiguous strips at `MR` granularity; each thread runs loops 3, 2 and 1
+//! over its own strip with its own packed-`A` block, and the packed-`B` panel is
+//! **shared**: every thread packs a slice of its `NR` slivers and then all of
+//! them stream the whole panel out of L3, which is what the L3-sized `NC`
+//! budget is for. Two barriers per `(jc, pc)` iteration bracket the packing —
+//! one so nobody is still reading the previous panel, one so the new one is
+//! complete.
+//!
+//! Three properties this buys, all of them deliberate:
+//!
+//! * **No reduction.** Loop 4 (`pc`) accumulates into `D` in place, so
+//!   parallelising it would need either a temporary per thread or atomics.
+//!   Parallelising `M` instead gives every output element a single owning
+//!   thread, which accumulates over the full `K` in the original order.
+//! * **Bitwise identical to serial**, therefore, for any thread count — the
+//!   floating-point operations per output element are the same operations in the
+//!   same order. That is a strong enough invariant to test directly, and
+//!   `threaded_matches_serial_bitwise` does.
+//! * **The serial path is unchanged.** With `p == 1` the only difference from
+//!   the pre-threading driver is two `Option` checks per `(jc, pc)` iteration,
+//!   nowhere near the hot loops. Every measurement committed in `DECISIONS.md`
+//!   was taken single-threaded and stays comparable.
+//!
+//! Known limits, in the order they will bite (see the Phase 4 report):
+//! parallelism is capped at `ceil(M / MR)` strips, so a skinny-`M` contraction
+//! cannot use the cores no matter how much other work it has; `std::thread::scope`
+//! spawns per `execute` call rather than reusing a pool; and `NC`'s L3 budget is
+//! still charged as if one core owned the cache.
+
+use std::sync::Barrier;
 
 use crate::buffer::Panel;
 use crate::element::Element;
-use crate::kernel::{config_for_plan, Blocking, KernelSet};
+use crate::kernel::{config_for_plan, Blocking, KernelSet, Ukr};
 use crate::pack::{pack_panel, panel_len};
 use crate::plan::Plan;
 use crate::scatter::{build_block_scatter, IRREGULAR};
 use crate::writeback::{scale_only, writeback};
+
+/// A raw pointer shared across the threads of one [`execute`] call.
+///
+/// Rust will not send a bare pointer between threads, and rightly, so the
+/// promise is made explicitly here rather than silently at each use: the
+/// operands are read-only for the duration, and every thread writes only the
+/// output rows in its own strip. The strips are disjoint by construction, so no
+/// two threads address the same byte of `D`.
+#[derive(Clone, Copy)]
+struct Shared<T>(*mut T);
+
+// SAFETY: see the type's documentation. The disjointness is a property of the
+// strip partition in `execute`, which is the only place `Shared` is created.
+unsafe impl<T> Send for Shared<T> {}
+unsafe impl<T> Sync for Shared<T> {}
+
+/// Everything one thread of the loop nest needs that does not vary with its
+/// row strip. Exists so that the nest can be written once and run either
+/// serially or on `p` threads, rather than duplicated.
+struct Ctx<'a, T: Element>
+where
+    T::Real: KernelSet,
+{
+    plan: &'a Plan,
+    ukr: Ukr<T::Real>,
+    mr: usize,
+    nr: usize,
+    mc: usize,
+    kc: usize,
+    nc: usize,
+    m: usize,
+    n: usize,
+    k: usize,
+    am: &'a [i64],
+    ak: &'a [i64],
+    bk: &'a [i64],
+    bn: &'a [i64],
+    cm: &'a [i64],
+    cn: &'a [i64],
+    dm: &'a [i64],
+    dn: &'a [i64],
+    ha: &'a [i64],
+    hb: &'a [i64],
+    a_m_bs: &'a [i64],
+    b_n_bs: &'a [i64],
+    d_m_bs: &'a [i64],
+    c_m_bs: &'a [i64],
+    conj_a: bool,
+    conj_b: bool,
+    alpha: T,
+    beta: T,
+    a: Shared<T>,
+    b: Shared<T>,
+    c: Shared<T>,
+    d: Shared<T>,
+    /// The shared packed-`B` panel: written cooperatively, read by everyone.
+    bp: Shared<T::Real>,
+}
+
+/// How one thread participates in packing the shared `B` panel: which slice of
+/// the `NR` slivers it takes, and the barrier that brackets the packing. `None`
+/// is the serial case — one thread packs all of them and synchronises with
+/// nobody.
+type BShare<'a> = Option<(&'a Barrier, usize, usize)>;
 
 /// Execute a plan.
 ///
@@ -161,14 +259,141 @@ pub unsafe fn execute<T>(
 
     // Panel sizes come from the kernel's declared per-k sliver widths, so a
     // method that packs more reals per element (1m's "1e", 3m's sum plane)
-    // automatically gets a correspondingly larger buffer.
-    let mut ap = Panel::<T::Real>::new(panel_len(mc, mr, kc, ukr.a_pack));
+    // automatically gets a correspondingly larger buffer. `A` is per thread and
+    // allocated inside it, so it is first-touched on the node that will use it;
+    // `B` is shared and allocated here.
+    let ap_len = panel_len(mc, mr, kc, ukr.a_pack);
     let mut bp = Panel::<T::Real>::new(panel_len(nc, nr, kc, ukr.b_pack));
-    let mut tile = Panel::<T::Real>::new(ukr.tile);
-    let ap_ptr = ap.as_mut_ptr();
-    let bp_ptr = bp.as_mut_ptr();
-    let tile_ptr = tile.as_mut_ptr();
 
+    let cx = Ctx::<T> {
+        plan,
+        ukr,
+        mr,
+        nr,
+        mc,
+        kc,
+        nc,
+        m,
+        n,
+        k,
+        am,
+        ak,
+        bk,
+        bn,
+        cm,
+        cn,
+        dm,
+        dn,
+        ha,
+        hb,
+        a_m_bs: &a_m_bs,
+        b_n_bs: &b_n_bs,
+        d_m_bs: &d_m_bs,
+        c_m_bs: &c_m_bs,
+        conj_a,
+        conj_b,
+        alpha,
+        beta,
+        a: Shared(ptr_a as *mut T),
+        b: Shared(ptr_b as *mut T),
+        c: Shared(c as *mut T),
+        d: Shared(d),
+        bp: Shared(bp.as_mut_ptr()),
+    };
+
+    // Strips are whole `MR` panels, so every thread's row blocks line up with
+    // the block scatter and with the write-back's fast path. That caps the
+    // useful thread count at the number of panels — a contraction with three
+    // row blocks cannot use eight cores here however much work it contains.
+    let npanels = m.div_ceil(mr);
+    let p = plan.strips(mr);
+
+    if p == 1 {
+        let mut ap = Panel::<T::Real>::new(ap_len);
+        let mut tile = Panel::<T::Real>::new(ukr.tile);
+        run_strip::<T>(&cx, 0, m, ap.as_mut_ptr(), tile.as_mut_ptr(), None);
+        return;
+    }
+
+    let bar = Barrier::new(p);
+    std::thread::scope(|scope| {
+        for t in 0..p {
+            let cx = &cx;
+            let bar = &bar;
+            scope.spawn(move || {
+                let lo = (t * npanels / p) * mr;
+                let hi = (((t + 1) * npanels / p) * mr).min(cx.m);
+                let mut ap = Panel::<T::Real>::new(ap_len);
+                let mut tile = Panel::<T::Real>::new(cx.ukr.tile);
+                // SAFETY: `execute`'s contract covers the accesses; the strips
+                // partition the output rows, so this thread's writes are
+                // disjoint from every other thread's.
+                unsafe {
+                    run_strip::<T>(
+                        cx,
+                        lo,
+                        hi,
+                        ap.as_mut_ptr(),
+                        tile.as_mut_ptr(),
+                        Some((bar, t, p)),
+                    )
+                };
+            });
+        }
+    });
+}
+
+/// Loops 5 through 1 over one strip of the `M` range.
+///
+/// `[m_lo, m_hi)` are whole `MR` panels. Everything above loop 3 is identical
+/// across threads, which is what makes the barrier counts match without
+/// tracking them.
+///
+/// # Safety
+/// As [`execute`], plus: `ap` and `tile` must be this thread's alone, and no
+/// other thread may own an overlapping row strip.
+unsafe fn run_strip<T>(
+    cx: &Ctx<'_, T>,
+    m_lo: usize,
+    m_hi: usize,
+    ap_ptr: *mut T::Real,
+    tile_ptr: *mut T::Real,
+    bshare: BShare<'_>,
+) where
+    T: Element,
+    T::Real: KernelSet,
+{
+    let Ctx {
+        plan,
+        ukr,
+        mr,
+        nr,
+        mc,
+        kc,
+        nc,
+        n,
+        k,
+        am,
+        ak,
+        bk,
+        bn,
+        cm,
+        cn,
+        dm,
+        dn,
+        ha,
+        hb,
+        a_m_bs,
+        b_n_bs,
+        d_m_bs,
+        c_m_bs,
+        conj_a,
+        conj_b,
+        alpha,
+        beta,
+        ..
+    } = *cx;
+    let (ptr_a, ptr_b, c, d, bp_ptr) = (cx.a.0, cx.b.0, cx.c.0 as *const T, cx.d.0, cx.bp.0);
     let one = T::one();
 
     for h in 0..plan.stats.batch {
@@ -187,23 +412,43 @@ pub unsafe fn execute<T>(
             while pc < k {
                 let pc_len = kc.min(k - pc);
                 let first_k_block = pc == 0;
-
-                pack_panel::<T>(
-                    bh,
-                    &bn[jc..jc + jc_len],
-                    &b_n_bs[jc / nr..(jc + jc_len).div_ceil(nr)],
-                    &bk[pc..pc + pc_len],
-                    nr,
-                    conj_b,
-                    ukr.b_pack,
-                    bp_ptr,
-                );
                 let b_sliver = ukr.b_per_k * pc_len;
 
+                // Pack the shared `B` panel. Threaded, each thread takes a
+                // slice of the `NR` slivers; the two barriers say "nobody is
+                // still reading the previous panel" and "the new one is
+                // complete". Serially this is one call over all of them, with
+                // the same arguments the pre-threading driver used.
+                let nsliv = jc_len.div_ceil(nr);
+                let (q0, q1) = match bshare {
+                    Some((bar, t, p)) => {
+                        bar.wait();
+                        (t * nsliv / p, (t + 1) * nsliv / p)
+                    }
+                    None => (0, nsliv),
+                };
+                if q1 > q0 {
+                    let c0 = jc + q0 * nr;
+                    let c1 = (jc + q1 * nr).min(jc + jc_len);
+                    pack_panel::<T>(
+                        bh,
+                        &bn[c0..c1],
+                        &b_n_bs[c0 / nr..c1.div_ceil(nr)],
+                        &bk[pc..pc + pc_len],
+                        nr,
+                        conj_b,
+                        ukr.b_pack,
+                        bp_ptr.add(q0 * b_sliver),
+                    );
+                }
+                if let Some((bar, _, _)) = bshare {
+                    bar.wait();
+                }
+
                 // ---- loop 3: M blocking -----------------------------------
-                let mut ic = 0;
-                while ic < m {
-                    let ic_len = mc.min(m - ic);
+                let mut ic = m_lo;
+                while ic < m_hi {
+                    let ic_len = mc.min(m_hi - ic);
 
                     pack_panel::<T>(
                         ah,

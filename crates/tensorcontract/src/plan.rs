@@ -209,6 +209,8 @@ pub struct Plan {
     pub(crate) blocking: Option<crate::kernel::Blocking>,
     /// Overrides the default complex method when set.
     pub(crate) method: Option<crate::kernel::ComplexMethod>,
+    /// Overrides the default thread count when set.
+    pub(crate) threads: Option<usize>,
     pub stats: PlanStats,
 }
 
@@ -354,6 +356,7 @@ impl Plan {
             conj_d: d.op.is_conj(),
             blocking: None,
             method: None,
+            threads: None,
             stats,
         })
     }
@@ -397,6 +400,49 @@ impl Plan {
     pub fn with_blocking(mut self, blk: crate::kernel::Blocking) -> Self {
         self.blocking = Some(blk);
         self
+    }
+
+    /// Execute on `n` threads.
+    ///
+    /// Parallelism is over the `M` direction, so it is capped at
+    /// `ceil(M / MR)` — see the [driver](crate::driver) for the partition and
+    /// what it guarantees. A thread count above that cap is silently reduced;
+    /// `0` is treated as `1`.
+    ///
+    /// Results are **bitwise identical** for every thread count, so this is
+    /// never a numerical decision.
+    pub fn with_threads(mut self, n: usize) -> Self {
+        self.threads = Some(n.max(1));
+        self
+    }
+
+    /// The thread count this plan will execute with.
+    ///
+    /// Defaults to `TENSORCONTRACT_THREADS`, and to **1** if that is unset.
+    /// Single-threaded-by-default is deliberate for now rather than permanent:
+    /// every performance number committed in `DECISIONS.md` is a single-core
+    /// measurement, and the default should not change until threading has been
+    /// measured on this machine (Phase 4 item 4). It is a one-line change here
+    /// when it does.
+    pub fn threads(&self) -> usize {
+        self.threads.unwrap_or_else(env_threads)
+    }
+
+    /// How many row strips execution will actually split into, which is the
+    /// thread count capped by the number of `MR` panels in the `M` direction.
+    ///
+    /// The driver calls this rather than recomputing the cap, so it is one
+    /// definition; tests call it to assert that a case which is *meant* to
+    /// exercise the threaded path really does. A test that silently stopped
+    /// splitting would otherwise still pass while testing nothing — the same
+    /// trap the orientation tests guard against.
+    pub fn strips(&self, mr: usize) -> usize {
+        let m = if self.transposes_gemm(mr) {
+            self.b_n.len()
+        } else {
+            self.a_m.len()
+        };
+        self.threads().clamp(1, m.div_ceil(mr.max(1)).max(1))
     }
 
     /// The plan's scatter vectors.
@@ -763,6 +809,29 @@ fn row_block_override() -> RowBlock {
     #[cfg(not(feature = "std"))]
     {
         RowBlock::Auto
+    }
+}
+
+/// `TENSORCONTRACT_THREADS=<n>` sets the default thread count. Read once per
+/// process. Unset means **1**: see [`Plan::threads`] for why that is the default
+/// while Phase 4 is still measuring, and note that it keeps every committed
+/// single-core number reproducible from a bare checkout.
+fn env_threads() -> usize {
+    #[cfg(feature = "std")]
+    {
+        use std::sync::OnceLock;
+        static ENV: OnceLock<usize> = OnceLock::new();
+        *ENV.get_or_init(|| {
+            std::env::var("TENSORCONTRACT_THREADS")
+                .ok()
+                .and_then(|v| v.trim().parse::<usize>().ok())
+                .unwrap_or(1)
+                .max(1)
+        })
+    }
+    #[cfg(not(feature = "std"))]
+    {
+        1
     }
 }
 
