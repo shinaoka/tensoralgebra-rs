@@ -185,14 +185,18 @@ three counts. No AVX2 path yet; deferred to Phase 5's multi-arch work.
    1.17–1.39x while paying ~30% in kernel shape, so the orientation is worth
    ~2x and `MR` is the wrong way to buy it.
 
-   **Now the biggest lever: the orientation rule itself, at the default `MR`.**
-   It is right on only 63 of 72 case-dtypes and the nine misses are worth
-   1.18–1.47x. Two ground-truth datasets exist and neither has been spent —
-   `bench-results/phase4/rm-orient-{none,swap}.csv` and
-   `bench-results/phase4c/rb-*` — so score a candidate discriminant offline
-   (`scripts/rowblock-score-rules.py` is the pattern) before spending CPU. The
-   honest fallback, if no discriminant exists, is empirical selection: run both
-   arms once per plan and keep the faster; plans are reusable.
+   **1d, the orientation rule: done.** The missing discriminant (A14) was
+   found by forcing both arms over the whole corpus and noticing that the
+   corpus families are **mirror images**, so a correct rule must be
+   *antisymmetric* under exchanging the two directions — which neither previous
+   version, both phrased about the column direction alone, could be. Condition
+   2 became a preference with a fallback: prefer the arm whose row block fits
+   inside a run; failing that, put the shorter-run direction in the row role.
+   12 better / 0 worse over both arms of all 392 case-dtype-methods, and `f32`
+   is now within 0.4% of a hindsight oracle. Two hypotheses from part 4 were
+   tested and refuted on the way (longer column run; maximise write-back
+   regularity). 21 cases still take the slower arm — a different family, worth
+   up to 1.36x, with both arms already measured in `bench-results/phase4d`.
 2. **Sweep `MC`/`KC`/`NC`**, still the untouched Phase 2 heuristic. `KC` is now
    known to be first-order: it decides whether the `A` sliver is an L1 resident
    or an L2 stream, which is what the whole method ranking turns on. 1c added a
@@ -296,6 +300,12 @@ TBLIS_ROOT_13=../baselines/tblis-1.3.0-install \
 cargo run --release -p tensorcontract --example kernel_shapes
 ```
 
+**A rule validated with the other levers pinned is validated only there.**
+Phase 4.1c and 4.1d each pinned the other's lever to isolate their own — correct
+experimental design, and exactly why neither could see that a 3% orientation
+error was blocking a 20% shape change in the shipped combination. Always finish
+with an end-to-end A/B in the configuration that actually ships (A20).
+
 Benchmarks are single-core measurements: **do not compile, build a baseline or
 run anything else on the machine while one is in flight.** Pinning is not
 enough — the pinned core's **hyperthread sibling** shares L1d and L2, which is
@@ -315,7 +325,7 @@ Useful environment variables:
 | `TENSORCONTRACT_COMPLEX` | `planar` \| `1m` \| `3m` |
 | `TENSORCONTRACT_KERNEL` | `scalar` forces the portable kernels |
 | `TENSORCONTRACT_MC/_KC/_NC` | override cache blocking |
-| `TENSORCONTRACT_ORIENT` | `none` \| `swap`: pin the row/column orientation |
+| `TENSORCONTRACT_ORIENT` | `none` \| `swap`: pin the row/column orientation; `legacy`: the Phase 4.1 rule |
 | `TENSORCONTRACT_WRITEBACK` | `gather` forces the general scatter write-back |
 | `TENSORCONTRACT_ROWBLOCK` | `base` \| `auto` \| `mr=<n>` \| `idx=<i>`: pin the micro-tile row block |
 

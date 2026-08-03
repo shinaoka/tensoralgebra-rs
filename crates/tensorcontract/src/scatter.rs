@@ -94,6 +94,61 @@ fn run_stride(run: &[i64]) -> i64 {
     s
 }
 
+/// The run structure of a scatter vector: `Some((len, stride))` when it is a
+/// concatenation of equal-length *maximal* arithmetic runs, `None` otherwise.
+///
+/// This is the shape every output scatter in the corpus has — a leading axis of
+/// extent `len` and stride `stride`, restarted by the outer axes — and it is
+/// what makes the effect of a candidate block size computable in `O(len)`
+/// rather than by rebuilding a block scatter per candidate. It is also the
+/// quantity both the orientation rule and the row-block rule turn on, so it
+/// lives here rather than in either of them.
+pub fn run_structure(scat: &[i64]) -> Option<(usize, i64)> {
+    if scat.len() < 2 {
+        return None;
+    }
+    let stride = scat[1] - scat[0];
+    // The first discontinuity ends the first run; every later run must match.
+    let len = scat
+        .windows(2)
+        .position(|w| w[1] - w[0] != stride)
+        .map_or(scat.len(), |p| p + 1);
+    if len < 2 || !scat.len().is_multiple_of(len) {
+        return None;
+    }
+    for (i, w) in scat.windows(2).enumerate() {
+        let at_boundary = (i + 1) % len == 0;
+        if !at_boundary && w[1] - w[0] != stride {
+            return None;
+        }
+        // A boundary that happens to continue the progression would mean the
+        // runs are longer than measured, contradicting maximality.
+        if at_boundary && w[1] - w[0] == stride {
+            return None;
+        }
+    }
+    Some((len, stride))
+}
+
+/// Fraction of aligned `blk`-blocks of a `total`-entry scatter that fall inside
+/// a single run, given runs of `len` entries.
+///
+/// Exactly the fraction that reaches a strided rather than a gather traversal.
+pub fn unbroken_fraction(total: usize, len: usize, blk: usize) -> f64 {
+    if total == 0 || blk == 0 || len == 0 {
+        return 1.0;
+    }
+    let nblk = total.div_ceil(blk);
+    let whole = (0..nblk)
+        .filter(|b| {
+            let lo = b * blk;
+            let hi = (lo + blk).min(total) - 1;
+            lo / len == hi / len
+        })
+        .count();
+    whole as f64 / nblk as f64
+}
+
 /// Fraction of blocks in a block-scatter vector that are regular. Used for
 /// diagnostics and for the planar-vs-TTGT dispatch heuristic.
 pub fn regular_fraction(bs: &[i64]) -> f64 {
@@ -191,6 +246,30 @@ mod tests {
         let bs = build_block_scatter(&s, 2);
         assert_eq!(bs, vec![0, 0]);
         assert_eq!(regular_fraction(&bs), 1.0);
+    }
+
+    #[test]
+    fn run_structure_recognises_equal_length_runs() {
+        // Four contiguous runs of 24, restarted by an outer axis.
+        assert_eq!(run_structure(&build_scatter(&[24, 4], &[1, 200])), Some((24, 1)));
+        // A single unbroken run is the whole vector.
+        assert_eq!(run_structure(&build_scatter(&[24], &[1])), Some((24, 1)));
+        // Constant non-unit stride is still one run: no block size breaks it.
+        assert_eq!(run_structure(&build_scatter(&[12], &[4])), Some((12, 4)));
+        // Unequal runs have no uniform structure.
+        assert_eq!(run_structure(&[0, 1, 2, 100, 101, 200]), None);
+        assert_eq!(run_structure(&[7]), None);
+    }
+
+    #[test]
+    fn unbroken_fraction_counts_straddling_blocks() {
+        // 96 entries in runs of 24. Only block sizes that tile a run survive.
+        assert_eq!(unbroken_fraction(96, 24, 24), 1.0);
+        assert_eq!(unbroken_fraction(96, 24, 8), 1.0);
+        // 16 into 24 straddles every second block of a 48-entry period.
+        assert!((unbroken_fraction(96, 24, 16) - 2.0 / 3.0).abs() < 1e-12);
+        assert_eq!(unbroken_fraction(96, 24, 32), 0.0);
+        assert_eq!(unbroken_fraction(96, 24, 48), 0.0);
     }
 
     #[test]

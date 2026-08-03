@@ -96,22 +96,20 @@ corpus geomean (1.124 on the 12 cases it fires on), `c32` 1m 1.006 (1.108 on
 7% slower. It also **prices the orientation at ~2x** on the nine known misses
 and shows `MR` is the wrong instrument for buying it.
 
-**The immediate next task is the orientation rule, then item 2.** In priority
-order:
+**Phase 4 item 1d is done too** — see the Phase 4 report, part 6. The
+orientation rule's missing discriminant was found: the rule must be
+*antisymmetric* under exchanging the two directions, which neither previous
+version was. Condition 2 became a preference with a fallback ("row block fits,
+else the shorter run goes in the row role"), which is 12 better / 0 worse over
+both arms of all 392 case-dtype-methods and closes `f32` to within 0.4% of a
+hindsight oracle. Removing the row-block rule's now-obsolete guard 3 on top is
+worth another 1.218 on six `c32` 1m cases. End to end against Phase 4.1:
+**`f32` 1.028, `c32` 1m 1.022, `c32` planar 1.013, `c32` 3m 1.010**, 64-bit
+flat, best case 1.48x, one genuine per-case regression at 7%.
 
-1. **Fix the orientation rule directly, at the default `MR`.** Part 5 makes
-   this the biggest measured lever left: the six `abcijk-e*bc-*` cases gain
-   1.17–1.39x from the BA arm *while paying ~30% in kernel shape*, so the
-   orientation alone is worth about **2x** there. `MR` cannot buy it
-   affordably, and an oracle over shapes is only worth 1.03–1.07, so this is
-   where the remaining headroom is. Two assets exist for it and neither has
-   been spent: `bench-results/phase4/rm-orient-{none,swap}.csv` holds both arms
-   for all 72 `abcijk` case-dtypes, and `bench-results/phase4c/rb-*` holds
-   every shape for the whole corpus — so a candidate discriminant can be scored
-   offline (`scripts/rowblock-score-rules.py` is the pattern) before any CPU is
-   spent. Failing a discriminant, empirical selection — run both arms once per
-   plan, keep the faster — is the honest fallback, and plans are reusable.
-2. **Sweep `MC`/`KC`/`NC`.** Still the untouched Phase 2 heuristic. Phase 3
+**The immediate next task is item 2.** In priority order:
+
+1. **Sweep `MC`/`KC`/`NC`.** Still the untouched Phase 2 heuristic. Phase 3
    showed the whole method ranking turns on whether the `A` sliver is an L1
    resident or an L2 stream, which makes `KC` a first-order parameter. Phase 4
    part 3 adds a design constraint on the sweep itself: `MC` is bounded from
@@ -120,11 +118,16 @@ order:
    shortcut is already measured and rejected. Part 5 adds a second input: the
    *register block* is depth-conditional too (A18), so the sweep should vary
    the shape alongside `kc` rather than hold the Phase 3 table fixed.
-3. **Dispatch the complex method by shape.** The inversion is measured and
+2. **Dispatch the complex method by shape.** The inversion is measured and
    large enough to exploit: 3m on memory-bound shapes, planar otherwise. Note
    Phase 4.1 moved the ranking: `c32` 3m gained the most from the write-back
    work (1.167 cumulative against planar's 1.116), so re-measure before
    dispatching — the Phase 3 margins are no longer current.
+3. **Close the remaining orientation gap.** 21 case-dtype-methods still take
+   the slower arm, worth up to 1.36x, and they are a different population from
+   the `abcijk` family the current rule was derived on. Both arms of all of
+   them are in `bench-results/phase4d/or-*`, so a candidate costs nothing to
+   score with `scripts/orient-score-rules.py`.
 4. Then the rest of the Phase 4 list: threading, small-`k` handling, fusing the
    `pc` loop so `C` is touched once, a pack-free fast path for unit-stride
    block scatter, prefetch.
@@ -1143,7 +1146,154 @@ item 2's `MC`/`KC`/`NC` sweep. Neither has a mechanism yet and neither has been
 validated on anything but this grid, so neither ships. Note the second one means
 the Phase 3 register-block table is depth-conditional, not wrong.
 
+## Phase 4 report, part 6 (item 1d): the orientation rule, and its discriminant
+
+Part 5 named this the biggest measured lever and priced it at ~2x on the nine
+known misses. A14 recorded the discriminant as unknown. **It is now found**, and
+the answer is that the old rule was not wrong so much as *incomplete*: it had a
+veto with no fallback, and every one of its misses lived in the case the veto
+sent to the default.
+
+### The grid, again
+
+`scripts/phase4d-orient.sh` forces both arms — `TENSORCONTRACT_ORIENT=none|swap`
+— over the whole corpus in every dtype and method, with
+`TENSORCONTRACT_ROWBLOCK=base` pinning the shape so the two rules cannot
+confound each other (`bench-results/phase4d/or-*`, sibling CPU 0.6–1.1%). That
+is both arms of all 392 case-dtype-methods, against the 72 single-family points
+that were the entire basis before. `tcbench orient` then dumps the structural
+features of each arm, and `scripts/orient-score-rules.py` scores candidates
+against ground truth, free and unlimited.
+
+### The discriminant: the rule has to be antisymmetric, and the old one was not
+
+The `abcijk` families are **exact mirror images** of one another — the same
+output structure with the roles of the two directions exchanged. Any correct
+rule must therefore be antisymmetric under that exchange. The old rule was
+phrased entirely in terms of the *column* direction's properties, so it could
+not be, and that is the whole defect. Written symmetrically, `f32` says:
+
+| family | faster arm | its row run | its column run |
+|---|---|---|---|
+| `-mb` | `AB` | 16 | 24 |
+| `e*ac` | `BA` | 16 | 24 |
+| `e*bc` | `BA` | 24 | 4096 |
+| `-ma` | `AB` | 24 | 256 |
+
+In every one, the faster arm is the one whose **row direction has the shorter
+run**. So condition 2 is promoted from a veto to a preference, with a defined
+fallback:
+
+1. Prefer an arm whose micro-tile row block lands inside a single run — unit
+   stride, run at least `MR`. One arm: take it. Both: stay put.
+2. Otherwise put the shorter-run direction in the row role.
+
+Step 1 still dominates, and must: it is why `c64` (`MR = 16` against a run of
+24) takes the *opposite* arm from `f32` (`MR = 48`) on identical shapes.
+
+Scored over both arms of all 392: **12 cases better beyond noise, none worse.**
+In `f32` it scores 1.128 against never swapping where the hindsight oracle
+scores 1.132 — that dtype's orientation question is essentially closed.
+
+| rule | `f32` | `c32` planar | `c32` 1m | `c64` planar |
+|---|---|---|---|---|
+| Phase 4.1 (`legacy`) | 1.092 | 1.063 | 1.049 | 1.102 |
+| **fits, else shorter run** | **1.128** | **1.082** | 1.067 | 1.102 |
+| oracle (hindsight) | 1.132 | 1.093 | 1.088 | 1.118 |
+
+### Two part-4 hypotheses, tested and refuted
+
+Part 4 offered two structural differences as possible discriminants and warned
+against adopting either without measuring. Both are now measured, and both are
+wrong:
+
+* **"the column direction folds to a longer run"** — as a rule on its own it
+  scores 0.976–1.008, i.e. nothing; as a guard on top of the working rule it
+  *lowers* every column (1.078 against 1.128 in `f32`).
+* **"maximise write-back regularity"** — 0.936 in `f32`. This is the third time
+  that quantity has pointed the wrong way (see A16); it explains the write-back
+  path and nothing else.
+
+### The two rules are coupled, and tuning them separately is wrong
+
+The end-to-end A/B of the new rule in the shipped configuration exposed
+something the grid could not, because the grid pinned the shape: three `c32` 1m
+cases went **0.80**. The 2x2 explains it exactly:
+
+| `abcijk-e*ac-*`, `c32` 1m | `32x6` (default) | `24x8` |
+|---|---|---|
+| `AB` | 77–79 GF/s | **93 GF/s** |
+| `BA` | 75–76 GF/s | — |
+
+At the default shape the new rule prefers `BA` — a 3% error, inside the
+per-case noise floor, which is why "0 worse" did not flag it. But the row-block
+rule's guard 3 forbade a shape change that flips the orientation, so choosing
+`BA` also **blocked** the `24x8` shape that is worth 1.20x. A 3% mistake was
+amplified twentyfold by the interaction.
+
+The fix is to remove guard 3, which the orientation fix has made obsolete: the
+shapes it existed to veto (`c32` 3m's `e*bc`) are now rejected by guard 2
+anyway, because under the corrected orientation their alternates no longer
+reach full regularity. Measured directly — 6 newly-firing cases against 12
+control cases in the same run:
+
+| | geomean | range |
+|---|---|---|
+| newly firing (`c32` 1m) | **1.218** | 1.185 – 1.240 |
+| control (unchanged) | 1.002 | 0.969 – 1.039 |
+
+**The lesson is methodological and worth more than the numbers.** Both grids
+pinned the other lever to isolate their own, which is correct experimental
+design and is exactly why neither could see this. A rule validated at a pinned
+operating point has only been validated *there*. The end-to-end A/B in the
+shipped configuration is not a formality.
+
+### Result, end to end, in the configuration that ships
+
+`bench-results/phase4d/vf-*`: `legacy, new, legacy'` on one build with
+`TENSORCONTRACT_ORIENT=legacy|rule`, everything else at its shipped setting, so
+this is the whole of item 1d (orientation rule + the guard-3 removal) against
+Phase 4.1. Exclusive machine, sibling CPU 0.8–1.0%.
+
+| | shipped / Phase 4.1 | noise floor | best case |
+|---|---|---|---|
+| `f32` | **1.028** | 0.996 | 1.410 |
+| `f64` | 0.998 | 1.003 | 1.057 |
+| `c32` planar | **1.013** | 0.998 | 1.311 |
+| `c32` 1m | **1.022** | 1.000 | 1.480 |
+| `c32` 3m | 1.010 | 0.998 | 1.222 |
+| `c64` planar | 1.004 | 1.005 | 1.042 |
+| `c64` 1m | 0.999 | 1.012 | 1.046 |
+| `c64` 3m | 1.004 | 0.993 | 1.050 |
+
+Every 32-bit column clears the ±1.3% geomean floor; the 64-bit ones are flat,
+which is expected — their `MR` already fitted the corpus's runs, so the old
+rule was not in its failing case there. The `abcijk-e*bc-*` family, the largest
+of the nine misses, goes **1.41–1.48x**.
+
+Four cases are slower beyond the per-case floor. Three are the same `f32` case
+under its three method labels (`abcijk-jkma-mibc`, 0.931, with the bracketing
+repeat at 1.013, so it is real); the fourth is `ijkl-mink-jnlm` in `c64` 1m at
+0.937 against a repeat of 0.960, i.e. mostly drift. **One genuine per-case
+regression**, at 7%, against six cases gained at 1.3–1.5x.
+
+### What is left
+
+21 of 392 case-dtype-methods still take the slower arm by more than the noise
+floor, worth up to 1.36x. They are a different population from the `abcijk`
+family this rule was derived on — `abjcd-dkbac-jk`, `ajbdc-ckbad-jk`,
+`abjc-cbka-kj`, `aqrs-pa-pqrs`, mostly in 1m — and all are failures to swap. The
+oracle gap outside `f32` is 1.088 against 1.067 (`c32` 1m) and 1.118 against
+1.102 (`c64` planar), so there is roughly 2% of corpus geomean still on the
+table per dtype. `bench-results/phase4d/or-*` holds both arms for all of them,
+so the next candidate costs nothing to score.
+
 ### Assumptions added
+
+| # | Assumption | Status |
+|---|---|---|
+| A19 | The orientation discriminant is a property of `D`'s column direction (the form both previous rules took). | **Refuted.** The corpus families are mirror images, so a correct rule must be antisymmetric under exchanging the two directions; a rule phrased about one of them cannot be. Written symmetrically — row block fits, else the shorter run goes in the row role — it is 12 better / 0 worse over both arms of all 392, and closes the `f32` case to within 0.4% of an oracle. |
+| A20 | A rule validated with the other levers pinned is validated. | **Refuted.** The orientation rule was 12/0 with the shape pinned and still cost 20% on three cases in the shipped configuration, because a 3% orientation error blocked a 20% shape change. The levers must be validated jointly, end to end, even when each was isolated correctly for derivation. |
 
 | # | Assumption | Status |
 |---|---|---|

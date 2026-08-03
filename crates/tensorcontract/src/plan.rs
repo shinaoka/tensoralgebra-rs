@@ -54,7 +54,7 @@
 
 use crate::error::{Error, Result};
 use crate::layout::Layout;
-use crate::scatter::build_scatter;
+use crate::scatter::{build_scatter, run_structure, unbroken_fraction};
 
 /// Index class.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -194,6 +194,13 @@ pub struct Plan {
     pub(crate) h_b: Vec<i64>,
     pub(crate) h_c: Vec<i64>,
     pub(crate) h_d: Vec<i64>,
+    /// Run structure of the output's `M` and `N` scatters, `(len, stride)`, or
+    /// `(len, 0)` when there is none. Cached because
+    /// [`Plan::transposes_gemm`] and [`Plan::row_block`] both turn on it and
+    /// are called several times per execution, while the scatters themselves
+    /// never change.
+    pub(crate) d_m_run: (usize, i64),
+    pub(crate) d_n_run: (usize, i64),
     pub(crate) conj_a: bool,
     pub(crate) conj_b: bool,
     pub(crate) conj_c: bool,
@@ -323,6 +330,9 @@ impl Plan {
             h_axes: h_ax,
         };
 
+        let d_m_run = run_structure(&d_m).unwrap_or((d_m.len(), 0));
+        let d_n_run = run_structure(&d_n).unwrap_or((d_n.len(), 0));
+
         Ok(Plan {
             a_m,
             a_k,
@@ -336,6 +346,8 @@ impl Plan {
             h_b,
             h_c,
             h_d,
+            d_m_run,
+            d_n_run,
             conj_a: a.op.is_conj(),
             conj_b: b.op.is_conj(),
             conj_c: c.map(|c| c.op.is_conj()).unwrap_or(false),
@@ -447,27 +459,87 @@ impl Plan {
     /// loop and is the one access packing cannot hide. On the nine corpus cases
     /// Phase 3 profiled as a 2x defect this is worth up to 2.7x.
     ///
-    /// Both conditions are needed, and the second one is the interesting one:
+    /// The rule is a preference with a fallback, not a test with a veto:
     ///
-    /// 1. `D`'s column direction must be *strictly* more contiguous than its
-    ///    row direction — otherwise there is nothing to gain.
-    /// 2. The swap must leave the row block **unbroken**: the new leading axis
-    ///    must have unit stride and an extent of at least `MR`.
+    /// 1. **Prefer the arm whose micro-tile row block lands inside a single run
+    ///    of `D`** — unit stride and a run of at least `MR`. If exactly one arm
+    ///    manages that, take it. If both do, stay put; there is nothing to buy.
+    /// 2. **Otherwise put the direction with the *shorter* run in the row
+    ///    role**, whichever operand that is.
     ///
-    /// Condition 2 is measured, not assumed. On the `abcijk-*m{b}-*` family the
-    /// swap makes the leading axis unit-stride but only 16 long, and the result
-    /// is monotone in `run / MR`: +18% at 16/16 (`c64`), +23% at 16/24 (`f64`),
-    /// 0% at 16/32 (`c32`), **−17%** at 16/48 (`f32`). A shattered row block
-    /// keeps the swap's costs and loses its benefit, so the rule declines it.
-    /// Note this makes the choice element-type dependent through `MR`, which is
-    /// why it is not a property of the plan alone.
+    /// Step 1 is the old rule's two conditions, and step 2 is what it was
+    /// missing. The old rule treated "the row block would be shattered either
+    /// way" as a reason to give up and never swap, and **all nine of its known
+    /// misses lived in that case** (A14) — where it is not that swapping is
+    /// wrong, but that neither arm is clean and something still has to decide.
+    ///
+    /// Step 2 was found by noticing that the `abcijk` families are exact mirror
+    /// images of each other, so any correct rule must be antisymmetric under
+    /// exchanging the two directions — which the old rule, phrased entirely in
+    /// terms of the *column* direction's properties, was not. In `f32` the
+    /// `-mb` family and the `e*ac` family are the same configuration mirrored,
+    /// and the faster arm of each is the one whose rows have the shorter run:
+    ///
+    /// | family | `f32` faster arm | its row run | its column run |
+    /// |---|---|---|---|
+    /// | `-mb` | `AB` | 16 | 24 |
+    /// | `e*ac` | `BA` | 16 | 24 |
+    /// | `e*bc` | `BA` | 24 | 4096 |
+    /// | `-ma` | `AB` | 24 | 256 |
+    ///
+    /// Step 1 still dominates step 2, and must: it is why `c64` (`MR = 16`
+    /// against a run of 24) takes the opposite arm from `f32` (`MR = 48`) on
+    /// the same shapes. That element-type dependence is real and is why the
+    /// choice is not a property of the plan alone.
+    ///
+    /// Scored against forced-arm measurements of both arms of all 392 corpus
+    /// case-dtype-methods (`bench-results/phase4d`): **12 cases better beyond
+    /// noise, none worse**, recovering the nine known misses at 1.21–1.45x. In
+    /// `f32` it scores 1.128 against never swapping, where an oracle choosing
+    /// with hindsight scores 1.132 — so on that dtype the orientation question
+    /// is now essentially closed. It is not closed on the 21 cases that remain
+    /// (see the Phase 4.1d report).
     ///
     /// `TENSORCONTRACT_ORIENT=none` disables the swap and `=swap` forces it;
     /// both exist to A/B the decision, and neither affects correctness.
     pub fn transposes_gemm(&self, mr: usize) -> bool {
-        if let Some(forced) = orient_override() {
-            return forced;
+        match orient_override() {
+            Orient::Rule => {}
+            Orient::Force(v) => return v,
+            Orient::Legacy => return self.transposes_gemm_legacy(mr),
         }
+        // A row block lands inside one run when the rows are unit-stride and
+        // the run is at least `MR` long.
+        let fits = |(run, stride): (usize, i64)| stride == 1 && run >= mr;
+        let (ab, ba) = (fits(self.d_m_run), fits(self.d_n_run));
+        if ab != ba {
+            return ba;
+        }
+        if ab {
+            return false;
+        }
+        // A tie-break between two imperfect arms is not a tie when one of them
+        // cannot fill a micro-tile: most of every `MR x NR` block would be
+        // padding, which is arithmetic rather than a cache effect. The corpus
+        // cannot test this — its shortest direction is 32 against a largest
+        // `MR` of 48, and neither of the two cases where that bites reaches the
+        // fallback — so this guard is inert on every measurement quoted here.
+        let (m_rows, n_rows) = (self.d_m.len(), self.d_n.len());
+        if (m_rows >= mr) != (n_rows >= mr) {
+            return n_rows >= mr;
+        }
+        self.d_n_run.0 < self.d_m_run.0
+    }
+
+    /// The Phase 4.1 orientation rule, kept reachable as
+    /// `TENSORCONTRACT_ORIENT=legacy` so that the current one can be measured
+    /// against it as a runtime A/B rather than a diff between two builds (A15).
+    ///
+    /// Swap only when `D`'s column direction is strictly more contiguous than
+    /// its row direction *and* the swap leaves the row block unbroken. The
+    /// second condition is a veto with no fallback, which is where all nine of
+    /// its known misses live; see [`Plan::transposes_gemm`].
+    fn transposes_gemm_legacy(&self, mr: usize) -> bool {
         let lead = |axes: &[Axis]| axes.first().map_or(u64::MAX, |a| a.sd.unsigned_abs());
         if lead(&self.stats.n_axes) >= lead(&self.stats.m_axes) {
             return false;
@@ -519,16 +591,19 @@ impl Plan {
     ///    Measured: taking `f32` `48x8 -> 32x8` where the default was already
     ///    0.88 regular lost 7–9%. The corpus only takes the values 0, 0.67,
     ///    0.88 and 1.0, so any threshold in `(0.67, 0.88]` fits it equally.
-    /// 3. **The orientation does not change.** `MR` is an input to
-    ///    [`Plan::transposes_gemm`], so a shape change can silently flip the
-    ///    row/column orientation — which is worth far more than the write-back
-    ///    path is (1.4x against 1.15x) and whose rule is known to be wrong on
-    ///    nine corpus cases (A14). A shape change must not re-decide it as a
-    ///    side effect. Measured: without this guard, `c32` 3m moves the three
-    ///    `abcijk-e*bc-*` cases from the good arm to the bad one and loses 19%.
     ///
-    /// So guarded, the rule fires on 20 of 392 corpus case-dtype-methods, gains
-    /// 1.07–1.26x on 19 of them, and loses 7% on one small case — inside the
+    /// A third guard — that a shape change must not flip the row/column
+    /// orientation as a side effect — was needed while the orientation rule
+    /// was the Phase 4.1 one, which mis-picked the arm on `c32` 3m and lost 19%
+    /// there. **It was removed in Phase 4.1d**, once the orientation rule was
+    /// fixed: the shapes it used to veto for `c32` 3m are now rejected by guard
+    /// 2 anyway, and all the veto still did was block genuine wins. Dropping it
+    /// adds six firings, all `c32` 1m, measured at **1.19–1.24x** against 12
+    /// control cases at 1.002. That coupling runs both ways and is the reason
+    /// the two rules cannot be tuned separately; see the Phase 4.1d report.
+    ///
+    /// So guarded, the rule fires on 26 of 392 corpus case-dtype-methods and
+    /// gains 1.07–1.26x on all but one small case, which loses 7% — inside the
     /// per-case noise floor. Unguarded it is a **loss**: maximising the
     /// fraction alone scores 0.936 in `f32`.
     ///
@@ -566,10 +641,9 @@ impl Plan {
         if self.stats.k > SHALLOW_K || self.row_block_score(default) > BROKEN_ENOUGH {
             return None;
         }
-        let orient = self.transposes_gemm(default);
-        rest.iter().copied().find(|&mr| {
-            self.transposes_gemm(mr) == orient && self.row_block_score(mr) >= 1.0 - 1e-9
-        })
+        rest.iter()
+            .copied()
+            .find(|&mr| self.row_block_score(mr) >= 1.0 - 1e-9)
     }
 
     /// Fraction of the output's row blocks that would stay off
@@ -580,15 +654,17 @@ impl Plan {
     /// has no predictable effect and every shape scores alike, which leaves the
     /// tie-break to keep the default.
     pub fn row_block_score(&self, mr: usize) -> f64 {
-        let rows = if self.transposes_gemm(mr) {
-            &self.d_n
+        let (rows, run) = if self.transposes_gemm(mr) {
+            (&self.d_n, self.d_n_run)
         } else {
-            &self.d_m
+            (&self.d_m, self.d_m_run)
         };
-        match run_structure(rows) {
-            Some(run) => unbroken_fraction(rows.len(), run, mr),
-            None => 0.0,
+        // A zero stride marks "no uniform run structure", where `MR` has no
+        // predictable effect.
+        if run.1 == 0 {
+            return 0.0;
         }
+        unbroken_fraction(rows.len(), run.0, mr)
     }
 
     /// `true` when the contraction produces no output elements.
@@ -602,22 +678,37 @@ impl Plan {
     }
 }
 
-/// `TENSORCONTRACT_ORIENT=none|swap` pins the row/column orientation instead of
-/// deriving it from `D`'s strides. Read once per process; for measurement only.
-fn orient_override() -> Option<bool> {
+/// What `TENSORCONTRACT_ORIENT` asked for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Orient {
+    /// [`Plan::transposes_gemm`]'s rule.
+    Rule,
+    /// A pinned arm, for forced-arm measurement of both.
+    Force(bool),
+    /// The Phase 4.1 rule, for measuring the current one against it.
+    Legacy,
+}
+
+/// `TENSORCONTRACT_ORIENT=none|swap|legacy` pins the row/column orientation
+/// instead of deriving it from `D`'s strides. Read once per process; for
+/// measurement only, and none of it affects correctness.
+fn orient_override() -> Orient {
     #[cfg(feature = "std")]
     {
         use std::sync::OnceLock;
-        static ENV: OnceLock<Option<bool>> = OnceLock::new();
-        *ENV.get_or_init(|| match std::env::var("TENSORCONTRACT_ORIENT").ok()?.as_str() {
-            "none" | "ab" => Some(false),
-            "swap" | "ba" => Some(true),
-            _ => None,
-        })
+        static ENV: OnceLock<Orient> = OnceLock::new();
+        *ENV.get_or_init(
+            || match std::env::var("TENSORCONTRACT_ORIENT").unwrap_or_default().as_str() {
+                "none" | "ab" => Orient::Force(false),
+                "swap" | "ba" => Orient::Force(true),
+                "legacy" | "phase41" => Orient::Legacy,
+                _ => Orient::Rule,
+            },
+        )
     }
     #[cfg(not(feature = "std"))]
     {
-        None
+        Orient::Rule
     }
 }
 
@@ -673,59 +764,6 @@ fn row_block_override() -> RowBlock {
     {
         RowBlock::Auto
     }
-}
-
-/// The run structure of a scatter vector: `Some((len, stride))` when it is a
-/// concatenation of equal-length maximal arithmetic runs, `None` otherwise.
-///
-/// This is the shape of every output scatter the corpus produces — a leading
-/// axis of extent `len` and stride `stride`, restarted by the outer axes — and
-/// it is what makes the effect of a candidate `MR` computable in `O(M / MR)`
-/// rather than by rebuilding a block scatter per candidate.
-fn run_structure(scat: &[i64]) -> Option<(usize, i64)> {
-    if scat.len() < 2 {
-        return None;
-    }
-    let stride = scat[1] - scat[0];
-    // First discontinuity ends the first run; every later run must match it.
-    let len = scat
-        .windows(2)
-        .position(|w| w[1] - w[0] != stride)
-        .map_or(scat.len(), |p| p + 1);
-    if len < 2 || !scat.len().is_multiple_of(len) {
-        return None;
-    }
-    for (i, w) in scat.windows(2).enumerate() {
-        let want = if (i + 1) % len == 0 { None } else { Some(stride) };
-        if want.is_some_and(|s| w[1] - w[0] != s) {
-            return None;
-        }
-        // A run boundary that happens to continue the progression would mean
-        // the runs are longer than measured, contradicting maximality.
-        if want.is_none() && w[1] - w[0] == stride {
-            return None;
-        }
-    }
-    Some((len, stride))
-}
-
-/// Fraction of aligned `mr`-blocks of a `total`-row scatter that fall inside a
-/// single run, given runs of `(len, _)` rows.
-///
-/// Exactly the fraction that reaches [`crate::writeback`]'s non-gather paths.
-fn unbroken_fraction(total: usize, (len, _): (usize, i64), mr: usize) -> f64 {
-    if total == 0 || mr == 0 {
-        return 1.0;
-    }
-    let nblk = total.div_ceil(mr);
-    let whole = (0..nblk)
-        .filter(|b| {
-            let lo = b * mr;
-            let hi = (lo + mr).min(total) - 1;
-            lo / len == hi / len
-        })
-        .count();
-    whole as f64 / nblk as f64
 }
 
 /// Collapse repeated labels within one tensor onto its diagonal, validating
@@ -970,13 +1008,53 @@ mod tests {
     }
 
     #[test]
-    fn transpose_declined_when_it_would_shatter_the_row_block() {
-        // Same layout, but the contiguous run is shorter than MR, so the
-        // swapped micro-tile rows would still straddle a discontinuity. That
-        // case measured *slower* than not swapping; see `transposes_gemm`.
+    fn transpose_taken_when_the_row_block_fits_exactly() {
         let p = gemm_plan(64, 16, [16, 1]);
-        assert!(p.transposes_gemm(16), "run == MR is taken");
-        assert!(!p.transposes_gemm(32), "run < MR is declined");
+        assert!(p.transposes_gemm(16), "run == MR fits");
+    }
+
+    /// `D` with `M` rows in runs of `m_run` at stride 24 and `N` columns in one
+    /// contiguous run of 24 — the shape of the whole `abcijk` family, where the
+    /// two arms are mirror images and neither can fit a 48-row block.
+    fn mirrored_plan(m_run: i64, outer: i64) -> Plan {
+        // `outer` and `outer2` break the folds, so both directions keep short
+        // runs while staying long enough overall to fill a micro-tile.
+        let d = Layout::new(
+            vec![24, m_run, 4, 8],
+            vec![1, 24, outer, outer * 7 + 3],
+        )
+        .unwrap();
+        let a = lay(&[m_run, 4, 7]);
+        let b = lay(&[7, 24, 8]);
+        Plan::new(
+            Operand::new(&a, &[1, 2, 4]),
+            Operand::new(&b, &[4, 0, 3]),
+            None,
+            Operand::new(&d, &[0, 1, 2, 3]),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn orientation_falls_back_to_the_shorter_run_when_neither_arm_fits() {
+        // At MR = 48 no arm can hold a row block inside a run: the columns run
+        // 24 and the rows run 16 or 256. The tie is then broken by putting the
+        // *shorter*-run direction in the row role — which is what separates the
+        // `-mb` family (where swapping measured -14% in `f32`) from `e*bc`
+        // (where it measured +40%), the distinction the previous rule missed.
+        let short = mirrored_plan(16, 100_000);
+        assert_eq!(short.d_m_run.0, 16);
+        assert_eq!(short.d_n_run, (24, 1));
+        assert!(!short.transposes_gemm(48), "rows already have the shorter run");
+
+        let long = mirrored_plan(256, 1_000_000);
+        assert_eq!(long.d_m_run.0, 256);
+        assert!(long.transposes_gemm(48), "columns have the shorter run");
+
+        // And step 1 still dominates: give it an `MR` the column run can hold
+        // and both plans swap for that reason instead.
+        assert!(short.transposes_gemm(16));
+        assert!(long.transposes_gemm(16));
     }
 
     #[test]
@@ -984,34 +1062,6 @@ mod tests {
         // Both directions strided: the swap cannot make the rows contiguous,
         // so the smaller stride alone does not justify it.
         assert!(!gemm_plan(64, 64, [512, 2]).transposes_gemm(16));
-    }
-
-    #[test]
-    fn run_structure_recognises_equal_length_runs() {
-        // Four contiguous runs of 24, restarted by an outer axis.
-        let s = build_scatter(&[24, 4], &[1, 200]);
-        assert_eq!(run_structure(&s), Some((24, 1)));
-        // A single unbroken run is the whole vector.
-        assert_eq!(run_structure(&build_scatter(&[24], &[1])), Some((24, 1)));
-        // Constant non-unit stride is still a run: `MR` cannot break it.
-        assert_eq!(run_structure(&build_scatter(&[12], &[4])), Some((12, 4)));
-        // Unequal runs have no uniform structure.
-        assert_eq!(run_structure(&[0, 1, 2, 100, 101, 200]), None);
-        assert_eq!(run_structure(&[7]), None);
-    }
-
-    #[test]
-    fn unbroken_fraction_counts_straddling_blocks() {
-        // 96 rows in runs of 24. Only shapes that tile a run keep every block.
-        let total = 96;
-        let run = (24, 1);
-        assert_eq!(unbroken_fraction(total, run, 24), 1.0);
-        assert_eq!(unbroken_fraction(total, run, 8), 1.0);
-        // 16 into 24 straddles every second block of a 48-row period.
-        assert!((unbroken_fraction(total, run, 16) - 2.0 / 3.0).abs() < 1e-12);
-        // 32 and 48 cross a boundary every time.
-        assert_eq!(unbroken_fraction(total, run, 32), 0.0);
-        assert_eq!(unbroken_fraction(total, run, 48), 0.0);
     }
 
     /// `D[a,c,j] = A[a,c,k] B[k,j]` with `a` contiguous in `D` (extent 24) and
@@ -1064,37 +1114,16 @@ mod tests {
     }
 
     #[test]
-    fn row_block_refuses_to_change_the_orientation() {
-        // The alternate would be perfectly regular, but only because it flips
-        // the GEMM orientation — a decision worth more than this one and made
-        // by a rule known to be wrong on nine corpus cases. Declining it is
-        // what keeps `c32` 3m off a 19% regression.
-        let d = Layout::new(vec![24, 4, 32], vec![1, 200, 4000]).unwrap();
-        let a = lay(&[24, 4, 7]);
-        let b = lay(&[7, 32]);
-        let p = Plan::new(
-            Operand::new(&a, &[0, 1, 3]),
-            Operand::new(&b, &[3, 2]),
-            None,
-            Operand::new(&d, &[0, 1, 2]),
-        )
-        .unwrap();
-        for &mr in &[16usize, 24, 8] {
-            assert!(!p.transposes_gemm(mr), "this fixture must not swap");
-        }
-        // Same fixture, but with `D` stored so that the column direction is the
-        // contiguous one: now the shapes disagree about the orientation.
-        let d = Layout::new(vec![4, 32, 24], vec![200, 4000, 1]).unwrap();
-        let q = Plan::new(
-            Operand::new(&a, &[0, 1, 3]),
-            Operand::new(&b, &[3, 2]),
-            None,
-            Operand::new(&d, &[1, 2, 0]),
-        )
-        .unwrap();
-        if q.transposes_gemm(8) != q.transposes_gemm(24) {
-            assert_eq!(q.preferred_row_block(&[24, 8]), None);
-        }
+    fn row_block_may_change_the_orientation() {
+        // Until Phase 4.1d a shape change was forbidden from flipping the
+        // orientation, because the orientation rule of the day picked the wrong
+        // arm on one family and the shape change would hand it the decision.
+        // With that rule fixed the veto only blocked wins: the six `c32` 1m
+        // cases it had been suppressing measured 1.19-1.24x once it was gone.
+        // So a shape is judged on its own regularity, in whatever orientation
+        // it implies.
+        let p = run24_plan();
+        assert_eq!(p.preferred_row_block(&[16, 24, 8]), Some(24));
     }
 
     #[test]

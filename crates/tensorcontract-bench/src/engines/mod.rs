@@ -1,6 +1,7 @@
 //! Shared plumbing for the harness: element traits, timing, and the
 //! per-engine runners.
 
+pub mod orient;
 pub mod premise;
 pub mod shapes;
 pub mod sweep;

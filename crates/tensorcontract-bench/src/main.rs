@@ -34,13 +34,18 @@ fn main() -> ExitCode {
         "premise" => engines::premise::run(&opts),
         "sweep" => engines::sweep::run(&opts),
         "shapes" => engines::shapes::run(&opts),
+        "orient" => engines::orient::run(&opts),
         "info" => {
             report::print_environment();
             ExitCode::SUCCESS
         }
         _ => {
             eprintln!(
-                "usage: tcbench <verify|premise|sweep|info> [options]\n\
+                "usage: tcbench <verify|premise|sweep|shapes|orient|info> [options]\n\
+                 \n\
+                 `shapes` and `orient` are analyses, not benchmarks: they touch\n\
+                 no data and cost no CPU, so they are safe to run while a\n\
+                 measurement is in flight, and their output is reproducible.\n\
                  \n\
                  options:\n\
                  \x20 --size <MiB>      tensor size target for TCCG sizing (default 200)\n\
