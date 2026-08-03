@@ -271,7 +271,12 @@ micro-tile is smaller. That is inherent to complex arithmetic, not to any one
 method.
 
 Dispatch is by `trait KernelSet`, implemented for `f32`/`f64` with runtime CPU
-feature detection and a portable scalar fallback. Any other `Real` type
+feature detection — AVX-512F, else AVX2+FMA, else the portable scalar path —
+and `TENSORCONTRACT_KERNEL` pins a narrower one so each is testable on hardware
+that has something wider. All the vectorised kernels are generated from one
+macro body per method over `(MV, NR)` const generics, with the instruction set
+as a further macro parameter, so neither the three complex methods nor the two
+instruction sets differ by anything but their shapes. Any other `Real` type
 (extended precision, dual numbers for forward-mode AD, `bf16`) gets a correct
 engine by implementing `KernelSet` with the generic scalar kernels — the
 genericity is real, not aspirational, and is exercised by the

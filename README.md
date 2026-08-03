@@ -207,7 +207,14 @@ Raw results from the runs quoted above are committed under `bench-results/`.
 ```bash
 cargo test --workspace --release                       # includes 1000 randomised
 TENSORCONTRACT_KERNEL=scalar cargo test --workspace --release   # portable path
+TENSORCONTRACT_KERNEL=avx2 cargo test --workspace --release      # AVX2 kernels
 ```
+
+`TENSORCONTRACT_KERNEL` takes `scalar`, `avx2`, `avx512` or `auto` (the
+default, meaning the widest the CPU has). Pinning an instruction set narrower
+than the CPU's is how the AVX2 path is exercised on an AVX-512 machine; the
+kernel-contract tests in `kernel/mod.rs` additionally run *every* kernel family
+the CPU supports on every `cargo test`, whatever is selected.
 
 The engine is checked against a brute-force oracle that shares no code with it,
 under both realistic and deliberately tiny cache blocking so that every level

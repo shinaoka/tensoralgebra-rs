@@ -18,6 +18,7 @@ cargo fmt --all
 cargo clippy --workspace --all-targets    # must be warning-free
 cargo test --workspace --release
 TENSORCONTRACT_KERNEL=scalar cargo test --workspace --release
+TENSORCONTRACT_KERNEL=avx2 cargo test --workspace --release
 ```
 
 If you touched anything in the hot path, also run the cross-implementation
@@ -43,7 +44,18 @@ Kernels live in `crates/tensorcontract/src/kernel/`. A kernel must:
 3. Be registered through `KernelSet::config_real` / `config_cplx` with runtime
    feature detection, so the portable scalar path stays reachable.
 4. Pass `kernel::tests::kernels_match_reference_*`, which checks every selected
-   kernel against the scalar semantics element by element.
+   kernel against the scalar semantics element by element, and
+   `every_available_x86_isa_matches_reference`, which does the same for every
+   kernel family the CPU can run rather than only the selected one.
+
+A new *instruction set* rather than a new method should be a new set of
+arguments to `simd_kernels!` in `kernel/x86.rs` and a new `configs!` block, not
+a new set of kernel bodies. One body per method across all ISAs is deliberate
+(D17): a comparison between the three complex methods must not also be a
+comparison between hand-tunings, and that argument does not stop at the ISA
+boundary. Add the ISA to `x86::Isa`, give it a `TENSORCONTRACT_KERNEL` name so
+it can be pinned on hardware that has something wider, and extend the AVX2/512
+grids in `examples/kernel_shapes` so its register blocks can be calibrated.
 
 ## Benchmarking etiquette
 

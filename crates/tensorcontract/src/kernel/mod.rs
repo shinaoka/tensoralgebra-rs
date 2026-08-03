@@ -451,7 +451,9 @@ fn env_usize(_key: &str) -> Option<usize> {
 
 /// Real scalar types for which the engine has a micro-kernel.
 ///
-/// `f32` and `f64` get runtime-dispatched vectorised kernels. Any other
+/// `f32` and `f64` get runtime-dispatched vectorised kernels: AVX-512F if the
+/// CPU has it, else AVX2+FMA, else the portable path below. `TENSORCONTRACT_KERNEL`
+/// pins one (`scalar` | `avx2` | `avx512`). Any other
 /// [`Real`] type can opt in with the generic scalar kernels, e.g.
 ///
 /// ```ignore
@@ -485,23 +487,52 @@ pub trait KernelSet: Real + Sized {
     }
 }
 
-/// Force the portable scalar kernels regardless of CPU features.
-/// Set `TENSORCONTRACT_KERNEL=scalar` to compare against the reference path.
-fn force_scalar() -> bool {
+/// What `TENSORCONTRACT_KERNEL` asked for.
+///
+/// Pinning an instruction set matters for more than curiosity: the reference
+/// machine has AVX-512, so without a way to say "use the AVX2 kernels anyway"
+/// the AVX2 path could not be *executed* here at all, only compiled. Every
+/// other Phase 4 fast path got a runtime switch for the same reason — a
+/// build-to-build diff has already produced one wrong sign in this project.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum KernelForce {
+    /// Widest available instruction set. The default.
+    Auto,
+    /// The portable kernels in [`scalar`], whatever the CPU has.
+    Scalar,
+    /// The AVX2 + FMA kernels, on a CPU that has them.
+    Avx2,
+    /// The AVX-512 kernels, on a CPU that has them.
+    Avx512,
+}
+
+/// `TENSORCONTRACT_KERNEL=scalar|avx2|avx512|auto`, read once per process.
+///
+/// An unrecognised value is [`KernelForce::Auto`], and a pinned instruction set
+/// the CPU does not have falls back to scalar rather than faulting — see
+/// `x86::selected_isa`.
+pub(crate) fn kernel_force() -> KernelForce {
     #[cfg(feature = "std")]
     {
         use std::sync::OnceLock;
-        static FORCE: OnceLock<bool> = OnceLock::new();
-        *FORCE.get_or_init(|| {
-            std::env::var("TENSORCONTRACT_KERNEL")
-                .map(|v| v.eq_ignore_ascii_case("scalar"))
-                .unwrap_or(false)
+        static FORCE: OnceLock<KernelForce> = OnceLock::new();
+        *FORCE.get_or_init(|| match std::env::var("TENSORCONTRACT_KERNEL") {
+            Ok(v) if v.eq_ignore_ascii_case("scalar") => KernelForce::Scalar,
+            Ok(v) if v.eq_ignore_ascii_case("avx2") => KernelForce::Avx2,
+            Ok(v) if v.eq_ignore_ascii_case("avx512") => KernelForce::Avx512,
+            _ => KernelForce::Auto,
         })
     }
     #[cfg(not(feature = "std"))]
     {
-        false
+        KernelForce::Auto
     }
+}
+
+/// Force the portable scalar kernels regardless of CPU features.
+/// Set `TENSORCONTRACT_KERNEL=scalar` to compare against the reference path.
+fn force_scalar() -> bool {
+    kernel_force() == KernelForce::Scalar
 }
 
 macro_rules! impl_kernel_set {
@@ -849,6 +880,134 @@ mod tests {
         for m in ComplexMethod::ALL {
             check_cplx::<f32>(m, 1e-4);
         }
+    }
+
+    /// Every kernel family the *CPU* can run, not just the one dispatch would
+    /// choose, against the same contract.
+    ///
+    /// This is what exercises the AVX2 kernels on an AVX-512 machine under a
+    /// plain `cargo test`. Without it they would be compiled and never
+    /// executed here, and the only coverage would be a `TENSORCONTRACT_KERNEL`
+    /// run someone has to remember to do.
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    fn check_isa<T: KernelSet>(s: x86::IsaConfigs<T>, tol: f64) {
+        let default_mr = (s.real)().ukr.mr;
+        let menu = (s.row_blocks)(false, ComplexMethod::default());
+        assert_eq!(menu[0], default_mr, "{} real menu head", s.isa.name());
+        check_real_cfg::<T>((s.real)(), tol);
+        for (i, &mr) in menu.iter().enumerate() {
+            assert!(
+                !menu[..i].contains(&mr),
+                "{} real MR={mr} twice",
+                s.isa.name()
+            );
+            let cfg = (s.config_at)(false, ComplexMethod::default(), mr)
+                .unwrap_or_else(|| panic!("{} real menu offers MR={mr}", s.isa.name()));
+            assert_eq!(cfg.ukr.mr, mr);
+            check_real_cfg::<T>(cfg, tol);
+        }
+        for m in ComplexMethod::ALL {
+            let default_mr = (s.cplx)(m).ukr.mr;
+            let menu = (s.row_blocks)(true, m);
+            assert_eq!(
+                menu[0],
+                default_mr,
+                "{} {} menu head",
+                s.isa.name(),
+                m.name()
+            );
+            check_cplx_cfg::<T>((s.cplx)(m), m, tol);
+            for (i, &mr) in menu.iter().enumerate() {
+                assert!(
+                    !menu[..i].contains(&mr),
+                    "{} {} MR={mr} twice",
+                    s.isa.name(),
+                    m.name()
+                );
+                let cfg = (s.config_at)(true, m, mr)
+                    .unwrap_or_else(|| panic!("{} {} menu offers MR={mr}", s.isa.name(), m.name()));
+                assert_eq!(cfg.ukr.mr, mr);
+                check_cplx_cfg::<T>(cfg, m, tol);
+            }
+        }
+    }
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[test]
+    fn every_available_x86_isa_matches_reference() {
+        for &isa in x86::available_isas() {
+            check_isa::<f64>(x86::isa_configs_f64(isa), 1e-12);
+            check_isa::<f32>(x86::isa_configs_f32(isa), 1e-4);
+        }
+    }
+
+    /// The `Ukr` contract is what makes the kernels interchangeable, so a new
+    /// instruction set must not quietly bring a different packing convention
+    /// with it: the driver, the packing traversal and the write-back are shared
+    /// and know nothing about the ISA. Shapes may differ; formats may not.
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[test]
+    fn x86_isas_agree_on_the_pack_contract() {
+        fn check<T: KernelSet>(sets: &[x86::IsaConfigs<T>]) {
+            let Some((first, rest)) = sets.split_first() else {
+                return;
+            };
+            let fmts = |c: &KernelConfig<T>| (c.ukr.a_pack, c.ukr.b_pack, c.ukr.tile_fmt);
+            for s in rest {
+                assert_eq!(
+                    fmts(&(s.real)()),
+                    fmts(&(first.real)()),
+                    "{} vs {} real formats",
+                    s.isa.name(),
+                    first.isa.name()
+                );
+                for m in ComplexMethod::ALL {
+                    assert_eq!(
+                        fmts(&(s.cplx)(m)),
+                        fmts(&(first.cplx)(m)),
+                        "{} vs {} {} formats",
+                        s.isa.name(),
+                        first.isa.name(),
+                        m.name()
+                    );
+                }
+            }
+            // And the widths must stay derivable from the shape alone, for
+            // every entry on every menu — that is what `pack` assumes.
+            for s in sets {
+                for (complex, m) in ComplexMethod::ALL
+                    .iter()
+                    .map(|&m| (true, m))
+                    .chain(core::iter::once((false, ComplexMethod::default())))
+                {
+                    for &mr in (s.row_blocks)(complex, m) {
+                        // `normalise` is what the `KernelSet` impls apply, and
+                        // it is where the register-block alignment of `mc`/`nc`
+                        // that the driver's loop arithmetic relies on comes from.
+                        let c = (s.config_at)(complex, m, mr).unwrap().normalise();
+                        let planes = c.ukr.tile / (c.ukr.mr * c.ukr.nr);
+                        assert_eq!(c.ukr.a_per_k, c.ukr.mr * c.ukr.a_pack.reals_per_element());
+                        assert_eq!(c.ukr.b_per_k, c.ukr.nr * c.ukr.b_pack.reals_per_element());
+                        assert_eq!(c.ukr.tile, planes * c.ukr.mr * c.ukr.nr);
+                        assert_eq!(c.blk.mc % c.ukr.mr, 0);
+                        assert_eq!(c.blk.nc % c.ukr.nr, 0);
+                    }
+                }
+            }
+        }
+        let isas = x86::available_isas();
+        check::<f64>(
+            &isas
+                .iter()
+                .map(|&i| x86::isa_configs_f64(i))
+                .collect::<Vec<_>>(),
+        );
+        check::<f32>(
+            &isas
+                .iter()
+                .map(|&i| x86::isa_configs_f32(i))
+                .collect::<Vec<_>>(),
+        );
     }
 
     /// A menu with a repeated `MR` would make `config_at` unreachable for the

@@ -12,13 +12,21 @@
 //! therefore shows its 25% flop saving as extra throughput, which is the honest
 //! way to compare it against planar and 1m.
 //!
+//! It sweeps whichever instruction sets the CPU has. The AVX-512 grid is the
+//! one Phase 3 chose the shipped AVX-512 shapes from; the **AVX2 grid is the
+//! calibration path for the AVX2 shapes, which were never measured** — they were
+//! picked from the register budget and the uop model on an AVX-512-only
+//! reference machine. Run this on a Haswell/Zen box and the `best per method`
+//! lines at the bottom are exactly what belongs in `cfg_avx2_f64` /
+//! `cfg_avx2_f32`, replacing a model with a measurement.
+//!
 //! ```text
 //! cargo run --release -p tensorcontract --example kernel_shapes
 //! ```
 
 use std::time::Instant;
 
-use tensorcontract::kernel::x86::{avx512_f32, avx512_f64};
+use tensorcontract::kernel::x86::{avx2_f32, avx2_f64, avx512_f32, avx512_f64};
 
 const TRIALS: usize = 5;
 
@@ -87,6 +95,21 @@ impl<T: 'static> Case<T> {
             Kind::ThreeM => (3 * mv * nr, 3 * mv + 3 * nr, 3 * mv * nr),
         }
     }
+
+    /// Live vector registers: accumulators, plus the A plane(s) the body holds,
+    /// plus the broadcasts. Above the architectural register count the
+    /// allocator spills and the shape falls off a 30–50% cliff, so this is the
+    /// one column of the model that reliably predicts the measurement (D19) —
+    /// and the one that changes most between AVX-512 and AVX2.
+    fn live(&self) -> usize {
+        let (acc, _, _) = self.cost();
+        match self.kind {
+            // 3m loads one plane at a time, and 1m is the real kernel.
+            Kind::Real | Kind::OneM | Kind::ThreeM => acc + self.mv + 1,
+            // planar holds both A planes and both B broadcasts at once.
+            Kind::Planar => acc + 2 * self.mv + 2,
+        }
+    }
 }
 
 fn time<T: Copy + Default + 'static>(
@@ -120,9 +143,11 @@ fn time<T: Copy + Default + 'static>(
     (c.flops_per_k(lanes) * kc * reps) as f64 / best / 1e9
 }
 
-/// Build the candidate list for one element type. The `$m` module supplies the
-/// kernels; the shapes are the same for both types so that the `f32`/`f64`
-/// comparison is a comparison of the hardware, not of two shape choices.
+/// Build the AVX-512 candidate list for one element type. The `$m` module
+/// supplies the kernels; the shapes are the same for both types so that the
+/// `f32`/`f64` comparison is a comparison of the hardware, not of two shape
+/// choices. Some candidates are deliberately over the 32-register budget, so
+/// that the cliff shows up in the output rather than having to be believed.
 macro_rules! cases {
     ($m:ident, $t:ty) => {
         vec![
@@ -179,17 +204,74 @@ macro_rules! cases {
     };
 }
 
+/// The AVX2 candidate list. A separate grid because 16 ymm is a different
+/// problem from 32 zmm, not a scaled one: nearly every AVX-512 shape above
+/// spills here, and the surviving aspect ratios are so few for planar and 3m
+/// that the sweep is more about confirming the register bound than exploring.
+/// A handful of over-budget shapes are included on purpose, for the same reason
+/// as in `cases!`.
+macro_rules! cases_avx2 {
+    ($m:ident, $t:ty) => {
+        vec![
+            (
+                Kind::Real,
+                2,
+                6,
+                $m::tramp_real::<2, 6> as unsafe fn(usize, *const $t, *const $t, *mut $t),
+            ),
+            (Kind::Real, 1, 6, $m::tramp_real::<1, 6>),
+            (Kind::Real, 1, 8, $m::tramp_real::<1, 8>),
+            (Kind::Real, 2, 4, $m::tramp_real::<2, 4>),
+            (Kind::Real, 2, 5, $m::tramp_real::<2, 5>),
+            (Kind::Real, 3, 3, $m::tramp_real::<3, 3>),
+            (Kind::Real, 3, 4, $m::tramp_real::<3, 4>),
+            (Kind::Real, 4, 2, $m::tramp_real::<4, 2>),
+            (Kind::Real, 4, 3, $m::tramp_real::<4, 3>),
+            (Kind::Real, 5, 2, $m::tramp_real::<5, 2>),
+            (Kind::Planar, 1, 3, $m::tramp_planar::<1, 3>),
+            (Kind::Planar, 1, 4, $m::tramp_planar::<1, 4>),
+            (Kind::Planar, 1, 5, $m::tramp_planar::<1, 5>),
+            (Kind::Planar, 1, 6, $m::tramp_planar::<1, 6>),
+            (Kind::Planar, 1, 7, $m::tramp_planar::<1, 7>),
+            (Kind::Planar, 2, 2, $m::tramp_planar::<2, 2>),
+            (Kind::Planar, 2, 3, $m::tramp_planar::<2, 3>),
+            (Kind::Planar, 3, 1, $m::tramp_planar::<3, 1>),
+            (Kind::OneM, 1, 6, $m::tramp_onem::<1, 6>),
+            (Kind::OneM, 1, 8, $m::tramp_onem::<1, 8>),
+            (Kind::OneM, 2, 4, $m::tramp_onem::<2, 4>),
+            (Kind::OneM, 2, 5, $m::tramp_onem::<2, 5>),
+            (Kind::OneM, 2, 6, $m::tramp_onem::<2, 6>),
+            (Kind::OneM, 3, 3, $m::tramp_onem::<3, 3>),
+            (Kind::OneM, 3, 4, $m::tramp_onem::<3, 4>),
+            (Kind::OneM, 4, 2, $m::tramp_onem::<4, 2>),
+            (Kind::OneM, 4, 3, $m::tramp_onem::<4, 3>),
+            (Kind::ThreeM, 1, 2, $m::tramp_threem::<1, 2>),
+            (Kind::ThreeM, 1, 3, $m::tramp_threem::<1, 3>),
+            (Kind::ThreeM, 1, 4, $m::tramp_threem::<1, 4>),
+            (Kind::ThreeM, 1, 5, $m::tramp_threem::<1, 5>),
+            (Kind::ThreeM, 2, 2, $m::tramp_threem::<2, 2>),
+            (Kind::ThreeM, 2, 3, $m::tramp_threem::<2, 3>),
+            (Kind::ThreeM, 3, 1, $m::tramp_threem::<3, 1>),
+        ]
+        .into_iter()
+        .map(|(kind, mv, nr, func)| Case { kind, mv, nr, func })
+        .collect::<Vec<_>>()
+    };
+}
+
 fn sweep<T: Copy + Default + 'static>(
     title: &str,
     lanes: usize,
+    regs: usize,
     kcs: &[usize],
     cases: Vec<Case<T>>,
     fill: impl Fn(usize) -> T + Copy,
 ) {
-    println!("\n=== {title} (L = {lanes} lanes/register) ===\n");
+    println!("\n=== {title} (L = {lanes} lanes/register, {regs} registers) ===\n");
+    println!("`live` is accumulators + A plane(s) + broadcasts; `!` marks a shape over budget.\n");
     print!(
-        "{:<8} {:>8} {:>4} {:>5} {:>4} {:>6} {:>6}",
-        "method", "MRxNR", "acc", "load", "fma", "f/l", "B/flop"
+        "{:<8} {:>8} {:>4} {:>5} {:>5} {:>4} {:>6} {:>6}",
+        "method", "MRxNR", "acc", "live", "load", "fma", "f/l", "B/flop"
     );
     for kc in kcs {
         print!("{:>13}", format!("GF/s kc={kc}"));
@@ -207,12 +289,15 @@ fn sweep<T: Copy + Default + 'static>(
         let (acc, loads, fma) = c.cost();
         let (a_per_k, b_per_k, _) = c.sizes(lanes);
         let bytes = ((a_per_k + b_per_k) * core::mem::size_of::<T>()) as f64;
+        let live = c.live();
         print!(
-            "{:<8} {:>4}x{:<3} {:>4} {:>5} {:>4} {:>6.2} {:>6.3}",
+            "{:<8} {:>4}x{:<3} {:>4} {:>4}{} {:>5} {:>4} {:>6.2} {:>6.3}",
             c.kind.label(),
             c.mr(lanes),
             c.nr,
             acc,
+            live,
+            if live > regs { "!" } else { " " },
             loads,
             fma,
             fma as f64 / loads as f64,
@@ -237,8 +322,10 @@ fn sweep<T: Copy + Default + 'static>(
 }
 
 fn main() {
-    if !is_x86_feature_detected!("avx512f") {
-        eprintln!("no AVX-512 on this CPU; nothing to sweep");
+    let have_avx512 = is_x86_feature_detected!("avx512f");
+    let have_avx2 = is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma");
+    if !have_avx512 && !have_avx2 {
+        eprintln!("no AVX-512 and no AVX2+FMA on this CPU; nothing to sweep");
         return;
     }
     println!("Micro-kernel register-block sweep, packed panels hot.");
@@ -255,18 +342,44 @@ fn main() {
     // The last column is the `kc` `Blocking::derive` actually picks for that
     // element size, so the "best per method" line selects at the operating
     // point rather than at a flattering one.
-    sweep(
-        "AVX-512 f64 / c64",
-        8,
-        &[16, 64, 256],
-        cases!(avx512_f64, f64),
-        |i| ((i % 17) as f64 - 8.0) / 9.0,
-    );
-    sweep(
-        "AVX-512 f32 / c32",
-        16,
-        &[16, 64, 384],
-        cases!(avx512_f32, f32),
-        |i| ((i % 17) as f32 - 8.0) / 9.0,
-    );
+    if have_avx512 {
+        sweep(
+            "AVX-512 f64 / c64",
+            8,
+            32,
+            &[16, 64, 256],
+            cases!(avx512_f64, f64),
+            |i| ((i % 17) as f64 - 8.0) / 9.0,
+        );
+        sweep(
+            "AVX-512 f32 / c32",
+            16,
+            32,
+            &[16, 64, 384],
+            cases!(avx512_f32, f32),
+            |i| ((i % 17) as f32 - 8.0) / 9.0,
+        );
+    }
+    // Worth running even on a CPU that has AVX-512: it will not reproduce an
+    // AVX2-only machine's memory system or its FMA latency, but the shapes'
+    // *relative* issue behaviour and every register cliff are visible here, and
+    // that is more than the model alone gives.
+    if have_avx2 {
+        sweep(
+            "AVX2 f64 / c64",
+            4,
+            16,
+            &[16, 64, 256],
+            cases_avx2!(avx2_f64, f64),
+            |i| ((i % 17) as f64 - 8.0) / 9.0,
+        );
+        sweep(
+            "AVX2 f32 / c32",
+            8,
+            16,
+            &[16, 64, 384],
+            cases_avx2!(avx2_f32, f32),
+            |i| ((i % 17) as f32 - 8.0) / 9.0,
+        );
+    }
 }
