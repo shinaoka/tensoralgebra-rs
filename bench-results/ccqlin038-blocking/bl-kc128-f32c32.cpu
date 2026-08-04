@@ -1,0 +1,19 @@
+# arm bl-kc128-f32c32 on cpu4, L3 domain 0 = cpus 0-7,16-23, numa 0
+# window 519.6s; env TENSORCONTRACT_KC=128
+cpu0 busy 1.2%
+cpu1 busy 1.1%
+cpu2 busy 1.1%
+cpu3 busy 1.2%
+cpu4 busy 100.0% <- measurement thread
+cpu5 busy 1.0%
+cpu6 busy 1.2%
+cpu7 busy 1.1%
+cpu16 busy 1.0%
+cpu17 busy 1.0%
+cpu18 busy 0.9%
+cpu19 busy 1.0%
+cpu20 busy 0.7%
+cpu21 busy 0.9%
+cpu22 busy 1.0%
+cpu23 busy 1.1%
+# domain co-tenancy: none above 5%

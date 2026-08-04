@@ -158,12 +158,13 @@ file**: different machine, different cache hierarchy, and AVX2 rather than AVX-5
 
 Headlines, and four decisions they hand back:
 
-* **`KC` is first-order and the default is too shallow.** `kc = 512` is worth 5.0%
-  in `f64` and 3.3% in `c64` against a 0.5% floor; `kc64` costs 15–24%. `f32`/`c32`
-  are already optimal. **Recommended, not taken** — a one-line change to
-  `Blocking::derive`, and it is a Zen2/AVX2 result.
-* **`MC` is a wide plateau** — 25% to 400% of the derived value moves the geomean
-  ≤3%. Not worth tuning. Item retired.
+* **`KC` is first-order, but its best value is machine-specific and the portable
+  change is *coupled* deepening.** `kc = 512` pinned is 1.050 on Zen2 and **0.961 on
+  Cascade Lake** — it must not ship. `ck512`, which re-derives `mc` at the new depth,
+  is 1.031 and 1.029 respectively: the same ~3% on both machines, for a reason
+  (the packed-`A` block keeps its L2 footprint). **That** is the recommendation.
+* **`MC` is a plateau on Zen2 and not on Cascade Lake** (`mc400` costs 15–25% there).
+  A13's upper bound binds on the reference machine. The item is *not* retired.
 * **The analytical blocking model loses in 11 of 12 columns** on the first foreign
   machine, by up to 7.2% in the complex methods, and part 7 attributes the whole
   loss to its `kc`. **Leave `TENSORCONTRACT_BLOCKMODEL=legacy`** (A33). D23's
@@ -182,20 +183,19 @@ traffic-sensitive arms got their own sequential job. It returned 20.4x on the gr
 
 What the two runs left open, in priority order:
 
-1. **Fix `Plan::partition`'s early return.** The `panels >= p` fast path costs up
-   to 4.3x on the 18 memory-bound `abcijk` cases at 64 threads (part 8b). The
-   mechanism is *not* identified — write-back false sharing across sixteen L3
-   domains and barrier span are both plausible — and `TENSORCONTRACT_PARTITION`
-   makes either cheap to test. **Do not change the rule before measuring one of
-   them**; three plausible mechanisms have already been wrong in this phase.
-2. **Fuse the `pc` loop so `C` is touched once rather than `K/KC` times.** Promoted
-   from the tail of the list: the whole measured `kc` effect is this quantity in
-   disguise (+8.2% where deeper panels halve the pass count, +2.4% where they
-   cannot), so the fusion should capture more of it than a bigger constant and make
-   `kc` stop being first-order. **Superseded:** "re-derive the model's `kc`" was item
-   2 here and is withdrawn — eq. (4)-(6) is arithmetically correct and its objective
-   is unreachable, since the measured optimum puts the `A` micro-panel at twice the
-   whole L1 (part 9).
+1. **Make `Plan::partition` L3-domain-aware.** The `panels >= p` early return costs
+   up to 4.3x on the memory-bound family at 64 threads on Zen2 and **nothing at all
+   on Ice Lake** (A36), so the branch is correct where threads share one L3 and wrong
+   where they span many. The missing input is how many L3 domains the thread set
+   covers, which the engine already probes for D23. Confirm within one machine first:
+   `PARTITION_SWEEP=1 STAGES=threads` on `rome`, ~30 min.
+2. **Ship coupled deepening (`kc` up, `mc` re-derived) after an end-to-end A/B.**
+   `ck512` is +3% on both machines where the pinned arm swings nine points, so this is
+   the one blocking change with evidence on two hierarchies. **Demoted:** fusing the
+   `pc` loop was item 2 on the strength of a `C`-traffic account that the reference
+   machine then falsified — deeper `kc` *hurts* the multi-pass population there, by up
+   to 26% (part 7). The fusion may still be worth having, but it is no longer
+   supported by this evidence. "Re-derive the model's `kc`" remains withdrawn.
 3. **Pool the threads.** Spawning per `execute` call is the leading suspect for
    occupancy falling to 29–36% at 64 threads (part 8), and it is first-order for the
    small repeated contractions Phase 1 identified as the real headroom.
@@ -1617,15 +1617,110 @@ Two consequences worth acting on rather than admiring:
   this account is wrong and something about buffer size, not pass count, is doing
   the work.
 
-### What this means for the default `KC`
+### The reference machine reverses it: `kc = 512` was a Zen2 result
 
-The recommendation is **`kc = 512` for 8-byte reals**, worth 5.0% in `f64` and
-3.3% in `c64` against floors of 0.5%, with the 4-byte default already correct at
-384. It is a one-line change to `Blocking::derive` and it is deliberately **not**
-made in the same commit as the measurement. Note it is also a change measured on
-*Zen2 with AVX2 register blocks*: on `ccqlin038` the same question was never
-answered, so this is a recommendation for this machine class and an argument for
-the model arm rather than for a new hardcoded constant everywhere.
+**Run on `ccqlin038` overnight** (19 arms, `kc768`/`kc1024` added because Zen2 never
+bracketed its own optimum, discarded warm-up arm, `basem`/`base2` both reading
+1.010–1.020 — see the contamination note below). Geomean against `base`:
+
+| arm | `f32` | `f64` | `c32` planar / 1m / 3m | `c64` planar / 1m / 3m |
+|---|---|---|---|---|
+| `kc64` | 0.753 | 0.808 | 0.728 / 0.748 / 0.742 | 0.827 / 0.835 / 0.853 |
+| `kc256` | 0.983 | *0.994* | 0.979 / 0.999 / 0.985 | *1.013 / 0.996 / 1.001* |
+| `kc384` | *1.001* | 1.003 | *1.002 / 1.009 / 0.997* | 1.014 / 0.974 / 0.998 |
+| `kc512` | 1.013 | **0.961** | 1.011 / 1.007 / 1.004 | 0.998 / 0.918 / 0.977 |
+| `kc768` | 0.944 | 0.902 | 0.987 / 0.891 / 0.974 | 0.961 / 0.869 / 0.963 |
+| `kc1024` | 0.910 | 0.900 | 0.966 / 0.839 / 0.964 | 0.959 / 0.873 / 0.962 |
+| `mc200` | 0.913 | 0.929 | 0.974 / 0.888 / 0.984 | 0.977 / 0.919 / 0.978 |
+| `mc400` | **0.747** | 0.846 | 0.905 / 0.778 / 0.938 | 0.928 / 0.843 / 0.954 |
+| `ck512` | 1.014 | **1.029** | 0.999 / 1.034 / 1.009 | 1.000 / 0.945 / 0.974 |
+| `model` | **0.746** | 0.860 | 0.746 / 0.662 / 0.823 | 0.861 / 0.806 / 0.877 |
+
+**Three conclusions from the Zen2 grid are hereby retracted.**
+
+1. **`kc = 512` does not transfer and must not ship.** On Cascade Lake `f64` it is
+   **0.961** — 3.9% *worse* than the current default — where on Zen2 it was 1.050.
+   The optimum here is `kc = 384`, and deeper is monotonically worse.
+2. **`MC` is not a plateau.** `mc400` costs **15–25%** here against Zen2's harmless
+   1.020. A13's upper bound — the strip of `D` a `jr` pass revisits, the bound part 9
+   flagged as absent from the model — **binds on this machine.**
+3. **"Coupling adds nothing" was Zen2-only.** `ck512` is the *best* `f64` arm here at
+   1.029.
+
+### The mechanism, and why the sign flips between machines
+
+My C-traffic account (deeper panels cut how many times `C` is re-touched) predicted
+that deeper `kc` would keep helping the `k > 256` population. **It is falsified**, and
+by the very test that was pre-registered for it:
+
+| arm | `k <= 256` (same work — the control) | `k > 256` (pass count drops) |
+|---|---|---|
+| `kc384` | 1.013 | 0.968 |
+| `kc512` | 1.011 | **0.862** |
+| `kc768` | 1.000 | **0.751** |
+| `kc1024` | 1.007 | **0.735** |
+
+Deeper `kc` *hurts* precisely where it reduces `C` traffic, monotonically, up to −26%.
+So `C` traffic is real but is not the dominant term, and the prediction recorded in
+part 9 was wrong.
+
+What does account for both machines is **whether the packed `A` block still fits L2
+at the default depth**. The `kc` arms pin `mc`, so raising `kc` inflates the `A`
+footprint (`mc * kc * a_reals * bytes`) in proportion:
+
+* **Cascade Lake**, 1 MiB L2: at `kc = 256`, `mc = 264` gives ~540 KB — resident. At
+  `kc = 1024` it is ~2.2 MB, twice the whole L2, so residency is destroyed and the
+  loss grows with depth. Consistently, `mc400` at fixed `kc` costs 15–25% for the
+  same reason.
+* **Zen2**, 512 KiB L2: at `kc = 256`, `mc = 256` already gives ~520 KB — the entire
+  L2 with nothing left for the streaming `B` or `C`. There was **no residency to
+  lose**, so deepening cost nothing there and the `C`-traffic saving showed up net
+  positive. Consistently, `mc400` was harmless on Zen2.
+
+One account, opposite signs, both machines — and it explains the `mc` arms too.
+
+### What should actually change: the coupled arm, which is stable across machines
+
+Coupling re-derives `mc` at the new depth, holding the `A` footprint constant. That is
+exactly the degree of freedom the pinned arms confound, and it is the only arm that
+agrees on both machines:
+
+| arm | Cascade Lake `f64` | Zen2 `f64` |
+|---|---|---|
+| `kc512` (pinned `mc`) | **0.961** | **1.050** |
+| `ck512` (coupled) | **1.029** | **1.031** |
+
+The pinned arm swings 9 points between machines; the coupled arm gives ~+3% on both.
+**So the recommendation is coupled deepening — raise `kc` and re-derive `mc` against
+the same L2 budget — not a bigger `kc` constant.** It is also the change with a
+mechanism behind it rather than a fitted number, which is what makes it plausible on
+a third machine.
+
+Still not taken in the same commit as the measurement, and it needs an end-to-end
+A/B in the shipping configuration (A20) before it becomes a default.
+
+### The model is worse here, and fails through its other half
+
+`model` costs **14% (`f64`) to 34% (`c32` 1m)** on this machine, against 2–7% on
+Zen2. The reason is the mirror image of Zen2's: the model raises `mc` 4–6x, and
+`mc400` alone costs 15–25% here. So the model's `kc` sinks it on Zen2 and its `mc`
+sinks it on Cascade Lake — **both halves of the derivation are wrong, on different
+machines.** A33 stands and is strengthened; `legacy` remains the recommendation.
+
+### A contamination note, since it is mine
+
+`basem` and `base2` read **1.010–1.020** against `base`, i.e. the first `base` arm is
+1–2% slow. That is my own doing: for roughly the first minute of the grid's opening
+arm I was still running unpinned analysis and `git` on this machine, which the
+per-arm occupancy record caught (`cpu0` at 51% during the warm-up). Everything after
+was pinned to the other socket. A persistent 24.6% co-tenant (`herdr`, unrelated to
+this work) shared the L3 throughout, which is constant across arms and cancels in
+ratios. The `k <= 256` control column above is the cleanest read of the residual:
+1.000–1.013. Ratios in this section carry that ~1% bias against `base`; the
+conclusions all turn on effects of 3–26%, so none of them moves.
+
+Per-case floor on this machine, from the `k <= 64` identical-arm spread: **~4%**
+(against Zen2's 6.2%).
 
 ### Why this shape of experiment
 

@@ -1,6 +1,6 @@
-This directory is MISNAMED. worker6016 is an Ice Lake node, not Zen2.
+This directory was originally created as worker6016-zen2 and has been renamed.
 
-scripts/rusty-phase4.sbatch hardcoded `-zen2` in its default outdir, because it was
+The cause: scripts/rusty-phase4.sbatch hardcoded `-zen2` in its default outdir, because it was
 written for the rome session. Fixed after this run started (the label now comes from
 /proc/cpuinfo), but the directory could not be renamed while the job was writing to
 it. Rename to bench-results/worker6016-icelake once job 6746817 has finished.
