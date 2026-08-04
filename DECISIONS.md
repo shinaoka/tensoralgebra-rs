@@ -2078,12 +2078,38 @@ spans** — a quantity the engine already probes for D23 (`cores_sharing`). Keep
 `pm = p` when the threads share one L3; split `N` so each thread's `B` slice fits its
 local L3 when they do not.
 
-**Not yet conclusive, and the gap is nameable.** Zen2 was measured at 64 threads
-over 16 domains and Ice Lake at 32 over one, so thread count and domain count moved
-together. The clean version runs `PARTITION_SWEEP=1` on `rome`, where `t4` is one CCX
-and `t64` is sixteen: if the `pn` advantage grows with domains crossed *within one
-machine*, the account is confirmed. That is a ~30-minute job and it did not exist
-when the `rome` session ran — the sweep was built afterwards, for this purpose.
+**Confirmed** (job 6751550, `worker5137`). The sweep prices the axis choice against
+thread count on the `abcijk` family, and on Zen2 four cores share an L3, so thread
+count fixes the domain count:
+
+| machine | threads | L3 domains spanned | `pn/rule` `f64` | `pn/rule` `c64` |
+|---|---|---|---|---|
+| Zen2 | 4 | **1** | 1.031 | 0.981 |
+| **Ice Lake** | **32** | **1** | **1.014** | 0.934 |
+| Zen2 | 16 | 4 | 1.173 | 1.236 |
+| Zen2 | 64 | 16 | **2.004** | 1.242 |
+
+`pm/rule` is 0.959–1.003 across all of it, which is the control (the rule already
+chooses `pm = p` for these cases).
+
+**Ice Lake's 32-thread row is what makes this an answer rather than a correlation.**
+Within Zen2 alone, threads and domains move together and cannot be separated. But Ice
+Lake runs *32* threads across *one* domain and shows nothing (1.014), while Zen2 runs
+*4* threads across one domain and also shows nothing (1.031). Two single-domain points
+an order of magnitude apart in thread count, both null; three multi-domain points with
+a monotone effect. **The driver is the number of L3 domains the thread set spans, not
+the thread count.**
+
+So the fix is now specified rather than guessed: `Plan::partition` should split `N`
+when the thread set spans more than one L3 domain, and keep `pm = p` when it does not.
+The input is `cores_sharing` on the L3, which `CacheHierarchy` already probes for D23.
+
+**Residual gap, nameable and cheap.** The perfect within-machine separation would place
+a *fixed* thread count either packed into few domains or spread one-per-domain across
+many — 16 threads on 4 whole CCXs against 16 threads on 16 CCXs. `phase4f-threads.sh`
+packs by construction (`cpuset_for` takes the first `nt` cores in domain order), so
+that arm does not exist yet; it wants a `--spread` cpuset mode, which is a few lines.
+The cross-machine control above makes it confirmatory rather than load-bearing.
 
 #### The default: revised by the second machine
 
