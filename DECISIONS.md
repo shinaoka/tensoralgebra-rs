@@ -3092,11 +3092,30 @@ here it modelled one and the sweep disagreed.
 
 **Not a fix, a finding.** `NR` changes the `jr` loop count and the packed-`B` sliver
 geometry, so a 7.8% kernel margin is not a 7.8% corpus margin, and `32x5` is absent
-from the menu so no runtime switch can A/B it. The honest next step is to add it to
-the menu, re-run the sweep on `ccqlin038` (8 minutes) to confirm the margin survives,
-then an end-to-end A/B in the shipping configuration (A20) — and only then change a
-default. Worth noting how this was found: entirely inside committed Phase 3 raw
-output, months later, at no machine cost. That is the return on keeping the sweeps.
+from the menu so no runtime switch can A/B it.
+
+**And it cannot be added to the menu — a structural finding, not an oversight.** The
+row-block menu is keyed by `MR`: `cplx_config_at` dispatches on `mr` alone, and
+`row_block_menus_are_well_formed` asserts no `MR` appears twice, precisely because a
+duplicate would make the later entry unreachable. `(2, 5)` shares `MV = 2` with the
+shipped `(2, 6)`, hence the same `MR`, so **the menu has no way to express an
+`NR`-only alternate** and `TENSORCONTRACT_ROWBLOCK=idx=` can never reach it.
+
+Two routes out, and choosing is a design decision rather than a fix:
+
+* **Swap the default and measure build-to-build.** Two lines, but it gives up A15's
+  preference for runtime switches, and a build-to-build diff already produced one
+  wrong sign in Phase 4.
+* **Key the menu by position rather than by `MR`**, so entries carry `(MV, NR)` and
+  `idx=` selects an index — which is what `idx=` already implies. Touches `configs!`,
+  `cplx_config_at`, `row_blocks`, `Plan::row_block` and the well-formedness test. Not
+  large, but it changes hot-path config selection and should not ride along with a
+  measurement.
+
+So A35 is **documented and untestable end-to-end**, which is a worse state than
+merely unfixed and is recorded as such. Worth noting how it was found: entirely inside
+committed Phase 3 raw output, months later, at no machine cost. That is the return on
+keeping the sweeps.
 
 | # | Assumption | Status |
 |---|---|---|
