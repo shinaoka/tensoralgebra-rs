@@ -79,6 +79,12 @@
 #   CROSS_SOCKET=1        add a whole-node arm at the full core count, labelled
 #                         separately because it is a different question
 #   NO_WARMUP=1           skip the discarded warm-up arm (do not, without a reason)
+#   SPREAD=1 [SP_T=16]    hold the thread count fixed and vary the *packing*:
+#                         SP_T threads packed into as few L3 domains as they fit,
+#                         against the same SP_T taken one per domain. Closes A36's
+#                         one residual gap — every separation of domain count from
+#                         thread count so far has been cross-machine — and costs
+#                         about eight family-restricted arms per dtype pair.
 set -e
 [ "${BASH_SOURCE[0]}" = "$0" ] || { echo "run me, do not source me" >&2; return 1; }
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -190,6 +196,43 @@ cpuset_for() {  # cpuset_for <nthreads>
     echo "$CPUS" | tr ',' '\n' | head -n "$1" | paste -sd,
 }
 
+# The *spread* placement, and the only reason it exists: compact placement ties
+# the domain count to the thread count, so within one machine the two cannot be
+# separated. A36 separated them across machines (Zen2 at 4 threads on one domain
+# and Ice Lake at 32 threads on one domain are both null) which is a strong
+# control but a cross-machine one. This is the within-machine version: the same
+# `nt` threads, once packed into `ceil(nt / cores_per_domain)` domains and once
+# taken one per domain round-robin, so the thread count is held fixed and only
+# the domain span moves. If the effect follows the domains, it is the mechanism;
+# if it follows the packing in some other way, it is not.
+#
+# The engine cannot see this: `l3_domains` assumes compact placement (A37) and
+# would under-count a spread set, so the spread arms declare the true span with
+# `TENSORCONTRACT_L3_DOMAINS`. That is exactly what the override was added for.
+cpuset_spread_for() {  # cpuset_spread_for <nthreads> -> "<cpus> <domains spanned>"
+    python3 - "$OUT/topology.json" "$CPUS" "$1" <<'PY'
+import json, sys
+topo = json.load(open(sys.argv[1]))
+order = [int(c) for c in sys.argv[2].split(",")]
+want = int(sys.argv[3])
+dom_of = {c: d["id"] for d in topo["domains"] for c in d["cpus"]}
+# Round-robin over domains in the order the cpuset lists them: take the first
+# unused core of each domain, then the second of each, and so on. With more
+# domains than threads this puts every thread alone in a domain.
+buckets = {}
+for c in order:
+    buckets.setdefault(dom_of.get(c, 0), []).append(c)
+picked, ring = [], list(buckets)
+i = 0
+while len(picked) < want and any(buckets.values()):
+    d = ring[i % len(ring)]
+    if buckets[d]:
+        picked.append(buckets[d].pop(0))
+    i += 1
+print(",".join(str(c) for c in picked), len({dom_of.get(c, 0) for c in picked}))
+PY
+}
+
 snap() { python3 -c "
 import sys
 out={}
@@ -199,10 +242,14 @@ for l in open('/proc/stat'):
         out[int(f[0][3:])]=[int(x) for x in f[1:]]
 print(repr(out))"; }
 
-run() {  # run <tag> <threads> <dtypes> [partition] [cpuset]
-    local tag=$1 nt=$2 dt=$3 part=${4:-} set=${5:-} before after
+run() {  # run <tag> <threads> <dtypes> [partition] [cpuset] [l3domains]
+    local tag=$1 nt=$2 dt=$3 part=${4:-} set=${5:-} doms=${6:-} before after
     local pin=()
-    [ -n "$part" ] && pin=(TENSORCONTRACT_PARTITION="$part")
+    [ -n "$part" ] && pin+=(TENSORCONTRACT_PARTITION="$part")
+    # Only ever set for a placement the engine cannot infer — see
+    # `cpuset_spread_for`. Leaving it unset elsewhere is deliberate: the arms that
+    # matter must exercise the *derivation*, not a hand-fed number.
+    [ -n "$doms" ] && pin+=(TENSORCONTRACT_L3_DOMAINS="$doms")
     [ -z "$set" ] && set=$(cpuset_for "$nt")
     before=$(snap)
     env TENSORCONTRACT_THREADS="$nt" "${pin[@]}" \
@@ -211,7 +258,8 @@ run() {  # run <tag> <threads> <dtypes> [partition] [cpuset]
         --engines planar,1m,3m --dtype "$dt" --csv "$OUT/$tag.csv" \
         > "$OUT/$tag.txt" 2>&1
     after=$(snap)
-    echo "$tag threads=$nt cpuset=$set partition=${part:-rule}" >> "$OUT/placement.log"
+    echo "$tag threads=$nt cpuset=$set partition=${part:-rule} l3domains=${doms:-derived}" \
+        >> "$OUT/placement.log"
     # Occupancy over the whole allocation, split into the cores this arm was
     # allowed to use and everything else. The second group is the exclusivity
     # check: on an exclusive node it must be idle, and if it is not, the arm is
@@ -308,6 +356,27 @@ for pair in f64,c64 f32,c32; do
         FILT=()
         [ -n "$FILTER" ] && FILT=(--case "$FILTER")
     fi
+    # `SPREAD=1`: the same thread count, packed and spread. This is the arm the
+    # sweep above cannot supply, because compact placement makes the domain count
+    # a function of the thread count — see `cpuset_spread_for`. Read it as two
+    # `n/rule` ratios at one thread count: if the column axis wins more when the
+    # same threads are spread over more domains, the domain span is the driver,
+    # within one machine and with nothing else moving.
+    if [ -n "${SPREAD:-}" ]; then
+        SP_T=${SP_T:-$((NCPU / 4))}
+        [ "$SP_T" -lt 2 ] && SP_T=2
+        read -r SP_CPUS SP_DOMS <<<"$(cpuset_spread_for "$SP_T")"
+        PK_CPUS=$(cpuset_for "$SP_T")
+        echo "spread arms: t$SP_T packed on [$PK_CPUS] vs spread on [$SP_CPUS] ($SP_DOMS domains)"
+        FILT=(--case "${PARTITION_CASE:-abcijk}")
+        for arm in rule m n domain; do
+            a=$arm; [ "$arm" = rule ] && a=""
+            run "sp-t$SP_T-packed-$arm-$t" "$SP_T" "$pair" "$a" "$PK_CPUS"
+            run "sp-t$SP_T-spread-$arm-$t" "$SP_T" "$pair" "$a" "$SP_CPUS" "$SP_DOMS"
+        done
+        FILT=()
+        [ -n "$FILTER" ] && FILT=(--case "$FILTER")
+    fi
     run "th-t1b-$t" 1 "$pair"   # the bracketing repeat, and this node's floor
     echo "done $t"
 done
@@ -364,6 +433,22 @@ for pair in f64c64 f32c32; do
             | head -20
     done
 done
+
+if [ -n "${SPREAD:-}" ]; then
+    echo
+    echo "packing at a fixed thread count: the same t$SP_T, packed then spread."
+    echo "the two n/rule ratios are the comparison; pm/rule is the control."
+    for pair in f64c64 f32c32; do
+        for place in packed spread; do
+            for arm in m n domain; do
+                echo "== $pair t$SP_T $place partition=$arm"
+                scripts/compare-sweeps.py \
+                    "$OUT/sp-t$SP_T-$place-rule-$pair.csv" \
+                    "$OUT/sp-t$SP_T-$place-$arm-$pair.csv" | head -8
+            done
+        done
+    done
+fi
 
 # And the prediction the `dom` arm above is being held to, re-derived here from
 # the committed grids so the run log carries both numbers side by side. It needs

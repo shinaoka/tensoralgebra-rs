@@ -124,9 +124,13 @@ fi
 # whose L3 is a whole socket can host at most one or two concurrent arms, which
 # makes the 36-job grid a ten-hour sequential run and the placement validation
 # nearly meaningless — on such a node `STAGES="shapes threads"` is the whole value.
-# `PARTITION_SWEEP=1` is passed through to the threads stage; see phase4f-threads.sh.
+# `PARTITION_SWEEP=1`, `SPREAD=1` and `SP_T` are passed through to the threads
+# stage; see phase4f-threads.sh. `SPREAD` is the within-machine separation of
+# domain count from thread count (A36's residual gap) and is cheap.
 STAGES=${STAGES:-"shapes threads validate grid"}
 export PARTITION_SWEEP=${PARTITION_SWEEP:-}
+export SPREAD=${SPREAD:-}
+export SP_T=${SP_T:-}
 echo "stages after prep: $STAGES"
 
 # Cheap and irreplaceable first, then the long one. Neither aborts the other.

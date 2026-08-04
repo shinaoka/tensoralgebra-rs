@@ -3664,6 +3664,34 @@ result. Pre-registered, so it cannot be reinterpreted afterwards:
 A run on `-C icelake` is a stronger null than a repeat here: the gate must be
 bit-identical to the rule at every thread count up to the socket.
 
+### A36's residual gap, now closable in the same run
+
+Every separation of domain count from thread count so far has been
+*cross-machine*: Zen2 at 4 threads on one domain and Ice Lake at 32 threads on
+one domain are both null, an order of magnitude apart in width. That is a strong
+control, but the within-machine version was missing because `phase4f-threads.sh`
+packs its cpusets by construction, which ties the domain count to the thread
+count and makes the two inseparable inside one node.
+
+`SPREAD=1` supplies it, in about eight family-restricted arms per dtype pair. It
+holds the thread count fixed and varies only the packing: on this node 16 threads
+on cpus `0-15` (**4 domains**) against 16 threads on `0,4,8,…,60` (**16
+domains**), verified against the committed `topology.json`. Both placements run
+`rule`, `m`, `n` and `domain`, so the comparison is two `n/rule` ratios at one
+thread count with the control beside them.
+
+The engine cannot infer the spread placement — `l3_domains` assumes compact (A37)
+and would under-count — so those arms declare the true span through
+`TENSORCONTRACT_L3_DOMAINS`, which is what that override was added for. The
+prediction, if A36's mechanism is right: `n/rule` near 1.17 packed (4 domains,
+the measured `t16` figure) and near 2.0 spread (16 domains, the measured `t64`
+figure), at the *same* 16 threads. If instead both read ~1.17, the driver is
+thread count after all and D41 is wrong in a way three machines have not shown.
+
+```bash
+SPREAD=1 PARTITION_SWEEP=1 STAGES=threads sbatch -C rome scripts/rusty-phase4.sbatch
+```
+
 | # | Decision | Rationale |
 |---|---|---|
 | D41 | `Plan::partition`'s `panels >= p` early return is **gated** on `l3_domains(p) > 1`, `blocks >= p` and `k <= 64`, and then swaps to `1 x min(p, blocks)`. Behind `TENSORCONTRACT_PARTITION=domain`, off by default. | Removing the early return is wrong on a one-L3-per-socket machine, where it is worth nothing and the code is already right; A36 identifies the domain count as the discriminator and the engine already probes it. The other two conditions are the ones that stop the fix from costing 2–5x on the narrow half and 25% on the complex compute-bound half. Binary rather than modelled because a traffic term cannot be calibrated (this part) and because the two arms it chooses between are the two that were measured. |
@@ -3672,7 +3700,7 @@ bit-identical to the rule at every thread count up to the socket.
 | # | Assumption | Status |
 |---|---|---|
 | A36 | The 4.3x that a 1-D `N` partition wins on the memory-bound family is a property of the partition rule. | **Refuted; now implemented as a property of the topology.** See part 8. D41 is the code. |
-| A37 | `l3_domains(p)` may assume **compact placement**: `p` threads occupy `p` consecutive physical cores, filling one L3 domain before starting the next. | **Assumed, and true of every measurement in this file.** `phase4f-threads.sh` builds its cpusets that way by construction (`cpuset_for` takes the first `nt` cores in domain order) and a whole-node run leaves nothing to spread over. A *scattered* placement spans more domains than this counts, and the error is in the safe direction: it under-counts, so the rule falls back to the behaviour every committed number was measured with. `TENSORCONTRACT_L3_DOMAINS` overrides it, which is what the still-unbuilt `--spread` cpuset arm would use to close A36's one residual gap. |
+| A37 | `l3_domains(p)` may assume **compact placement**: `p` threads occupy `p` consecutive physical cores, filling one L3 domain before starting the next. | **Assumed, and true of every measurement in this file.** `phase4f-threads.sh` builds its cpusets that way by construction (`cpuset_for` takes the first `nt` cores in domain order) and a whole-node run leaves nothing to spread over. A *scattered* placement spans more domains than this counts, and the error is in the safe direction: it under-counts, so the rule falls back to the behaviour every committed number was measured with. `TENSORCONTRACT_L3_DOMAINS` overrides it, and `SPREAD=1` in `phase4f-threads.sh` is the arm that uses it. |
 | A38 | A cross-domain traffic term in the partition cost model can be calibrated to select the column axis where measurement wants it. | **Refuted, four ways** — see the negative result above. The weights that separate the two `abcijk`/`ijkl` pairs are 1% apart and want opposite answers, in element units and in real units alike, and the symmetric two-sided model ranks the two families backwards. Do not re-derive it without a new mechanism. |
 | A39 | Per-case ratios at 64 threads are readable at the ±6% the reference machine reports. | **Refuted on this corpus and this width.** Repeats of an identical partition run p10 0.885 / p90 1.107 with tails to 0.80–1.55. Only per-family geomeans (1–2%) are quotable at this thread count, and the control that shows it comes out of the same data at no cost. |
 
