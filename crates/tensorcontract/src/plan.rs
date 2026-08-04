@@ -887,32 +887,43 @@ impl Plan {
     /// orientation there is worth about 2x and should be bought directly, at
     /// the default `MR`, rather than through a shape change. See the Phase 4.1c
     /// report.
-    pub fn row_block(&self, menu: &[usize]) -> Option<usize> {
+    /// # What `menu` is, and what comes back
+    ///
+    /// `menu` is the kernel set's `(MR, NR)` shapes, default first, and the
+    /// answer is a **position in it** — not an `MR`. The distinction is not
+    /// cosmetic: two entries may share an `MR` and differ only in `NR`, which is
+    /// a shape the measurement asked for and an `MR`-keyed menu could not hold
+    /// (A35). The rule below reads only the `MR`, so entries of equal height
+    /// score alike and the earlier one wins, which keeps the measured default in
+    /// front.
+    pub fn row_block(&self, menu: &[(usize, usize)]) -> Option<usize> {
         match row_block_override() {
             RowBlock::Base => None,
             RowBlock::Auto => self.preferred_row_block(menu),
-            RowBlock::Pin(mr) => menu.contains(&mr).then_some(mr),
-            RowBlock::Index(i) => menu.get(i).copied(),
+            RowBlock::Pin(mr) => menu.iter().position(|&(m, _)| m == mr),
+            RowBlock::Index(i) => (i < menu.len()).then_some(i),
         }
     }
 
     /// [`Plan::row_block`]'s rule with no environment override, so that it can
-    /// be scored offline against measured ground truth.
-    pub fn preferred_row_block(&self, menu: &[usize]) -> Option<usize> {
+    /// be scored offline against measured ground truth. Returns a menu position.
+    pub fn preferred_row_block(&self, menu: &[(usize, usize)]) -> Option<usize> {
         /// Above this contraction depth the write-back is amortised and the
-        /// shape's own cost is all that is left. See [`Plan::row_block`].
+        /// shape's own cost is all that is left. See [`Plan::row_block`], and
+        /// note this is a different threshold from [`BANDWIDTH_BOUND_K`], which
+        /// asks a different question.
         const SHALLOW_K: usize = 32;
         /// A default this regular already is not worth paying a shape change
         /// to improve.
         const BROKEN_ENOUGH: f64 = 0.75;
 
-        let (&default, rest) = menu.split_first()?;
+        let (&(default, _), rest) = menu.split_first()?;
         if self.stats.k > SHALLOW_K || self.row_block_score(default) > BROKEN_ENOUGH {
             return None;
         }
         rest.iter()
-            .copied()
-            .find(|&mr| self.row_block_score(mr) >= 1.0 - 1e-9)
+            .position(|&(mr, _)| self.row_block_score(mr) >= 1.0 - 1e-9)
+            .map(|i| i + 1)
     }
 
     /// Fraction of the output's row blocks that would stay off
@@ -1048,7 +1059,13 @@ fn row_block_override() -> RowBlock {
 /// same 64; the corpus puts `k = 24` on one side of it and `k >= 204` on the
 /// other, so nothing in it is near the boundary and the threshold is a
 /// separation, not a tuned constant.
-const SHALLOW_K: usize = 64;
+///
+/// Named at length because `preferred_row_block` has its own `SHALLOW_K = 32`
+/// meaning something else — there the question is whether the write-back is
+/// amortised, here it is whether the case is bandwidth-bound. Two thresholds
+/// that both mean "shallow" and are not the same number; keep them
+/// distinguishable at the point of use.
+const BANDWIDTH_BOUND_K: usize = 64;
 
 /// The domain-aware gate: in the regime where the row axis alone fills the
 /// threads (`panels >= p`, which the caller has already established), should the
@@ -1064,7 +1081,7 @@ const SHALLOW_K: usize = 64;
 /// 2. **`blocks >= p`** — the column axis can fill the threads by itself, so the
 ///    swap costs no parallelism. Without it the corpus's narrow cases lose 2–5x
 ///    by running on a fraction of their cores.
-/// 3. **`k <= SHALLOW_K`** — the penalty being dodged is bandwidth, so it can
+/// 3. **`k <= BANDWIDTH_BOUND_K`** — the penalty being dodged is bandwidth, so it can
 ///    only dominate where the case is bandwidth-bound, and `k` is this corpus's
 ///    knob for that. The whole effect was measured on the `k = 24` family; the
 ///    wide compute-bound families (`ijkl-*`, `ij-ik-kj`, `k` 2704–5184) were
@@ -1074,7 +1091,7 @@ const SHALLOW_K: usize = 64;
 /// A pure function of four numbers so that the whole truth table can be pinned
 /// by a test on any machine, rather than only on a chiplet one.
 fn columns_beat_rows(blocks: usize, k: usize, p: usize, domains: usize) -> bool {
-    domains > 1 && blocks >= p && k <= SHALLOW_K
+    domains > 1 && blocks >= p && k <= BANDWIDTH_BOUND_K
 }
 
 /// What `TENSORCONTRACT_PARTITION` asked for. Without `std` there is no
@@ -1325,8 +1342,8 @@ mod tests {
         // bandwidth cost and cannot dominate here. `ijkl-*` and `ij-ik-kj` sit on
         // this side and were measured *losing* 25% in the complex methods.
         assert!(!columns_beat_rows(1024, 2704, 64, 16));
-        assert!(columns_beat_rows(1024, SHALLOW_K, 64, 16));
-        assert!(!columns_beat_rows(1024, SHALLOW_K + 1, 64, 16));
+        assert!(columns_beat_rows(1024, BANDWIDTH_BOUND_K, 64, 16));
+        assert!(!columns_beat_rows(1024, BANDWIDTH_BOUND_K + 1, 64, 16));
         // Serial is never a partition question.
         assert!(!columns_beat_rows(1024, 24, 1, 1));
     }
@@ -1536,6 +1553,19 @@ mod tests {
         .unwrap()
     }
 
+    /// The row-block rule over a menu written as bare `MR`s, answering with the
+    /// `MR` it chose rather than the menu position.
+    ///
+    /// The menu is positional since A35, so the rule returns an index — but
+    /// every expectation below is about *which shape* is picked, and an index
+    /// would make them say that less clearly while also going stale whenever an
+    /// entry is inserted. `NR` is a placeholder here because the rule does not
+    /// read it; `row_block_may_reach_an_nr_only_alternate` is the test that does.
+    fn pick(p: &Plan, mrs: &[usize]) -> Option<usize> {
+        let menu: Vec<(usize, usize)> = mrs.iter().map(|&mr| (mr, 6)).collect();
+        p.preferred_row_block(&menu).map(|i| menu[i].0)
+    }
+
     #[test]
     fn row_block_scores_follow_the_output_runs() {
         let p = run24_plan();
@@ -1552,12 +1582,34 @@ mod tests {
         // `c64` planar's menu: the default straddles a third of its blocks,
         // the first alternate none, so the rule moves. This is the case worth
         // 1.09-1.26x on the corpus.
-        assert_eq!(p.preferred_row_block(&[16, 24, 8]), Some(24));
+        assert_eq!(pick(&p, &[16, 24, 8]), Some(24));
         // The default is already perfect: never trade kernel peak for nothing.
-        assert_eq!(p.preferred_row_block(&[24, 16, 8]), None);
+        assert_eq!(pick(&p, &[24, 16, 8]), None);
         // Ties keep the default, which is the fastest kernel.
-        assert_eq!(p.preferred_row_block(&[8, 24]), None);
-        assert_eq!(p.preferred_row_block(&[]), None);
+        assert_eq!(pick(&p, &[8, 24]), None);
+        assert_eq!(pick(&p, &[]), None);
+    }
+
+    /// The point of keying the menu by position (A35): two entries of the same
+    /// height differing only in `NR`.
+    ///
+    /// `planar` `f32`/`c32` ships `32x6` where Phase 3's own sweep names `32x5`
+    /// as 7.8% faster, and under the old `MR`-keyed menu that shape could not be
+    /// put on the menu at all — the second entry would have been unreachable, so
+    /// there was no way to A/B it at run time and the finding stayed
+    /// untestable. This pins the three things that has to mean.
+    #[test]
+    fn row_block_may_reach_an_nr_only_alternate() {
+        let p = run24_plan();
+        let menu = [(24, 6), (24, 5)];
+        // 1. The rule cannot tell them apart — it reads `MR` — and ties go to
+        //    the earlier entry, so the measured default stays in front.
+        assert_eq!(p.preferred_row_block(&menu), None);
+        // 2. `idx=` reaches the second one, which is what makes it measurable.
+        assert_eq!(menu.get(1), Some(&(24, 5)));
+        // 3. `mr=` cannot distinguish them and resolves to the first, which is
+        //    the documented limitation rather than a silent surprise.
+        assert_eq!(menu.iter().position(|&(m, _)| m == 24), Some(0));
     }
 
     #[test]
@@ -1566,7 +1618,7 @@ mod tests {
         // shape that does not clear the gather path outright cannot repay its
         // own cost: this is the `f32` menu, and taking it measured 0.88-0.95.
         let p = run24_plan();
-        assert_eq!(p.preferred_row_block(&[48, 16]), None);
+        assert_eq!(pick(&p, &[48, 16]), None);
     }
 
     #[test]
@@ -1579,7 +1631,7 @@ mod tests {
         // So a shape is judged on its own regularity, in whatever orientation
         // it implies.
         let p = run24_plan();
-        assert_eq!(p.preferred_row_block(&[16, 24, 8]), Some(24));
+        assert_eq!(pick(&p, &[16, 24, 8]), Some(24));
     }
 
     #[test]
@@ -1601,14 +1653,14 @@ mod tests {
             (p.row_block_score(16) - 2.0 / 3.0).abs() < 1e-12,
             "would fire"
         );
-        assert_eq!(p.preferred_row_block(&[16, 24, 8]), None);
+        assert_eq!(pick(&p, &[16, 24, 8]), None);
     }
 
     #[test]
     fn row_block_leaves_a_fully_regular_output_alone() {
         // Column-major `D`: one run, so no shape can straddle anything.
         let p = gemm_plan(64, 64, [1, 64]);
-        assert_eq!(p.preferred_row_block(&[16, 24, 8]), None);
+        assert_eq!(pick(&p, &[16, 24, 8]), None);
     }
 
     #[test]

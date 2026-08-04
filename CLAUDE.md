@@ -477,6 +477,10 @@ whenever you introduce a fast path — a build-to-build diff already produced on
 wrong sign in Phase 4. `idx=<i>` names a menu position rather than an `MR`,
 because `mr=16` names different shapes in `f32` and `f64` while `idx=1` means
 "the first alternate" in both; it is what makes a whole-grid sweep possible.
+**The menu itself is now keyed by position too** (D43, part 13), so two entries
+may share an `MR` and differ only in `NR` — which is what made A35's `32x5`
+reachable at `idx=3` in `f32`/`c32` planar. `mr=<n>` resolves to the first entry
+of that height and cannot name such an alternate; use `idx=`.
 
 ## Starting references
 

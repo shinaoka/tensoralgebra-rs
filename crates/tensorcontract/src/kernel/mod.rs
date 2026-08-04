@@ -557,21 +557,27 @@ pub trait KernelSet: Real + Sized {
     /// slow, it would be wrong.
     fn config_cplx(method: ComplexMethod) -> KernelConfig<Self>;
 
-    /// Logical row blocks `MR` this kernel set can run, default first.
+    /// Logical `(MR, NR)` shapes this kernel set can run, default first.
     ///
     /// More than one entry is an invitation to [`crate::Plan::row_block`] to
     /// pick a shape that suits the output's stride pattern rather than the
     /// kernel's own peak. An empty menu means "no choice", which is what the
     /// portable path returns.
-    fn row_blocks(complex: bool, method: ComplexMethod) -> &'static [usize] {
+    ///
+    /// The menu is addressed by **position**. It was addressed by `MR` until
+    /// A35, which found a measured shape the engine could not reach: `planar`
+    /// `f32`/`c32` wants `32x5` and ships `32x6`, and an `MR`-keyed menu cannot
+    /// hold two entries of the same height. Positions also make
+    /// `TENSORCONTRACT_ROWBLOCK=idx=<i>` mean what its name always implied.
+    fn row_blocks(complex: bool, method: ComplexMethod) -> &'static [(usize, usize)] {
         let _ = (complex, method);
         &[]
     }
 
-    /// The configuration at a chosen row block, or `None` if there is no such
-    /// kernel. Only ever called with an `mr` from [`KernelSet::row_blocks`].
-    fn config_at(complex: bool, method: ComplexMethod, mr: usize) -> Option<KernelConfig<Self>> {
-        let _ = (complex, method, mr);
+    /// The configuration at a menu position, or `None` past the end. Only ever
+    /// called with an index into [`KernelSet::row_blocks`].
+    fn config_at(complex: bool, method: ComplexMethod, i: usize) -> Option<KernelConfig<Self>> {
+        let _ = (complex, method, i);
         None
     }
 }
@@ -666,7 +672,7 @@ macro_rules! impl_kernel_set {
                 scalar::config_cplx::<$t, $mr, $nr>(method).normalise()
             }
 
-            fn row_blocks(complex: bool, method: ComplexMethod) -> &'static [usize] {
+            fn row_blocks(complex: bool, method: ComplexMethod) -> &'static [(usize, usize)] {
                 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
                 if !force_scalar() {
                     return $rows_x86(complex, method);
@@ -682,20 +688,20 @@ macro_rules! impl_kernel_set {
             fn config_at(
                 complex: bool,
                 method: ComplexMethod,
-                mr: usize,
+                i: usize,
             ) -> Option<KernelConfig<Self>> {
                 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
                 if !force_scalar() {
                     let c = if complex {
-                        $cplx_at_x86(method, mr)
+                        $cplx_at_x86(method, i)
                     } else {
-                        $real_at_x86(mr)
+                        $real_at_x86(i)
                     };
                     return c.map(KernelConfig::normalise);
                 }
                 #[allow(unreachable_code)]
                 {
-                    let _ = (complex, method, mr);
+                    let _ = (complex, method, i);
                     None
                 }
             }
@@ -778,7 +784,7 @@ where
     let method = plan.complex_method();
     let menu = <T::Real as KernelSet>::row_blocks(T::IS_COMPLEX, method);
     plan.row_block(menu)
-        .and_then(|mr| <T::Real as KernelSet>::config_at(T::IS_COMPLEX, method, mr))
+        .and_then(|i| <T::Real as KernelSet>::config_at(T::IS_COMPLEX, method, i))
         .unwrap_or_else(|| config_for::<T>(method))
         .retarget_threads(plan.threads())
 }
@@ -807,10 +813,10 @@ mod tests {
     /// on, so it is checked directly rather than only end to end.
     fn check_real<T: KernelSet>(tol: f64) {
         check_real_cfg::<T>(T::config_real(), tol);
-        for &mr in T::row_blocks(false, ComplexMethod::default()) {
-            let cfg = T::config_at(false, ComplexMethod::default(), mr)
-                .unwrap_or_else(|| panic!("real menu offers MR={mr} with no kernel"));
-            assert_eq!(cfg.ukr.mr, mr);
+        for (i, &(mr, nr)) in T::row_blocks(false, ComplexMethod::default()).iter().enumerate() {
+            let cfg = T::config_at(false, ComplexMethod::default(), i)
+                .unwrap_or_else(|| panic!("real menu offers {mr}x{nr} with no kernel"));
+            assert_eq!((cfg.ukr.mr, cfg.ukr.nr), (mr, nr), "menu entry {i} misdescribes itself");
             check_real_cfg::<T>(cfg, tol);
         }
     }
@@ -901,10 +907,11 @@ mod tests {
 
     fn check_cplx<T: KernelSet>(method: ComplexMethod, tol: f64) {
         check_cplx_cfg::<T>(T::config_cplx(method), method, tol);
-        for &mr in T::row_blocks(true, method) {
-            let cfg = T::config_at(true, method, mr)
-                .unwrap_or_else(|| panic!("{} menu offers MR={mr} with no kernel", method.name()));
-            assert_eq!(cfg.ukr.mr, mr);
+        for (i, &(mr, nr)) in T::row_blocks(true, method).iter().enumerate() {
+            let cfg = T::config_at(true, method, i).unwrap_or_else(|| {
+                panic!("{} menu offers {mr}x{nr} with no kernel", method.name())
+            });
+            assert_eq!((cfg.ukr.mr, cfg.ukr.nr), (mr, nr), "menu entry {i} misdescribes itself");
             check_cplx_cfg::<T>(cfg, method, tol);
         }
     }
@@ -998,42 +1005,40 @@ mod tests {
     /// run someone has to remember to do.
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     fn check_isa<T: KernelSet>(s: x86::IsaConfigs<T>, tol: f64) {
-        let default_mr = (s.real)().ukr.mr;
+        let default = { let c = (s.real)(); (c.ukr.mr, c.ukr.nr) };
         let menu = (s.row_blocks)(false, ComplexMethod::default());
-        assert_eq!(menu[0], default_mr, "{} real menu head", s.isa.name());
+        assert_eq!(menu[0], default, "{} real menu head", s.isa.name());
         check_real_cfg::<T>((s.real)(), tol);
-        for (i, &mr) in menu.iter().enumerate() {
+        for (i, &shape) in menu.iter().enumerate() {
+            // Duplicate `MR` is legal since A35 — an `NR`-only alternate is the
+            // whole point of positional keying — but a duplicate *shape* is not:
+            // it is a menu slot that can never be chosen over the earlier one.
             assert!(
-                !menu[..i].contains(&mr),
-                "{} real MR={mr} twice",
+                !menu[..i].contains(&shape),
+                "{} real {shape:?} twice",
                 s.isa.name()
             );
-            let cfg = (s.config_at)(false, ComplexMethod::default(), mr)
-                .unwrap_or_else(|| panic!("{} real menu offers MR={mr}", s.isa.name()));
-            assert_eq!(cfg.ukr.mr, mr);
+            let cfg = (s.config_at)(false, ComplexMethod::default(), i)
+                .unwrap_or_else(|| panic!("{} real menu has no kernel at {i}", s.isa.name()));
+            assert_eq!((cfg.ukr.mr, cfg.ukr.nr), shape);
             check_real_cfg::<T>(cfg, tol);
         }
         for m in ComplexMethod::ALL {
-            let default_mr = (s.cplx)(m).ukr.mr;
+            let default = { let c = (s.cplx)(m); (c.ukr.mr, c.ukr.nr) };
             let menu = (s.row_blocks)(true, m);
-            assert_eq!(
-                menu[0],
-                default_mr,
-                "{} {} menu head",
-                s.isa.name(),
-                m.name()
-            );
+            assert_eq!(menu[0], default, "{} {} menu head", s.isa.name(), m.name());
             check_cplx_cfg::<T>((s.cplx)(m), m, tol);
-            for (i, &mr) in menu.iter().enumerate() {
+            for (i, &shape) in menu.iter().enumerate() {
                 assert!(
-                    !menu[..i].contains(&mr),
-                    "{} {} MR={mr} twice",
+                    !menu[..i].contains(&shape),
+                    "{} {} {shape:?} twice",
                     s.isa.name(),
                     m.name()
                 );
-                let cfg = (s.config_at)(true, m, mr)
-                    .unwrap_or_else(|| panic!("{} {} menu offers MR={mr}", s.isa.name(), m.name()));
-                assert_eq!(cfg.ukr.mr, mr);
+                let cfg = (s.config_at)(true, m, i).unwrap_or_else(|| {
+                    panic!("{} {} menu has no kernel at {i}", s.isa.name(), m.name())
+                });
+                assert_eq!((cfg.ukr.mr, cfg.ukr.nr), shape);
                 check_cplx_cfg::<T>(cfg, m, tol);
             }
         }
@@ -1087,11 +1092,11 @@ mod tests {
                     .map(|&m| (true, m))
                     .chain(core::iter::once((false, ComplexMethod::default())))
                 {
-                    for &mr in (s.row_blocks)(complex, m) {
+                    for i in 0..(s.row_blocks)(complex, m).len() {
                         // `normalise` is what the `KernelSet` impls apply, and
                         // it is where the register-block alignment of `mc`/`nc`
                         // that the driver's loop arithmetic relies on comes from.
-                        let c = (s.config_at)(complex, m, mr).unwrap().normalise();
+                        let c = (s.config_at)(complex, m, i).unwrap().normalise();
                         let planes = c.ukr.tile / (c.ukr.mr * c.ukr.nr);
                         assert_eq!(c.ukr.a_per_k, c.ukr.mr * c.ukr.a_pack.reals_per_element());
                         assert_eq!(c.ukr.b_per_k, c.ukr.nr * c.ukr.b_pack.reals_per_element());
@@ -1117,28 +1122,40 @@ mod tests {
         );
     }
 
-    /// A menu with a repeated `MR` would make `config_at` unreachable for the
-    /// later entry, silently pinning to the wrong shape; and the head of the
-    /// menu must be exactly what the default builders return, or `base` and
-    /// `idx=0` would mean different things.
+    /// A repeated *shape* is a menu slot nothing can ever select, since the rule
+    /// and every override resolve to the first match; and the head of the menu
+    /// must be exactly what the default builders return, or `base` and `idx=0`
+    /// would mean different things.
+    ///
+    /// A repeated `MR` is deliberately **allowed** — that is what positional
+    /// keying bought (A35), and it is the only way an `NR`-only alternate can be
+    /// on the menu at all. What it costs is that `TENSORCONTRACT_ROWBLOCK=mr=<n>`
+    /// can no longer name such an entry; `idx=<i>` is the way to reach it, which
+    /// is what that spelling always implied.
     #[test]
     fn row_block_menus_are_well_formed() {
-        fn check<T: KernelSet>(complex: bool, method: ComplexMethod, default_mr: usize) {
+        fn check<T: KernelSet>(complex: bool, method: ComplexMethod, default: (usize, usize)) {
             let menu = T::row_blocks(complex, method);
             if menu.is_empty() {
                 return; // no vectorised kernels on this CPU
             }
-            assert_eq!(menu[0], default_mr, "menu head is not the default shape");
-            for (i, &mr) in menu.iter().enumerate() {
-                assert!(mr > 0);
-                assert!(!menu[..i].contains(&mr), "MR={mr} appears twice on a menu");
+            assert_eq!(menu[0], default, "menu head is not the default shape");
+            for (i, &shape) in menu.iter().enumerate() {
+                assert!(shape.0 > 0 && shape.1 > 0);
+                assert!(
+                    !menu[..i].contains(&shape),
+                    "{shape:?} appears twice on a menu, so the later one is unreachable"
+                );
             }
         }
-        check::<f64>(false, ComplexMethod::default(), f64::config_real().ukr.mr);
-        check::<f32>(false, ComplexMethod::default(), f32::config_real().ukr.mr);
+        fn shape<T: KernelSet>(c: KernelConfig<T>) -> (usize, usize) {
+            (c.ukr.mr, c.ukr.nr)
+        }
+        check::<f64>(false, ComplexMethod::default(), shape(f64::config_real()));
+        check::<f32>(false, ComplexMethod::default(), shape(f32::config_real()));
         for m in ComplexMethod::ALL {
-            check::<f64>(true, m, f64::config_cplx(m).ukr.mr);
-            check::<f32>(true, m, f32::config_cplx(m).ukr.mr);
+            check::<f64>(true, m, shape(f64::config_cplx(m)));
+            check::<f32>(true, m, shape(f32::config_cplx(m)));
         }
     }
 

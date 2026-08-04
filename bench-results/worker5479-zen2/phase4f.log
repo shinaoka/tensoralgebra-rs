@@ -1,0 +1,21 @@
+host            : worker5479
+slurm           : job 6753208 on worker5479
+cpus allowed    : 128 of 128 online (0-127)
+physical cores  : 128   SMT width 1  (SMT off: no sibling to contend with)
+sockets         : 0:64c  1:64c
+numa nodes      : 0:16c  1:16c  2:16c  3:16c  4:16c  5:16c  6:16c  7:16c
+L1              : 32K 8-way, shared by 1 logical cpus
+L2              : 512K 8-way, shared by 1 logical cpus
+L3              : 16384K 16-way, shared by 4 logical cpus
+L3 domains      : 32, 4 cpus each (16384K per domain)
+
+placement       : 24 concurrent arms of 32 domains, one core per domain, rest of each domain idle
+                  cpus 0,4,8,16,20,24,32,36,40,48,52,56,64,68,72,80,84,88,96,100,104,112,116,120
+                  per numa node: 0:3  1:3  2:3  3:3  4:3  5:3  6:3  7:3
+
+wrote bench-results/worker5479-zen2/phase4f/topology.json
+cpuset 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63: 64 logical CPUs on 64 physical cores
+threads will run on cpus 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63 (64 cores); thread counts: 1 2 4 8 16 32 64
+partition arms at 64 threads
+warm-up arm (discarded, A31): t64
+  14:38:58 wu-t64-discard done: in-cpuset  n=64 busy min 24% mean 35% max 48%|rest of allocation n=64 busy mean 0.0% max 0.3%|exclusivity ok: nothing else in the allocation above 5%|

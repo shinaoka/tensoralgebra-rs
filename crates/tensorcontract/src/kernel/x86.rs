@@ -435,14 +435,18 @@ macro_rules! configs {
      planar = [$(($pmv:literal, $pnr:literal)),+ $(,)?],
      onem   = [$(($omv:literal, $onr:literal)),+ $(,)?],
      threem = [$(($tmv:literal, $tnr:literal)),+ $(,)?] $(,)?) => {
-        /// Logical row blocks with a real kernel, default first.
-        pub const REAL_ROW_BLOCKS: &[usize] = &[$($rmv * $m::L),+];
-        /// Logical (complex) row blocks with a planar kernel, default first.
-        pub const PLANAR_ROW_BLOCKS: &[usize] = &[$($pmv * $m::L),+];
+        /// Logical `(MR, NR)` with a real kernel, default first.
+        ///
+        /// The menu is keyed by **position**, not by `MR`: two entries may share
+        /// an `MR` and differ only in `NR`, which is a shape the measurement
+        /// wanted and the old `MR`-keyed menu could not express at all (A35).
+        pub const REAL_ROW_BLOCKS: &[(usize, usize)] = &[$(($rmv * $m::L, $rnr)),+];
+        /// Logical (complex) `(MR, NR)` with a planar kernel, default first.
+        pub const PLANAR_ROW_BLOCKS: &[(usize, usize)] = &[$(($pmv * $m::L, $pnr)),+];
         /// Ditto for 1m. The complex tile is half the real row block.
-        pub const ONEM_ROW_BLOCKS: &[usize] = &[$($omv * $m::L / 2),+];
+        pub const ONEM_ROW_BLOCKS: &[(usize, usize)] = &[$(($omv * $m::L / 2, $onr)),+];
         /// Ditto for 3m.
-        pub const THREEM_ROW_BLOCKS: &[usize] = &[$($tmv * $m::L),+];
+        pub const THREEM_ROW_BLOCKS: &[(usize, usize)] = &[$(($tmv * $m::L, $tnr)),+];
 
         fn real_cfg<const MV: usize, const NR: usize>() -> KernelConfig<$t> {
             let mr = MV * $m::L;
@@ -524,30 +528,48 @@ macro_rules! configs {
             }
         }
 
-        /// The real kernel at logical row block `mr`, or `None` if the menu
-        /// has no shape of that height.
-        pub fn real_config_at(mr: usize) -> Option<KernelConfig<$t>> {
-            $( if mr == $rmv * $m::L { return Some(real_cfg::<$rmv, $rnr>()); } )+
+        /// The real kernel at **menu position** `i`, or `None` past the end.
+        ///
+        /// Positional and not `MR`-keyed, so an entry that shares its `MR` with
+        /// an earlier one is still reachable — see [`REAL_ROW_BLOCKS`] and A35.
+        pub fn real_config_at(i: usize) -> Option<KernelConfig<$t>> {
+            let mut n = 0usize;
+            $(
+                if i == n { return Some(real_cfg::<$rmv, $rnr>()); }
+                n += 1;
+            )+
+            let _ = n;
             None
         }
 
-        /// The complex kernel for `method` at logical row block `mr`.
-        pub fn cplx_config_at(method: ComplexMethod, mr: usize) -> Option<KernelConfig<$t>> {
+        /// The complex kernel for `method` at menu position `i`.
+        pub fn cplx_config_at(method: ComplexMethod, i: usize) -> Option<KernelConfig<$t>> {
+            let mut n = 0usize;
             match method {
                 ComplexMethod::Planar => {
-                    $( if mr == $pmv * $m::L { return Some(planar_cfg::<$pmv, $pnr>()); } )+
+                    $(
+                        if i == n { return Some(planar_cfg::<$pmv, $pnr>()); }
+                        n += 1;
+                    )+
                 }
                 ComplexMethod::OneM => {
-                    $( if mr == $omv * $m::L / 2 { return Some(onem_cfg::<$omv, $onr>()); } )+
+                    $(
+                        if i == n { return Some(onem_cfg::<$omv, $onr>()); }
+                        n += 1;
+                    )+
                 }
                 ComplexMethod::ThreeM => {
-                    $( if mr == $tmv * $m::L { return Some(threem_cfg::<$tmv, $tnr>()); } )+
+                    $(
+                        if i == n { return Some(threem_cfg::<$tmv, $tnr>()); }
+                        n += 1;
+                    )+
                 }
             }
+            let _ = n;
             None
         }
 
-        pub fn cplx_row_blocks(method: ComplexMethod) -> &'static [usize] {
+        pub fn cplx_row_blocks(method: ComplexMethod) -> &'static [(usize, usize)] {
             match method {
                 ComplexMethod::Planar => PLANAR_ROW_BLOCKS,
                 ComplexMethod::OneM => ONEM_ROW_BLOCKS,
@@ -557,7 +579,7 @@ macro_rules! configs {
 
         /// The menu for either domain, which is the shape `IsaConfigs` and the
         /// `KernelSet::row_blocks` impls both want.
-        pub fn row_blocks(complex: bool, method: ComplexMethod) -> &'static [usize] {
+        pub fn row_blocks(complex: bool, method: ComplexMethod) -> &'static [(usize, usize)] {
             if complex {
                 cplx_row_blocks(method)
             } else {
@@ -565,26 +587,25 @@ macro_rules! configs {
             }
         }
 
-        /// The config at a chosen row block in either domain.
+        /// The config at a chosen menu position in either domain.
         pub fn config_at(
             complex: bool,
             method: ComplexMethod,
-            mr: usize,
+            i: usize,
         ) -> Option<KernelConfig<$t>> {
             if complex {
-                cplx_config_at(method, mr)
+                cplx_config_at(method, i)
             } else {
-                real_config_at(mr)
+                real_config_at(i)
             }
         }
 
         pub fn real_config() -> KernelConfig<$t> {
-            real_config_at(REAL_ROW_BLOCKS[0]).expect("default shape is on the menu")
+            real_config_at(0).expect("the menu is never empty")
         }
 
         pub fn cplx_config(method: ComplexMethod) -> KernelConfig<$t> {
-            cplx_config_at(method, cplx_row_blocks(method)[0])
-                .expect("default shape is on the menu")
+            cplx_config_at(method, 0).expect("the menu is never empty")
         }
     };
 }
@@ -650,9 +671,18 @@ pub mod cfg_avx512_f64 {
 /// | method | menu, `MR` (`NR`) | cost of each alternate |
 /// |---|---|---|
 /// | real | 48 (8), 32 (8), 16 (10) | 0.87, 1.02 |
-/// | planar | 32 (6), 48 (4), 16 (12) | 0.95, 0.90 |
+/// | planar | 32 (6), 48 (4), 16 (12), **32 (5)** | 0.95, 0.90, **1.078** |
 /// | 1m | 32 (6), 24 (8), 16 (8), 8 (12) | 1.03, 0.86, 0.86 |
 /// | 3m | 16 (10), 32 (4), 48 (3) | 0.91, 0.84 |
+///
+/// **`planar 32 (5)` is faster than the default it sits behind**, which no other
+/// entry on any menu is: 210.9 GF/s against 195.7 in the same Phase 3 sweep, and
+/// ahead at `kc = 64` too. The default appears to have been chosen on the
+/// bolded bytes-per-flop above rather than on the throughput in the same output
+/// file (A35) — the failure mode this project has now recorded four times. It is
+/// **last on the menu, not first**, because a kernel margin is not a corpus
+/// margin: `NR` also sets the `jr` loop count and the packed-`B` sliver
+/// geometry. `TENSORCONTRACT_ROWBLOCK=idx=3` is the arm that settles it.
 ///
 /// The 32-bit menus are the ones that matter for the write-back: the corpus
 /// rounds every stride-1 index up to a multiple of **24**, and at `L = 16` no
@@ -667,7 +697,19 @@ pub mod cfg_avx512_f32 {
         avx512_f32,
         "avx512",
         real = [(3, 8), (2, 8), (1, 10)],
-        planar = [(2, 6), (3, 4), (1, 12)],
+        // `(2, 5)` is the shape A35 found and could not reach: Phase 3's own
+        // sweep names `32x5` at **210.9 GF/s** against the shipped `32x6`'s
+        // **195.7**, 7.8% faster at the operating `kc` and also ahead at
+        // `kc = 64`. It is **appended, not inserted**, on purpose — the entries
+        // before it keep the positions `bench-results/phase4c` swept, so that
+        // grid's `idx=` numbering still means what it meant.
+        //
+        // It cannot be *chosen by the rule*, which reads `MR` and sees a tie
+        // with the default. That is deliberate: a 7.8% kernel margin is not a
+        // 7.8% corpus margin, since `NR` also moves the `jr` loop count and the
+        // packed-`B` sliver geometry. Making it reachable at `idx=3` is what
+        // turns A35 from untestable into an A/B, which is the whole change.
+        planar = [(2, 6), (3, 4), (1, 12), (2, 5)],
         onem = [(4, 6), (3, 8), (2, 8), (1, 12)],
         threem = [(1, 10), (2, 4), (3, 3)],
     );
@@ -930,7 +972,7 @@ pub struct IsaConfigs<T> {
     pub isa: Isa,
     pub real: fn() -> KernelConfig<T>,
     pub cplx: fn(ComplexMethod) -> KernelConfig<T>,
-    pub row_blocks: fn(bool, ComplexMethod) -> &'static [usize],
+    pub row_blocks: fn(bool, ComplexMethod) -> &'static [(usize, usize)],
     pub config_at: fn(bool, ComplexMethod, usize) -> Option<KernelConfig<T>>,
 }
 
@@ -973,7 +1015,7 @@ macro_rules! dispatch {
         }
 
         /// Row blocks with a kernel, default first; empty when unavailable.
-        pub fn $rows(complex: bool, method: ComplexMethod) -> &'static [usize] {
+        pub fn $rows(complex: bool, method: ComplexMethod) -> &'static [(usize, usize)] {
             match selected_isa() {
                 Some(isa) => ($sets(isa).row_blocks)(complex, method),
                 None => &[],

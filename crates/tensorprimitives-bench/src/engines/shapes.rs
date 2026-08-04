@@ -135,12 +135,15 @@ where
         if menu.is_empty() {
             continue;
         }
-        let pick = plan.preferred_row_block(menu).unwrap_or_else(|| menu[0]);
+        // The menu is positional (A35), so `NR` comes straight out of it and the
+        // choice is an index — two entries can share an `MR` and only the index
+        // distinguishes them, which is exactly the shape this analysis exists to
+        // show.
+        let pick = plan.preferred_row_block(menu).unwrap_or(0);
         let shapes = menu
             .iter()
-            .map(|&mr| {
-                let nr = <T::Real as KernelSet>::config_at(T::IS_COMPLEX, method, mr)
-                    .map_or(0, |c| c.ukr.nr);
+            .enumerate()
+            .map(|(i, &(mr, nr))| {
                 let swap = plan.transposes_gemm(mr);
                 let sc = plan.oriented_scatters(mr);
                 Shape {
@@ -149,8 +152,8 @@ where
                     swap,
                     wb: plan.row_block_score(mr),
                     reg_a: regular_fraction(&build_block_scatter(sc.a_m, mr)),
-                    is_default: mr == menu[0],
-                    chosen: mr == pick,
+                    is_default: i == 0,
+                    chosen: i == pick,
                 }
             })
             .collect();

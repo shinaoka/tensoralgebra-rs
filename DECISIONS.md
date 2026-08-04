@@ -3436,7 +3436,7 @@ keeping the sweeps.
 | # | Assumption | Status |
 |---|---|---|
 | A34 | Register blocks are a property of the instruction set, so one measurement per ISA is enough (the premise of D19 and of `cfg_avx512_*` / `cfg_avx2_*`). | **Refuted.** Cascade Lake and Ice Lake, same ISA and same 32 registers, disagree by up to 13% on three of eight shapes, and `real` wants `NR+1` in both precisions — Ice Lake's 48 KiB 12-way L1 accommodates an accumulator footprint Cascade Lake's 32 KiB 8-way does not. Shapes are per-microarchitecture; probed L1 geometry separates these two with no CPUID table. |
-| A35 | The shipped register blocks are the ones the Phase 3 sweep selected. | **Refuted for one of eight.** `planar` `f32`/`c32` ships `32x6` where the sweep's own output names `32x5`, 7.8% faster at the operating `kc` — and `32x5` is not even on the menu. The bolded bytes-per-flop in the config's doc comment suggests it was chosen by model over measurement, which is the same error A16 records for write-back regularity. Verify before changing: kernel margin ≠ corpus margin. |
+| A35 | The shipped register blocks are the ones the Phase 3 sweep selected. | **Refuted for one of eight, and now testable.** `planar` `f32`/`c32` ships `32x6` where the sweep's own output names `32x5`, 7.8% faster at the operating `kc`. The bolded bytes-per-flop in the config's doc comment suggests it was chosen by model over measurement, which is the same error A16 records for write-back regularity. It was unreachable until the menu was re-keyed by position (D43); `32x5` is now the last planar `f32` entry and `TENSORCONTRACT_ROWBLOCK=idx=3` selects it end to end. Still unfixed on purpose: verify before changing, because kernel margin ≠ corpus margin. |
 
 ## Phase 5 interlude: making the C surface consumable
 
@@ -3516,7 +3516,7 @@ instead when all three of these hold:
 |---|---|
 | `domains > 1` | The mechanism. `NC` sizes the shared packed-`B` panel for *an* L3; under `p x 1` every thread reads the whole panel, so it is replicated across every domain the thread set covers. Two single-domain points an order of magnitude apart in thread count (Zen2 t4, Ice Lake t32) are both null. |
 | `blocks >= p` | The column axis must be able to fill the threads by itself, or the swap buys locality by giving up cores. The corpus's narrow half loses 2–5x on a forced `1 x p` for exactly this reason, and it is the largest population in the `n` arm. |
-| `k <= 64` | The penalty being dodged is **bandwidth**, so it cannot dominate a compute-bound case. `k` is this corpus's knob for that, and the guard confines the rule to the population the evidence covers — see the negative result below. |
+| `k <= 64` (`BANDWIDTH_BOUND_K`) | The penalty being dodged is **bandwidth**, so it cannot dominate a compute-bound case. `k` is this corpus's knob for that, and the guard confines the rule to the population the evidence covers — see the negative result below. |
 
 It is a **binary** choice between `p x 1` and `1 x min(p, blocks)`, which are the
 only two arms any session has measured, and it is reached only from the early
@@ -3703,6 +3703,44 @@ SPREAD=1 PARTITION_SWEEP=1 STAGES=threads sbatch -C rome scripts/rusty-phase4.sb
 | A37 | `l3_domains(p)` may assume **compact placement**: `p` threads occupy `p` consecutive physical cores, filling one L3 domain before starting the next. | **Assumed, and true of every measurement in this file.** `phase4f-threads.sh` builds its cpusets that way by construction (`cpuset_for` takes the first `nt` cores in domain order) and a whole-node run leaves nothing to spread over. A *scattered* placement spans more domains than this counts, and the error is in the safe direction: it under-counts, so the rule falls back to the behaviour every committed number was measured with. `TENSORCONTRACT_L3_DOMAINS` overrides it, and `SPREAD=1` in `phase4f-threads.sh` is the arm that uses it. |
 | A38 | A cross-domain traffic term in the partition cost model can be calibrated to select the column axis where measurement wants it. | **Refuted, four ways** — see the negative result above. The weights that separate the two `abcijk`/`ijkl` pairs are 1% apart and want opposite answers, in element units and in real units alike, and the symmetric two-sided model ranks the two families backwards. Do not re-derive it without a new mechanism. |
 | A39 | Per-case ratios at 64 threads are readable at the ±6% the reference machine reports. | **Refuted on this corpus and this width.** Repeats of an identical partition run p10 0.885 / p90 1.107 with tails to 0.80–1.55. Only per-family geomeans (1–2%) are quotable at this thread count, and the control that shows it comes out of the same data at no cost. |
+
+## Phase 4 report, part 13: the row-block menu is keyed by position (A35)
+
+Part 11 left A35 in the worst available state: a **measured** 7.8% shape that the
+engine could not run, could not A/B, and could not put on a menu, because
+`config_at` dispatched on `MR` alone and `32x5` shares its height with the
+shipped `32x6`. "Documented and untestable" is worse than "unfixed", and this
+closes that half without touching the default.
+
+**The change is a re-keying, not a retune.** `row_blocks` now returns
+`(MR, NR)` pairs and `config_at` takes a **menu position**; `Plan::row_block` and
+`preferred_row_block` return an index. The rule itself is untouched — it reads
+only `MR`, so entries of equal height tie and the earlier one wins, which keeps
+the measured default in front by construction. `TENSORCONTRACT_ROWBLOCK=idx=<i>`
+now means what its name always implied, and `mr=<n>` resolves to the first entry
+of that height, which is the documented limitation rather than a silent surprise.
+
+`(2, 5)` is **appended** to the `f32`/`c32` planar menu, not inserted after the
+default: entries 0–2 keep the positions `bench-results/phase4c` swept, so that
+grid's `idx=` numbering still means what it meant. Verified end to end —
+`idx=0` runs `avx512-planar 32x6`, `idx=3` runs `avx512-planar 32x5`.
+
+The well-formedness test changed with it, and the change is the interesting part:
+a repeated `MR` is now **allowed** and a repeated *shape* is not. The old
+invariant existed because a duplicate height made the later entry unreachable;
+under positional keying it is reachable, and what is unreachable instead is a
+duplicate `(MR, NR)`. The test says so, and says why, so the next person does not
+restore the stronger version and delete the entry this part added.
+
+**Not fixed, and deliberately.** The default is still `32x6`. A 7.8% *kernel*
+margin is not a corpus margin — `NR` moves the `jr` loop count and the packed-`B`
+sliver geometry as well as the register block — and this project has been wrong
+about exactly that kind of extrapolation before. What changed is that settling it
+now costs one sweep arm instead of a rebuild.
+
+| # | Decision | Rationale |
+|---|---|---|
+| D43 | The row-block menu is addressed by **position**, not by `MR`: `row_blocks` yields `(MR, NR)` and `config_at` takes an index. A repeated `MR` is legal; a repeated shape is not. | An `MR`-keyed menu cannot express an `NR`-only alternate, and the Phase 3 sweep produced one that beats the shipped default (A35). Keying by position makes it reachable at run time (A15's preference for a switch over a rebuild), makes `idx=` honest, and costs the rule nothing because the rule never read `NR`. Appending rather than inserting keeps the committed grid's index numbering valid. |
 
 ## Phases 4 (rest) – 5
 
