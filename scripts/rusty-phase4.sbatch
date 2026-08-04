@@ -81,7 +81,21 @@ command -v cargo >/dev/null || {
 cargo --version
 echo
 
-OUT=${OUT:-bench-results/$(hostname -s)-zen2}
+# Label from what the machine reports, not from the partition this script was first
+# written for. Hardcoding `-zen2` here filed an Ice Lake run under a Zen2 name once
+# already; a directory name is a provenance claim.
+OUT=${OUT:-bench-results/$(hostname -s)-$(
+    python3 -c "
+import re
+m=''
+for l in open('/proc/cpuinfo'):
+    if l.startswith('model name'): m=l.split(':',1)[1].strip().lower(); break
+for pat, tag in (('epyc 7[0-9]*2','zen2'), ('epyc 9','zen4'), ('epyc','zen'),
+                 ('platinum 83','icelake'), ('gold 63','skylake'),
+                 ('gold 62','cascadelake'), ('xeon','intel')):
+    if re.search(pat, m): print(tag); break
+else: print(re.sub(r'[^a-z0-9]+','-',m)[:16] or 'x86')
+")}
 export SIZE=${SIZE:-64}
 export REPS=${REPS:-3}
 mkdir -p "$OUT"
@@ -106,10 +120,27 @@ if ! stage prep; then
     exit 1
 fi
 
+# `STAGES` selects what runs after prep. The default is everything, but a machine
+# whose L3 is a whole socket can host at most one or two concurrent arms, which
+# makes the 36-job grid a ten-hour sequential run and the placement validation
+# nearly meaningless — on such a node `STAGES="shapes threads"` is the whole value.
+# `PARTITION_SWEEP=1` is passed through to the threads stage; see phase4f-threads.sh.
+STAGES=${STAGES:-"shapes threads validate grid"}
+export PARTITION_SWEEP=${PARTITION_SWEEP:-}
+echo "stages after prep: $STAGES"
+
 # Cheap and irreplaceable first, then the long one. Neither aborts the other.
-stage shapes  || echo "WARNING: shapes stage failed; continuing" >&2
-stage threads || echo "WARNING: threads stage failed; continuing" >&2
-stage validate || echo "WARNING: validate stage failed; continuing" >&2
+for s in shapes threads validate; do
+    case " $STAGES " in *" $s "*) ;; *) echo "skipping stage $s"; continue ;; esac
+    stage "$s" || echo "WARNING: $s stage failed; continuing" >&2
+done
+
+case " $STAGES " in
+    *" grid "*) ;;
+    *)  echo "grid not in STAGES; stopping here."
+        printf '%-10s %s\n' grid skipped >> "$SUMMARY"
+        echo "outdir $OUT"; cat "$SUMMARY"; exit 0 ;;
+esac
 
 echo
 echo "########## placement verdict  $(date -Iseconds) ##########"

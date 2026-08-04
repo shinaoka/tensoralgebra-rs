@@ -1,0 +1,20 @@
+This directory was originally created as worker6016-zen2 and has been renamed.
+
+The cause: scripts/rusty-phase4.sbatch hardcoded `-zen2` in its default outdir, because it was
+written for the rome session. Fixed after this run started (the label now comes from
+/proc/cpuinfo), but the directory could not be renamed while the job was writing to
+it. Rename to bench-results/worker6016-icelake once job 6746817 has finished.
+
+What this machine actually is, from the engine's own probes:
+
+  Intel Ice Lake-SP, 2 x 32 cores, SMT off
+  L1d 48 KiB 12-way private   (Cascade Lake: 32 KiB 8-way)
+  L2  1280 KiB 20-way private (Cascade Lake: 1024 KiB 16-way)
+  L3  48 MiB shared by 32 cores, i.e. one domain per socket
+      (Cascade Lake: 25 MiB / 8 cores; Zen2: 16 MiB / 4 cores)
+  avx2 fma avx512f avx512dq
+
+The one-L3-per-socket topology is why this session ran STAGES="shapes threads" and
+skipped the blocking grid: at most one or two arms can be placed concurrently, so
+the 36-job grid would have been a ten-hour sequential run, and the placement
+validation would have had nothing to validate.

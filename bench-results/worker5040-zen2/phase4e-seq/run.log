@@ -1,6 +1,0 @@
-SCOPED GRID: only arms [base nc25 nc400 model base2] -- this is not the full grid
-SCOPED GRID: only arms [base nc25 nc400 model base2] -- this is not the full grid
-host worker5175  128 physical cores, SMT width 1, 32 L3 domains
-10 arms, 1 concurrent, cpus 0
-host worker5175  128 physical cores, SMT width 1, 32 L3 domains
-10 arms, 1 concurrent, cpus 0

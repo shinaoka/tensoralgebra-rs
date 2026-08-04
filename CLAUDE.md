@@ -67,24 +67,37 @@ they can be benchmarked against each other and against TBLIS on equal footing.
   and the two Apple targets are unverified because they need the Xcode SDK licence
   accepted.
 
-**Four things now exist that no benchmark has seen** — AVX2 kernels, the
-analytical blocking model, 2-D threading, and the parallel-width analysis. All
-are off or inert by default and green across ten switch combinations, so the
-engine still measures as it did. **Two measurements are pending and both need an
-exclusive machine**; `DECISIONS.md`'s "Resume here" says which script and what to
-do with the output. Do not start either while anything else runs — a compile
-counts.
+**Both pending measurements are done** — on Rusty `rome` nodes, 2026-08-03, jobs
+6745376 (`worker5040`) and 6745978 (`worker5175`). Read `DECISIONS.md` parts 7, 8,
+8b, 9, 10 and 11. **Nothing they measured is comparable to a single-core number in
+this repo**: different machine, different cache hierarchy, AVX2 not AVX-512. Every
+ratio in them is within-session, against a floor re-derived there.
 
-**Those measurements are going to a Rusty node, and that is a design decision,
-not a change of venue — read `DECISIONS.md` part 10 before running anything.**
-Rusty has no Cascade Lake, so the partition picks the question; `rome` is chosen,
-which means the **AVX2** kernels and their *unmeasured* register blocks (D26), so
-**nothing measured there is comparable to any number in this repo** and every
-ratio must be computed within the session, including a re-derived noise floor.
-Part 10 also fixes, in advance, the accept/reject rule for running grid arms
-concurrently one per L3 domain. Drive it with `scripts/node-session.sh <stage>`,
-which stages the work in descending value and refuses to start a measurement
-while anything of yours is compiling.
+Four results and four decisions handed back, none of them taken:
+
+* **`KC` is first-order and the default is too shallow** — `kc = 512` is worth 5.0%
+  in `f64`, 3.3% in `c64`, against a 0.5% floor. **`MC` is a wide plateau** and is
+  not worth tuning (item retired).
+* **The analytical blocking model loses in 11 of 12 columns** on the first foreign
+  machine, by up to 7.2% in the complex methods, and the whole loss is attributable
+  to its `kc` (A33). Recommendation: `TENSORCONTRACT_BLOCKMODEL` stays `legacy`.
+* **Threading scales to 8, saturates by 16–32, declines at 64** with cores idle
+  two-thirds of the time. The 2-D partition is vindicated at 1.6–3.4x, but
+  `Plan::partition`'s `panels >= p` early return costs up to **4.3x** on 18 cases.
+  Recommendation: default stays off; both causes are fixable, neither structural.
+* **D26's eight AVX2 register blocks are all confirmed** as the measured winners —
+  they stop being a guess with no code change. On AVX2 the *kernel-level* ranking
+  puts 3m first in `f32`/`c32`, the opposite of AVX-512 (A24).
+
+**Methodology this changed, and it applies to every future measurement here:** the
+`A, B, A'` bracket cannot tell a cold-start transient from a noise floor and
+reported 4.4% where the true repeat precision was 0.02% (A31) — **run and discard a
+warm-up arm**; drift is a function of how far apart two arms are, not one number
+(A32); and concurrent one-arm-per-L3-domain placement is free on the corpus (+0.3%)
+but **rejected on memory-bound cases** (−3.2%), so traffic-changing arms need their
+own sequential run (A27). Drive a cluster session with
+`sbatch scripts/rusty-phase4.sbatch` (or `scripts/node-session.sh <stage>` by hand);
+`-C icelake` runs the same thing on the AVX-512 hierarchy still uncovered.
 
 Workspace MSRV is **1.89** (AVX-512 intrinsics stabilised there).
 

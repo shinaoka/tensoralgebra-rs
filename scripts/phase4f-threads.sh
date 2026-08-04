@@ -250,6 +250,29 @@ for pair in f64,c64 f32,c32; do
     # partition.
     run "th-t$TOP-pm-$t" "$TOP" "$pair" m
     run "th-t$TOP-pn-$t" "$TOP" "$pair" n
+    # `PARTITION_SWEEP=1` prices the axis choice *as a function of thread count*,
+    # on the memory-bound family only so it is cheap. On Zen2 a 1-D `N` partition
+    # beat the rule by up to 4.3x on exactly these cases (part 8b) and the
+    # mechanism was not identified. Thread count is the discriminator that costs
+    # nothing: at 4 threads all of them share one L3 domain on a CCX machine, at
+    # the top count they span many, so if the gap opens with the number of L3
+    # domains crossed rather than with the thread count itself, the mechanism is
+    # cross-domain and not the partition. On a machine with one L3 per socket the
+    # same sweep crosses no domains at all until it crosses a socket, which is why
+    # running it on a second topology is worth more than running it again here.
+    if [ -n "${PARTITION_SWEEP:-}" ]; then
+        for nt in $THREADS; do
+            [ "$nt" = 1 ] && continue
+            for arm in m n; do
+                FILT=(--case "${PARTITION_CASE:-abcijk}")
+                run "ps-t$nt-$arm-$t" "$nt" "$pair" "$arm"
+            done
+            FILT=(--case "${PARTITION_CASE:-abcijk}")
+            run "ps-t$nt-rule-$t" "$nt" "$pair"
+        done
+        FILT=()
+        [ -n "$FILTER" ] && FILT=(--case "$FILTER")
+    fi
     run "th-t1b-$t" 1 "$pair"   # the bracketing repeat, and this node's floor
     echo "done $t"
 done
