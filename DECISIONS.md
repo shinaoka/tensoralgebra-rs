@@ -3982,6 +3982,105 @@ drafts of this argument had that emphasis backwards.
 |---|---|---|
 | A41 | Blocks of a block-scatter contraction are equal-cost, so partitioning by block count balances the load. | **False, and measured false on the corpus we call regular** — 123 of 392 case-dtype-methods have mixed regularity within one contraction, at ratios of 1/3, 1/9 or 1/27 of blocks on the gather path, which the orientation work priced at roughly 2x. Whether it *costs* at thread scale is what `RAGGED=1` answers; on the unperturbed corpus the straddling is periodic and a static cut partly self-averages. |
 
+## Phase 4 report, part 15: what TBLIS actually does about threading
+
+Prior art for part 14, read from source rather than assumed. Both trees are on
+disk — `baselines/tblis-1.3.0` (git `c4f81e0`) and `baselines/tblis-2.0` (git
+`555320c`, which vendors BLIS `358e689c`). Nothing was built. The four
+load-bearing claims below were spot-checked directly against the source after the
+survey, and all four hold.
+
+### The three findings that matter to us
+
+**1. `PC` is never parallelised, in either version, and for our reason.** 1.3.0
+gives the `kc` level exactly one gang — `communicator comm_kc = comm_nc.gang(
+TCI_EVENLY, 1);` (`src/nodes/gemm.hpp:127`) — and 2.0 inherits BLIS's
+`bli_rntm_set_pc_ways_only(1, rntm); // Disable pc_nt values.`
+(`frame/base/bli_rntm.c:292`). Matthews states the reason in the BSMTC paper
+itself (arXiv:1607.00291 §7.2): the `p` loop *"is not parallelized since this
+would require additional synchronization and/or temporary buffers with
+reduction."* **This is independent confirmation of A21** from a mature engine
+that had every opportunity to do otherwise.
+
+**2. TBLIS does nothing whatsoever about block-scatter load imbalance.** It
+computes the same irregularity sentinel we do — `fill_block_stride` sets a
+block's stride to `0` when it is not uniform (1.3.0
+`src/matrix/block_scatter_matrix.hpp:232-247`; 2.0
+`tblis/frame/base/block_scatter.cxx:219-236`) — and forks on it at pack and
+write-back time, so its per-block cost varies as much as ours. **No partitioning
+site consults it.** Every split is by count or length: `nodes/partm.hpp:40` (the
+single decision point for all five levels in 1.3.0),
+`gemm_ker_bsmtc.cxx:158-159` and `packm_blk_bsmtc.cxx:75,78,115` in 2.0. A
+case-insensitive grep for `cost|imbalance|load.?balan` over `frame/3t` and
+`frame/3m` returns **zero hits**. The decisive detail is ordering: in
+`gemm_ker_bsmtc.cxx` the block-stride arrays are *built* by a count-split (180-183),
+barriered (213), and then read by threads whose ranges were already fixed —
+**the regularity information is produced after the scheduling decision and never
+fed back into it.**
+
+BLIS's one cost-weighted partitioner, `bli_thread_range_weighted_sub`, is gated
+on triangular structure (`bli_thread_range.c:790-824`) and cannot fire on the
+dense objects TBLIS builds. Its TLB partitioner disclaims this exact class in its
+own comment: *"It makes no effort, however, to account for differences in
+threads' workload that is attributable to differences in the number of edge-case
+microtiles"* (`bli_thread_range_tlb.c:650-657`).
+
+And the author measured the consequence and shipped anyway (§9.2): BSMTC's weak
+scalability is *"only slightly less"* than BLIS's ~90%, **"possibly due to load
+imbalance stemming from edge cases which must use the full scatter vector."**
+Diagnosed, quantified as small on TCCG, never addressed.
+
+**So a cost-aware partition is open ground rather than catching up.** Two
+qualifiers, and the first corrects the survey itself: it is *not* true that our
+corpus is fully regular and would measure nothing (see part 14 — 42.9% of
+case-dtype-methods have `reg_a < 1.0` at our register blocks), so the unperturbed
+corpus can show the periodic case and `--stress ragged` is for the aperiodic one.
+Second, TBLIS's real escape hatch is upstream of scheduling: `sort_by_stride`
+(`frame/3t/dense/mult.cxx:380-382`) reorders tensor *dimensions* to manufacture
+regular blocks so the imbalance rarely bites. **We already have that** —
+`plan.rs:373-376` orders `M`/`N`/`H` by increasing `|stride|` in `D` and `K` by
+`|stride|` in `A`, then folds. So we are not missing their mitigation; we are
+both left with the residue it does not remove.
+
+**3. TBLIS has a dynamic, atomic-claim task scheduler — and uses it only for the
+sparse formats.** `comm.do_tasks_deferred`, backed by a CAS on a slot
+(`external/tci/src/tci/task_set.c:35-45`), appears in `3t/indexed/mult.cxx`,
+`3t/indexed_dpd/mult.cxx` and the `1t/indexed*` family, and **never** in
+`3t/dense`, `3m` or `1m` — verified by listing every call site. That is precisely
+the split part 14 proposes and the user's instinct predicted: **static
+partitioning for one dense contraction, dynamic fork-join for block-sparse.** The
+most experienced implementation of this algorithm made the same division.
+
+### The structural divergence, which is a real trade
+
+| | this engine | TBLIS |
+|---|---|---|
+| decomposition | flat `pm x pn` grid, one cell per thread | five nested gangs, `jc → kc(x1) → ic → jr → ir` |
+| packed `A` | per thread, `pm * pn` copies | **shared** within an `ic`/`ir` gang, packed cooperatively; footprint scales with `jc_nt` |
+| packed `B` | one panel per column group | one panel |
+| barriers | 2 per `(jc, pc)` | ~3 per `PC` iteration + ~4 per `IC` iteration (2.0) |
+| per-loop thread counts | `pm`/`pn` from the cost model | 1.3.0 honours `BLIS_{JC,IC,JR,IR}_NT`; **2.0 wipes them** — `bli_rntm_set_num_threads` clears the ways so only the total is honoured (`bli_rntm.c:257-266`) |
+
+They buy memory and cache sharing with barrier depth; we buy barrier shallowness
+with duplicated packing. The one thing they can do that our grid structurally
+cannot is put several threads on a *single* `MC x NC` block (the `jr`/`ir` ways),
+which keeps threads cache-coherent by construction — where our answer to the same
+pressure is the topology-aware gate of D41. Worth knowing when the `jr`/`ir` axis
+is next considered.
+
+Two smaller notes: TBLIS also spawns its parallel region per call with no pool of
+its own (`external/tci/src/tci/parallel.c:24` — `#pragma omp parallel
+num_threads(nthread)`), so it has no advantage over our `std::thread::scope`
+there; and `tblis_tensor_mult` takes a **communicator** as its first argument
+rather than a thread count, which is a more composable API than
+`Plan::with_threads` if this engine is ever nested inside a caller's parallel
+region. Both baselines here are configured `TCI_USE_OPENMP_THREADS 1` with
+`TCI_USE_SPIN_BARRIER 1`.
+
+| # | Assumption | Status |
+|---|---|---|
+| A42 | Block-scatter load imbalance is a solved problem in mature implementations, so a cost-aware partition would be reinventing something. | **False.** TBLIS computes the same per-block regularity sentinel and feeds it to no scheduling decision in either version, and its author published the diagnosis without a fix. Its mitigation is upstream — reorder dimensions to manufacture regular blocks — and we already do the equivalent. |
+
 ## Phases 4 (rest) – 5
 
 In progress. See "Resume here" at the top of this file.
