@@ -1,0 +1,39 @@
+The engine against its baselines, on a second AVX-512 microarchitecture.
+
+  machine : worker6156 (Rusty, `gen` partition, `icelake`)
+            Intel Ice Lake-SP, 2 x 32 cores, SMT off, AVX-512
+            L1d 48 KiB 12-way private, L2 1280 KiB 20-way private,
+            L3 48 MiB shared by 32 cores, i.e. one domain per socket
+  date    : 2026-08-04T14:45:35 -> 18:37:05 (231 min)
+  slurm   : job 6753260, --constraint=icelake --exclusive
+  script  : sbatch scripts/rusty-compare.sbatch -> scripts/compare-bench.sh
+
+  compare-tblis-skx/   the run itself; see its own PROVENANCE.txt
+
+The subdirectory is named for the **TBLIS 2.0 build** it measured against, and
+that is not decoration. This run used `../baselines/tblis-2.0-install`, whose
+BLIS was configured with `BLIS_CONFIG_FAMILY=auto` on a Cascade Lake host and is
+therefore **skx-only**: one `bli_cntx_init_skx`, 1364 `bli_` symbols, and no
+skinny-GEMM kernel set. It is the build every previously committed number used,
+which is why it was used here too. A one-shot look put the multi-config build of
+the same source up to 1.68x ahead of it on low-arithmetic-intensity shapes, so
+**the TBLIS 2.0 columns in this run are under review** and a proper A/B plus a
+like-for-like counterpart run are pending. The engine's own columns, TTGT, and
+TBLIS v1.3.0 are unaffected.
+
+Quality of the measurement, which is the best in this repo so far:
+
+  * Session-span floor (`A3` against `A`, 2.5 h apart): **0.998-1.001**, with
+    **0 of 980** case-dtype-engine points outside +-6%.
+  * Near floor (`A2` against `A`, minutes apart): 0.995-1.003, 1 of 980 outside.
+  * Every arm reports `self 100%, co-tenants: none`. Identical arms repeated to
+    within 0.4 s on 1424 s.
+
+Note that the session-span floor is no worse than the near floor. On Zen2, drift
+grew with the distance between arms (A32: 0.02% at a minute, 1-2% at an hour,
+4.4% across a cold start) and the discarded warm-up arm was what made that
+visible. Here the warm-up arm bought confirmation rather than a correction: an
+exclusive, SMT-off Ice Lake node simply does not drift over four hours. A32's
+effect looks like a property of boost headroom and co-tenancy, not a universal.
+
+Not comparable to any number measured on `ccqlin038` or on a `rome` node.

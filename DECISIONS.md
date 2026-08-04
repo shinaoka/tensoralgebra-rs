@@ -263,6 +263,7 @@ Phase reports, in the order they were written:
 | Phase 4 part 10 | taking the two pending measurements to a cluster node |
 | Phase 4 part 11 | the AVX2 register blocks, measured; A24, A34, A35 |
 | Phase 5 interlude | making the C surface consumable |
+| Phase 5 part 3 | the comparison re-measured on Ice Lake; the method ranking does not travel; A37, A38 |
 
 Note that the section order is **not** chronological past part 7: parts 10 and 11
 sit after the Phase 5 reports because that is when they were written, and part 10
@@ -3533,6 +3534,147 @@ since a test step is the only thing that keeps the dev-dependency half honest.
 |---|---|---|
 | A31 | The shipped header agrees with the library it describes. | **Now tested rather than assumed.** `examples/c-consumer` compiles the header with a C compiler, links the built library and checks numerical results in `f64` and `c64`; CI runs it in both the corrosion and prebuilt modes. Previously no C compiler saw the header at any point. |
 | A32 | A Rust panic reaching the C boundary is acceptable because it is memory-safe. | **Rejected as a policy.** Memory-safe but process-fatal, and the engine panics on allocation conditions a caller can hit. D38 converts it to an error code on the three entry points that can raise it. |
+
+## Phase 5 report, part 3: the comparison re-measured, and the method ranking does not travel
+
+Job **6753260**, `worker6156` (Ice Lake-SP, AVX-512, 2 x 32 cores, SMT off),
+2026-08-04, 231 min, `--constraint=icelake --exclusive`,
+`scripts/rusty-compare.sbatch` → `scripts/compare-bench.sh`. Raw data in
+`bench-results/worker6156-icelake/compare-tblis-skx/`.
+
+**Why this run happened at all.** The newest engine-vs-baseline data in the repo
+was `bench-results/phase3-sweep-*` from 2026-08-02, and every Phase 4 gain landed
+after it, so the README's comparison understated the engine. This is the
+re-measurement. It is **not** on the reference machine — that was a deliberate
+choice, taken because `ccqlin038` is shared and the last A/B run there had 6–14
+co-tenants per arm — and the cost of that choice is that **nothing here can be
+differenced against the Phase 3 table.** Different microarchitecture, different
+cache hierarchy. The improvement attributable to Phase 4 remains unmeasured; only
+a `ccqlin038` run can supply it.
+
+### The measurement is the tightest in this file
+
+| floor | arms | geomean spread | outside ±6% |
+|---|---|---|---|
+| near (`A2` vs `A`) | minutes apart | 0.995–1.003 | 1 of 980 |
+| **session-span (`A3` vs `A`)** | **2.5 h apart** | **0.998–1.001** | **0 of 980** |
+
+Identical arms repeated to within 0.4 s on 1424 s; every arm reports `self 100%,
+co-tenants: none`. That is roughly **5x tighter than `ccqlin038`'s published
+±1.3% geomean / ±6% per case**, which is the argument for A32 — derive the floor
+in session — stated as a number.
+
+**A32 is refined by this run, and in the direction of "it is not universal".**
+The session-span floor is *no worse* than the near floor, so drift does not grow
+with the distance between arms here. On Zen2 it did (0.02% at a minute, 1–2% at
+an hour, 4.4% across a cold start). The 35-minute discarded warm-up arm bought
+confirmation rather than a correction. A31 and A32 look like properties of boost
+headroom and co-tenancy, not of measurement in general — keep the warm-up arm
+(it is cheap and it is how you learn which case you are in), but do not expect it
+to move anything on an exclusive SMT-off node.
+
+### The engine, this build, this machine
+
+49-case corpus at 64 MiB, single core, planar, GF/s. **These columns are
+independent of the TBLIS question below**, which cannot touch them.
+
+| dtype | min | median | geomean | max |
+|---|---|---|---|---|
+| `f32` | 11.0 | 74.8 | 77.2 | 168.8 |
+| `f64` | 7.1 | 44.7 | 43.7 | 71.6 |
+| `c32` | 25.5 | 121.0 | 113.9 | 179.3 |
+| `c64` | 15.7 | 62.0 | 63.3 | 91.1 |
+
+Correctness verified on the node in all three methods before any timing.
+Against TTGT (OpenBLAS, unaffected by the TBLIS question): **2.15x `f64`, 2.12x
+`c64`, 2.20x `f32`, 1.95x `c32`** on corpus geometric mean.
+
+**Complex beats real again, on a second microarchitecture.** `c64/f64` = 1.449,
+`c32/f32` = 1.474, against Cascade Lake's 1.416 and 1.432. This is a within-run
+ratio, so it is valid where the absolute numbers are not comparable, and it is
+the project's central technical result replicating on new hardware to within
+about two points. Twice the arithmetic intensity amortises overhead better; the
+weak spot is low arithmetic intensity in either domain, not complex.
+
+### The method ranking does not transfer, and item 3's premise fails here
+
+This is the result worth carrying forward, and it contradicts something the
+Resume-here block lists as settled.
+
+| relative to planar | Cascade Lake (Phase 3) | **Ice Lake (here)** |
+|---|---|---|
+| `c64` 1m | 0.967 | 0.868 |
+| `c64` 3m | 0.956 | **0.694** |
+| `c32` 1m | 0.979 | 1.004 |
+| `c32` 3m | 0.921 | **0.744** |
+
+And the inversion that Phase 4 item 3 was going to exploit is **absent**:
+
+| subset | `c64` | `c32` |
+|---|---|---|
+| memory-bound (`min(n,k) <= 64`, n=24) | planar 49.3 > 1m 44.7 > 3m 35.9 | 1m 87.0 > planar 81.4 > 3m 67.3 |
+| compute-bound (n=25) | planar 80.5 > 1m 67.0 > 3m 53.4 | planar 157.2 > 1m 148.6 > 3m 105.6 |
+
+**3m is last in every column and wins 0 of 49 cases**, its per-case ratio against
+planar running 0.63–0.84 — uniform, not a few catastrophic shapes. On Cascade
+Lake 3m was the *fastest* of the three on the memory-bound subset. So:
+
+* **Item 3 ("dispatch 3m on memory-bound shapes") is a pessimisation on Ice
+  Lake** and must not be built as an unconditional rule. If it ships at all it has
+  to be conditioned on the microarchitecture, which is the same conclusion A34
+  reached for register blocks and A36 for the thread partition. That is three
+  independent findings pointing one way.
+* **This is confounded with A34 and is not a clean refutation of the mechanism.**
+  The register blocks are known to be wrong on Ice Lake, and the arms confirm the
+  shipped ones ran: 3m used `8x10` in `c64` and `16x10` in `c32`. A34 priced the
+  shape error at 9–13%, while 3m loses 26 points of relative standing, so the
+  shape miss does not obviously account for all of it — but it cannot be
+  separated without an Ice Lake register-block sweep. `bench-results/worker6016-icelake/kernel-shapes.txt`
+  is that sweep for the shapes A34 covered; extending it to 3m is the experiment.
+* Practical consequence for quoting: **the ranking, and the inversion, are Cascade
+  Lake results.** The README must say so rather than stating them as properties of
+  the engine.
+
+### The TBLIS 2.0 columns are under review, and why
+
+This run used `../baselines/tblis-2.0-install` — the build every previously
+committed TBLIS 2.0 number used. Its BLIS was configured with
+`BLIS_CONFIG_FAMILY=auto`, which resolves against the *build* machine, so it is
+**skx-only**: `nm` shows one `bli_cntx_init_skx`, 1364 `bli_` symbols, and no
+skinny-GEMM (`sup`) kernel set. Rebuilding the same source at the same commit
+with `BLIS_CONFIG_FAMILY=x86_64` gives thirteen contexts and 3809 symbols, and a
+one-shot look on `ccqlin038` put it **up to 1.68x ahead** on the premise shapes,
+clustered on the low-arithmetic-intensity cases.
+
+Two things follow, and the first is uncomfortable:
+
+1. **A mis-configured baseline flatters this engine on exactly the shapes the
+   project identifies as the real headroom.** The README's "roughly parity with
+   TBLIS 2.0 on complex" rests on it.
+2. The Phase 1 headline is probably safe, because it is a ratio *within* TBLIS 2.0
+   (complex efficiency ÷ real efficiency) and both halves moved together in every
+   pair inspected. It should still be re-derived.
+
+That 1.68x is `--size 8 --reps 2`, one shot, on a shared machine, with no warm-up
+and no repeat arm — a signal, not a result, by this file's own standards.
+`scripts/ab-tblis.sh` prices it properly (job 6754877): warm-up, A (skx),
+B (multi-config), A′ (skx), the treatment being `LD_LIBRARY_PATH` on one binary,
+with **`planar` in every arm as a control no TBLIS library can move**. It covers
+the sweep corpus and then the premise shapes, the latter because a dry run showed
+the two libraries indistinguishable over the sweep corpus at trivial size and the
+original signal came from `premise`.
+
+**Until that lands, do not quote a TBLIS 2.0 number from this run.** The engine
+columns, TTGT and TBLIS v1.3.0 stand.
+
+### Assumptions added
+
+| # | Assumption | Status |
+|---|---|---|
+| A37 | The complex-method ranking, and the inversion on memory-bound shapes, are properties of the engine and the shape. | **Refuted for the ranking.** On Ice Lake 3m is last in every column and wins 0 of 49 cases (0.694 `c64`, 0.744 `c32` against planar, against Cascade Lake's 0.956 / 0.921), and the memory-bound inversion is absent. Confounded with A34's wrong register blocks and not separable without an Ice Lake shape sweep, but item 3 cannot ship as an unconditional rule either way. |
+| A38 | A baseline install built from the right source at the right commit is the right baseline. | **Refuted.** `BLIS_CONFIG_FAMILY=auto` silently fits BLIS to the build host, producing a TBLIS 2.0 that is skx-only, SIGILLs on Zen2, and lacks the skinny-GEMM kernels — up to 1.68x slow on precisely the low-arithmetic-intensity shapes this project cares about. Record a baseline's *configuration*, not just its version and commit, and verify a multi-ISA claim with `nm` rather than `strings`: BLIS compiles its config name table in whether or not the kernels are there. |
+
+---
 
 ## Phases 4 (rest) – 5
 
