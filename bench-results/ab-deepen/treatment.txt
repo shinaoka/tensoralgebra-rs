@@ -1,0 +1,62 @@
+dtype  engine  or   n  geomean     min     max
+  c32      1m  AB  37    0.959   0.661   1.069
+  c32      1m  BA  12    0.980   0.953   1.051
+  c32      3m  AB  37    0.964   0.736   1.035
+  c32      3m  BA  12    0.961   0.905   0.992
+  c32  planar  AB  37    0.958   0.637   1.048
+  c32  planar  BA  12    0.978   0.936   1.042
+  c64      1m  AB  37    0.951   0.887   1.092
+  c64      1m  BA  12    0.947   0.864   0.990
+  c64      3m  AB  37    0.977   0.900   1.103
+  c64      3m  BA  12    0.951   0.903   0.986
+  c64  planar  AB  37    0.971   0.876   1.023
+  c64  planar  BA  12    0.960   0.890   0.989
+  f32      1m  AB  37    0.934   0.400   1.071
+  f32      1m  BA  12    0.964   0.927   0.990
+  f32      3m  AB  37    0.934   0.400   1.071
+  f32      3m  BA  12    0.964   0.927   0.990
+  f32  planar  AB  37    0.934   0.400   1.071
+  f32  planar  BA  12    0.964   0.927   0.990
+  f64      1m  AB  37    0.943   0.619   1.084
+  f64      1m  BA  12    0.936   0.851   0.970
+  f64      3m  AB  37    0.943   0.619   1.084
+  f64      3m  BA  12    0.936   0.851   0.970
+  f64  planar  AB  37    0.943   0.619   1.084
+  f64  planar  BA  12    0.936   0.851   0.970
+
+--- outside the +/-6% per-case noise floor (159 of 588) ---
+  0.400      adbjc-cbdka-kj  f32      1m  AB      4.1 ->     1.6
+  0.400      adbjc-cbdka-kj  f32      3m  AB      4.1 ->     1.6
+  0.400      adbjc-cbdka-kj  f32  planar  AB      4.1 ->     1.6
+  0.586      ajbdc-ckbad-jk  f32      1m  AB      5.5 ->     3.2
+  0.586      ajbdc-ckbad-jk  f32      3m  AB      5.5 ->     3.2
+  0.586      ajbdc-ckbad-jk  f32  planar  AB      5.5 ->     3.2
+  0.589      abjcd-dkbac-jk  f32      1m  AB      5.9 ->     3.4
+  0.589      abjcd-dkbac-jk  f32      3m  AB      5.9 ->     3.4
+  0.589      abjcd-dkbac-jk  f32  planar  AB      5.9 ->     3.4
+  0.619      adbjc-cbdka-kj  f64      1m  AB      1.4 ->     0.9
+  ...
+  1.071            ij-ik-kj  f32      3m  AB    144.9 ->   155.2
+  1.071            ij-ik-kj  f32  planar  AB    144.9 ->   155.2
+  1.077          ij-ikl-ljk  f64      1m  AB     38.3 ->    41.2
+  1.077          ij-ikl-ljk  f64      3m  AB     38.3 ->    41.2
+  1.077          ij-ikl-ljk  f64  planar  AB     38.3 ->    41.2
+  1.084          ij-kil-lkj  f64      1m  AB     38.8 ->    42.0
+  1.084          ij-kil-lkj  f64      3m  AB     38.8 ->    42.0
+  1.084          ij-kil-lkj  f64  planar  AB     38.8 ->    42.0
+  1.092          ij-kil-lkj  c64      1m  AB     52.4 ->    57.3
+  1.103        abjc-kbac-jk  c64      3m  AB     46.1 ->    50.8
+
+--- overall, all cases (what a user sees) ---
+  c32      1m  0.964
+  c32      3m  0.963
+  c32  planar  0.963
+  c64      1m  0.950
+  c64      3m  0.970
+  c64  planar  0.969
+  f32      1m  0.941
+  f32      3m  0.941
+  f32  planar  0.941
+  f64      1m  0.941
+  f64      3m  0.941
+  f64  planar  0.941

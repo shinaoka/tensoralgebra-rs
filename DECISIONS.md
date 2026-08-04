@@ -1723,8 +1723,66 @@ worst, then `c64` 3m) and suggests the general form of the rule: couple only whi
 `mc` stays above some small multiple of `MR`. That form is scorable against these two
 grids offline, for free, and has not been done.
 
-Still not taken in the same commit as the measurement, and it needs an end-to-end
-A/B in the shipping configuration (A20) before it becomes a default.
+### The A/B, and it fails: there is no ~3% blocking win on the reference machine
+
+`scripts/ab.sh bench-results/ab-deepen "TENSORCONTRACT_DEEPEN=on"` on `ccqlin038`,
+warm-up arm discarded, `A, B, A'`. **Pre-registered rule: `f64` must beat the floor's
+geomean with no dtype regressing beyond it. It does not. Do not ship it.**
+
+| column | B vs A | can the switch touch it? |
+|---|---|---|
+| `f64` | 0.941 | **yes** |
+| `c64` (same arm) | 0.963 | no — control |
+| `f32` | 0.941 | no — control |
+| `c32` | 0.963 | no — control |
+| floor (`A'` vs `A`) | 0.990–0.999 | — |
+
+**The controls are what make this readable.** `TENSORCONTRACT_DEEPEN` is scoped to
+`real_bytes == 8 && a_reals == 1 && b_reals == 1`, so three of those four columns
+*cannot* move, and they moved 3.7–5.9%. The per-arm occupancy says why: the B arm ran
+under roughly double the L3-domain co-tenant load of A and `A'` (198.7% against 85.1%
+and 94.3%, summed over the domain). So the raw 0.941 is mostly environment.
+
+Correcting `f64` by its in-arm control gives **≈0.977**, and two controls *within* one
+arm differ by 2.2%, so this run resolves about ±2%. Either way the treatment is
+neutral-to-negative and nowhere near +2.9%.
+
+**Why the grid said +2.9% and the A/B says ≈0.977.** Both grids' `base` arm was the
+contaminated one — `basem`/`base2` read 1.010–1.020 on `ccqlin038`, i.e. `base` was
+1–2% slow — which inflates *every* `arm / base` ratio in the grid, `ck512` included.
+Corrected, the grid's 1.029 is ≈1.01. The two measurements now agree: coupled
+deepening is worth approximately nothing on this machine, and the +3% "agreement
+across two machines" was an artefact common to both.
+
+**And the split explains it, which is the useful part.** Coupling changes
+`264x256x1536` → `144x512x768` for *all* `f64` cases, so a case with `k <= 256` pays
+the `mc` halving and gets no depth in return — `kc` is already clamped to `k`.
+Control-corrected:
+
+| population | n | B vs A, corrected |
+|---|---|---|
+| `k > 256` — deeper panel acts | 45 | **1.049** |
+| `k <= 256` — pays `mc`, gains nothing | 102 | **0.947** |
+
+Two thirds of the corpus is in the second row, so the net is negative. A rule
+conditioned on `k > kc` would keep the first row — but that is precisely the
+depth-adaptive `kc` that part 3 measured and rejected, and the reason is now visible:
+the L2 budget makes depth and `mc` a strict trade, so buying depth for a deep-`k` case
+costs the `D`-strip width that A13 bounds. On this machine `kc = 384` is the optimum
+and the shipped 256 is close to it.
+
+**Conclusion for item 2: the blocking on the reference machine is already near
+optimal, and there is no few-percent win available from `MC`/`KC`/`NC`.** That is a
+negative result, it closes the item for this machine class, and it is worth more than
+the wrong default it prevented. `TENSORCONTRACT_DEEPEN` stays as an off-by-default
+switch documenting the experiment rather than a pending change.
+
+**Caveat, stated because it is the honest limit of this run.** The machine was not
+quiet: every arm shows 6–14 co-tenants in its L3 domain and the load varied between
+arms. The controls permit a correction and the corrected verdict is unambiguous, but a
+repeat on a genuinely idle machine would tighten it. Given the corrected estimate would
+have to be wrong by 5 points to reverse the decision, that repeat is confirmatory
+rather than necessary.
 
 ### The model is worse here, and fails through its other half
 
