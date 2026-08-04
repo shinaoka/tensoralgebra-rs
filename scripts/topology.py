@@ -155,7 +155,14 @@ def discover():
             {
                 "id": i,
                 "level": d["level"],
+                # `cpus` is the allowed subset and drives *placement*; `all_cpus` is
+                # the whole physical domain from sysfs and drives *occupancy*. They
+                # differ whenever this runs under a taskset or a narrow cgroup, and
+                # conflating them silently reduces co-tenancy recording to the
+                # measurement core alone — which is the one thing that recording
+                # exists to catch.
                 "cpus": d["cpus"],
+                "all_cpus": d["all_cpus"],
                 "shared_cpu_list": key,
                 "cpus_in_node": len(d["all_cpus"]),
                 "size": (d["info"] or {}).get("size"),
@@ -225,7 +232,9 @@ def plan(topo, jobs=None, fraction=0.75):
                 "domain": d["id"],
                 "cpu": d["leader"],
                 "numa": d["numa"],
-                "domain_cpus": d["cpus"],
+                # The whole physical domain, so occupancy records co-tenants even
+                # when this process's own affinity is narrower (see `all_cpus`).
+                "domain_cpus": d.get("all_cpus") or d["cpus"],
             }
             for d in chosen
         ],

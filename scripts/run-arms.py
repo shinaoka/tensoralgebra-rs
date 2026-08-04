@@ -124,7 +124,8 @@ def main():
                      f"({topology.compress(sorted(allowed))})")
         by_cpu = {c: d for d in topo["domains"] for c in d["cpus"]}
         slots = [{"domain": by_cpu[c]["id"], "cpu": c, "numa": by_cpu[c]["numa"],
-                  "domain_cpus": by_cpu[c]["cpus"]} for c in want_cpus]
+                  "domain_cpus": by_cpu[c].get("all_cpus") or by_cpu[c]["cpus"]}
+                 for c in want_cpus]
         if a.sequential:
             slots = slots[:1]
         topo["placement"] = {"concurrency": len(slots),

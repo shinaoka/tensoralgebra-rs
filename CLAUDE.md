@@ -83,16 +83,24 @@ ratio in them is within-session, against a floor re-derived there.
 
 Four results and four decisions handed back, none of them taken:
 
-* **`KC` is first-order and the default is too shallow** — `kc = 512` is worth 5.0%
-  in `f64`, 3.3% in `c64`, against a 0.5% floor. **`MC` is a wide plateau** and is
-  not worth tuning (item retired).
+* **`KC` is first-order, but its best value is machine-specific and only the
+  *coupled* form transfers.** Pinned `kc = 512` is 1.050 on Zen2 and **0.961 on
+  Cascade Lake** — it must not ship. `ck512`, which re-derives `mc` at the new
+  depth, is 1.031 and 1.029: the same ~3% on both, and `f64`-only (`c64` 1m loses
+  5.5%). That is what `TENSORCONTRACT_DEEPEN=on` now does, off by default pending
+  the A/B. **`MC` is a plateau on Zen2 and *not* on Cascade Lake** (`mc400` costs
+  15–25% there), so A13's upper bound binds on the reference machine and the item is
+  **not** retired.
 * **The analytical blocking model loses in 11 of 12 columns** on the first foreign
   machine, by up to 7.2% in the complex methods, and the whole loss is attributable
   to its `kc` (A33). Recommendation: `TENSORCONTRACT_BLOCKMODEL` stays `legacy`.
 * **Threading scales to 8, saturates by 16–32, declines at 64** with cores idle
   two-thirds of the time. The 2-D partition is vindicated at 1.6–3.4x, but
   `Plan::partition`'s `panels >= p` early return costs up to **4.3x** on 18 cases.
-  Recommendation: default stays off; both causes are fixable, neither structural.
+  Recommendation: **conditional on topology.** On Ice Lake the same code reaches
+  10.6x (`f64`) and 15.3x (`c64` 3m) on 32 cores and the 4.3x is *absent* (A36), so
+  the early return is right where threads share one L3 and wrong where they span
+  many — make it domain-aware rather than removing it. Zen2 remains the limited case.
 * **D26's eight AVX2 register blocks are all confirmed** as the measured winners —
   they stop being a guess with no code change. On AVX2 the *kernel-level* ranking
   puts 3m first in `f32`/`c32`, the opposite of AVX-512 (A24).
