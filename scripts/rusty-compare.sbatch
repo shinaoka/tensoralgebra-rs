@@ -45,10 +45,20 @@
 # memory-bound half of the corpus. There is no concurrency to fall back on, so
 # the wall time carries the margin instead.
 #
-# `prep` (the only compile) is expected to be a no-op: build the two binaries on
-# the submitting host first, since neither carries `target-cpu=native` and the
-# engine dispatches its ISA at run time. If they are missing, this job builds
-# them, which costs a few minutes and is why cargo has to be reachable.
+# ---------------------------------------------------------------------------
+# This job does not compile, and that is a hard precondition
+# ---------------------------------------------------------------------------
+#
+# Run `scripts/compare-bench.sh prep` on the submitting host before submitting.
+# Neither binary carries `target-cpu=native` and the engine dispatches its ISA at
+# run time, so a binary built anywhere runs correctly everywhere.
+#
+# The reason this is a precondition rather than a convenience: two jobs submitted
+# together share one checkout on GPFS, so two concurrent `prep`s race in the same
+# cargo target directory. That is not hypothetical -- it is how jobs 6753197 and
+# 6753198 died, one on a `cp` from a file cargo had not relinked and the other on
+# a 0-byte binary the race left behind, which then produced seven stages of arms
+# that each took 0.0 seconds and returned success.
 
 #SBATCH --job-name=tp-compare
 #SBATCH --partition=gen
@@ -73,14 +83,6 @@ if [ -n "${SLURM_JOB_ID:-}" ]; then
         | grep -E 'JobId|NumNodes|NumCPUs|OverSubscribe|Shared|NodeList|TimeLimit|Features' || true
 fi
 
-# Slurm exports the submitting environment, so a rustup toolchain in $HOME comes
-# along. Fail early and legibly if it did not.
-command -v cargo >/dev/null || export PATH="$HOME/.cargo/bin:$PATH"
-command -v cargo >/dev/null || {
-    echo "FATAL: no cargo on PATH. Submit from a shell that can build the workspace." >&2
-    exit 1
-}
-cargo --version
 
 # The baselines are outside the repo and are not rebuilt here. Both were checked
 # to be multi-configuration libraries carrying AVX-512 and Zen kernels, so the
@@ -116,11 +118,19 @@ except Exception:
 fi
 echo "measurement core: cpu$CPU"
 
-# prep is the only stage that compiles, and it runs before anything is timed.
-if ! scripts/compare-bench.sh prep; then
-    echo "FATAL: prep failed, so there is nothing to measure with." >&2
-    exit 1
-fi
+# The binaries must already exist and must actually run. This job never builds.
+BIN2=./target/tblis2/release/tcbench
+BIN13=./target/tblis13/release/tcbench
+for b in "$BIN2" "$BIN13"; do
+    if [ ! -s "$b" ] || [ ! -x "$b" ]; then
+        echo "FATAL: $b is missing or empty. Before submitting, on the login or" >&2
+        echo "submitting host, run:" >&2
+        echo "  TBLIS_ROOT_2X=$TBLIS_ROOT_2X TBLIS_ROOT_13=$TBLIS_ROOT_13 \\" >&2
+        echo "    scripts/compare-bench.sh prep" >&2
+        exit 1
+    fi
+done
+echo "binaries present; this job will not compile"
 
 start=$SECONDS
 if scripts/compare-bench.sh "$OUT" "$CPU"; then rc=0; else rc=$?; fi

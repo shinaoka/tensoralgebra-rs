@@ -39,7 +39,7 @@ the orientation rule were settled that way, and the grids are still in
 
 | script | what it does | status |
 |---|---|---|
-| `compare-bench.sh` | The engine against its baselines: `verify`, corpus sweeps, `premise` at 200 MiB, ragged stress, and the TBLIS **v1.3.0** comparison. Takes an output directory. `prep` builds the two binaries (one per TBLIS ABI) and is the only thing that compiles. ~3.5 h | current |
+| `compare-bench.sh` | The engine against its baselines: `verify`, corpus sweeps, `premise` at 200 MiB, ragged stress, and the TBLIS **v1.3.0** comparison. Takes an output directory. `prep` builds the two binaries — one per TBLIS ABI, into its own cargo target directory — and is the only thing that compiles. ~3.5 h. **Run `prep` before submitting any job**, because two jobs sharing this checkout would otherwise race in the same target directory | current |
 | `ab.sh` | Generic end-to-end A/B on one runtime switch: `warm-up, A, B, A'`. ~2 h | current |
 | `phase3-bench.sh` | The Phase 3 measurement set. Produced `bench-results/phase3-*` | **superseded by `compare-bench.sh`** — it writes flat into `bench-results/` and would overwrite that committed data, it has no warm-up arm (it predates A31), and it compiles *between* measurement groups |
 | `phase4-remeasure.sh` | The Phase 4 A/B with its B arm hardcoded to the write-back experiment. Produced `bench-results/phase4` | **superseded by `ab.sh`**, which adds the discarded warm-up arm and an explicit A-vs-A′ floor. Kept because its output is cited. Note the citation weight is inverted — `DECISIONS.md` mentions the old one far more often, because it is older, not because it is better |
@@ -55,7 +55,7 @@ the orientation rule were settled that way, and the grids are still in
 | script | what it does | status |
 |---|---|---|
 | `node-session.sh` | Stages a whole cluster session: `prep`, `threads`, `shapes`, `validate`, `grid`. **`prep` is the only stage that compiles** | current. Does *not* supersede the `phase4*` scripts — it invokes three of them as stages, and never touches `phase4c`/`phase4d`/`phase4-remeasure` |
-| `rusty-compare.sbatch` | `compare-bench.sh` on one exclusive Rusty node. Constraint deliberately left to the submit line, because the node choice is the experiment | current |
+| `rusty-compare.sbatch` | `compare-bench.sh` on one exclusive Rusty node. Constraint deliberately left to the submit line, because the node choice is the experiment. **Never compiles** — it checks the two binaries exist and refuses to start if they do not | current |
 | `rusty-phase4.sbatch` | The Phase 4 session on one exclusive Rusty node, 12 h, with a scoped-grid fallback if placement is rejected | current |
 | `rusty-phase4-seq.sbatch` | The three traffic-changing blocking arms, sequentially, 6 h | current. **Complements** `rusty-phase4.sbatch` rather than replacing it — submit it *after*, and it exists because those arms cannot use concurrent placement (A27) |
 | `run-arms.py` | Runs arms under an explicit placement and records **where each one ran**: one thread per L3 domain, SMT siblings idle, `/proc/stat` sampled over every core in the arm's own domain across exactly that arm's window. Drives `sweep` or `premise` | current. The shared runner — prefer it over calling `tcbench` by hand, because the occupancy record is what makes a result auditable |
@@ -114,6 +114,13 @@ the way they do:
 * **Record occupancy per arm.** A constant co-tenant cancels in an A-vs-B ratio;
   an intermittent one does not. Two Phase 4 conclusions had to be corrected
   because this was not recorded.
+* **An arm that reports success is not an arm that measured something.** Check
+  the output. Jobs 6753197/6753198 raced two `prep`s in one cargo target
+  directory over GPFS and left a 0-byte binary; `run-arms.py` then reported seven
+  stages of arms taking 0.0 s with `rc=0`, wrote no CSV at all, and nothing
+  objected. `compare-bench.sh` now *executes* each binary before measuring and
+  asserts every arm produced rows, and the `.sbatch` refuses to compile. Absence
+  of an error is not evidence.
 * **Validate jointly, not just pinned** (A20). A rule proven with the other
   levers pinned is proven only there — finish with an end-to-end A/B in the
   configuration that actually ships.

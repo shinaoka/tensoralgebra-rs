@@ -44,12 +44,27 @@
 # preference: 1.3.0 and 2.0-dev differ by ~5x on complex and swap the
 # TYPE_DOUBLE/TYPE_SCOMPLEX ABI enumerators. Both binaries' `tcbench info` output
 # is captured into the output directory, and each self-checks its ABI at startup.
-set -e
+# pipefail matters here rather than being hygiene: every measurement in this
+# script is piped into `tee`, so without it a failing `verify` or a failing
+# `run-arms.py` is reported by `tee`'s exit status, which is always 0.
+set -e -o pipefail
 [ "${BASH_SOURCE[0]}" = "$0" ] || { echo "run me, do not source me" >&2; return 1; }
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-BIN2=./target/release/tcbench-tblis2
-BIN13=./target/release/tcbench-tblis13
+# One target directory per TBLIS ABI. The two builds differ only in a cargo
+# feature, so a shared target directory would make them evict each other, and the
+# binary would have to be copied out from under a name cargo owns. Separate
+# directories mean each build is its own artefact, `prep` is idempotent, and two
+# machines sharing this checkout over GPFS cannot truncate each other's binary.
+# The alternative -- build, copy, delete the original -- was tried and is how job
+# 6753197 died: cargo's fingerprint still said "fresh", so the deleted file was
+# never relinked, and a concurrent job's copy left a 0-byte executable behind
+# that every arm then ran happily for 0.0 seconds.
+BIN2=./target/tblis2/release/tcbench
+BIN13=./target/tblis13/release/tcbench
+
+# `runs BIN` -- is this a working binary, not merely a present one?
+runs() { [ -x "$1" ] && [ -s "$1" ] && "$1" info >/dev/null 2>&1; }
 
 # ---------------------------------------------------------------------------
 # prep: the only thing here that compiles
@@ -60,21 +75,21 @@ if [ "${1:-}" = "prep" ]; then
     module load gcc/13.3.0 openblas >/dev/null 2>&1 || true
 
     echo "building the TBLIS 2.0-dev binary"
-    TBLIS_ROOT=$TBLIS_ROOT_2X cargo build --release -p tensorprimitives-bench \
-        --features tblis,blas
-    cp -f ./target/release/tcbench "$BIN2"
+    CARGO_TARGET_DIR=target/tblis2 TBLIS_ROOT=$TBLIS_ROOT_2X \
+        cargo build --release -p tensorprimitives-bench --features tblis,blas
 
     echo "building the TBLIS v1.3.0 binary (note the tblis13 feature and ABI)"
-    TBLIS_ROOT=$TBLIS_ROOT_13 cargo build --release -p tensorprimitives-bench \
-        --features tblis13,blas
-    cp -f ./target/release/tcbench "$BIN13"
+    CARGO_TARGET_DIR=target/tblis13 TBLIS_ROOT=$TBLIS_ROOT_13 \
+        cargo build --release -p tensorprimitives-bench --features tblis13,blas
 
-    # Neither binary is what a plain `cargo build` leaves behind, so remove the
-    # ambiguous one rather than let a later stage pick it up by accident.
-    rm -f ./target/release/tcbench
     ls -l "$BIN2" "$BIN13"
+    for b in "$BIN2" "$BIN13"; do
+        LD_LIBRARY_PATH="$TBLIS_ROOT_2X/lib:$TBLIS_ROOT_13/lib:${OPENBLAS_ROOT:+$OPENBLAS_ROOT/lib:}${LD_LIBRARY_PATH:-}" \
+            runs "$b" || { echo "FATAL: $b was built but does not run" >&2; exit 1; }
+    done
     echo
-    echo "prep done. Nothing else in this script compiles."
+    echo "prep done, and both binaries were executed once to prove it."
+    echo "Nothing else in this script compiles."
     exit 0
 fi
 
@@ -94,9 +109,16 @@ ENGINES=${ENGINES:-planar,1m,3m,ttgt,tblis}
 : "${TBLIS_ROOT_13:?point at the TBLIS v1.3.0 install}"
 module load gcc/13.3.0 openblas >/dev/null 2>&1 || true
 
+# Present is not the same as working. Both binaries are *executed* here, before
+# anything is timed, because an unrunnable one does not fail an arm loudly -- it
+# produces an arm that takes 0.0 s, returns rc=0 and writes no CSV at all.
 for b in "$BIN2" "$BIN13"; do
-    [ -x "$b" ] || { echo "no $b -- run: scripts/compare-bench.sh prep" >&2; exit 1; }
+    [ -e "$b" ] || { echo "no $b -- run: scripts/compare-bench.sh prep" >&2; exit 1; }
 done
+LD_LIBRARY_PATH="$TBLIS_ROOT_2X/lib:${OPENBLAS_ROOT:+$OPENBLAS_ROOT/lib:}${LD_LIBRARY_PATH:-}" \
+    runs "$BIN2" || { echo "FATAL: $BIN2 does not run. Rebuild: scripts/compare-bench.sh prep" >&2; exit 1; }
+LD_LIBRARY_PATH="$TBLIS_ROOT_13/lib:${OPENBLAS_ROOT:+$OPENBLAS_ROOT/lib:}${LD_LIBRARY_PATH:-}" \
+    runs "$BIN13" || { echo "FATAL: $BIN13 does not run. Rebuild: scripts/compare-bench.sh prep" >&2; exit 1; }
 
 others=$(pgrep -a -u "$USER" -f 'cargo|rustc|tcbench|kernel_shapes' \
          | grep -v "compare-bench\.sh\|pgrep" || true)
@@ -128,6 +150,21 @@ arms() {
         "${FILT[@]}" --cpus "$CPU" --sequential "$@" | tee -a "$LOG"
 }
 
+# `produced TAG...` -- did those arms actually measure something? An arm that
+# runs a broken binary reports rc=0 in 0.0 s and writes no CSV, so the absence of
+# an error is not evidence that an arm ran. Check the output, every stage.
+produced() {
+    local tag bad=0
+    for tag in "$@"; do
+        if [ ! -s "$OUT/$tag.csv" ] || [ "$(wc -l < "$OUT/$tag.csv")" -lt 2 ]; then
+            echo "FATAL: arm '$tag' produced no measurements ($OUT/$tag.csv)" >&2
+            bad=1
+        fi
+    done
+    [ "$bad" = 0 ] || { echo "Read $OUT/<tag>.txt for what the arm actually said." >&2
+                        exit 1; }
+}
+
 say "comparison benchmark on cpu$CPU; size ${SIZE} MiB, ${REPS} reps, engines $ENGINES"
 say "premise size ${PREMISE_SIZE} MiB; filter ${FILTER:-<none>}"
 say "started $(date -Is) on $(hostname -s)"
@@ -154,6 +191,7 @@ stage "warm-up (discarded)"
 printf '# discarded: this arm exists to leave the package hot (A31)\nwarm-f64c64 f64,c64\nwarm-f32c32 f32,c32\n' \
     > "$OUT/arms-warm.jobs"
 arms "$OUT/arms-warm.jobs" "$BIN2"
+produced warm-f64c64 warm-f32c32
 
 # ---------------------------------------------------------------------------
 # 3. The corpus, against TBLIS 2.0-dev and TTGT -- and its near repeat
@@ -162,6 +200,7 @@ stage "corpus sweep A, and its immediate repeat A2"
 { echo "A-f64c64  f64,c64"; echo "A-f32c32  f32,c32"
   echo "A2-f64c64 f64,c64"; echo "A2-f32c32 f32,c32"; } > "$OUT/arms-sweep.jobs"
 arms "$OUT/arms-sweep.jobs" "$BIN2"
+produced A-f64c64 A-f32c32 A2-f64c64 A2-f32c32
 
 # ---------------------------------------------------------------------------
 # 4. Efficiency against a same-shape GEMM ceiling -- the headline metric
@@ -169,6 +208,7 @@ arms "$OUT/arms-sweep.jobs" "$BIN2"
 stage "premise at ${PREMISE_SIZE} MiB, against TBLIS 2.0-dev"
 { echo "premise-f64c64 f64,c64"; echo "premise-f32c32 f32,c32"; } > "$OUT/arms-premise.jobs"
 arms "$OUT/arms-premise.jobs" "$BIN2" --subcommand premise --size "$PREMISE_SIZE"
+produced premise-f64c64 premise-f32c32
 
 # ---------------------------------------------------------------------------
 # 5. Irregular strides: the only mode that exercises the gather path
@@ -178,6 +218,7 @@ arms "$OUT/arms-premise.jobs" "$BIN2" --subcommand premise --size "$PREMISE_SIZE
 stage "ragged stress, c64"
 echo "ragged-c64 c64" > "$OUT/arms-ragged.jobs"
 arms "$OUT/arms-ragged.jobs" "$BIN2" --stress ragged --engines planar,1m,3m,tblis
+produced ragged-c64
 
 # ---------------------------------------------------------------------------
 # 6. The session-span repeat
@@ -188,6 +229,7 @@ arms "$OUT/arms-ragged.jobs" "$BIN2" --stress ragged --engines planar,1m,3m,tbli
 stage "corpus sweep A3, the session-span repeat"
 { echo "A3-f64c64 f64,c64"; echo "A3-f32c32 f32,c32"; } > "$OUT/arms-sweep3.jobs"
 arms "$OUT/arms-sweep3.jobs" "$BIN2"
+produced A3-f64c64 A3-f32c32
 
 # ---------------------------------------------------------------------------
 # 7. Against TBLIS v1.3.0 -- the latest stable release, and a different ABI
@@ -201,6 +243,7 @@ export LD_LIBRARY_PATH=$(libpath "$TBLIS_ROOT_13")
 echo "premise13-f64c64 f64,c64" > "$OUT/arms-premise13.jobs"
 arms "$OUT/arms-premise13.jobs" "$BIN13" --subcommand premise \
     --size "$PREMISE_SIZE" --engines planar,tblis
+produced premise13-f64c64
 
 # ---------------------------------------------------------------------------
 # 8. The two floors, and the provenance record
