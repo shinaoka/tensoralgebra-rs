@@ -158,13 +158,12 @@ file**: different machine, different cache hierarchy, and AVX2 rather than AVX-5
 
 Headlines, and four decisions they hand back:
 
-* **`KC` is first-order, but its best value is machine-specific and the portable
-  change is *coupled* deepening.** `kc = 512` pinned is 1.050 on Zen2 and **0.961 on
-  Cascade Lake** — it must not ship. `ck512`, which re-derives `mc` at the new depth,
-  is 1.031 and 1.029 respectively: the same ~3% on both machines, for a reason
-  (the packed-`A` block keeps its L2 footprint). **That** is the recommendation.
-* **`MC` is a plateau on Zen2 and not on Cascade Lake** (`mc400` costs 15–25% there).
-  A13's upper bound binds on the reference machine. The item is *not* retired.
+* **Item 2 is closed with a negative result: there is no few-percent win in
+  `MC`/`KC`/`NC` on the reference machine.** Pinned `kc = 512` must not ship (0.961 on
+  Cascade Lake). Coupled deepening looked like +3% on two machines and **failed its
+  end-to-end A/B** — both grids' `base` arm was 1–2% slow, inflating every `arm/base`
+  ratio identically, so the "agreement" was a shared artefact. `kc = 384` is the
+  measured optimum and the shipped 256 is close to it. See part 7's A/B subsection.
 * **The analytical blocking model loses in 11 of 12 columns** on the first foreign
   machine, by up to 7.2% in the complex methods, and part 7 attributes the whole
   loss to its `kc`. **Leave `TENSORCONTRACT_BLOCKMODEL=legacy`** (A33). D23's
@@ -189,13 +188,11 @@ What the two runs left open, in priority order:
    where they span many. The missing input is how many L3 domains the thread set
    covers, which the engine already probes for D23. Confirm within one machine first:
    `PARTITION_SWEEP=1 STAGES=threads` on `rome`, ~30 min.
-2. **Ship coupled deepening (`kc` up, `mc` re-derived) after an end-to-end A/B.**
-   `ck512` is +3% on both machines where the pinned arm swings nine points, so this is
-   the one blocking change with evidence on two hierarchies. **Demoted:** fusing the
-   `pc` loop was item 2 on the strength of a `C`-traffic account that the reference
-   machine then falsified — deeper `kc` *hurts* the multi-pass population there, by up
-   to 26% (part 7). The fusion may still be worth having, but it is no longer
-   supported by this evidence. "Re-derive the model's `kc`" remains withdrawn.
+2. **Nothing in blocking.** Item 2 is closed (part 7): coupled deepening failed its
+   A/B, pinned deepening is machine-specific and negative here, `MC` has no win, the
+   model loses, and the `C`-traffic account was falsified. Three candidate changes and
+   a mechanism all died on measurement; the shipped constants are near optimal on this
+   machine class. **Do not reopen without a new machine or a new mechanism.**
 3. **Pool the threads.** Spawning per `execute` call is the leading suspect for
    occupancy falling to 29–36% at 64 threads (part 8), and it is first-order for the
    small repeated contractions Phase 1 identified as the real headroom.
@@ -2149,6 +2146,19 @@ count fixes the domain count:
 
 `pm/rule` is 0.959–1.003 across all of it, which is the control (the rule already
 chooses `pm = p` for these cases).
+
+**Replicated in all four dtypes on that node**, single-domain point null every time:
+
+| threads | domains | `f64` | `c64` | `f32` | `c32` |
+|---|---|---|---|---|---|
+| 4 | **1** | 1.031 | 0.981 | 0.988 | 0.966 |
+| 16 | 4 | 1.173 | 1.236 | 1.252 | 1.270 |
+| 64 | 16 | 2.004 | 1.242 | **2.380** | 1.269 |
+
+`f32` reaches **2.38x**. `worker5137`'s scaling curve also reproduces `worker5040`'s
+(`t64`: `f64` 5.54 against 5.37, `c64` 7.69 against 7.65), and its `t1`/`t1b` floor
+came back 0.954–0.973 — **A31's cold-start artefact reproducing independently on a
+third node**, since `t1` was again the session's opening arm.
 
 **Ice Lake's 32-thread row is what makes this an answer rather than a correlation.**
 Within Zen2 alone, threads and domains move together and cannot be separated. But Ice

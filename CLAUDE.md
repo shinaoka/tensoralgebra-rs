@@ -83,14 +83,14 @@ ratio in them is within-session, against a floor re-derived there.
 
 Four results and four decisions handed back, none of them taken:
 
-* **`KC` is first-order, but its best value is machine-specific and only the
-  *coupled* form transfers.** Pinned `kc = 512` is 1.050 on Zen2 and **0.961 on
-  Cascade Lake** — it must not ship. `ck512`, which re-derives `mc` at the new
-  depth, is 1.031 and 1.029: the same ~3% on both, and `f64`-only (`c64` 1m loses
-  5.5%). That is what `TENSORCONTRACT_DEEPEN=on` now does, off by default pending
-  the A/B. **`MC` is a plateau on Zen2 and *not* on Cascade Lake** (`mc400` costs
-  15–25% there), so A13's upper bound binds on the reference machine and the item is
-  **not** retired.
+* **Item 2 (blocking) is CLOSED with a negative result.** No few-percent win exists
+  in `MC`/`KC`/`NC` on the reference machine. Pinned `kc = 512` is machine-specific
+  (1.050 Zen2, **0.961** Cascade Lake). Coupled deepening looked like +3% on two
+  machines and **failed its end-to-end A/B**: both grids' `base` arm was 1–2% slow,
+  inflating every `arm/base` ratio identically, so the agreement was a shared
+  artefact. `kc = 384` is optimal, the shipped 256 is close, `TENSORCONTRACT_DEEPEN`
+  stays an off-by-default record of the experiment. Do not reopen without a new
+  machine or a new mechanism.
 * **The analytical blocking model loses in 11 of 12 columns** on the first foreign
   machine, by up to 7.2% in the complex methods, and the whole loss is attributable
   to its `kc` (A33). Recommendation: `TENSORCONTRACT_BLOCKMODEL` stays `legacy`.
