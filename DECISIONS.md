@@ -188,9 +188,14 @@ What the two runs left open, in priority order:
    domains and barrier span are both plausible — and `TENSORCONTRACT_PARTITION`
    makes either cheap to test. **Do not change the rule before measuring one of
    them**; three plausible mechanisms have already been wrong in this phase.
-2. **Re-derive the model's `kc` with the plane and per-element real counts carried
-   through**, then score it offline against the grid that now exists (part 9). Free:
-   no machine time. This is the one repair that would make D23 defaultable.
+2. **Fuse the `pc` loop so `C` is touched once rather than `K/KC` times.** Promoted
+   from the tail of the list: the whole measured `kc` effect is this quantity in
+   disguise (+8.2% where deeper panels halve the pass count, +2.4% where they
+   cannot), so the fusion should capture more of it than a bigger constant and make
+   `kc` stop being first-order. **Superseded:** "re-derive the model's `kc`" was item
+   2 here and is withdrawn — eq. (4)-(6) is arithmetically correct and its objective
+   is unreachable, since the measured optimum puts the `A` micro-panel at twice the
+   whole L1 (part 9).
 3. **Pool the threads.** Spawning per `execute` call is the leading suspect for
    occupancy falling to 29–36% at 64 threads (part 8), and it is first-order for the
    small repeated contractions Phase 1 identified as the real headroom.
@@ -1565,13 +1570,52 @@ complex method; the pinned-`kc` arms price that depth directly, and the two agre
 since `mc` is a plateau and `nc` has nothing in it. So the model's `mc`/`nc`
 reconstruction is harmless and its `kc` equation is the whole problem.
 
-A mechanism, offered as a hypothesis and **not** measured: BLIS eq. (4)–(6) size the
-`A` micro-panel to fill whole L1 ways, reserving one for the unpacked `C`
-micro-tile, on the assumption of a real GEMM micro-kernel with one accumulator
-plane. The planar/1m/3m kernels carry two or three planes and two to four reals per
-complex element, so "the `A` micro-panel" is not the thing the L1 actually has to
-hold, and the equation returns a `kc` too small in proportion. That is testable
-against the existing grid and is the obvious next step — see part 9.
+### Why deeper `kc` wins, from the grid and no extra machine time
+
+The hypothesis first recorded here — that eq. (4)–(6) fails to carry the
+per-element real counts through — **was wrong, and is retracted.** `model_kc` takes
+its ways ratio from `a_step`/`b_step`, which are `mr * a_reals * real_bytes` and
+`nr * b_reals * real_bytes`, so the panel formats *are* accounted for. Worked by
+hand for `c64` 1m on Zen2: `a_step` = 128 B/k, `b_step` = 96, `c_ar` =
+⌊7·128/224⌋ = 4 ways, `kc` = 4·4096/128 = **128**, which is exactly what the model
+reports. The arithmetic is right.
+
+What is wrong is the **objective**. At the measured optimum, `kc >= 512`, that same
+`A` micro-panel is 65 KB against a 32 KiB L1 — *twice the whole cache*. So the
+engine's best depth is one where the paper's central premise, that a micro-panel
+occupies whole L1 ways and the next one evicts the last, does not hold at all. No
+repair of eq. (4)–(6) reaches `kc = 512`, because the equation is answering a
+different question.
+
+The grid says what the engine is actually buying, using the `kc512` arm's *own*
+identical-computation subset as the control. For `k <= 256` there is one `pc` pass
+at either depth, so those cases are the same computation and their ratio is the
+arm's bias; for `k > 256` the pass count `K/KC` halves:
+
+| `pc` passes at `base` (`kc = 256`) | n | `kc512` / `base` |
+|---|---|---|
+| 1 — same computation, i.e. the control | 204 | 1.024 |
+| 8+ — pass count halves | 90 | **1.082** |
+
+So the effect is **+5.7% net of the arm's own bias, and it lives entirely where
+deeper panels reduce the number of times `C` is re-touched.** That quantity is
+already on the Phase 4 list as its own item — "fusing the `pc` loop so `C` is
+touched once rather than `K/KC` times" — and deeper `kc` is a partial, free version
+of that fusion. The analytical model has no term for `C` traffic at all, which is
+why it points the wrong way: it optimises a residency this engine does not benefit
+from, and ignores the one that dominates.
+
+Two consequences worth acting on rather than admiring:
+
+* **The `kc` recommendation is really a `C`-traffic recommendation.** Raising the
+  constant captures part of the win; fusing the `pc` loop should capture more of it
+  and make `kc`'s depth much less important. Prefer the fusion.
+* **A prediction for the reference-machine grid** (`scripts/ccq-blocking-night.sh`,
+  which adds `kc768`/`kc1024`): the `k > 256` population should keep gaining as
+  depth rises until the pass count reaches 1, and the `k <= 256` population should
+  show only each arm's bias. If instead deeper arms help the `k <= 256` cases too,
+  this account is wrong and something about buffer size, not pass count, is doing
+  the work.
 
 ### What this means for the default `KC`
 
@@ -2115,12 +2159,26 @@ arms independently show shallower is worse and deeper is better. The model's `mc
 the thing this section flagged as the risk — **was not the problem**. The problem
 was the half of the derivation taken straight from the paper.
 
-The likely reason, as a hypothesis: eq. (4)–(6) size the `A` micro-panel to whole L1
-ways for a real micro-kernel with one accumulator plane, and the planar/1m/3m
-kernels carry two or three planes and two to four reals per complex element. The
-quantity the L1 must hold is not the one the equation models. Testing that means
-re-deriving `kc` with the per-element real count and plane count carried through,
-then scoring it against the grid that now exists — no machine time.
+**The reason is now known, and it is not a bug in the equation** — see part 7,
+"Why deeper `kc` wins". The hypothesis first recorded here, that eq. (4)–(6) fails
+to carry the per-element real and plane counts through, is **retracted**:
+`model_kc` derives its ways ratio from `a_step`/`b_step`, which already include
+`a_reals`/`b_reals`, and reproduces its own published prediction exactly when worked
+by hand. The equation is correct.
+
+Its *objective* is what does not fit this engine. At the measured optimum,
+`kc >= 512`, the `A` micro-panel is 65 KB against a 32 KiB L1 — twice the whole
+cache — so the premise that a micro-panel occupies whole L1 ways is simply not where
+this engine wants to operate, and **no repair of eq. (4)–(6) can reach that depth.**
+What deeper panels actually buy is fewer `pc` passes, hence fewer times `C` is
+re-touched: scored against the `kc512` arm's own identical-computation control, the
+gain is +8.2% where the pass count halves against +2.4% where it cannot change. The
+model has no term for `C` traffic at all.
+
+So the useful repair is not to the model but to the driver: **fuse the `pc` loop**,
+which is already a Phase 4 item, and `kc` stops being first-order. That reorders the
+"re-derive the model's `kc`" item in "Resume here" — it is no longer the promising
+one.
 
 **Recommendation: leave `TENSORCONTRACT_BLOCKMODEL` defaulting to `legacy`.** D23
 is unchanged as a decision — the probing, the descriptors and `tcbench info` are

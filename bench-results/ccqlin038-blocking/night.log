@@ -1,0 +1,11 @@
+[2026-08-03T21:47:59-04:00] reference-machine blocking grid; cpu4; out bench-results/ccqlin038-blocking
+host        : ccqlin038.flatironinstitute.org
+target      : x86_64 / linux
+cpu features: avx2 fma avx512f avx512dq 
+caches      : L1=32KiB/8-way/2sh L2=1024KiB/16-way/2sh L3=25344KiB/11-way/16sh (via sysfs), blocking=legacy
+baselines   : tblis=false blas=false
+[2026-08-03T21:47:59-04:00] warm-up arm, discarded
+SCOPED GRID: only arms [base] -- this is not the full grid
+host ccqlin038.flatironinstitute.org  16 physical cores, SMT width 2, 2 L3 domains
+2 arms, 1 concurrent, cpus 4
+NOTE: SMT is on. Leaders are primary siblings and their siblings are left idle, but nothing prevents the OS from using them.
