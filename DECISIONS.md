@@ -297,7 +297,7 @@ effectively the same ceiling, as expected.
 | A2 | TBLIS `develop` supports TAPP in-tree (per arXiv:2601.07827). | **Refuted.** No TAPP source in `master` or `develop` of `devinamatthews/tblis` v2.0. TBLIS is benchmarked through its native `tblis_tensor_mult` C API instead. |
 | A2b | "TBLIS" is one thing. | **Refuted.** v1.3.0 (latest release) and 2.0-dev differ by ~5x on complex, because 1.x has no complex micro-kernel outside Sandy Bridge. Any statement about TBLIS's complex performance must name a version. Both are now measured. |
 | A3 | Achievable GF/s peak is the same for real and complex on real-SIMD hardware. | Confirmed: `dgemm` 96 GF/s vs `zgemm` 96 GF/s. This validates the efficiency-ratio metric. |
-| A4 | The TCCG corpus exercises the irregular/gather path. | **Refuted.** TCCG rounds stride-1 extents to multiples of 24, which divides every register block in use, so `regA = 1.00` everywhere. Added `--stress ragged` / `--stress padded` to probe it. |
+| A4 | The TCCG corpus exercises the irregular/gather path. | **Refuted in Phase 1, and the refutation expired in Phase 3.** TCCG rounds stride-1 extents to multiples of 24, which divides every register block *that was in use when this was written* — `regA = 1.00` everywhere, and that is still the right reading of the TBLIS comparison. It stopped being true of this engine the moment Phase 3 shipped `f32`/`c32` blocks of `MR` 16, 32 and 48, none of which divides 24: on the arm the orientation rule picks, `reg_a < 1.0` on **42.9%** of 392 case-dtype-methods, `reg_b` on 38.3%, `wb` on 35.7%, at quantised values 0.667 / 0.889 / 0.963. **The corpus does exercise the gather path here.** What it still cannot produce is *aperiodic* irregularity — its straddling is periodic, so a static partition self-averages — which is what `--stress` is for. See part 14. |
 | A5 | Shapes must be held fixed across dtypes for the real-vs-complex ratio to mean anything. | Adopted. Deviates from TCCG's per-precision sizing; documented in `corpus.rs`. |
 | A6 | This host is the reference machine; single-core is the headline. | Adopted. Threading deferred to Phase 4. |
 | A7 | The three complex methods differ mainly in flop count. | **Refuted in Phase 3.** They differ mainly in bytes moved per useful flop. |
@@ -3886,6 +3886,101 @@ treat the submit directory as frozen for the duration of a job — including
 | # | Decision | Rationale |
 |---|---|---|
 | D43 | The row-block menu is addressed by **position**, not by `MR`: `row_blocks` yields `(MR, NR)` and `config_at` takes an index. A repeated `MR` is legal; a repeated shape is not. | An `MR`-keyed menu cannot express an `NR`-only alternate, and the Phase 3 sweep produced one that beats the shipped default (A35). Keying by position makes it reachable at run time (A15's preference for a switch over a rebuild), makes `idx=` honest, and costs the rule nothing because the rule never read `NR`. Appending rather than inserting keeps the committed grid's index numbering valid. |
+
+## Phase 4 report, part 14: load imbalance, and a claim of ours that expired
+
+Not a measurement — a correction, an argument, and the experiment that settles
+it. Prompted by the observation that a block-scatter contraction has a load
+imbalance a dense GEMM does not: some blocks sit on the regular fast path and
+some on the gather path, so **equal block counts are not equal work**.
+
+### The correction: "the corpus is fully regular" is false, and it steered things
+
+A4 recorded, in Phase 1, that TCCG rounds stride-1 extents to multiples of 24
+"which divides every register block in use", so `regA = 1.00` everywhere. That
+was true *then* and is still the right reading of the TBLIS comparison, which was
+measured at TBLIS's register blocks. **It stopped being true of this engine in
+Phase 3**, when `f32`/`c32` shipped `MR` of 16, 32 and 48 — none of which divides
+24. Nobody re-checked the sentence, and it has been repeated in `CLAUDE.md`,
+`README.md` and a memory ever since.
+
+Measured, on the arm the orientation rule actually picks, over all 392 corpus
+case-dtype-methods (`bench-results/worker6150-icelake/features.csv`):
+
+| quantity | fraction below 1.0 | values it takes |
+|---|---|---|
+| `reg_a` | **42.9%** | 0.0, 0.667, 0.889, 0.963 |
+| `reg_b` | **38.3%** | down to 0.501 |
+| `wb` (output row blocks off the gather path) | **35.7%** | 0.0, 0.667, 0.889, 0.963 |
+
+The quantised values *are* the imbalance: `reg_a = 0.667` means one row block in
+three is on the gather path and two are not, **within a single contraction**. 123
+of 392 are genuinely mixed rather than uniformly good or uniformly bad.
+
+The mechanism is worth stating because it is not what the old sentence implies:
+irregularity here is produced by the interaction of the layout with `MR`, not by
+the tensors. A 24-run straddles a 16-wide block. That is the same effect the
+row-block and orientation rules were built for; we simply never connected it to
+*threading*.
+
+### What the corpus still cannot show, and the experiment for it
+
+Its straddling is **periodic** — every third block — so a static strip of many
+blocks self-averages, and at 12 panels per strip (768 panels over 64 threads) the
+averaging is imperfect but real. The case where a static partition is genuinely
+bound by its unluckiest strip is *aperiodic* irregularity: ragged extents, real
+user tensors, block-sparse blocks. The corpus cannot produce that, which is what
+`--stress ragged` exists for (it subtracts 1 from every extent, destroying the
+multiple-of-24 property).
+
+So the question is decided by a comparison the harness can already make, and
+`RAGGED=1` in `phase4f-threads.sh` now makes it: the scaling curve under ragged
+against the scaling curve unperturbed, **each against its own `t1`**, because
+ragged changes the shapes and only within-mode ratios mean anything. If ragged
+scales visibly worse, static partitioning is losing to imbalance.
+
+### The design ladder, if it is
+
+1. **Cost-weighted static cut.** Strips are currently cut by panel *count*. The
+   per-block cost is already known before any thread starts — `a_m_bs` and
+   `d_m_bs` carry the `IRREGULAR` sentinel — so cut for equal estimated cost
+   instead. No scheduler, no new memory, no semantics changed.
+2. **Dynamic `ic` claiming within a `(jc, pc)` iteration**, and this is the one
+   worth knowing about: **it preserves bitwise identity for free.** The barriers
+   already serialise `pc` iterations across a column group — a thread entering
+   `pc+1` waits at "nobody is still reading the previous panel" — so `D`
+   accumulates in `pc` order no matter *which* thread does which row block, and
+   each block is touched once per `pc`. Full load balancing at no cost to the
+   invariant. What it does cost is locality: today a thread owns the same rows for
+   the whole run, so its `A` and `D` regions stay put. Mitigation is the standard
+   one, claim your home range first and steal only when starved.
+3. **A dependency-counted task DAG.** Replace the collective rendezvous with nodes
+   — `pack-B(jc,pc)` → many `compute(ic,jc,pc)` → `pack-B(jc,pc+1)` gated on a
+   completion counter. Same memory, same packing work, no rendezvous, automatic
+   balancing. Node counts are coarse enough for the overhead to vanish: `abcijk`
+   at 64 threads is roughly `24 x 4 x 1` nodes.
+
+**`pc` fusion is *not* the general enabler this file previously implied.** Fusing
+makes the packed `A` block `mc x K`; at `K = 3744` and `mc = 256` that is 7.7 MB
+in `f64`, far past L2. It is viable only for small `K` — the memory-bound family,
+where it is most wanted — but the road to a general task graph is 3, not fusion.
+
+### What is *not* a reason to do any of this
+
+Barriers. They cost skew per iteration; imbalance costs *total*, because a
+systematically unlucky strip does more work every iteration and the barrier
+merely exposes it. Removing barriers does not fix imbalance, and the engine
+already has a barrier-free configuration — `pm == 1`, which the domain-aware gate
+now selects on chiplet machines for exactly the memory-bound family. Earlier
+drafts of this argument had that emphasis backwards.
+
+| # | Decision | Rationale |
+|---|---|---|
+| D45 | **Bitwise identity with serial is no longer a design constraint.** | The user's call, 2026-08-04. It remains *true* today and the tests still assert it, so nothing is being given up yet — but future work may trade it. Two things this does not license, recorded so they are not assumed: concurrent read-modify-write on an output block is a data race regardless of what one thinks of float ordering, so exclusive access per block is still required; and A21 (no `K`-parallelism) was argued from *shape* — needing it implies fewer than `p` micro-tiles in the whole output, which bounds arithmetic intensity — so it survives independently. |
+
+| # | Assumption | Status |
+|---|---|---|
+| A41 | Blocks of a block-scatter contraction are equal-cost, so partitioning by block count balances the load. | **False, and measured false on the corpus we call regular** — 123 of 392 case-dtype-methods have mixed regularity within one contraction, at ratios of 1/3, 1/9 or 1/27 of blocks on the gather path, which the orientation work priced at roughly 2x. Whether it *costs* at thread scale is what `RAGGED=1` answers; on the unperturbed corpus the straddling is periodic and a static cut partly self-averages. |
 
 ## Phases 4 (rest) – 5
 

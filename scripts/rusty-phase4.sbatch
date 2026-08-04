@@ -130,6 +130,8 @@ fi
 STAGES=${STAGES:-"shapes threads validate grid"}   # `small` is opt-in; see phase4g-small.sh
 export PARTITION_SWEEP=${PARTITION_SWEEP:-}
 export SPREAD=${SPREAD:-}
+export RAGGED=${RAGGED:-}
+export RAGGED_THREADS=${RAGGED_THREADS:-}
 export SP_T=${SP_T:-}
 echo "stages after prep: $STAGES"
 

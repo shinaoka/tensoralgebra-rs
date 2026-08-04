@@ -346,7 +346,18 @@ question is closed.
   `TYPE_SCOMPLEX` ABI enumerators — a silent mismatch. Use the `tblis13` cargo
   feature; the harness self-checks at startup.
 - Any claim about awkward strides must say which `--stress` mode produced it
-  and quote the observed `regA`. The unperturbed TCCG corpus is fully regular.
+  and quote the observed `regA`. **The corpus is *not* "fully regular" — that
+  shorthand is wrong and has steered conclusions.** TCCG rounds stride-1 extents
+  to multiples of 24, which is regular only at a register block that *divides*
+  24. The shipped `f32`/`c32` blocks are `MR` 16, 32 and 48, none of which does,
+  so on the arm the rule actually picks, `reg_a < 1.0` on **42.9%** of the 392
+  case-dtype-methods, `reg_b` on 38.3% and the write-back fraction on 35.7%,
+  taking quantised values 0.667 / 0.889 / 0.963 — i.e. one block in three, nine
+  or twenty-seven straddles. Irregularity here is produced by the interaction of
+  the layout with `MR`, not by the tensors, which is why the row-block and
+  orientation rules exist at all. What the corpus genuinely cannot show is
+  *aperiodic* irregularity: its straddling is periodic, so a static partition
+  self-averages. That is what `--stress ragged` is for.
 - Hold shapes fixed across dtypes when comparing real and complex.
 - Verify library/spec status via search, not training data; cite sources.
 - Negative results are valid and publishable. Report honestly.

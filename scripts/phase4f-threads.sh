@@ -79,6 +79,19 @@
 #   CROSS_SOCKET=1        add a whole-node arm at the full core count, labelled
 #                         separately because it is a different question
 #   NO_WARMUP=1           skip the discarded warm-up arm (do not, without a reason)
+#   RAGGED=1              repeat the scaling curve under `--stress ragged`, which
+#                         subtracts 1 from every extent and so destroys TCCG's
+#                         multiple-of-24 property. This is the load-imbalance
+#                         experiment: a block-scatter contraction has some blocks
+#                         on the regular fast path and some on the gather path, so
+#                         equal block *counts* are not equal work and a static
+#                         partition can be bound by its unluckiest strip. On the
+#                         unperturbed corpus the straddling is *periodic* (every
+#                         third block at MR=16), so a strip of many blocks
+#                         self-averages; ragged makes it aperiodic. Compare the two
+#                         **speedup curves**, never the absolute GF/s: ragged
+#                         changes the shapes, so only ratios within a stress mode
+#                         mean anything.
 #   SPREAD=1 [SP_T=16]    hold the thread count fixed and vary the *packing*:
 #                         SP_T threads packed into as few L3 domains as they fit,
 #                         against the same SP_T taken one per domain. Closes A36's
@@ -101,6 +114,8 @@ FILT=()
 mkdir -p "$OUT"
 
 export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1
+# Appended to every `tcbench sweep` invocation; set only by the RAGGED arms.
+STRESS_ARGS=()
 
 scripts/topology.py --json "$OUT/topology.json" | tee "$OUT/topology.txt"
 
@@ -254,7 +269,7 @@ run() {  # run <tag> <threads> <dtypes> [partition] [cpuset] [l3domains]
     before=$(snap)
     env TENSORCONTRACT_THREADS="$nt" "${pin[@]}" \
         taskset -c "$set" $BIN sweep \
-        --size $SIZE --reps $REPS "${FILT[@]}" \
+        --size $SIZE --reps $REPS "${FILT[@]}" "${STRESS_ARGS[@]}" \
         --engines planar,1m,3m --dtype "$dt" --csv "$OUT/$tag.csv" \
         > "$OUT/$tag.txt" 2>&1
     after=$(snap)
@@ -377,6 +392,16 @@ for pair in f64,c64 f32,c32; do
         FILT=()
         [ -n "$FILTER" ] && FILT=(--case "$FILTER")
     fi
+    # The ragged scaling curve, at a subset of thread counts so it costs a
+    # fraction of the main one. `t1` is mandatory: it is the denominator, and a
+    # ragged speedup is only meaningful against a ragged serial baseline.
+    if [ -n "${RAGGED:-}" ]; then
+        STRESS_ARGS=(--stress ragged)
+        for nt in ${RAGGED_THREADS:-1 $((TOP / 8 > 0 ? TOP / 8 : 1)) $TOP}; do
+            run "rg-t$nt-$t" "$nt" "$pair"
+        done
+        STRESS_ARGS=()
+    fi
     run "th-t1b-$t" 1 "$pair"   # the bracketing repeat, and this node's floor
     echo "done $t"
 done
@@ -433,6 +458,39 @@ for pair in f64c64 f32c32; do
             | head -20
     done
 done
+
+if [ -n "${RAGGED:-}" ]; then
+    echo
+    echo "=========================================================================="
+    echo "LOAD IMBALANCE: does scaling degrade when the block structure goes ragged?"
+    echo "=========================================================================="
+    echo "Each column is a speedup against ITS OWN t1 (unperturbed against"
+    echo "unperturbed, ragged against ragged). Absolute GF/s are NOT comparable"
+    echo "between the two -- ragged changes the shapes -- but the speedups are."
+    echo "If ragged scales visibly worse, a static partition is being bound by its"
+    echo "unluckiest strip, and cost-weighted or dynamic assignment is worth having."
+    for pair in f64c64 f32c32; do
+        for nt in $(echo ${RAGGED_THREADS:-1 $((TOP / 8 > 0 ? TOP / 8 : 1)) $TOP} \
+                    | tr ' ' '\n' | sort -n -u | tr '\n' ' '); do
+            [ "$nt" = 1 ] && continue
+            [ -f "$OUT/rg-t$nt-$pair.csv" ] || continue
+            # The comparison needs both halves. RAGGED_THREADS must therefore be a
+            # subset of THREADS; the defaults are, but an override may not be, and
+            # a silently one-sided table is worse than a warning.
+            if [ ! -f "$OUT/th-t$nt-$pair.csv" ]; then
+                echo "== $pair t$nt: no unperturbed arm at this width "
+                echo "   (RAGGED_THREADS must be a subset of THREADS); skipping"
+                continue
+            fi
+            echo "== $pair t$nt  unperturbed:"
+            scripts/compare-sweeps.py "$OUT/th-t1-$pair.csv" "$OUT/th-t$nt-$pair.csv" \
+                2>/dev/null | tail -5
+            echo "== $pair t$nt  ragged:"
+            scripts/compare-sweeps.py "$OUT/rg-t1-$pair.csv" "$OUT/rg-t$nt-$pair.csv" \
+                2>/dev/null | tail -5
+        done
+    done
+fi
 
 if [ -n "${SPREAD:-}" ]; then
     echo

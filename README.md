@@ -110,10 +110,13 @@ Phase 4 work, so the 49-case numbers below are the ones to quote — but parity
 with TBLIS 2.0 on complex is roughly where this engine sits.
 
 A methodological note worth carrying forward: the standard TCCG corpus rounds
-every stride-1 extent up to a multiple of 24, which divides every plausible
-register block, so its block-scatter vectors are **fully regular** and the
-irregular gather path never runs. Any claim about awkward strides needs the
-`--stress ragged` / `--stress padded` modes added here.
+every stride-1 extent up to a multiple of 24. That is regular only at a register
+block which *divides* 24 — true of the blocks TBLIS uses in the comparison above,
+and **not** true of this engine's `f32`/`c32` blocks (`MR` 16, 32, 48), where
+`reg_a` falls below 1.0 on 43% of case-dtype-methods. So the corpus does exercise
+the gather path here, periodically; what it cannot produce is *aperiodic*
+irregularity, which is what the `--stress ragged` / `--stress padded` modes added
+here are for. Any claim about awkward strides needs one of them named.
 
 ## Performance, and what is actually measured
 
