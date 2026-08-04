@@ -127,14 +127,14 @@ fi
 # `PARTITION_SWEEP=1`, `SPREAD=1` and `SP_T` are passed through to the threads
 # stage; see phase4f-threads.sh. `SPREAD` is the within-machine separation of
 # domain count from thread count (A36's residual gap) and is cheap.
-STAGES=${STAGES:-"shapes threads validate grid"}
+STAGES=${STAGES:-"shapes threads validate grid"}   # `small` is opt-in; see phase4g-small.sh
 export PARTITION_SWEEP=${PARTITION_SWEEP:-}
 export SPREAD=${SPREAD:-}
 export SP_T=${SP_T:-}
 echo "stages after prep: $STAGES"
 
 # Cheap and irreplaceable first, then the long one. Neither aborts the other.
-for s in shapes threads validate; do
+for s in shapes threads small validate; do
     case " $STAGES " in *" $s "*) ;; *) echo "skipping stage $s"; continue ;; esac
     stage "$s" || echo "WARNING: $s stage failed; continuing" >&2
 done

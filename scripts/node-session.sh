@@ -135,6 +135,16 @@ stage_threads() {
     say "threads done"
 }
 
+stage_small() {
+    say "small: does threading still pay on small contractions? (~20-30 min)"
+    guard_nothing_else
+    # The one regime `threads` cannot answer: every case there has 64 MiB
+    # operands, and threads are spawned per call. This is what the threading
+    # default (D22) is missing.
+    scripts/phase4g-small.sh auto "$OUT/phase4g" 2>&1 | tee -a "$OUT/phase4g.log"
+    say "small done"
+}
+
 stage_shapes() {
     say "shapes: micro-kernel register-block sweep (single core, ~8-20 min)"
     guard_nothing_else
@@ -187,6 +197,7 @@ stage_grid() {
 case "$STAGE" in
     prep)     stage_prep ;;
     threads)  stage_threads ;;
+    small)    stage_small ;;
     shapes)   stage_shapes ;;
     validate) stage_validate ;;
     grid)     stage_grid ;;
