@@ -2268,6 +2268,172 @@ since upstream `error.h` fixes only `TAPP_SUCCESS`.
   measurements, not a decision.
 * Publication itself, which is a human step and deliberately not automated.
 
+## Phase 5 report, part 2: the distribution surface, and a Julia consumer
+
+**Status: complete except for the irreversible steps, which are deliberately not
+taken.** No tag, nothing published to crates.io, no Yggdrasil PR. Prompted by the
+question "could I try this from Julia", which turns out to be the same question as
+"can this be distributed as a binary at all" — and the answer was no, for four
+reasons that had nothing to do with the engine.
+
+Part 1 ended with a list of two open items. This is the list that was actually
+open, and every item on it was found by *doing* the thing rather than by reading
+the code. That is the theme, and it is the same theme as part 1's "a gate nobody
+has watched fail is not a gate".
+
+### Four gaps between "the ABI is correct" and "a distribution can ship it"
+
+1. **Nothing reported a version.** `TAPP_implementation_name()` returns a
+   free-form string with no number in it, and the crate version was visible only
+   to cargo. A distribution that ships `include/` and `lib/` as separate packages —
+   which is what a JLL, a system package, or a stale `-I` all produce — could have
+   them from different versions with nothing anywhere to notice. There are now
+   `TAPP_VERSION_*` macros describing the header and
+   `TAPP_implementation_version()` describing the linked library, and **both halves
+   are tested**: `abi_layout.rs` reads the header as *text* and compares to
+   `CARGO_PKG_VERSION`, so the check holds on a machine with no C toolchain, and
+   `examples/c-consumer` compares the macro its own compiler saw against the string
+   its own link returned.
+2. **The `cdylib` had no SONAME, and on macOS something worse than none.** rustc
+   emits `-soname` only for the `dylib` crate type, never for `cdylib`, so every
+   consumer recorded a bare filename. On Mach-O, ld64 defaults `LC_ID_DYLIB` to the
+   `-o` path — an absolute build-tree path — and BinaryBuilder's `ensure_soname`
+   autofix *returns early whenever an ID is present without inspecting its value*.
+   So a macOS build would have shipped unrelocatable with a clean audit. See D40.
+3. **Eight of the 23 prototypes in `tapp.h` had never been seen by a C compiler
+   or a linker.** `main.c` called the ones that do work; the setters,
+   `TAPP_get_strides`, the batched product, `TAPP_destroy_status` and two attribute
+   functions were checked only by `abi_layout.rs`'s Rust transcription, which is a
+   second hand-maintained copy rather than an oracle. The header's `TAPP_ERROR_NULL`
+   prose bug — fixed in this pass — was exactly that failure class one level
+   further out: prose, which nothing tests at all.
+4. **There were no install rules.** The library was consumable only by knowing
+   cargo's directory layout. `install.sh` plus a pkg-config template fixes that, and
+   the example gained a third link mode (`-DTAPP_PREFIX=`) that consumes an
+   installed prefix — the only mode in which the header comes from outside the
+   source tree, and therefore the only one that would catch an install that forgot
+   to copy it. The recipe calls the same script, so there is one definition of the
+   layout rather than two that drift.
+
+### Cross-compilation: one prediction inverted, one silent failure (D39)
+
+The repository had never been cross-compiled. Eleven targets now are, in CI, and
+the two findings are both worth more than the eleven passes.
+
+The prediction was that **`i686` would fail**, because `kernel::x86` is gated on
+`any(target_arch = "x86", target_arch = "x86_64")` — so the AVX-512 intrinsics are
+instantiated on 32-bit x86 too — and `core::arch::x86` genuinely lacks the
+intrinsics taking 64-bit integer operands. It compiles: the kernels are f32/f64
+FMA-shaped and use none of them. The cfg was left alone rather than narrowed to
+`x86_64` on suspicion. Note what this does *not* say: in 32-bit mode only
+`zmm0`–`zmm7` are encodable, so the register blocks — chosen against a 32-register
+file — will spill on `i686`. That is a performance property, it is unmeasured, and
+it is recorded here rather than acted on.
+
+**musl fails silently.** With the target default (`crt-static` on) cargo prints
+`dropping unsupported crate type cdylib` and **exits 0**. A musl JLL would have
+been a tarball containing a header, a pkg-config file, two licences and no library
+— green, and inexplicable downstream. `-C target-feature=-crt-static` fixes it, and
+because the symptom is a warning rather than an error the `cross-musl` job asserts
+the warning *still appears* without the flag, so the day it stops being needed is
+visible instead of assumed.
+
+### What running the recipe found that reading it did not
+
+The BinaryBuilder recipe was dry-run locally, on this workstation, before being
+considered done. Four corrections, none of which a careful reading produced:
+
+* **The available Rust shards stop at 1.94.0, not 1.97.0.** Master's
+  `Artifacts.toml` advertises 1.97.0; the BinaryBuilderBase that the *released*
+  BinaryBuilder resolves to offers 1.57.0 through 1.94.0. `choose_shards` **errors**
+  on a version with no shard, so an optimistic pin is a hard build failure rather
+  than a graceful fallback. This is [[prefers-verified-releases]] again, in a new
+  place: check what is released, not what the development head says.
+* **`riscv64-linux-gnu` and `aarch64-unknown-freebsd` have no Rust toolchain at
+  any available version.** Enumerated rather than guessed, by calling
+  `choose_shards` on all 18 supported platforms. Both would take the scalar path
+  anyway. Filtered, with the query that establishes it recorded in `RELEASING.md`
+  so it can be re-run rather than re-derived.
+* **The licence directory name.** The auditor looks under
+  `share/licenses/tensorprimitives_tapp` — the *package* name, underscore — while
+  `install.sh` uses the crate name with a hyphen. The recipe's first draft argued
+  itself out of calling `install_license` on the grounds that install.sh already
+  did the job, and the audit answered "Unable to find valid license file", which is
+  one of the two things a Yggdrasil reviewer greps the log for. install.sh gained
+  `--no-licenses`.
+* **`CompilerSupportLibraries_jll` makes the `libgcc_s.so.1` warning worse.** It
+  adds a missing-artifact-mapping warning of its own — CSL's artifacts are keyed by
+  libgfortran version — and does not silence the original. Julia ships libgcc_s in
+  its own libdir, so the library loads and runs; that was settled by the Julia test
+  suite loading it, not by argument. Reverted to an empty dependency list with the
+  reasoning attached in the recipe, since a reviewer will ask.
+
+And one **prediction confirmed verbatim**, which is why D40 exists. The audit log
+reads: *"contains a `cpuid` instruction; refusing to analyze for minimum instruction
+set, as it may dynamically select the proper instruction set internally. Would have
+chosen avx512, instead choosing x86_64."* `check_isa` fails a build whose minimum
+instruction set exceeds the platform's, and this is a generic x86-64 binary full of
+AVX-512 kernel bodies. It ships only because the auditor abandons the analysis on
+finding a `cpuid`, which `kernel::cache` and `std_detect` happen to supply. Nobody
+promised that, so CI asserts it.
+
+### The Julia side, and why the backend shape is the right one
+
+`julia/TensorPrimitives` is two layers: `LibTAPP`, a complete `ccall` wrapper with
+handles as distinct Julia types and finalizers; and `TAPPBackend`, a
+`TensorOperations.jl` backend. The second is the one that matters, for a reason
+that is about this engine specifically rather than about convenience.
+
+`TensorOperations.tensorcontract!(C, A, pA, conjA, B, pB, conjB, pAB, α, β, ...)`
+hands over exactly what TAPP takes: arbitrary extents, element strides, and
+per-operand conjugation. So `pA`/`pB`/`pAB` become a **relabelling** —
+`_labels` is twenty lines of index bookkeeping — and nothing permutes, copies, or
+allocates a temporary. A backend over a GEMM would have to. This makes the
+transpose-free claim something a Julia user can observe rather than read, and it
+puts this engine on the same footing as `TensorOperationsTBLIS.jl` for comparison,
+which is the shape the eventual three-way benchmark wants.
+
+The backend is opt-in and deliberately **not** registered with `select_backend`:
+loading the package changes nothing for code that does not ask. `tensoradd!` and
+`tensortrace!` fall through to TensorOperations' own backends. TAPP can express
+both — a trace is a repeated label, an add is a contraction against a rank-0
+operand — but each is a correctness surface, and acquiring one for free is how a
+wrong answer gets shipped.
+
+64 tests, every one checked against TensorOperations' own backend on the same
+inputs rather than against a rewritten expectation. The two that were worth
+writing: non-contiguous strided views, where a strides-in-elements or base-pointer
+error would show and nothing else would; and `β == 0` against an all-`NaN` output,
+because "overwrite" and "multiply by zero" differ exactly there, and TAPP spells the
+former as a null `C` operand.
+
+### Two things a reader should not take from this section
+
+* **No performance was measured.** Nothing here is a throughput claim, the two
+  pending Phase 4 measurements are still pending, and the CHANGELOG's confidence
+  table is unchanged on every performance row.
+* **Threading is still not reachable from Julia**, because
+  `TAPP_execute_product` ignores its executor argument and `TENSORCONTRACT_THREADS`
+  is read once per process. The Julia wrapper documents that rather than papering
+  over it, and deliberately wires nothing to `TAPP_create_executor` — plumbing a
+  knob through an inert object would be worse than the absence.
+
+### Still open before publishing
+
+Unchanged from part 1 on defaults, plus:
+
+* The **tag, the crates.io publish and the Yggdrasil PR**, in that order, for the
+  reasons in `RELEASING.md`. All three are human steps.
+* **The repository is private.** Yggdrasil builds only from publicly downloadable
+  sources, so the recipe's `ArchiveSource` cannot resolve until it is public and
+  tagged. Making it public also publishes this file and 9 MB of benchmark CSVs,
+  which is a decision rather than a side effect.
+* **The Apple targets are unverified.** They need the Xcode SDK licence accepted
+  (`BINARYBUILDER_AUTOMATIC_APPLE=true`), which is a legal agreement and therefore
+  not something to accept on someone's behalf. They are also the two targets where
+  the install-name work in D40 actually matters, so they should be the first thing
+  built after that acceptance.
+
 ## Phase 4 report, part 10: taking the two pending measurements to a cluster node
 
 **Status: designed, tooled and pre-registered. Nothing is measured yet.** This
