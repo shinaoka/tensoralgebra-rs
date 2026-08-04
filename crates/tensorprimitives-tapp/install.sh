@@ -29,6 +29,7 @@ libdir=""
 includedir=""
 artifacts="${repo_root}/target/release"
 version=""
+licenses=1
 
 usage() {
     cat >&2 <<EOF
@@ -39,6 +40,11 @@ usage: install.sh --prefix=DIR [options]
   --includedir=DIR  header directory (default: PREFIX/include)
   --artifacts=DIR   where cargo left the library (default: target/release)
   --version=X.Y.Z   version for the pkg-config file (default: read from Cargo.toml)
+  --no-licenses     skip the licences, for a caller that installs them itself
+                    under a different name -- BinaryBuilder's \`install_license\`
+                    uses the package name (tensorprimitives_tapp) where this
+                    script uses the crate name (tensorprimitives-tapp), and its
+                    auditor looks for the former
 EOF
     exit 2
 }
@@ -50,6 +56,7 @@ for arg in "$@"; do
         --includedir=*) includedir="${arg#*=}" ;;
         --artifacts=*)  artifacts="${arg#*=}" ;;
         --version=*)    version="${arg#*=}" ;;
+        --no-licenses)  licenses=0 ;;
         -h|--help)      usage ;;
         *)              echo "install.sh: unknown argument '${arg}'" >&2; usage ;;
     esac
@@ -101,8 +108,8 @@ if [[ -z "${libdir}" ]]; then
 fi
 [[ -n "${includedir}" ]] || includedir="${prefix}/include"
 
-install -d "${libdir}" "${includedir}" "${prefix}/lib/pkgconfig" \
-           "${prefix}/share/licenses/tensorprimitives-tapp"
+install -d "${libdir}" "${includedir}" "${prefix}/lib/pkgconfig"
+[[ ${licenses} -eq 1 ]] && install -d "${prefix}/share/licenses/tensorprimitives-tapp"
 
 install -m 0755 "${lib}" "${libdir}/${libname}"
 echo "installed ${libdir}/${libname}"
@@ -125,11 +132,13 @@ sed -e "s|@PREFIX@|${prefix}|g" \
     > "${prefix}/lib/pkgconfig/tensorprimitives-tapp.pc"
 echo "installed ${prefix}/lib/pkgconfig/tensorprimitives-tapp.pc"
 
-for licence in LICENSE-MIT LICENSE-APACHE; do
-    install -m 0644 "${repo_root}/${licence}" \
-                    "${prefix}/share/licenses/tensorprimitives-tapp/${licence}"
-done
-echo "installed ${prefix}/share/licenses/tensorprimitives-tapp/LICENSE-{MIT,APACHE}"
+if [[ ${licenses} -eq 1 ]]; then
+    for licence in LICENSE-MIT LICENSE-APACHE; do
+        install -m 0644 "${repo_root}/${licence}" \
+                        "${prefix}/share/licenses/tensorprimitives-tapp/${licence}"
+    done
+    echo "installed ${prefix}/share/licenses/tensorprimitives-tapp/LICENSE-{MIT,APACHE}"
+fi
 
 # Report the shared-library identity rather than assume it. An ELF with no
 # DT_SONAME makes every consumer record a bare filename; a Mach-O whose
