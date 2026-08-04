@@ -10,3 +10,14 @@ host ccqlin038.flatironinstitute.org  16 physical cores, SMT width 2, 2 L3 domai
 2 arms, 1 concurrent, cpus 4
 NOTE: SMT is on. Leaders are primary siblings and their siblings are left idle, but nothing prevents the OS from using them.
   22:02:27 bl-base-f64c64   cpu4    dom0     867.2s  rc=0  self 100%  co-tenants: cpu0=51%, cpu1=5%, cpu3=15%, cpu5=6%, cpu7=5%, cpu16=6%, cpu19=8%
+  22:09:15 bl-base-f32c32   cpu4    dom0     408.7s  rc=0  self 100%  co-tenants: none
+
+2 arms in 21.3 min wall (sum of arm times 21.3 min)
+observed overlap per arm: min 0, max 0
+grid complete; score rules with scripts/blocking-score-rules.py
+[2026-08-03T22:09:15-04:00] warm-up done; the package is now at the clock the rest of the run will see
+[2026-08-03T22:09:15-04:00] grid: 19 arms x 2 dtype pairs = 38 jobs
+SCOPED GRID: only arms [base kc64 kc128 kc256 kc384 kc512 kc768 kc1024 basem ck256 ck512 mc25 mc50 mc200 mc400 nc25 nc400 model base2] -- this is not the full grid
+host ccqlin038.flatironinstitute.org  16 physical cores, SMT width 2, 2 L3 domains
+38 arms, 1 concurrent, cpus 4
+NOTE: SMT is on. Leaders are primary siblings and their siblings are left idle, but nothing prevents the OS from using them.

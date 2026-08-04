@@ -200,7 +200,7 @@
     "slots": [
       {
         "domain": 0,
-        "cpu": 0,
+        "cpu": 4,
         "numa": 0,
         "domain_cpus": [
           0,
@@ -221,6 +221,7 @@
           23
         ]
       }
-    ]
+    ],
+    "explicit": true
   }
 }

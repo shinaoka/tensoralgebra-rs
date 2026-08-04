@@ -2857,9 +2857,64 @@ allocation — `bench-results/worker6016-*/kernel-shapes.txt` and
 `bench-results/phase3-kernel-shapes.txt` are both committed and the comparison is
 arithmetic.
 
+The full comparison, shipped shape against each machine's own best at the operating
+`kc`, from the two committed sweeps:
+
+| section | method | shipped | CL @ shipped | CL best | IL @ shipped | IL best | IL / best |
+|---|---|---|---|---|---|---|---|
+| f64/c64 | real | `24x8` | **88.4** | `24x8` 88.4 | 68.3 | `24x9` 74.6 | **0.916** |
+| f64/c64 | planar | `16x6` | 102.8 | `16x6` 102.8 | 108.4 | `16x6` 108.4 | 1.000 |
+| f64/c64 | 1m | `12x8` | 91.1 | `12x8` 91.1 | 69.7 | `12x8` 69.7 | 1.000 |
+| f64/c64 | 3m | `8x10` | 87.8 | `8x10` 87.8 | 63.8 | `8x10` 63.8 | 1.000 |
+| f32/c32 | real | `48x8` | 179.9 | `48x8` 179.9 | 150.3 | `48x9` 172.6 | **0.871** |
+| f32/c32 | planar | `32x6` | 195.7 | **`32x5` 210.9** | 221.8 | `32x6` 221.8 | 1.000 |
+| f32/c32 | 1m | `32x6` | 175.4 | `32x6` 175.4 | 136.4 | `24x8` 151.3 | **0.902** |
+| f32/c32 | 3m | `16x10` | 194.9 | `16x10` 194.9 | 134.5 | `16x10` 134.5 | 1.000 |
+
+Three of eight shipped shapes are **9–13% off on Ice Lake**, and `real` wants `NR+1`
+in *both* precisions — a coherent signature, not scatter.
+
+### A Phase 3 defect this turned up, on the reference machine
+
+The `CL best` column has an entry that is not the shipped shape: **`planar` `f32`/`c32`
+should be `32x5` (210.9) and ships as `32x6` (195.7) — 7.8% off, on `ccqlin038`,
+in the default complex method.** This is not an Ice Lake finding; it has been true
+since Phase 3.
+
+Phase 3's own sweep output says so in as many words —
+`bench-results/phase3-kernel-shapes.txt` contains
+
+```
+best per method at kc = 384:
+  planar   MV=2 NR=5     210.9 GF/s
+```
+
+— while `cfg_avx512_f32` ships `planar = [(2, 6), (3, 4), (1, 12)]`, in which `(2, 5)`
+does not appear at all, not even as an alternate. `32x5` also wins at `kc = 64`
+(210.3 against 205.4) and loses only at `kc = 16`, so it is not a single-depth fluke.
+
+**Why it was probably chosen wrong is the interesting part.** The doc comment on
+`cfg_avx512_f32` bolds `32x6`'s bytes-per-flop (**0.20**, against `32x5`'s 0.231) and
+records 195.7 beside it. So the shape appears to have been selected on the
+bytes-moved-per-useful-flop model — the project's own central mechanism from Phase 3
+— *over* the measured throughput sitting in the same output file. That is the
+failure mode this document has now recorded four times in other guises (A16 and part
+6: write-back regularity "has now pointed the wrong way three times... it is a *gate*
+on a change, never an objective"). D19 says this project measures register blocks;
+here it modelled one and the sweep disagreed.
+
+**Not a fix, a finding.** `NR` changes the `jr` loop count and the packed-`B` sliver
+geometry, so a 7.8% kernel margin is not a 7.8% corpus margin, and `32x5` is absent
+from the menu so no runtime switch can A/B it. The honest next step is to add it to
+the menu, re-run the sweep on `ccqlin038` (8 minutes) to confirm the margin survives,
+then an end-to-end A/B in the shipping configuration (A20) — and only then change a
+default. Worth noting how this was found: entirely inside committed Phase 3 raw
+output, months later, at no machine cost. That is the return on keeping the sweeps.
+
 | # | Assumption | Status |
 |---|---|---|
-| A34 | Register blocks are a property of the instruction set, so one measurement per ISA is enough (the premise of D19 and of `cfg_avx512_*` / `cfg_avx2_*`). | **Refuted.** Cascade Lake and Ice Lake, same ISA and same 32 registers, disagree by ~9% in opposite directions on the `real` `f64` shape, because Ice Lake's 48 KiB 12-way L1 accommodates an accumulator footprint Cascade Lake's 32 KiB 8-way does not. Shapes are per-microarchitecture; probed L1 geometry is enough to tell these two apart. |
+| A34 | Register blocks are a property of the instruction set, so one measurement per ISA is enough (the premise of D19 and of `cfg_avx512_*` / `cfg_avx2_*`). | **Refuted.** Cascade Lake and Ice Lake, same ISA and same 32 registers, disagree by up to 13% on three of eight shapes, and `real` wants `NR+1` in both precisions — Ice Lake's 48 KiB 12-way L1 accommodates an accumulator footprint Cascade Lake's 32 KiB 8-way does not. Shapes are per-microarchitecture; probed L1 geometry separates these two with no CPUID table. |
+| A35 | The shipped register blocks are the ones the Phase 3 sweep selected. | **Refuted for one of eight.** `planar` `f32`/`c32` ships `32x6` where the sweep's own output names `32x5`, 7.8% faster at the operating `kc` — and `32x5` is not even on the menu. The bolded bytes-per-flop in the config's doc comment suggests it was chosen by model over measurement, which is the same error A16 records for write-back regularity. Verify before changing: kernel margin ≠ corpus margin. |
 
 ## Phase 5 interlude: making the C surface consumable
 
