@@ -360,7 +360,20 @@ Both baselines currently live outside the repo at
 `../baselines/tblis-{1.3.0,2.0}-install` (built 2026-08-02, same commits as
 Phase 1). If they are gone, rebuild them — it is ~30 min unattended.
 
-**`scripts/README.md` is the index** — what each of the 27 scripts is for, which
+**TBLIS 2.0's install is ISA-specific and this is a trap.** It was configured
+with `BLIS_CONFIG_FAMILY=auto`, which detects the *build* machine, so its BLIS is
+**skx-only** and SIGILLs on any machine without AVX-512 — it killed a `rome` job
+two seconds in. `../baselines/tblis-2.0-x86_64-install` is the same source with
+`BLIS_CONFIG_FAMILY=x86_64`, multi-configuration with runtime dispatch, and is
+what a non-AVX-512 node needs. Keep both: the `auto` build is what every
+committed number used, so prefer it wherever it runs.
+`scripts/rusty-compare.sbatch` picks between them by grepping `avx512f` out of
+`/proc/cpuinfo`, and the choice is recorded in each run's `PROVENANCE.txt`.
+TBLIS **1.3.0** needs none of this care — it is genuinely multi-config already.
+Verify a claim like this with `nm`, not `strings`: the config *name* table is
+compiled into the library whether or not the kernels are.
+
+**`scripts/README.md` is the index** — what each of the 29 scripts is for, which
 are superseded and by what, and the rules they encode. The entry points that
 matter most:
 

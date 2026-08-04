@@ -1,0 +1,16 @@
+host        : worker6156
+target      : x86_64 / linux
+cpu features: avx2 fma avx512f avx512dq 
+caches      : L1=48KiB/12-way/1sh L2=1280KiB/20-way/1sh L3=49152KiB/12-way/32sh (via sysfs), blocking=legacy
+baselines   : tblis=true blas=true
+tblis       : abi 1.3, 1 thread(s)
+
+premise check: 12 cases at 200 MiB nominal tensor size, 3 reps, stress=none
+
+  abjcd-dkbac-jk : m=2359296 n=48 k=32 macs=3.624e9
+  ajbc-ckba-jk : m=373248 n=72 k=72 macs=1.935e9
+  abcijk-ikmb-mjac : m=6144 n=6144 k=24 macs=9.060e8
+  abrs-qb-aqrs : m=72 n=373248 k=72 macs=1.935e9
+  ij-ikl-ljk : m=312 n=296 k=92352 macs=8.529e9
+  ijkl-imjn-nlmk : m=5184 n=5184 k=5184 macs=1.393e11
+  ijkl-imkn-jnlm : m=5184 n=5184 k=5184 macs=1.393e11

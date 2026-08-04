@@ -1,0 +1,108 @@
+comparison benchmark on cpu0; size 64 MiB, 3 reps, engines planar,1m,3m,ttgt,tblis
+premise size 200 MiB; filter <none>
+started 2026-08-04T14:45:35-04:00 on worker6156
+host            : worker6156
+slurm           : job 6753260 on worker6156
+cpus allowed    : 64 of 64 online (0-63)
+physical cores  : 64   SMT width 1  (SMT off: no sibling to contend with)
+sockets         : 0:32c  1:32c
+numa nodes      : 0:32c  1:32c
+L1              : 48K 12-way, shared by 1 logical cpus
+L2              : 1280K 20-way, shared by 1 logical cpus
+L3              : 49152K 12-way, shared by 32 logical cpus
+L3 domains      : 2, 32 cpus each (49152K per domain)
+
+placement       : 1 concurrent arms of 2 domains, one core per domain, rest of each domain idle
+                  cpus 0
+                  per numa node: 0:1
+
+wrote bench-results/worker6156-icelake/topology.json
+
+########## environment and correctness ##########
+
+host        : worker6156
+target      : x86_64 / linux
+cpu features: avx2 fma avx512f avx512dq 
+caches      : L1=48KiB/12-way/1sh L2=1280KiB/20-way/1sh L3=49152KiB/12-way/32sh (via sysfs), blocking=legacy
+baselines   : tblis=true blas=true
+tblis       : abi 2.x, 1 thread(s)
+--- verify, planar ---
+       abc-bk-akc |   f64 |    120 | 12000 |   100 |   0.0e0 |    0.0e0 |     ok 
+       abc-bk-akc |   c32 |    120 | 12000 |   100 |  2.9e-7 |   1.0e-7 |     ok 
+       abc-bk-akc |   c64 |    120 | 12000 |   100 | 5.3e-16 |  1.9e-16 |     ok 
+
+all comparisons within tolerance
+--- verify, 1m ---
+       abc-bk-akc |   f64 |    120 | 12000 |   100 |   0.0e0 |    0.0e0 |     ok 
+       abc-bk-akc |   c32 |    120 | 12000 |   100 |  2.9e-7 |    0.0e0 |     ok 
+       abc-bk-akc |   c64 |    120 | 12000 |   100 | 5.3e-16 |    0.0e0 |     ok 
+
+all comparisons within tolerance
+--- verify, 3m ---
+       abc-bk-akc |   f64 |    120 | 12000 |   100 |   0.0e0 |    0.0e0 |     ok 
+       abc-bk-akc |   c32 |    120 | 12000 |   100 |  2.6e-7 |   3.5e-7 |     ok 
+       abc-bk-akc |   c64 |    120 | 12000 |   100 | 4.8e-16 |  6.5e-16 |     ok 
+
+all comparisons within tolerance
+
+########## warm-up (discarded) ##########
+
+host worker6156  64 physical cores, SMT width 1, 2 L3 domains
+2 arms, 1 concurrent, cpus 0
+  15:11:23 warm-f64c64      cpu0    dom0    1424.4s  rc=0  self 100%  co-tenants: none
+  15:23:06 warm-f32c32      cpu0    dom0     702.9s  rc=0  self 100%  co-tenants: none
+
+2 arms in 35.5 min wall (sum of arm times 35.5 min)
+observed overlap per arm: min 0, max 0
+
+########## corpus sweep A, and its immediate repeat A2 ##########
+
+host worker6156  64 physical cores, SMT width 1, 2 L3 domains
+4 arms, 1 concurrent, cpus 0
+  15:46:50 A-f64c64         cpu0    dom0    1424.1s  rc=0  self 100%  co-tenants: none
+  15:58:33 A-f32c32         cpu0    dom0     703.0s  rc=0  self 100%  co-tenants: none
+  16:22:18 A2-f64c64        cpu0    dom0    1424.5s  rc=0  self 100%  co-tenants: none
+  16:34:00 A2-f32c32        cpu0    dom0     702.5s  rc=0  self 100%  co-tenants: none
+
+4 arms in 70.9 min wall (sum of arm times 70.9 min)
+observed overlap per arm: min 0, max 0
+
+########## premise at 200 MiB, against TBLIS 2.0-dev ##########
+
+host worker6156  64 physical cores, SMT width 1, 2 L3 domains
+2 arms, 1 concurrent, cpus 0
+  16:56:56 premise-f64c64   cpu0    dom0    1375.9s  rc=0  self 100%  co-tenants: none
+  17:08:11 premise-f32c32   cpu0    dom0     675.1s  rc=0  self 100%  co-tenants: none
+
+2 arms in 34.2 min wall (sum of arm times 34.2 min)
+observed overlap per arm: min 0, max 0
+
+########## ragged stress, c64 ##########
+
+host worker6156  64 physical cores, SMT width 1, 2 L3 domains
+1 arms, 1 concurrent, cpus 0
+  17:22:46 ragged-c64       cpu0    dom0     874.8s  rc=0  self 100%  co-tenants: none
+
+1 arms in 14.6 min wall (sum of arm times 14.6 min)
+observed overlap per arm: min 0, max 0
+
+########## corpus sweep A3, the session-span repeat ##########
+
+host worker6156  64 physical cores, SMT width 1, 2 L3 domains
+2 arms, 1 concurrent, cpus 0
+  17:46:31 A3-f64c64        cpu0    dom0    1424.5s  rc=0  self 100%  co-tenants: none
+  17:58:14 A3-f32c32        cpu0    dom0     703.2s  rc=0  self 100%  co-tenants: none
+
+2 arms in 35.5 min wall (sum of arm times 35.5 min)
+observed overlap per arm: min 0, max 0
+
+########## premise at 200 MiB, against TBLIS v1.3.0 ##########
+
+host        : worker6156
+target      : x86_64 / linux
+cpu features: avx2 fma avx512f avx512dq 
+caches      : L1=48KiB/12-way/1sh L2=1280KiB/20-way/1sh L3=49152KiB/12-way/32sh (via sysfs), blocking=legacy
+baselines   : tblis=true blas=true
+tblis       : abi 1.3, 1 thread(s)
+host worker6156  64 physical cores, SMT width 1, 2 L3 domains
+1 arms, 1 concurrent, cpus 0

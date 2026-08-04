@@ -84,10 +84,31 @@ if [ -n "${SLURM_JOB_ID:-}" ]; then
 fi
 
 
-# The baselines are outside the repo and are not rebuilt here. Both were checked
-# to be multi-configuration libraries carrying AVX-512 and Zen kernels, so the
-# same install serves an `icelake` and a `rome` node without a rebuild.
-export TBLIS_ROOT_2X=${TBLIS_ROOT_2X:-$PWD/../baselines/tblis-2.0-install}
+# The baselines are outside the repo and are not rebuilt here. Which TBLIS 2.0
+# install is usable depends on the node, and getting this wrong is not a subtle
+# failure -- it is a SIGILL two seconds in (job 6753261):
+#
+#   * `tblis-2.0-install` was configured with BLIS_CONFIG_FAMILY=auto on
+#     ccqlin038, so its BLIS is **skx-only** and issues AVX-512 unconditionally.
+#     Every number committed in this repo used it, so it is the one to prefer
+#     wherever it runs at all.
+#   * `tblis-2.0-x86_64-install` is the same source with BLIS_CONFIG_FAMILY=x86_64,
+#     i.e. multi-configuration with runtime dispatch. It is what a machine without
+#     AVX-512 needs.
+#
+# TBLIS v1.3.0 needs no such care: it is genuinely multi-config already
+# (zen/skx/haswell/sandybridge, each with a runtime check), which is why the
+# failing job got past `info` and died inside `verify`.
+if [ -z "${TBLIS_ROOT_2X:-}" ]; then
+    if grep -qw avx512f /proc/cpuinfo; then
+        TBLIS_ROOT_2X=$PWD/../baselines/tblis-2.0-install
+        echo "node has AVX-512: using the skx TBLIS 2.0 build, as every committed number did"
+    else
+        TBLIS_ROOT_2X=$PWD/../baselines/tblis-2.0-x86_64-install
+        echo "node has no AVX-512: using the multi-config TBLIS 2.0 build"
+    fi
+fi
+export TBLIS_ROOT_2X
 export TBLIS_ROOT_13=${TBLIS_ROOT_13:-$PWD/../baselines/tblis-1.3.0-install}
 for r in "$TBLIS_ROOT_2X" "$TBLIS_ROOT_13"; do
     [ -d "$r/lib" ] || { echo "FATAL: no TBLIS install at $r" >&2; exit 1; }

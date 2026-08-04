@@ -1,6 +1,6 @@
 # `scripts/` — what each one is for
 
-Twenty-seven files, and the overlaps are real but mostly not accidental. This
+Twenty-nine files, and the overlaps are real but mostly not accidental. This
 index exists so that "which script do I use" is answered here rather than by
 reading five headers, and so that a script kept only because it produced
 committed data is visibly that.
@@ -41,6 +41,7 @@ the orientation rule were settled that way, and the grids are still in
 |---|---|---|
 | `compare-bench.sh` | The engine against its baselines: `verify`, corpus sweeps, `premise` at 200 MiB, ragged stress, and the TBLIS **v1.3.0** comparison. Takes an output directory. `prep` builds the two binaries — one per TBLIS ABI, into its own cargo target directory — and is the only thing that compiles. ~3.5 h. **Run `prep` before submitting any job**, because two jobs sharing this checkout would otherwise race in the same target directory | current |
 | `ab.sh` | Generic end-to-end A/B on one runtime switch: `warm-up, A, B, A'`. ~2 h | current |
+| `ab-tblis.sh` | A/B the two **TBLIS 2.0 builds** against each other — skx-only against multi-config — over the sweep corpus and then the premise shapes. The treatment is `LD_LIBRARY_PATH` on one binary, and `planar` rides in every arm as a control no TBLIS library can move. ~2.7 h. Needs an **AVX-512** node: the skx build SIGILLs elsewhere | current |
 | `phase3-bench.sh` | The Phase 3 measurement set. Produced `bench-results/phase3-*` | **superseded by `compare-bench.sh`** — it writes flat into `bench-results/` and would overwrite that committed data, it has no warm-up arm (it predates A31), and it compiles *between* measurement groups |
 | `phase4-remeasure.sh` | The Phase 4 A/B with its B arm hardcoded to the write-back experiment. Produced `bench-results/phase4` | **superseded by `ab.sh`**, which adds the discarded warm-up arm and an explicit A-vs-A′ floor. Kept because its output is cited. Note the citation weight is inverted — `DECISIONS.md` mentions the old one far more often, because it is older, not because it is better |
 | `phase4c-rowblock.sh` | **Grid.** Every register block, all 392 corpus case-dtype-methods | current |
@@ -56,6 +57,7 @@ the orientation rule were settled that way, and the grids are still in
 |---|---|---|
 | `node-session.sh` | Stages a whole cluster session: `prep`, `threads`, `shapes`, `validate`, `grid`. **`prep` is the only stage that compiles** | current. Does *not* supersede the `phase4*` scripts — it invokes three of them as stages, and never touches `phase4c`/`phase4d`/`phase4-remeasure` |
 | `rusty-compare.sbatch` | `compare-bench.sh` on one exclusive Rusty node. Constraint deliberately left to the submit line, because the node choice is the experiment. **Never compiles** — it checks the two binaries exist and refuses to start if they do not | current |
+| `rusty-tblis-ab.sbatch` | `ab-tblis.sh` then a full `compare-bench.sh` against the multi-config build, on one exclusive AVX-512 node. ~6 h in a 12 h wall. Stage 2 runs even if stage 1 fails | current |
 | `rusty-phase4.sbatch` | The Phase 4 session on one exclusive Rusty node, 12 h, with a scoped-grid fallback if placement is rejected | current |
 | `rusty-phase4-seq.sbatch` | The three traffic-changing blocking arms, sequentially, 6 h | current. **Complements** `rusty-phase4.sbatch` rather than replacing it — submit it *after*, and it exists because those arms cannot use concurrent placement (A27) |
 | `run-arms.py` | Runs arms under an explicit placement and records **where each one ran**: one thread per L3 domain, SMT siblings idle, `/proc/stat` sampled over every core in the arm's own domain across exactly that arm's window. Drives `sweep` or `premise` | current. The shared runner — prefer it over calling `tcbench` by hand, because the occupancy record is what makes a result auditable |
