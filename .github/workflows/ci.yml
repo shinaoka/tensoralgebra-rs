@@ -188,6 +188,13 @@ jobs:
       - run: cargo test --workspace --release
         env:
           TENSORCONTRACT_BLOCKMODEL: model
+      # Coupled deepening. Off by default pending an end-to-end A/B, which makes
+      # this the only thing that would enter the branch at all: it changes `kc`
+      # *and* re-derives `mc`/`nc`, so it moves every cache-blocking boundary at
+      # once, and the suite has tests that deliberately straddle those.
+      - run: cargo test --workspace --release
+        env:
+          TENSORCONTRACT_DEEPEN: "on"
 
   # Feature combinations of the published crate. Nothing else checks either end
   # of the range.

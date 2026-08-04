@@ -436,6 +436,7 @@ Useful environment variables:
 | `TENSORCONTRACT_MC/_KC/_NC` | override cache blocking absolutely |
 | `TENSORCONTRACT_MC_PCT/_NC_PCT` | scale the *derived* `mc`/`nc`, so each dtype and method keeps its budget share |
 | `TENSORCONTRACT_KC_COUPLE` | set `kc` *and* re-derive `mc`/`nc` at that depth; the item 2 grid's second arm |
+| `TENSORCONTRACT_DEEPEN` | `on`: coupled deepening at the one setting two machines agree on — `kc = 512` for `f64` real geometry, `mc`/`nc` re-derived. Off by default pending the end-to-end A/B (A20). Not a grid arm: this is the shippable form of part 7's recommendation |
 | `TENSORCONTRACT_PARTITION` | `m` \| `n` \| `<pm>x<pn>`: pin the thread partition instead of using `Plan::partition`'s rule |
 | `TENSORCONTRACT_THREADS` | thread count, default **1**. Results are bitwise identical at any value, so this is never a correctness or accuracy decision. Also runs the whole test suite through the threaded driver, which is worth doing after any driver change |
 | `TENSORCONTRACT_ORIENT` | `none` \| `swap`: pin the row/column orientation; `legacy`: the Phase 4.1 rule |
