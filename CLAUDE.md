@@ -75,7 +75,10 @@ they can be benchmarked against each other and against TBLIS on equal footing.
   register-block defect stated rather than carried. Update it in the same commit as
   any future measurement — nothing else in CI will catch it.
 
-**Both pending measurements are done** — on Rusty `rome` nodes, 2026-08-03, jobs
+**The partition gate's confirmation run is done** — 2026-08-04, jobs 6753208
+(`worker5479`, rome) and 6753209 (`worker6150`, Ice Lake-SP). All four
+pre-registered checks pass; see part 12's result section. **Both earlier pending
+measurements are done too** — on Rusty `rome` nodes, 2026-08-03, jobs
 6745376 (`worker5040`) and 6745978 (`worker5175`). Read `DECISIONS.md` parts 7, 8,
 8b, 9, 10 and 11. **Nothing they measured is comparable to a single-core number in
 this repo**: different machine, different cache hierarchy, AVX2 not AVX-512. Every
@@ -101,15 +104,22 @@ Four results and four decisions handed back, none of them taken:
   10.6x (`f64`) and 15.3x (`c64` 3m) on 32 cores and the 4.3x is *absent* (A36), so
   the early return is right where threads share one L3 and wrong where they span
   many — make it domain-aware rather than removing it. Zen2 remains the limited case.
-  **Done: the gate is built** (D41, part 12), behind `TENSORCONTRACT_PARTITION=domain`
-  and off by default. It is scored exactly against the committed grids rather than
-  guessed — predicted **1.423 on the 144 case-dtype-methods it moves, 1.138 corpus
-  geomean at 64 Zen2 threads, and bit-identical on Ice Lake at every width up to
-  the socket** — and it awaits the confirmation run named in part 12. Two things
-  came out of building it: a cross-domain traffic term in the cost model **cannot
-  be calibrated** (A38, four refuted variants), and **per-case ratios at 64 threads
-  are unreadable** at ±11% p10/p90 with tails to 1.55, so only per-family geomeans
-  mean anything at that width (A39).
+  **Done and measured** (D41, part 12), behind `TENSORCONTRACT_PARTITION=domain`
+  and still off by default. Predicted from a committed grid *before* the node was
+  booked — 1.423 on the 144 case-dtype-methods it moves, 1.138 corpus — and
+  **measured 1.433 and 1.133** on exactly those 144, with **0 of 392 moved on a
+  one-L3-per-socket machine**. Monotone in domain count, flat in thread count, and
+  a fixed-16-thread arm varying only the packing reads 1.19x packed over 4 domains
+  against **2.74x spread over 16**. Zen2 corpus scaling at 64 cores goes 5.81 →
+  7.54 (`f64`), 5.51 → 7.88 (`f32`), and stops declining past 16 threads.
+  **Recommendation: turn the gate on by default, then threads** — the gate is a
+  no-op wherever one L3 serves the thread set and there is no machine on which it
+  is known to cost anything. Flipping either is D22 and the user's call. Three
+  things came out of building it: a cross-domain traffic term in the cost model
+  **cannot be calibrated** (A38, four refuted variants), **per-case ratios at 64
+  threads are unreadable** so only per-family geomeans mean anything at that width
+  (A39), and a discarded warm-up arm fixes three brackets in four but not the
+  first pair of a long session (A40).
 * **D26's eight AVX2 register blocks are all confirmed** as the measured winners —
   they stop being a guess with no code change. On AVX2 the *kernel-level* ranking
   puts 3m first in `f32`/`c32`, the opposite of AVX-512 (A24).

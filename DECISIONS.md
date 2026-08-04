@@ -196,8 +196,12 @@ What the two runs left open, in priority order:
    PARTITION_SWEEP=1 STAGES=threads sbatch -C rome scripts/rusty-phase4.sbatch
    ```
 
-   ~1.5–2 h. Part 12 pre-registers what it must show and what would falsify it,
-   and `scripts/phase4f-threads.sh` now prints the prediction beside the result.
+   **Done, 2026-08-04, jobs 6753208 / 6753209 — all four pre-registered checks
+   pass and the prediction held to 1%.** Measured 1.433 on the 144 it moves and
+   1.133 corpus (predicted 1.423 / 1.138), 0 of 392 moved on a one-L3-per-socket
+   machine, and a fixed-16-thread arm varying only the packing reads 1.19x packed
+   over 4 domains against 2.74x spread over 16. **What is left is D22**: the
+   recommendation is to default the gate on first, then threads.
    Two by-products worth not re-deriving: a cross-domain traffic term in the cost
    model **cannot be calibrated** (A38, four variants refuted), and **per-case
    ratios at 64 threads are unreadable** — p10 0.885 / p90 1.107 with tails to
@@ -3490,9 +3494,10 @@ since a test step is the only thing that keeps the dev-dependency half honest.
 
 ## Phase 4 report, part 12: the partition becomes L3-domain-aware
 
-**Status: built, off by default, predicted but not yet measured end to end.**
-The prediction is in this section, it is exact rather than hoped for, and the
-confirmation run either meets it or the gate is wrong.
+**Status: built, measured, and it met its pre-registered prediction. Still off by
+default — that is D22 and it is the user's call.** The prediction was made from
+another node's committed grid before this one was booked; the result is at the end
+of this section.
 
 Part 8b diagnosed `Plan::partition`'s first line as costing up to 4.3x at 64
 threads, and part 8 then refuted the obvious fix: removing the early return is
@@ -3617,20 +3622,32 @@ first and labels the per-case column as spread rather than as a result. This is
 the same lesson as A31 and A32 in a third form: the floor is a property of the
 measurement's shape, and it has to be re-derived in-session every time.
 
-### The threading default: recommended on, conditionally, and not flipped here
+### The threading default: recommended on, and not flipped here
 
-D22 is the user's call and this commit does not take it. With the numbers now in
-hand the recommendation is:
+D22 is the user's call and this commit does not take it. **The recommendation is
+no longer conditional on topology, because the gate removed the condition** — the
+numbers below are post-measurement:
 
-* **Turn it on where one L3 serves the thread set.** Ice Lake reaches 10.6x
-  (`f64`) and 15.3x (`c64` 3m) on 32 cores and is still climbing, with a 0.4–0.6%
-  floor. The domain-aware gate is a no-op there, so this needs nothing else.
-* **On chiplet machines, turn it on together with `TENSORCONTRACT_PARTITION=domain`,
-  once the confirmation run has met the prediction above.** Zen2's 5.5–8.1x at 64
-  cores was measured with the defect the gate fixes; the predicted post-gate
-  figure is ~7.6x in `f64`, and the remaining shortfall against Ice Lake is
-  occupancy (29–36% at 64 threads), i.e. the per-call thread spawn and the
-  small-contraction work Phase 1 named — not the partition.
+* **Turn the gate on by default first.** It is a *strictly smaller* decision than
+  turning threads on: measured a no-op on 392 of 392 cases on a one-L3-per-socket
+  machine, and 1.133 corpus geomean (1.433 on the 144 it moves) at 64 threads on
+  a chiplet one. Nothing that runs single-threaded can observe it at all, since
+  `l3_domains(1) == 1`. There is no machine on which it is known to cost anything.
+* **Then turn threads on.** With the gate, Zen2 goes from 5.5–5.8x to
+  **7.5–7.9x** in the real dtypes at 64 cores and stops declining past 16
+  threads; Ice Lake was already 10.5x (`f64`) and 14.2x (`c64` 3m) at 32. The
+  topology-conditional recommendation in part 8 existed because the chiplet case
+  was bad and unfixed. It is fixed.
+
+The older reasoning, kept because the shape of the argument still holds:
+
+* Where one L3 serves the thread set, threading was always worth having: Ice Lake
+  reaches 10.5x (`f64`) and 14.2x (`c64` 3m) on 32 cores and is still climbing.
+* On chiplet machines the shortfall was the partition, and the gate closes most of
+  it: 5.81 -> 7.54 (`f64`) and 5.51 -> 7.88 (`f32`) at 64 Zen2 cores. What remains
+  is occupancy (29–36%), i.e. the per-call thread spawn and the small-contraction
+  work Phase 1 named — not the partition, which is now measured rather than
+  suspected.
 * **Two limits are unchanged and independent of topology**: threads are spawned
   per `execute` call rather than pooled, and `NC`'s L3 budget is charged per core
   in the legacy blocking.
@@ -3692,6 +3709,93 @@ thread count after all and D41 is wrong in a way three machines have not shown.
 SPREAD=1 PARTITION_SWEEP=1 STAGES=threads sbatch -C rome scripts/rusty-phase4.sbatch
 ```
 
+### Result: all four checks pass, and the prediction was right to 1%
+
+Run 2026-08-04, jobs 6753208 (`worker5479`, rome, 64 cores of one socket, 4 per
+16 MiB L3) and 6753209 (`worker6150`, Ice Lake-SP, 2x32 cores, **one 48 MiB L3
+per socket**, so one domain over the 32-core cpuset). 108 arms, **none flagged
+non-exclusive**, 141 min and 70 min.
+
+**Check 2 first, because it decides whether the rest counts.** The 248
+case-dtype-methods the gate cannot touch read **1.0116** — a uniform drift
+between the rule arm and the `dom` arm an hour later, which is A32's
+drift-with-separation and not contamination. Every number below is quoted raw and
+deflated by it.
+
+**Zen2, 64 threads, 16 domains**, against the prediction made from `worker5137`'s
+grid before this node existed:
+
+| | predicted | measured | drift-corrected |
+|---|---|---|---|
+| case-dtype-methods moved | 144 of 392 | **144 of 392** | — |
+| geomean on those | 1.423 | 1.449 | **1.433** |
+| whole corpus | 1.138 | 1.146 | **1.133** |
+
+Per dtype, measured: `f64` 2.207, `f32` 2.379, `c64` 1.217, `c32` 1.272. Check 1
+(`dom` against the `n` arm, which is the same partition) is 1.019 raw and **1.007
+corrected** — inside per-case noise, as it must be.
+
+**Check 3, Ice Lake: the gate moved 0 of 392.** Not approximately a no-op — the
+identical partition on every case at every thread count up to the socket. A
+one-L3-per-socket machine is untouched by this change, which was the whole reason
+for gating the early return rather than deleting it.
+
+**The domain sweep is monotone in domains and flat in threads**, `abcijk` family,
+gate against rule:
+
+| threads | domains | `f64` | `c64` | `f32` | `c32` |
+|---|---|---|---|---|---|
+| 2 | **1** | 0.999 | 1.001 | 1.000 | 1.001 |
+| 4 | **1** | 0.999 | 1.003 | 1.001 | 1.001 |
+| 8 | 2 | 1.145 | 1.025 | 1.129 | 1.043 |
+| 16 | 4 | 1.181 | 1.179 | 1.221 | 1.272 |
+| 32 | 8 | 1.645 | 1.267 | 1.806 | 1.226 |
+| 64 | 16 | 2.100 | 1.237 | 2.300 | 1.272 |
+
+**And the spread arms close A36's residual gap within one machine.** Sixteen
+threads throughout, same node, same cases, only the packing different:
+
+| placement | domains | `f64` | `c64` | `f32` | `c32` |
+|---|---|---|---|---|---|
+| packed | 4 | 1.189 | 1.218 | 1.219 | 1.293 |
+| **spread** | **16** | **2.736** | **1.487** | **3.045** | **1.744** |
+
+Predicted in this section: "near 1.17 packed and near 2.0 spread". Packed landed
+at 1.19. Spread landed *higher* than the `t64` figure, and the mechanism says it
+should — 16 threads on 16 domains is one thread per 16 MiB L3, so the replicated
+`B` panel under `16 x 1` is at its worst against the private cache each thread
+could have had instead. Every prior separation of domain count from thread count
+was cross-machine; this one holds the thread count fixed on one node.
+
+**What it does to scaling**, corpus geomean over each session's own `t1`:
+
+| machine | dtype | t8 | t16 | t32 | t64 | **t_top + gate** |
+|---|---|---|---|---|---|---|
+| Zen2 | `f64` | 4.62 | 5.77 | 5.76 | 5.81 | **7.54** |
+| Zen2 | `f32` | 5.21 | 6.14 | 5.98 | 5.51 | **7.88** |
+| Zen2 | `c64` | 6.11 | 7.83 | 8.15 | 7.65 | **8.24** |
+| Zen2 | `c32` | 6.01 | 7.63 | 8.04 | 7.28 | **8.06** |
+| Ice Lake | `f64` | 6.13 | 9.61 | **10.54** | — | 10.40 |
+| Ice Lake | `c64` | 6.82 | 11.58 | **14.23** | — | 14.31 |
+
+The gate turns Zen2's *decline* past 16 threads into a rise, and the Ice Lake
+column moves only by session drift, since the partitions there were identical.
+
+**Check 4, the warm-up arm: it works, but not completely, and the residual names
+its own mechanism.** `t1` against `t1b`:
+
+| node | `f64c64` | `f32c32` |
+|---|---|---|
+| Ice Lake | 0.997–0.999 | 0.998 |
+| Zen2 | **0.972–0.977** | 1.001–1.003 |
+
+Three of four brackets are now inside 0.3%, against 0.954–0.973 on three nodes
+without a warm-up. The exception is the *first* dtype pair of the *longer*
+session, and its second pair is clean — so the residual tracks **position in the
+session**, not package temperature, which makes it A32 rather than A31 and means
+a hotter warm-up would not fix it. Derive the floor from a bracket adjacent to the
+arms being compared, which is exactly what check 2 does above.
+
 | # | Decision | Rationale |
 |---|---|---|
 | D41 | `Plan::partition`'s `panels >= p` early return is **gated** on `l3_domains(p) > 1`, `blocks >= p` and `k <= 64`, and then swaps to `1 x min(p, blocks)`. Behind `TENSORCONTRACT_PARTITION=domain`, off by default. | Removing the early return is wrong on a one-L3-per-socket machine, where it is worth nothing and the code is already right; A36 identifies the domain count as the discriminator and the engine already probes it. The other two conditions are the ones that stop the fix from costing 2–5x on the narrow half and 25% on the complex compute-bound half. Binary rather than modelled because a traffic term cannot be calibrated (this part) and because the two arms it chooses between are the two that were measured. |
@@ -3702,7 +3806,8 @@ SPREAD=1 PARTITION_SWEEP=1 STAGES=threads sbatch -C rome scripts/rusty-phase4.sb
 | A36 | The 4.3x that a 1-D `N` partition wins on the memory-bound family is a property of the partition rule. | **Refuted; now implemented as a property of the topology.** See part 8. D41 is the code. |
 | A37 | `l3_domains(p)` may assume **compact placement**: `p` threads occupy `p` consecutive physical cores, filling one L3 domain before starting the next. | **Assumed, and true of every measurement in this file.** `phase4f-threads.sh` builds its cpusets that way by construction (`cpuset_for` takes the first `nt` cores in domain order) and a whole-node run leaves nothing to spread over. A *scattered* placement spans more domains than this counts, and the error is in the safe direction: it under-counts, so the rule falls back to the behaviour every committed number was measured with. `TENSORCONTRACT_L3_DOMAINS` overrides it, and `SPREAD=1` in `phase4f-threads.sh` is the arm that uses it. |
 | A38 | A cross-domain traffic term in the partition cost model can be calibrated to select the column axis where measurement wants it. | **Refuted, four ways** — see the negative result above. The weights that separate the two `abcijk`/`ijkl` pairs are 1% apart and want opposite answers, in element units and in real units alike, and the symmetric two-sided model ranks the two families backwards. Do not re-derive it without a new mechanism. |
-| A39 | Per-case ratios at 64 threads are readable at the ±6% the reference machine reports. | **Refuted on this corpus and this width.** Repeats of an identical partition run p10 0.885 / p90 1.107 with tails to 0.80–1.55. Only per-family geomeans (1–2%) are quotable at this thread count, and the control that shows it comes out of the same data at no cost. |
+| A39 | Per-case ratios at 64 threads are readable at the ±6% the reference machine reports. | **Refuted on this corpus and this width.** Repeats of an identical partition run p10 0.885 / p90 1.107 with tails to 0.80–1.55. Only per-family geomeans (1–2%) are quotable at this thread count, and the control that shows it comes out of the same data at no cost. *Confirmed on two further nodes: Ice Lake at 32 threads reads p10 0.915 / p90 1.108 over 392 identical-partition repeats, so this is a property of threaded measurement here and not of one machine.* |
+| A40 | A discarded warm-up arm at the top thread count removes the opening-arm artefact (the fix A31 asked for). | **Partly.** Three of four `t1`/`t1b` brackets came back inside 0.3%, against 0.954–0.973 on three nodes without one. The exception is the first dtype pair of the longer session, at 0.972–0.977, whose *second* pair is clean — so the residual tracks position in the session rather than package temperature, and a hotter or longer warm-up would not remove it. Keep the warm-up; do not treat it as a floor. Derive the floor from a bracket adjacent to the arms being compared, which is what the "columns the change cannot touch" control does for free. |
 
 ## Phase 4 report, part 13: the row-block menu is keyed by position (A35)
 

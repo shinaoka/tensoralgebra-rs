@@ -69,3 +69,5 @@ from the 8 threads it was argued at to a whole 128-core node.
 [2026-08-04T14:36:49-04:00] prep done. Nothing measured yet.
 [2026-08-04T14:36:49-04:00] outdir: bench-results/worker5479-zen2
 [2026-08-04T14:36:49-04:00] threads: scaling curve plus the two partition arms
+[2026-08-04T16:58:07-04:00] threads done
+[2026-08-04T16:58:07-04:00] outdir: bench-results/worker5479-zen2

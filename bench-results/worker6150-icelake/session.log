@@ -67,3 +67,5 @@ from the 8 threads it was argued at to a whole 128-core node.
 [2026-08-04T14:45:26-04:00] prep done. Nothing measured yet.
 [2026-08-04T14:45:26-04:00] outdir: bench-results/worker6150-icelake
 [2026-08-04T14:45:27-04:00] threads: scaling curve plus the two partition arms
+[2026-08-04T15:56:01-04:00] threads done
+[2026-08-04T15:56:01-04:00] outdir: bench-results/worker6150-icelake

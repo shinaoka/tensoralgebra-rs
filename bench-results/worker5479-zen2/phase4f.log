@@ -19,3 +19,642 @@ threads will run on cpus 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21
 partition arms at 64 threads
 warm-up arm (discarded, A31): t64
   14:38:58 wu-t64-discard done: in-cpuset  n=64 busy min 24% mean 35% max 48%|rest of allocation n=64 busy mean 0.0% max 0.3%|exclusivity ok: nothing else in the allocation above 5%|
+  15:00:58 th-t1-f64c64 done: in-cpuset  n=1 busy min 100% mean 100% max 100%|rest of allocation n=127 busy mean 0.0% max 0.3%|exclusivity ok: nothing else in the allocation above 5%|
+  15:12:15 th-t2-f64c64 done: in-cpuset  n=2 busy min 98% mean 98% max 99%|rest of allocation n=126 busy mean 0.0% max 0.6%|exclusivity ok: nothing else in the allocation above 5%|
+  15:18:09 th-t4-f64c64 done: in-cpuset  n=4 busy min 95% mean 96% max 96%|rest of allocation n=124 busy mean 0.0% max 0.8%|exclusivity ok: nothing else in the allocation above 5%|
+  15:21:35 th-t8-f64c64 done: in-cpuset  n=8 busy min 87% mean 88% max 89%|rest of allocation n=120 busy mean 0.0% max 0.8%|exclusivity ok: nothing else in the allocation above 5%|
+  15:23:48 th-t16-f64c64 done: in-cpuset  n=16 busy min 70% mean 73% max 76%|rest of allocation n=112 busy mean 0.0% max 0.9%|exclusivity ok: nothing else in the allocation above 5%|
+  15:25:52 th-t32-f64c64 done: in-cpuset  n=32 busy min 29% mean 47% max 60%|rest of allocation n=96 busy mean 0.0% max 0.7%|exclusivity ok: nothing else in the allocation above 5%|
+  15:27:57 th-t64-f64c64 done: in-cpuset  n=64 busy min 26% mean 36% max 49%|rest of allocation n=64 busy mean 0.0% max 0.9%|exclusivity ok: nothing else in the allocation above 5%|
+  15:30:08 th-t64-pm-f64c64 done: in-cpuset  n=64 busy min 26% mean 35% max 48%|rest of allocation n=64 busy mean 0.1% max 0.9%|exclusivity ok: nothing else in the allocation above 5%|
+  15:33:37 th-t64-pn-f64c64 done: in-cpuset  n=64 busy min 56% mean 63% max 71%|rest of allocation n=64 busy mean 0.1% max 1.0%|exclusivity ok: nothing else in the allocation above 5%|
+  15:35:40 th-t64-dom-f64c64 done: in-cpuset  n=64 busy min 31% mean 38% max 49%|rest of allocation n=64 busy mean 0.1% max 0.5%|exclusivity ok: nothing else in the allocation above 5%|
+  15:36:20 ps-t2-m-f64c64 done: in-cpuset  n=2 busy min 88% mean 90% max 92%|rest of allocation n=126 busy mean 0.0% max 0.5%|exclusivity ok: nothing else in the allocation above 5%|
+  15:37:01 ps-t2-n-f64c64 done: in-cpuset  n=2 busy min 87% mean 90% max 92%|rest of allocation n=126 busy mean 0.0% max 0.7%|exclusivity ok: nothing else in the allocation above 5%|
+  15:37:41 ps-t2-domain-f64c64 done: in-cpuset  n=2 busy min 88% mean 90% max 92%|rest of allocation n=126 busy mean 0.0% max 0.8%|exclusivity ok: nothing else in the allocation above 5%|
+  15:38:22 ps-t2-rule-f64c64 done: in-cpuset  n=2 busy min 86% mean 90% max 94%|rest of allocation n=126 busy mean 0.0% max 0.5%|exclusivity ok: nothing else in the allocation above 5%|
+  15:38:48 ps-t4-m-f64c64 done: in-cpuset  n=4 busy min 73% mean 75% max 76%|rest of allocation n=124 busy mean 0.0% max 0.9%|exclusivity ok: nothing else in the allocation above 5%|
+  15:39:13 ps-t4-n-f64c64 done: in-cpuset  n=4 busy min 70% mean 76% max 83%|rest of allocation n=124 busy mean 0.0% max 0.8%|exclusivity ok: nothing else in the allocation above 5%|
+  15:39:39 ps-t4-domain-f64c64 done: in-cpuset  n=4 busy min 73% mean 75% max 77%|rest of allocation n=124 busy mean 0.0% max 0.9%|exclusivity ok: nothing else in the allocation above 5%|
+  15:40:05 ps-t4-rule-f64c64 done: in-cpuset  n=4 busy min 71% mean 75% max 84%|rest of allocation n=124 busy mean 0.1% max 1.1%|exclusivity ok: nothing else in the allocation above 5%|
+  15:40:25 ps-t8-m-f64c64 done: in-cpuset  n=8 busy min 57% mean 58% max 64%|rest of allocation n=120 busy mean 0.0% max 0.4%|exclusivity ok: nothing else in the allocation above 5%|
+  15:40:45 ps-t8-n-f64c64 done: in-cpuset  n=8 busy min 59% mean 62% max 73%|rest of allocation n=120 busy mean 0.1% max 1.5%|exclusivity ok: nothing else in the allocation above 5%|
+  15:41:05 ps-t8-domain-f64c64 done: in-cpuset  n=8 busy min 57% mean 62% max 65%|rest of allocation n=120 busy mean 0.1% max 1.1%|exclusivity ok: nothing else in the allocation above 5%|
+  15:41:26 ps-t8-rule-f64c64 done: in-cpuset  n=8 busy min 53% mean 57% max 61%|rest of allocation n=120 busy mean 0.0% max 0.5%|exclusivity ok: nothing else in the allocation above 5%|
+  15:41:45 ps-t16-m-f64c64 done: in-cpuset  n=16 busy min 31% mean 40% max 44%|rest of allocation n=112 busy mean 0.0% max 1.2%|exclusivity ok: nothing else in the allocation above 5%|
+  15:42:03 ps-t16-n-f64c64 done: in-cpuset  n=16 busy min 50% mean 54% max 64%|rest of allocation n=112 busy mean 0.0% max 1.2%|exclusivity ok: nothing else in the allocation above 5%|
+  15:42:20 ps-t16-domain-f64c64 done: in-cpuset  n=16 busy min 51% mean 54% max 60%|rest of allocation n=112 busy mean 0.0% max 0.3%|exclusivity ok: nothing else in the allocation above 5%|
+  15:42:40 ps-t16-rule-f64c64 done: in-cpuset  n=16 busy min 34% mean 40% max 46%|rest of allocation n=112 busy mean 0.0% max 1.1%|exclusivity ok: nothing else in the allocation above 5%|
+  15:42:59 ps-t32-m-f64c64 done: in-cpuset  n=32 busy min 12% mean 23% max 33%|rest of allocation n=96 busy mean 0.0% max 0.3%|exclusivity ok: nothing else in the allocation above 5%|
+  15:43:16 ps-t32-n-f64c64 done: in-cpuset  n=32 busy min 43% mean 48% max 68%|rest of allocation n=96 busy mean 0.1% max 0.7%|exclusivity ok: nothing else in the allocation above 5%|
+  15:43:32 ps-t32-domain-f64c64 done: in-cpuset  n=32 busy min 43% mean 48% max 79%|rest of allocation n=96 busy mean 0.0% max 0.6%|exclusivity ok: nothing else in the allocation above 5%|
+  15:43:51 ps-t32-rule-f64c64 done: in-cpuset  n=32 busy min 7% mean 23% max 38%|rest of allocation n=96 busy mean 0.0% max 1.2%|exclusivity ok: nothing else in the allocation above 5%|
+  15:44:12 ps-t64-m-f64c64 done: in-cpuset  n=64 busy min 3% mean 15% max 38%|rest of allocation n=64 busy mean 0.1% max 1.4%|exclusivity ok: nothing else in the allocation above 5%|
+  15:44:29 ps-t64-n-f64c64 done: in-cpuset  n=64 busy min 37% mean 40% max 51%|rest of allocation n=64 busy mean 0.0% max 0.6%|exclusivity ok: nothing else in the allocation above 5%|
+  15:44:46 ps-t64-domain-f64c64 done: in-cpuset  n=64 busy min 29% mean 41% max 51%|rest of allocation n=64 busy mean 0.1% max 1.2%|exclusivity ok: nothing else in the allocation above 5%|
+  15:45:06 ps-t64-rule-f64c64 done: in-cpuset  n=64 busy min 4% mean 15% max 26%|rest of allocation n=64 busy mean 0.1% max 0.8%|exclusivity ok: nothing else in the allocation above 5%|
+spread arms: t16 packed on [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15] vs spread on [0,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60] (16 domains)
+  15:45:26 sp-t16-packed-rule-f64c64 done: in-cpuset  n=16 busy min 32% mean 39% max 44%|rest of allocation n=112 busy mean 0.1% max 1.7%|exclusivity ok: nothing else in the allocation above 5%|
+  15:45:48 sp-t16-spread-rule-f64c64 done: in-cpuset  n=16 busy min 10% mean 23% max 34%|rest of allocation n=112 busy mean 0.0% max 1.0%|exclusivity ok: nothing else in the allocation above 5%|
+  15:46:08 sp-t16-packed-m-f64c64 done: in-cpuset  n=16 busy min 29% mean 38% max 42%|rest of allocation n=112 busy mean 0.0% max 0.9%|exclusivity ok: nothing else in the allocation above 5%|
+  15:46:30 sp-t16-spread-m-f64c64 done: in-cpuset  n=16 busy min 10% mean 23% max 51%|rest of allocation n=112 busy mean 0.0% max 0.9%|exclusivity ok: nothing else in the allocation above 5%|
+  15:46:47 sp-t16-packed-n-f64c64 done: in-cpuset  n=16 busy min 50% mean 53% max 59%|rest of allocation n=112 busy mean 0.0% max 1.3%|exclusivity ok: nothing else in the allocation above 5%|
+  15:47:04 sp-t16-spread-n-f64c64 done: in-cpuset  n=16 busy min 38% mean 47% max 88%|rest of allocation n=112 busy mean 0.0% max 1.1%|exclusivity ok: nothing else in the allocation above 5%|
+  15:47:21 sp-t16-packed-domain-f64c64 done: in-cpuset  n=16 busy min 51% mean 54% max 61%|rest of allocation n=112 busy mean 0.0% max 0.5%|exclusivity ok: nothing else in the allocation above 5%|
+  15:47:38 sp-t16-spread-domain-f64c64 done: in-cpuset  n=16 busy min 39% mean 47% max 87%|rest of allocation n=112 busy mean 0.1% max 1.5%|exclusivity ok: nothing else in the allocation above 5%|
+  16:09:53 th-t1b-f64c64 done: in-cpuset  n=1 busy min 100% mean 100% max 100%|rest of allocation n=127 busy mean 0.0% max 0.5%|exclusivity ok: nothing else in the allocation above 5%|
+done f64c64
+  16:21:15 th-t1-f32c32 done: in-cpuset  n=1 busy min 100% mean 100% max 100%|rest of allocation n=127 busy mean 0.0% max 0.8%|exclusivity ok: nothing else in the allocation above 5%|
+  16:27:06 th-t2-f32c32 done: in-cpuset  n=2 busy min 97% mean 98% max 98%|rest of allocation n=126 busy mean 0.0% max 0.8%|exclusivity ok: nothing else in the allocation above 5%|
+  16:30:11 th-t4-f32c32 done: in-cpuset  n=4 busy min 93% mean 94% max 95%|rest of allocation n=124 busy mean 0.0% max 0.8%|exclusivity ok: nothing else in the allocation above 5%|
+  16:32:03 th-t8-f32c32 done: in-cpuset  n=8 busy min 82% mean 83% max 83%|rest of allocation n=120 busy mean 0.0% max 0.9%|exclusivity ok: nothing else in the allocation above 5%|
+  16:33:21 th-t16-f32c32 done: in-cpuset  n=16 busy min 58% mean 64% max 67%|rest of allocation n=112 busy mean 0.0% max 0.7%|exclusivity ok: nothing else in the allocation above 5%|
+  16:34:32 th-t32-f32c32 done: in-cpuset  n=32 busy min 34% mean 41% max 49%|rest of allocation n=96 busy mean 0.0% max 0.4%|exclusivity ok: nothing else in the allocation above 5%|
+  16:35:47 th-t64-f32c32 done: in-cpuset  n=64 busy min 12% mean 26% max 42%|rest of allocation n=64 busy mean 0.1% max 0.5%|exclusivity ok: nothing else in the allocation above 5%|
+  16:37:00 th-t64-pm-f32c32 done: in-cpuset  n=64 busy min 19% mean 28% max 41%|rest of allocation n=64 busy mean 0.0% max 0.4%|exclusivity ok: nothing else in the allocation above 5%|
+  16:38:25 th-t64-pn-f32c32 done: in-cpuset  n=64 busy min 51% mean 58% max 66%|rest of allocation n=64 busy mean 0.0% max 0.3%|exclusivity ok: nothing else in the allocation above 5%|
+  16:39:34 th-t64-dom-f32c32 done: in-cpuset  n=64 busy min 26% mean 31% max 38%|rest of allocation n=64 busy mean 0.0% max 0.4%|exclusivity ok: nothing else in the allocation above 5%|
+  16:39:57 ps-t2-m-f32c32 done: in-cpuset  n=2 busy min 86% mean 87% max 88%|rest of allocation n=126 busy mean 0.1% max 1.4%|exclusivity ok: nothing else in the allocation above 5%|
+  16:40:20 ps-t2-n-f32c32 done: in-cpuset  n=2 busy min 86% mean 87% max 87%|rest of allocation n=126 busy mean 0.0% max 0.7%|exclusivity ok: nothing else in the allocation above 5%|
+  16:40:43 ps-t2-domain-f32c32 done: in-cpuset  n=2 busy min 85% mean 87% max 90%|rest of allocation n=126 busy mean 0.1% max 1.6%|exclusivity ok: nothing else in the allocation above 5%|
+  16:41:06 ps-t2-rule-f32c32 done: in-cpuset  n=2 busy min 87% mean 87% max 88%|rest of allocation n=126 busy mean 0.0% max 1.1%|exclusivity ok: nothing else in the allocation above 5%|
+  16:41:21 ps-t4-m-f32c32 done: in-cpuset  n=4 busy min 68% mean 70% max 71%|rest of allocation n=124 busy mean 0.0% max 1.9%|exclusivity ok: nothing else in the allocation above 5%|
+  16:41:36 ps-t4-n-f32c32 done: in-cpuset  n=4 busy min 64% mean 69% max 74%|rest of allocation n=124 busy mean 0.0% max 1.5%|exclusivity ok: nothing else in the allocation above 5%|
+  16:41:51 ps-t4-domain-f32c32 done: in-cpuset  n=4 busy min 65% mean 70% max 79%|rest of allocation n=124 busy mean 0.0% max 0.9%|exclusivity ok: nothing else in the allocation above 5%|
+  16:42:05 ps-t4-rule-f32c32 done: in-cpuset  n=4 busy min 67% mean 70% max 71%|rest of allocation n=124 busy mean 0.0% max 0.6%|exclusivity ok: nothing else in the allocation above 5%|
+  16:42:18 ps-t8-m-f32c32 done: in-cpuset  n=8 busy min 43% mean 47% max 51%|rest of allocation n=120 busy mean 0.0% max 0.6%|exclusivity ok: nothing else in the allocation above 5%|
+  16:42:30 ps-t8-n-f32c32 done: in-cpuset  n=8 busy min 48% mean 53% max 60%|rest of allocation n=120 busy mean 0.0% max 0.7%|exclusivity ok: nothing else in the allocation above 5%|
+  16:42:41 ps-t8-domain-f32c32 done: in-cpuset  n=8 busy min 47% mean 53% max 68%|rest of allocation n=120 busy mean 0.0% max 2.7%|exclusivity ok: nothing else in the allocation above 5%|
+  16:42:54 ps-t8-rule-f32c32 done: in-cpuset  n=8 busy min 44% mean 47% max 52%|rest of allocation n=120 busy mean 0.1% max 1.3%|exclusivity ok: nothing else in the allocation above 5%|
+  16:43:06 ps-t16-m-f32c32 done: in-cpuset  n=16 busy min 17% mean 30% max 37%|rest of allocation n=112 busy mean 0.0% max 0.7%|exclusivity ok: nothing else in the allocation above 5%|
+  16:43:16 ps-t16-n-f32c32 done: in-cpuset  n=16 busy min 40% mean 44% max 61%|rest of allocation n=112 busy mean 0.0% max 0.9%|exclusivity ok: nothing else in the allocation above 5%|
+  16:43:27 ps-t16-domain-f32c32 done: in-cpuset  n=16 busy min 41% mean 44% max 55%|rest of allocation n=112 busy mean 0.0% max 0.9%|exclusivity ok: nothing else in the allocation above 5%|
+  16:43:39 ps-t16-rule-f32c32 done: in-cpuset  n=16 busy min 19% mean 30% max 35%|rest of allocation n=112 busy mean 0.0% max 1.9%|exclusivity ok: nothing else in the allocation above 5%|
+  16:43:51 ps-t32-m-f32c32 done: in-cpuset  n=32 busy min 5% mean 18% max 36%|rest of allocation n=96 busy mean 0.0% max 0.9%|exclusivity ok: nothing else in the allocation above 5%|
+  16:44:01 ps-t32-n-f32c32 done: in-cpuset  n=32 busy min 32% mean 38% max 54%|rest of allocation n=96 busy mean 0.1% max 2.3%|exclusivity ok: nothing else in the allocation above 5%|
+  16:44:11 ps-t32-domain-f32c32 done: in-cpuset  n=32 busy min 33% mean 38% max 75%|rest of allocation n=96 busy mean 0.0% max 0.8%|exclusivity ok: nothing else in the allocation above 5%|
+  16:44:23 ps-t32-rule-f32c32 done: in-cpuset  n=32 busy min 5% mean 18% max 37%|rest of allocation n=96 busy mean 0.0% max 0.8%|exclusivity ok: nothing else in the allocation above 5%|
+  16:44:36 ps-t64-m-f32c32 done: in-cpuset  n=64 busy min 1% mean 11% max 24%|rest of allocation n=64 busy mean 0.1% max 1.7%|exclusivity ok: nothing else in the allocation above 5%|
+  16:44:47 ps-t64-n-f32c32 done: in-cpuset  n=64 busy min 26% mean 32% max 46%|rest of allocation n=64 busy mean 0.0% max 1.2%|exclusivity ok: nothing else in the allocation above 5%|
+  16:44:57 ps-t64-domain-f32c32 done: in-cpuset  n=64 busy min 23% mean 32% max 80%|rest of allocation n=64 busy mean 0.0% max 0.7%|exclusivity ok: nothing else in the allocation above 5%|
+  16:45:10 ps-t64-rule-f32c32 done: in-cpuset  n=64 busy min 1% mean 11% max 31%|rest of allocation n=64 busy mean 0.1% max 1.0%|exclusivity ok: nothing else in the allocation above 5%|
+spread arms: t16 packed on [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15] vs spread on [0,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60] (16 domains)
+  16:45:22 sp-t16-packed-rule-f32c32 done: in-cpuset  n=16 busy min 16% mean 30% max 40%|rest of allocation n=112 busy mean 0.0% max 0.8%|exclusivity ok: nothing else in the allocation above 5%|
+  16:45:37 sp-t16-spread-rule-f32c32 done: in-cpuset  n=16 busy min 7% mean 19% max 41%|rest of allocation n=112 busy mean 0.1% max 1.6%|exclusivity ok: nothing else in the allocation above 5%|
+  16:45:49 sp-t16-packed-m-f32c32 done: in-cpuset  n=16 busy min 21% mean 30% max 37%|rest of allocation n=112 busy mean 0.0% max 0.8%|exclusivity ok: nothing else in the allocation above 5%|
+  16:46:03 sp-t16-spread-m-f32c32 done: in-cpuset  n=16 busy min 5% mean 19% max 34%|rest of allocation n=112 busy mean 0.1% max 1.2%|exclusivity ok: nothing else in the allocation above 5%|
+  16:46:14 sp-t16-packed-n-f32c32 done: in-cpuset  n=16 busy min 41% mean 44% max 49%|rest of allocation n=112 busy mean 0.0% max 0.8%|exclusivity ok: nothing else in the allocation above 5%|
+  16:46:24 sp-t16-spread-n-f32c32 done: in-cpuset  n=16 busy min 32% mean 39% max 62%|rest of allocation n=112 busy mean 0.0% max 0.9%|exclusivity ok: nothing else in the allocation above 5%|
+  16:46:34 sp-t16-packed-domain-f32c32 done: in-cpuset  n=16 busy min 40% mean 44% max 59%|rest of allocation n=112 busy mean 0.0% max 0.9%|exclusivity ok: nothing else in the allocation above 5%|
+  16:46:45 sp-t16-spread-domain-f32c32 done: in-cpuset  n=16 busy min 32% mean 39% max 64%|rest of allocation n=112 busy mean 0.0% max 2.3%|exclusivity ok: nothing else in the allocation above 5%|
+  16:58:06 th-t1b-f32c32 done: in-cpuset  n=1 busy min 100% mean 100% max 100%|rest of allocation n=127 busy mean 0.0% max 0.3%|exclusivity ok: nothing else in the allocation above 5%|
+done f32c32
+
+this node's noise floor (t1 vs its bracketing repeat):
+== f64c64 t1 vs t1b
+dtype  engine  or   n  geomean     min     max
+  c64      1m  AB  37    0.973   0.893   1.004
+  c64      1m  BA  12    0.978   0.966   0.998
+  c64      3m  AB  37    0.979   0.913   1.021
+  c64      3m  BA  12    0.984   0.949   1.001
+  c64  planar  AB  37    0.977   0.908   1.000
+  c64  planar  BA  12    0.977   0.963   0.998
+  f64      1m  AB  37    0.971   0.908   1.004
+  f64      1m  BA  12    0.978   0.952   1.043
+  f64      3m  AB  37    0.971   0.908   1.004
+  f64      3m  BA  12    0.978   0.952   1.043
+  f64  planar  AB  37    0.971   0.908   1.004
+  f64  planar  BA  12    0.978   0.952   1.043
+
+--- outside the +/-6% per-case noise floor (31 of 294) ---
+  0.893      adbjc-cbdka-kj  c64      1m  AB      9.9 ->     8.9
+  0.908      adbjc-cbdka-kj  f64      1m  AB      4.8 ->     4.4
+  0.908      adbjc-cbdka-kj  f64      3m  AB      4.8 ->     4.4
+  0.908      adbjc-cbdka-kj  f64  planar  AB      4.8 ->     4.4
+  0.908      ajbdc-ckbad-jk  c64  planar  AB     11.8 ->    10.7
+== f32c32 t1 vs t1b
+dtype  engine  or   n  geomean     min     max
+  c32      1m  AB  37    1.004   0.992   1.022
+  c32      1m  BA  12    1.004   1.000   1.012
+  c32      3m  AB  37    1.005   0.993   1.023
+  c32      3m  BA  12    1.005   0.998   1.024
+  c32  planar  AB  37    1.004   0.995   1.024
+  c32  planar  BA  12    1.003   0.998   1.010
+  f32      1m  AB  37    1.001   0.971   1.042
+  f32      1m  BA  12    0.998   0.976   1.015
+  f32      3m  AB  37    1.001   0.971   1.042
+  f32      3m  BA  12    0.998   0.976   1.015
+  f32  planar  AB  37    1.001   0.971   1.042
+  f32  planar  BA  12    0.998   0.976   1.015
+
+--- outside the +/-6% per-case noise floor (0 of 294) ---
+
+--- overall, all cases (what a user sees) ---
+  c32      1m  1.004
+  c32      3m  1.005
+  c32  planar  1.003
+
+scaling, each arm against the 1-thread arm:
+== f64c64 t2
+dtype  engine  or   n  geomean     min     max
+  c64      1m  AB  37    1.950   1.834   2.025
+  c64      1m  BA  12    1.959   1.910   1.985
+  c64      3m  AB  37    1.974   1.807   2.029
+  c64      3m  BA  12    1.973   1.915   1.991
+  c64  planar  AB  37    1.963   1.836   2.023
+  c64  planar  BA  12    1.975   1.949   2.001
+  f64      1m  AB  37    1.903   1.303   2.022
+  f64      1m  BA  12    1.930   1.808   1.970
+  f64      3m  AB  37    1.903   1.303   2.022
+  f64      3m  BA  12    1.930   1.808   1.970
+  f64  planar  AB  37    1.903   1.303   2.022
+  f64  planar  BA  12    1.930   1.808   1.970
+
+--- outside the +/-6% per-case noise floor (294 of 294) ---
+  1.303        ajbc-ckba-jk  f64      1m  AB     18.9 ->    24.7
+  1.303        ajbc-ckba-jk  f64      3m  AB     18.9 ->    24.7
+  1.303        ajbc-ckba-jk  f64  planar  AB     18.9 ->    24.7
+  1.674        abjc-cbka-kj  f64      1m  AB     12.5 ->    20.8
+  1.674        abjc-cbka-kj  f64      3m  AB     12.5 ->    20.8
+== f64c64 t4
+dtype  engine  or   n  geomean     min     max
+  c64      1m  AB  37    3.721   3.290   3.996
+  c64      1m  BA  12    3.733   3.493   3.879
+  c64      3m  AB  37    3.769   3.254   3.975
+  c64      3m  BA  12    3.831   3.746   3.994
+  c64  planar  AB  37    3.736   3.258   4.012
+  c64  planar  BA  12    3.826   3.767   3.948
+  f64      1m  AB  37    3.456   2.211   3.928
+  f64      1m  BA  12    3.413   3.008   3.856
+  f64      3m  AB  37    3.456   2.211   3.928
+  f64      3m  BA  12    3.413   3.008   3.856
+  f64  planar  AB  37    3.456   2.211   3.928
+  f64  planar  BA  12    3.413   3.008   3.856
+
+--- outside the +/-6% per-case noise floor (294 of 294) ---
+  2.211        ajbc-ckba-jk  f64      1m  AB     18.9 ->    41.8
+  2.211        ajbc-ckba-jk  f64      3m  AB     18.9 ->    41.8
+  2.211        ajbc-ckba-jk  f64  planar  AB     18.9 ->    41.8
+  2.483        abjc-cbka-kj  f64      1m  AB     12.5 ->    30.9
+  2.483        abjc-cbka-kj  f64      3m  AB     12.5 ->    30.9
+== f64c64 t8
+dtype  engine  or   n  geomean     min     max
+  c64      1m  AB  37    6.128   3.663   7.613
+  c64      1m  BA  12    5.744   4.002   7.447
+  c64      3m  AB  37    6.245   2.185   7.607
+  c64      3m  BA  12    5.740   3.894   7.502
+  c64  planar  AB  37    6.270   3.764   7.743
+  c64  planar  BA  12    5.904   4.678   7.672
+  f64      1m  AB  37    4.720   2.258   7.282
+  f64      1m  BA  12    4.331   2.990   5.962
+  f64      3m  AB  37    4.720   2.258   7.282
+  f64      3m  BA  12    4.331   2.990   5.962
+  f64  planar  AB  37    4.720   2.258   7.282
+  f64  planar  BA  12    4.331   2.990   5.962
+
+--- outside the +/-6% per-case noise floor (294 of 294) ---
+  2.185        aqrs-pa-pqrs  c64      3m  AB     32.7 ->    71.4
+  2.258        aqrs-pa-pqrs  f64      1m  AB     24.4 ->    55.1
+  2.258        aqrs-pa-pqrs  f64      3m  AB     24.4 ->    55.1
+  2.258        aqrs-pa-pqrs  f64  planar  AB     24.4 ->    55.1
+  2.291          ij-kil-lkj  f64      1m  AB     32.8 ->    75.1
+== f64c64 t16
+dtype  engine  or   n  geomean     min     max
+  c64      1m  AB  37    8.084   2.791  13.579
+  c64      1m  BA  12    6.215   4.370   9.515
+  c64      3m  AB  37    8.354   2.690  14.062
+  c64      3m  BA  12    6.663   5.302   9.667
+  c64  planar  AB  37    8.479   2.955  14.074
+  c64  planar  BA  12    6.721   5.037  10.106
+  f64      1m  AB  37    6.156   2.742  12.562
+  f64      1m  BA  12    4.717   3.439   8.335
+  f64      3m  AB  37    6.156   2.742  12.562
+  f64      3m  BA  12    4.717   3.439   8.335
+  f64  planar  AB  37    6.156   2.742  12.562
+  f64  planar  BA  12    4.717   3.439   8.335
+
+--- outside the +/-6% per-case noise floor (294 of 294) ---
+  2.690        aqrs-pa-pqrs  c64      3m  AB     32.7 ->    87.9
+  2.742        ajbc-ckba-jk  f64      1m  AB     18.9 ->    51.9
+  2.742        ajbc-ckba-jk  f64      3m  AB     18.9 ->    51.9
+  2.742        ajbc-ckba-jk  f64  planar  AB     18.9 ->    51.9
+  2.791        aqrs-pa-pqrs  c64      1m  AB     35.4 ->    98.8
+== f64c64 t32
+dtype  engine  or   n  geomean     min     max
+  c64      1m  AB  37    8.586   3.987  19.042
+  c64      1m  BA  12    6.130   4.167   9.602
+  c64      3m  AB  37    8.691   3.695  17.902
+  c64      3m  BA  12    6.531   4.985   9.672
+  c64  planar  AB  37    9.127   4.320  19.692
+  c64  planar  BA  12    6.697   4.638  11.179
+  f64      1m  AB  37    6.115   2.380  14.280
+  f64      1m  BA  12    4.789   2.873   8.184
+  f64      3m  AB  37    6.115   2.380  14.280
+  f64      3m  BA  12    4.789   2.873   8.184
+  f64  planar  AB  37    6.115   2.380  14.280
+  f64  planar  BA  12    4.789   2.873   8.184
+
+--- outside the +/-6% per-case noise floor (294 of 294) ---
+  2.380          ij-ikl-ljk  f64      1m  AB     32.8 ->    78.0
+  2.380          ij-ikl-ljk  f64      3m  AB     32.8 ->    78.0
+  2.380          ij-ikl-ljk  f64  planar  AB     32.8 ->    78.0
+  2.533          ij-kil-lkj  f64      1m  AB     32.8 ->    83.0
+  2.533          ij-kil-lkj  f64      3m  AB     32.8 ->    83.0
+== f64c64 t64
+dtype  engine  or   n  geomean     min     max
+  c64      1m  AB  37    8.214   3.087  19.294
+  c64      1m  BA  12    5.487   3.462   9.106
+  c64      3m  AB  37    8.214   2.795  18.383
+  c64      3m  BA  12    5.828   4.083   9.501
+  c64  planar  AB  37    8.737   3.493  19.816
+  c64  planar  BA  12    5.986   3.986  10.817
+  f64      1m  AB  37    6.189   2.295  13.470
+  f64      1m  BA  12    4.766   2.747   7.438
+  f64      3m  AB  37    6.189   2.295  13.470
+  f64      3m  BA  12    4.766   2.747   7.438
+  f64  planar  AB  37    6.189   2.295  13.470
+  f64  planar  BA  12    4.766   2.747   7.438
+
+--- outside the +/-6% per-case noise floor (294 of 294) ---
+  2.295          ij-ikl-ljk  f64      1m  AB     32.8 ->    75.2
+  2.295          ij-ikl-ljk  f64      3m  AB     32.8 ->    75.2
+  2.295          ij-ikl-ljk  f64  planar  AB     32.8 ->    75.2
+  2.542          ij-kil-lkj  f64      1m  AB     32.8 ->    83.3
+  2.542          ij-kil-lkj  f64      3m  AB     32.8 ->    83.3
+== f32c32 t2
+dtype  engine  or   n  geomean     min     max
+  c32      1m  AB  37    1.952   1.564   2.020
+  c32      1m  BA  12    1.982   1.926   2.009
+  c32      3m  AB  37    1.949   1.512   2.037
+  c32      3m  BA  12    2.017   1.990   2.051
+  c32  planar  AB  37    1.953   1.469   2.089
+  c32  planar  BA  12    1.984   1.966   2.009
+  f32      1m  AB  37    1.871   0.967   2.235
+  f32      1m  BA  12    1.892   1.855   1.983
+  f32      3m  AB  37    1.871   0.967   2.235
+  f32      3m  BA  12    1.892   1.855   1.983
+  f32  planar  AB  37    1.871   0.967   2.235
+  f32  planar  BA  12    1.892   1.855   1.983
+
+--- outside the +/-6% per-case noise floor (291 of 294) ---
+  1.469        ajbc-ckba-jk  c32  planar  AB     44.4 ->    65.2
+  1.512        ajbc-ckba-jk  c32      3m  AB     39.0 ->    59.0
+  1.528        abjc-cbka-kj  f32      1m  AB     16.6 ->    25.4
+  1.528        abjc-cbka-kj  f32      3m  AB     16.6 ->    25.4
+  1.528        abjc-cbka-kj  f32  planar  AB     16.6 ->    25.4
+== f32c32 t4
+dtype  engine  or   n  geomean     min     max
+  c32      1m  AB  37    3.736   2.845   4.050
+  c32      1m  BA  12    3.805   3.665   3.873
+  c32      3m  AB  37    3.743   2.806   3.979
+  c32      3m  BA  12    3.907   3.852   3.980
+  c32  planar  AB  37    3.729   2.707   4.110
+  c32  planar  BA  12    3.837   3.716   3.971
+  f32      1m  AB  37    3.458   1.528   4.018
+  f32      1m  BA  12    3.489   3.101   3.855
+  f32      3m  AB  37    3.458   1.528   4.018
+  f32      3m  BA  12    3.489   3.101   3.855
+  f32  planar  AB  37    3.458   1.528   4.018
+  f32  planar  BA  12    3.489   3.101   3.855
+
+--- outside the +/-6% per-case noise floor (294 of 294) ---
+  1.528        ajbc-ckba-jk  f32      1m  AB     31.9 ->    48.7
+  1.528        ajbc-ckba-jk  f32      3m  AB     31.9 ->    48.7
+  1.528        ajbc-ckba-jk  f32  planar  AB     31.9 ->    48.7
+  2.260        abjc-cbka-kj  f32      1m  AB     16.6 ->    37.5
+  2.260        abjc-cbka-kj  f32      3m  AB     16.6 ->    37.5
+== f32c32 t8
+dtype  engine  or   n  geomean     min     max
+  c32      1m  AB  37    6.092   2.976   7.569
+  c32      1m  BA  12    5.376   3.894   6.403
+  c32      3m  AB  37    6.089   2.428   7.535
+  c32      3m  BA  12    5.931   4.086   7.595
+  c32  planar  AB  37    6.119   2.872   7.733
+  c32  planar  BA  12    5.953   4.281   7.607
+  f32      1m  AB  37    5.209   1.725   7.114
+  f32      1m  BA  12    5.198   3.211   6.322
+  f32      3m  AB  37    5.209   1.725   7.114
+  f32      3m  BA  12    5.198   3.211   6.322
+  f32  planar  AB  37    5.209   1.725   7.114
+  f32  planar  BA  12    5.198   3.211   6.322
+
+--- outside the +/-6% per-case noise floor (294 of 294) ---
+  1.725        ajbc-ckba-jk  f32      1m  AB     31.9 ->    55.0
+  1.725        ajbc-ckba-jk  f32      3m  AB     31.9 ->    55.0
+  1.725        ajbc-ckba-jk  f32  planar  AB     31.9 ->    55.0
+  2.321          ij-ikl-ljk  f32      1m  AB     47.3 ->   109.7
+  2.321          ij-ikl-ljk  f32      3m  AB     47.3 ->   109.7
+== f32c32 t16
+dtype  engine  or   n  geomean     min     max
+  c32      1m  AB  37    7.994   4.429  14.139
+  c32      1m  BA  12    5.972   4.447   9.291
+  c32      3m  AB  37    8.179   4.871  13.909
+  c32      3m  BA  12    6.651   5.400  13.505
+  c32  planar  AB  37    8.114   4.189  14.520
+  c32  planar  BA  12    6.467   5.270   9.673
+  f32      1m  AB  37    6.363   2.095  12.188
+  f32      1m  BA  12    5.514   4.274   7.055
+  f32      3m  AB  37    6.363   2.095  12.188
+  f32      3m  BA  12    5.514   4.274   7.055
+  f32  planar  AB  37    6.363   2.095  12.188
+  f32  planar  BA  12    5.514   4.274   7.055
+
+--- outside the +/-6% per-case noise floor (294 of 294) ---
+  2.095        ajbc-ckba-jk  f32      1m  AB     31.9 ->    66.8
+  2.095        ajbc-ckba-jk  f32      3m  AB     31.9 ->    66.8
+  2.095        ajbc-ckba-jk  f32  planar  AB     31.9 ->    66.8
+  2.721        abjc-cbka-kj  f32      1m  AB     16.6 ->    45.2
+  2.721        abjc-cbka-kj  f32      3m  AB     16.6 ->    45.2
+== f32c32 t32
+dtype  engine  or   n  geomean     min     max
+  c32      1m  AB  37    8.853   4.272  18.891
+  c32      1m  BA  12    5.962   4.255   9.166
+  c32      3m  AB  37    8.543   4.767  16.706
+  c32      3m  BA  12    6.214   4.671   7.807
+  c32  planar  AB  37    8.935   4.479  18.001
+  c32  planar  BA  12    6.284   4.665   9.157
+  f32      1m  AB  37    6.278   2.386  11.606
+  f32      1m  BA  12    5.149   3.323   6.809
+  f32      3m  AB  37    6.278   2.386  11.606
+  f32      3m  BA  12    5.149   3.323   6.809
+  f32  planar  AB  37    6.278   2.386  11.606
+  f32  planar  BA  12    5.149   3.323   6.809
+
+--- outside the +/-6% per-case noise floor (294 of 294) ---
+  2.386        ajbc-ckba-jk  f32      1m  AB     31.9 ->    76.1
+  2.386        ajbc-ckba-jk  f32      3m  AB     31.9 ->    76.1
+  2.386        ajbc-ckba-jk  f32  planar  AB     31.9 ->    76.1
+  3.263        abjc-cbka-kj  f32      1m  AB     16.6 ->    54.2
+  3.263        abjc-cbka-kj  f32      3m  AB     16.6 ->    54.2
+== f32c32 t64
+dtype  engine  or   n  geomean     min     max
+  c32      1m  AB  37    7.977   3.237  18.200
+  c32      1m  BA  12    5.191   3.276  10.186
+  c32      3m  AB  37    7.809   3.539  16.778
+  c32      3m  BA  12    5.466   3.523   9.095
+  c32  planar  AB  37    8.174   3.797  16.738
+  c32  planar  BA  12    5.774   3.948  12.540
+  f32      1m  AB  37    5.733   2.595  10.815
+  f32      1m  BA  12    4.884   2.977   7.390
+  f32      3m  AB  37    5.733   2.595  10.815
+  f32      3m  BA  12    4.884   2.977   7.390
+  f32  planar  AB  37    5.733   2.595  10.815
+  f32  planar  BA  12    4.884   2.977   7.390
+
+--- outside the +/-6% per-case noise floor (294 of 294) ---
+  2.595        ajbc-ckba-jk  f32      1m  AB     31.9 ->    82.7
+  2.595        ajbc-ckba-jk  f32      3m  AB     31.9 ->    82.7
+  2.595        ajbc-ckba-jk  f32  planar  AB     31.9 ->    82.7
+  2.977    abcijk-ijmc-mkab  f32      1m  BA     41.4 ->   123.4
+  2.977    abcijk-ijmc-mkab  f32      3m  BA     41.4 ->   123.4
+
+partition arms, each against the rule at the same thread count:
+== f64c64 t64 partition=pm
+dtype  engine  or   n  geomean     min     max
+  c64      1m  AB  37    0.934   0.270   1.202
+  c64      1m  BA  12    1.034   0.888   1.374
+  c64      3m  AB  37    0.897   0.195   1.133
+  c64      3m  BA  12    1.006   0.918   1.090
+  c64  planar  AB  37    0.928   0.267   1.149
+  c64  planar  BA  12    1.023   0.923   1.341
+  f64      1m  AB  37    0.913   0.247   1.298
+  f64      1m  BA  12    0.955   0.798   1.175
+  f64      3m  AB  37    0.913   0.247   1.298
+  f64      3m  BA  12    0.955   0.798   1.175
+  f64  planar  AB  37    0.913   0.247   1.298
+  f64  planar  BA  12    0.955   0.798   1.175
+
+--- outside the +/-6% per-case noise floor (145 of 294) ---
+  0.195          ijk-il-jlk  c64      3m  AB    537.6 ->   105.1
+  0.247        aqrs-pa-pqrs  f64      1m  AB    247.3 ->    61.1
+  0.247        aqrs-pa-pqrs  f64      3m  AB    247.3 ->    61.1
+  0.247        aqrs-pa-pqrs  f64  planar  AB    247.3 ->    61.1
+  0.267          ijk-il-jlk  c64  planar  AB    638.9 ->   170.3
+== f64c64 t64 partition=pn
+dtype  engine  or   n  geomean     min     max
+  c64      1m  AB  37    0.638   0.193   1.805
+  c64      1m  BA  12    0.924   0.421   1.824
+  c64      3m  AB  37    0.584   0.157   1.836
+  c64      3m  BA  12    0.970   0.427   1.818
+  c64  planar  AB  37    0.618   0.196   1.815
+  c64  planar  BA  12    0.974   0.406   1.775
+  f64      1m  AB  37    0.939   0.231   3.388
+  f64      1m  BA  12    1.425   0.360   3.739
+  f64      3m  AB  37    0.939   0.231   3.388
+  f64      3m  BA  12    1.425   0.360   3.739
+  f64  planar  AB  37    0.939   0.231   3.388
+  f64  planar  BA  12    1.425   0.360   3.739
+
+--- outside the +/-6% per-case noise floor (257 of 294) ---
+  0.157        abjc-cbka-kj  c64      3m  AB    127.4 ->    20.1
+  0.184        ajbc-ckba-jk  c64      3m  AB    150.7 ->    27.7
+  0.193        abjc-cbka-kj  c64      1m  AB    122.4 ->    23.6
+  0.196        abjc-cbka-kj  c64  planar  AB    135.7 ->    26.7
+  0.198      ajbdc-ckbad-jk  c64      1m  AB     54.9 ->    10.8
+== f64c64 t64 partition=dom
+dtype  engine  or   n  geomean     min     max
+  c64      1m  AB  37    1.037   0.860   1.810
+  c64      1m  BA  12    1.150   0.814   1.807
+  c64      3m  AB  37    1.066   0.814   1.857
+  c64      3m  BA  12    1.218   0.986   1.791
+  c64  planar  AB  37    1.037   0.746   1.849
+  c64  planar  BA  12    1.166   0.885   1.791
+  f64      1m  AB  37    1.166   0.705   3.514
+  f64      1m  BA  12    1.811   0.727   4.216
+  f64      3m  AB  37    1.166   0.705   3.514
+  f64      3m  BA  12    1.811   0.727   4.216
+  f64  planar  AB  37    1.166   0.705   3.514
+  f64  planar  BA  12    1.811   0.727   4.216
+
+--- outside the +/-6% per-case noise floor (201 of 294) ---
+  0.705        aqrs-pa-pqrs  f64      1m  AB    247.3 ->   174.4
+  0.705        aqrs-pa-pqrs  f64      3m  AB    247.3 ->   174.4
+  0.705        aqrs-pa-pqrs  f64  planar  AB    247.3 ->   174.4
+  0.715          ijk-ilk-lj  f64      1m  AB    313.4 ->   224.2
+  0.715          ijk-ilk-lj  f64      3m  AB    313.4 ->   224.2
+== f32c32 t64 partition=pm
+dtype  engine  or   n  geomean     min     max
+  c32      1m  AB  37    0.950   0.277   1.226
+  c32      1m  BA  12    0.951   0.804   1.066
+  c32      3m  AB  37    0.947   0.264   1.292
+  c32      3m  BA  12    1.046   0.978   1.189
+  c32  planar  AB  37    0.938   0.303   1.211
+  c32  planar  BA  12    1.002   0.721   1.226
+  f32      1m  AB  37    0.973   0.351   1.474
+  f32      1m  BA  12    1.019   0.753   1.204
+  f32      3m  AB  37    0.973   0.351   1.474
+  f32      3m  BA  12    1.019   0.753   1.204
+  f32  planar  AB  37    0.973   0.351   1.474
+  f32  planar  BA  12    1.019   0.753   1.204
+
+--- outside the +/-6% per-case noise floor (174 of 294) ---
+  0.264        aqrs-pa-pqrs  c32      3m  AB    608.4 ->   160.8
+  0.264          ijk-il-jlk  c32      3m  AB   1140.0 ->   301.5
+  0.277          ijk-il-jlk  c32      1m  AB   1309.0 ->   362.9
+  0.303          ijk-il-jlk  c32  planar  AB   1326.0 ->   401.3
+  0.351        aqrs-pa-pqrs  f32      1m  AB    191.1 ->    67.2
+== f32c32 t64 partition=pn
+dtype  engine  or   n  geomean     min     max
+  c32      1m  AB  37    0.699   0.160   1.923
+  c32      1m  BA  12    0.860   0.263   1.838
+  c32      3m  AB  37    0.695   0.162   2.316
+  c32      3m  BA  12    0.886   0.253   2.187
+  c32  planar  AB  37    0.802   0.210   2.096
+  c32  planar  BA  12    0.922   0.336   1.902
+  f32      1m  AB  37    1.100   0.240   3.470
+  f32      1m  BA  12    1.611   0.447   3.684
+  f32      3m  AB  37    1.100   0.240   3.470
+  f32      3m  BA  12    1.611   0.447   3.684
+  f32  planar  AB  37    1.100   0.240   3.470
+  f32  planar  BA  12    1.611   0.447   3.684
+
+--- outside the +/-6% per-case noise floor (263 of 294) ---
+  0.160      adbjc-cbdka-kj  c32      1m  AB     67.9 ->    10.9
+  0.162        abjc-cbka-kj  c32      3m  AB    159.8 ->    25.9
+  0.169        abjc-cbka-kj  c32      1m  AB    147.3 ->    24.9
+  0.175      adbjc-cbdka-kj  c32      3m  AB     73.4 ->    12.9
+  0.196      ajbdc-ckbad-jk  c32      1m  AB     69.9 ->    13.7
+== f32c32 t64 partition=dom
+dtype  engine  or   n  geomean     min     max
+  c32      1m  AB  37    1.069   0.657   1.982
+  c32      1m  BA  12    1.123   0.670   1.932
+  c32      3m  AB  37    1.095   0.759   2.424
+  c32      3m  BA  12    1.209   0.855   2.348
+  c32  planar  AB  37    1.104   0.747   2.084
+  c32  planar  BA  12    1.171   0.606   2.054
+  f32      1m  AB  37    1.290   0.730   3.441
+  f32      1m  BA  12    1.960   1.005   3.528
+  f32      3m  AB  37    1.290   0.730   3.441
+  f32      3m  BA  12    1.960   1.005   3.528
+  f32  planar  AB  37    1.290   0.730   3.441
+  f32  planar  BA  12    1.960   1.005   3.528
+
+--- outside the +/-6% per-case noise floor (190 of 294) ---
+  0.606          abc-bk-akc  c32  planar  BA    995.3 ->   603.4
+  0.657          ijk-ilk-jl  c32      1m  AB    822.6 ->   540.2
+  0.670          abc-bk-akc  c32      1m  BA    817.3 ->   547.4
+  0.730          ijk-ikl-lj  f32      1m  AB    432.7 ->   315.8
+  0.730          ijk-ikl-lj  f32      3m  AB    432.7 ->   315.8
+
+packing at a fixed thread count: the same t16, packed then spread.
+the two n/rule ratios are the comparison; pm/rule is the control.
+== f64c64 t16 packed partition=m
+dtype  engine  or   n  geomean     min     max
+  c64      1m  AB   9    0.971   0.823   1.050
+  c64      1m  BA   9    1.002   0.874   1.087
+  c64      3m  AB   9    1.007   0.849   1.218
+  c64      3m  BA   9    0.995   0.824   1.192
+  c64  planar  AB   9    0.999   0.885   1.192
+  c64  planar  BA   9    1.009   0.889   1.089
+  f64      1m  AB   9    1.005   0.957   1.072
+== f64c64 t16 packed partition=n
+dtype  engine  or   n  geomean     min     max
+  c64      1m  AB   9    1.199   0.995   1.719
+  c64      1m  BA   9    1.202   0.906   1.702
+  c64      3m  AB   9    1.263   1.158   1.461
+  c64      3m  BA   9    1.227   1.051   1.424
+  c64  planar  AB   9    1.206   1.001   1.542
+  c64  planar  BA   9    1.216   1.031   1.523
+  f64      1m  AB   9    1.193   1.051   1.514
+== f64c64 t16 packed partition=domain
+dtype  engine  or   n  geomean     min     max
+  c64      1m  AB   9    1.205   1.022   1.726
+  c64      1m  BA   9    1.204   0.906   1.708
+  c64      3m  AB   9    1.262   1.161   1.467
+  c64      3m  BA   9    1.223   1.047   1.455
+  c64  planar  AB   9    1.206   1.010   1.565
+  c64  planar  BA   9    1.209   1.032   1.470
+  f64      1m  AB   9    1.186   1.041   1.504
+== f64c64 t16 spread partition=m
+dtype  engine  or   n  geomean     min     max
+  c64      1m  AB   9    1.018   0.925   1.094
+  c64      1m  BA   9    1.003   0.830   1.239
+  c64      3m  AB   9    1.038   0.891   1.294
+  c64      3m  BA   9    0.964   0.788   1.119
+  c64  planar  AB   9    0.983   0.744   1.268
+  c64  planar  BA   9    0.997   0.873   1.117
+  f64      1m  AB   9    1.166   0.852   1.677
+== f64c64 t16 spread partition=n
+dtype  engine  or   n  geomean     min     max
+  c64      1m  AB   9    1.453   1.157   1.815
+  c64      1m  BA   9    1.503   1.283   1.797
+  c64      3m  AB   9    1.540   1.373   1.770
+  c64      3m  BA   9    1.499   1.260   1.773
+  c64  planar  AB   9    1.434   1.137   1.829
+  c64  planar  BA   9    1.494   1.337   1.789
+  f64      1m  AB   9    2.863   2.309   3.585
+== f64c64 t16 spread partition=domain
+dtype  engine  or   n  geomean     min     max
+  c64      1m  AB   9    1.455   1.149   1.815
+  c64      1m  BA   9    1.503   1.279   1.790
+  c64      3m  AB   9    1.536   1.361   1.766
+  c64      3m  BA   9    1.503   1.263   1.770
+  c64  planar  AB   9    1.432   1.140   1.835
+  c64  planar  BA   9    1.495   1.332   1.791
+  f64      1m  AB   9    2.866   2.270   3.751
+== f32c32 t16 packed partition=m
+dtype  engine  or   n  geomean     min     max
+  c32      1m  AB   9    0.997   0.972   1.068
+  c32      1m  BA   9    0.982   0.897   1.055
+  c32      3m  AB   9    1.001   0.925   1.147
+  c32      3m  BA   9    0.994   0.867   1.172
+  c32  planar  AB   9    0.998   0.919   1.141
+  c32  planar  BA   9    1.010   0.899   1.240
+  f32      1m  AB   9    0.970   0.877   1.072
+== f32c32 t16 packed partition=n
+dtype  engine  or   n  geomean     min     max
+  c32      1m  AB   9    1.292   1.160   1.589
+  c32      1m  BA   9    1.256   1.051   1.577
+  c32      3m  AB   9    1.286   1.083   1.548
+  c32      3m  BA   9    1.237   0.989   1.623
+  c32  planar  AB   9    1.330   1.137   1.583
+  c32  planar  BA   9    1.349   1.122   1.655
+  f32      1m  AB   9    1.228   1.067   1.419
+== f32c32 t16 packed partition=domain
+dtype  engine  or   n  geomean     min     max
+  c32      1m  AB   9    1.295   1.191   1.583
+  c32      1m  BA   9    1.258   1.032   1.576
+  c32      3m  AB   9    1.289   1.079   1.557
+  c32      3m  BA   9    1.240   0.986   1.630
+  c32  planar  AB   9    1.332   1.148   1.589
+  c32  planar  BA   9    1.347   1.111   1.660
+  f32      1m  AB   9    1.230   1.063   1.415
+== f32c32 t16 spread partition=m
+dtype  engine  or   n  geomean     min     max
+  c32      1m  AB   9    0.921   0.772   1.215
+  c32      1m  BA   9    1.167   0.891   1.601
+  c32      3m  AB   9    1.065   0.612   1.389
+  c32      3m  BA   9    0.993   0.770   1.283
+  c32  planar  AB   9    1.042   0.931   1.281
+  c32  planar  BA   9    0.985   0.773   1.205
+  f32      1m  AB   9    1.184   0.963   1.640
+== f32c32 t16 spread partition=n
+dtype  engine  or   n  geomean     min     max
+  c32      1m  AB   9    1.643   1.312   2.004
+  c32      1m  BA   9    1.740   1.373   1.999
+  c32      3m  AB   9    1.813   1.515   2.061
+  c32      3m  BA   9    1.692   1.405   2.307
+  c32  planar  AB   9    1.852   1.575   2.127
+  c32  planar  BA   9    1.805   1.480   2.162
+  f32      1m  AB   9    3.208   2.818   3.658
+== f32c32 t16 spread partition=domain
+dtype  engine  or   n  geomean     min     max
+  c32      1m  AB   9    1.626   1.290   2.010
+  c32      1m  BA   9    1.744   1.378   2.028
+  c32      3m  AB   9    1.784   1.520   1.985
+  c32      3m  BA   9    1.690   1.402   2.362
+  c32  planar  AB   9    1.827   1.521   2.110
+  c32  planar  BA   9    1.801   1.512   2.141
+  f32      1m  AB   9    3.222   2.781   3.598
+
+predicted from the committed grid (L3 domains spanned at t64: 16):
+th-t64: P = 64 threads over 16 L3 domain(s), 392 case-dtype-methods measured
+identical-partition repeats: n=366 geomean 0.997 p10 0.880 median 1.001 p90 1.137   <- per-case precision, read it first
+the gate moves 144 of 392 onto the column axis (1 x min(P, blocks)); predicted ratio against the shipped rule:
+  family    dtype    n  geomean     min     max
+  abcijk    c32     54    1.240   0.881   2.316
+  abcijk    c64     54    1.188   0.861   1.836
+  abcijk    f32     18    2.439   1.254   3.684
+  abcijk    f64     18    2.150   1.277   3.739
+  ALL              144    1.422
+  whole corpus, unchanged cases counted at 1.000: 1.138
