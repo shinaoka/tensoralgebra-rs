@@ -106,10 +106,27 @@ if ! stage prep; then
     exit 1
 fi
 
+# `STAGES` selects what runs after prep. The default is everything, but a machine
+# whose L3 is a whole socket can host at most one or two concurrent arms, which
+# makes the 36-job grid a ten-hour sequential run and the placement validation
+# nearly meaningless — on such a node `STAGES="shapes threads"` is the whole value.
+# `PARTITION_SWEEP=1` is passed through to the threads stage; see phase4f-threads.sh.
+STAGES=${STAGES:-"shapes threads validate grid"}
+export PARTITION_SWEEP=${PARTITION_SWEEP:-}
+echo "stages after prep: $STAGES"
+
 # Cheap and irreplaceable first, then the long one. Neither aborts the other.
-stage shapes  || echo "WARNING: shapes stage failed; continuing" >&2
-stage threads || echo "WARNING: threads stage failed; continuing" >&2
-stage validate || echo "WARNING: validate stage failed; continuing" >&2
+for s in shapes threads validate; do
+    case " $STAGES " in *" $s "*) ;; *) echo "skipping stage $s"; continue ;; esac
+    stage "$s" || echo "WARNING: $s stage failed; continuing" >&2
+done
+
+case " $STAGES " in
+    *" grid "*) ;;
+    *)  echo "grid not in STAGES; stopping here."
+        printf '%-10s %s\n' grid skipped >> "$SUMMARY"
+        echo "outdir $OUT"; cat "$SUMMARY"; exit 0 ;;
+esac
 
 echo
 echo "########## placement verdict  $(date -Iseconds) ##########"

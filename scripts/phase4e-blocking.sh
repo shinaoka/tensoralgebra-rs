@@ -102,6 +102,12 @@ ARMS=(
     "kc256  TENSORCONTRACT_KC=256"
     "kc384  TENSORCONTRACT_KC=384"
     "kc512  TENSORCONTRACT_KC=512"
+    # `kc768`/`kc1024` were added after the Zen2 run, which found `kc512` best —
+    # and `kc512` was the *largest* arm it swept, so that run did not bracket its
+    # own optimum. A best value sitting on the edge of the swept range is not a
+    # measured optimum, it is a lower bound; these two turn it into one.
+    "kc768  TENSORCONTRACT_KC=768"
+    "kc1024 TENSORCONTRACT_KC=1024"
     "ck64   TENSORCONTRACT_KC_COUPLE=64"
     "ck128  TENSORCONTRACT_KC_COUPLE=128"
     "basem"

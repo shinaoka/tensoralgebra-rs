@@ -46,7 +46,7 @@ import sys
 NOISE_CASE = 0.06
 
 # Arm tags in the order `phase4e-blocking.sh` runs them, grouped by family.
-KC = ["kc64", "kc128", "kc256", "kc384", "kc512"]
+KC = ["kc64", "kc128", "kc256", "kc384", "kc512", "kc768", "kc1024"]
 CK = ["ck64", "ck128", "ck256", "ck384", "ck512"]
 MC = ["mc25", "mc50", "mc200", "mc400"]
 NC = ["nc25", "nc400"]
