@@ -149,74 +149,79 @@ docs and the public API surface are settled (D30), the README is current, the
 CHANGELOG exists, `cargo package` succeeds for all three crates, and MSRV is
 verified at 1.89 (D31). Publishing is a human step and is not automated.
 
-**Then two measurements are pending, and they are now going to a cluster node —
-read part 10 first.** `ccqlin038` is shared, Rusty is not, and Rusty has no
-Cascade Lake, so the node choice picks the question: `rome` is chosen, which means
-**AVX2**, which means nothing measured there is comparable to any number in this
-file. Part 10 carries the node choice and why, the concurrent-placement hypothesis
-with its accept/reject rule fixed in advance, the tooling built for it, and a
-pre-registered prediction of the scaling curve. Run it with
-`scripts/node-session.sh`, which stages the session in descending value so a short
-allocation still buys the top of the list.
+**Both pending measurements are done.** They ran on Rusty `rome` nodes on
+2026-08-03 — jobs 6745376 (`worker5040`, 179 min: register blocks, thread scaling,
+placement validation, the blocking grid) and 6745978 (`worker5175`, 204 min: the
+traffic-sensitive blocking arms, sequentially). Read parts 7, 8, 8b, 9, 10 and 11.
+**Nothing they measured is comparable to a single-core number elsewhere in this
+file**: different machine, different cache hierarchy, and AVX2 rather than AVX-512.
 
-Both measurements below are written, smoke-tested and need no rebuild; the node
-needs one `prep` build of its own, since the binary is per-machine.
+Headlines, and four decisions they hand back:
 
-1. **Item 2, the blocking grid** (part 7). `scripts/phase4e-blocking.sh 4
-   bench-results/phase4e`, 20 arms x 2 dtype pairs, ~7.5 h. It was launched
-   2026-08-03 08:11 and **stopped after two arms** because the workstation was
-   needed; the partial arms were discarded rather than mixed with a later
-   regime. Nothing of it is measured. On completion, `run.log` ends in `grid
-   complete` and `scripts/blocking-score-rules.py
-   bench-results/phase4e/features.csv bench-results/phase4e` produces the
-   tables for part 7. Note part 8's caveat: the `nc` arms are single-core
-   results, because threading makes `NC` a per-socket question.
-2. **Item 4, thread scaling** (parts 8 and 8b). `scripts/phase4f-threads.sh 0-7
-   bench-results/phase4f`, ~1 h, wants a whole socket rather than one core. It
-   now also runs `TENSORCONTRACT_PARTITION=m` and `=n` at 8 threads, which price
-   the one modelled decision in `Plan::partition` — read part 8b first, since the
-   sharpest thing to check is whether leaving two cases 1-D on 7 of 8 threads is
-   right. Threading is **implemented, correct and off by default**; D21/D22 give
-   the scheme and why, D27–D29 the 2-D extension.
+* **`KC` is first-order and the default is too shallow.** `kc = 512` is worth 5.0%
+  in `f64` and 3.3% in `c64` against a 0.5% floor; `kc64` costs 15–24%. `f32`/`c32`
+  are already optimal. **Recommended, not taken** — a one-line change to
+  `Blocking::derive`, and it is a Zen2/AVX2 result.
+* **`MC` is a wide plateau** — 25% to 400% of the derived value moves the geomean
+  ≤3%. Not worth tuning. Item retired.
+* **The analytical blocking model loses in 11 of 12 columns** on the first foreign
+  machine, by up to 7.2% in the complex methods, and part 7 attributes the whole
+  loss to its `kc`. **Leave `TENSORCONTRACT_BLOCKMODEL=legacy`** (A33). D23's
+  probing and descriptors stay; the default does not change.
+* **Threading scales to 8 and saturates by 16–32**, declining at 64 with cores idle
+  two-thirds of the time. The 2-D partition is vindicated at 1.6–3.4x, but
+  `Plan::partition`'s `panels >= p` early return costs up to **4.3x** on 18 cases.
+  **Recommended: default stays off** until the spawn cost and that early return are
+  addressed — both fixable, neither structural.
+* **D26's eight AVX2 register blocks are all confirmed** as the measured winners, so
+  they stop being a guess with no code change.
 
-Neither may run while anything else uses the machine — not even a compile;
-`scripts/node-session.sh` now refuses rather than trusting that. On the cluster
-node two further stages come *before* the grid and are worth more than it: the
-AVX2 **register-block calibration** (`shapes`, ~8–20 min, and the highest-value
-item in the file on an AVX2 machine, since D26's blocks are an unmeasured guess)
-and the **placement validation** that decides whether the grid may run
-concurrently at all.
+Concurrent placement (24 arms, one per L3 domain) was validated at +0.3% on the
+corpus and **rejected at −3.2% on the memory-bound half**, which is why the
+traffic-sensitive arms got their own sequential job. It returned 20.4x on the grid.
 
-**Item 2, in priority order:**
+What the two runs left open, in priority order:
 
-1. **Sweep `MC`/`KC`/`NC`.** Still the untouched Phase 2 heuristic. Phase 3
-   showed the whole method ranking turns on whether the `A` sliver is an L1
-   resident or an L2 stream, which makes `KC` a first-order parameter. Phase 4
-   part 3 adds a design constraint on the sweep itself: `MC` is bounded from
-   *both* sides (A13), so the sweep must separate the two rather than look for
-   one best value. Read part 3 before starting — the obvious depth-adaptive
-   shortcut is already measured and rejected. Part 5 adds a second input: the
-   *register block* is depth-conditional too (A18), so the sweep should vary
-   the shape alongside `kc` rather than hold the Phase 3 table fixed.
-2. **Dispatch the complex method by shape.** The inversion is measured and
-   large enough to exploit: 3m on memory-bound shapes, planar otherwise. Note
-   Phase 4.1 moved the ranking: `c32` 3m gained the most from the write-back
-   work (1.167 cumulative against planar's 1.116), so re-measure before
-   dispatching — the Phase 3 margins are no longer current.
-3. **Close the remaining orientation gap.** 21 case-dtype-methods still take
-   the slower arm, worth up to 1.36x, and they are a different population from
-   the `abcijk` family the current rule was derived on. Both arms of all of
-   them are in `bench-results/phase4d/or-*`, so a candidate costs nothing to
-   score with `scripts/orient-score-rules.py`.
-4. Then the rest of the Phase 4 list: threading, small-`k` handling, fusing the
-   `pc` loop so `C` is touched once, a pack-free fast path for unit-stride
-   block scatter, prefetch.
+1. **Fix `Plan::partition`'s early return.** The `panels >= p` fast path costs up
+   to 4.3x on the 18 memory-bound `abcijk` cases at 64 threads (part 8b). The
+   mechanism is *not* identified — write-back false sharing across sixteen L3
+   domains and barrier span are both plausible — and `TENSORCONTRACT_PARTITION`
+   makes either cheap to test. **Do not change the rule before measuring one of
+   them**; three plausible mechanisms have already been wrong in this phase.
+2. **Re-derive the model's `kc` with the plane and per-element real counts carried
+   through**, then score it offline against the grid that now exists (part 9). Free:
+   no machine time. This is the one repair that would make D23 defaultable.
+3. **Pool the threads.** Spawning per `execute` call is the leading suspect for
+   occupancy falling to 29–36% at 64 threads (part 8), and it is first-order for the
+   small repeated contractions Phase 1 identified as the real headroom.
+4. **Re-run the row-block grid at the chosen `kc`**, which was always the intended
+   order (part 7): `kc` decides the regime and the shape is chosen inside it. Now
+   that `kc = 512` is indicated for 8-byte reals, the Phase 3 register-block table
+   was chosen at a depth the engine may no longer use.
+5. **Close the remaining orientation gap.** 21 case-dtype-methods still take the
+   slower arm, worth up to 1.36x, and they are a different population from the
+   `abcijk` family the rule was derived on. Both arms are in
+   `bench-results/phase4d/or-*`, so a candidate costs nothing to score with
+   `scripts/orient-score-rules.py`. Untouched by the `rome` runs.
+6. **Dispatch the complex method by shape** (item 3), still unstarted, and now with
+   a new input: on AVX2 the kernel-level ranking puts 3m *first* in `f32`/`c32`
+   (part 11), the opposite of AVX-512.
+7. Then the rest of the Phase 4 list: small-`k` handling, fusing the `pc` loop so
+   `C` is touched once, a pack-free fast path for unit-stride block scatter,
+   prefetch.
 
-Do not re-derive the register blocks; they are measured and recorded in
-`kernel::x86`, with the sweep in `examples/kernel_shapes` if the machine
-changes. Since Phase 4.1c each method carries a *menu* of them and the default
-is still the Phase 3 choice — the menu adds alternates, it does not re-litigate
-the default.
+An `icelake` session remains the open portability question: `rome` answered AVX2 and
+a second cache hierarchy, but AVX-512 on a *different Intel* hierarchy — which is
+where the legacy constants are wrong in a different direction — was deliberately not
+covered. `scripts/rusty-phase4.sbatch` runs there unchanged with `-C icelake`.
+
+Do not re-derive the register blocks. The AVX-512 ones are measured (Phase 3)
+and recorded in `kernel::x86`; the **AVX2 ones are now measured too** and all eight
+were confirmed as the winners they were guessed to be (part 11), so neither set is
+open. `examples/kernel_shapes` re-derives them if the machine changes. Since Phase
+4.1c each method carries a *menu* of them and the default is still the measured
+choice — the menu adds alternates, it does not re-litigate the default. The one
+caveat is item 4 above: the shapes were chosen at the old `kc`.
 
 ---
 
@@ -1504,27 +1509,69 @@ Two answers to questions part 7 was built to separate:
   1.018–1.025 in `f64` — *worse* than simply setting `kc = 512` globally. Combined
   with the 6.2% per-case floor, there is no case for a per-case blocking rule here.
 
-### Held back: the `nc` arms and the `model` arm
+### The `nc` and `model` arms, re-measured sequentially
 
 `nc25`, `nc400` and `model` change how much memory traffic an arm generates, and
 the concurrent placement is **not** neutral for such arms — it was rejected at
 −3.2% on the memory-bound half (part 10). A uniform penalty cancels in `arm /
-base`; a traffic-dependent one does not. What the placed grid shows for them is
-recorded here for completeness and **must not be quoted** until the sequential
-re-run lands:
+base`; a traffic-dependent one does not. So they were held back and re-measured
+sequentially on one core (job 6745978, `worker5175`, warm-up arm discarded),
+where `base2` reads **1.000–1.004** — a 0.4% floor, against the placed grid's
+0.983–0.996.
 
-| arm | `f32` | `f64` | `c32` planar / 1m / 3m | `c64` planar / 1m / 3m |
+| arm | dtype/method | **clean** | placed | delta |
 |---|---|---|---|---|
-| `nc25` | 0.966 | 0.991 | 0.977 / 0.972 / 0.942 | 0.972 / 0.974 / 0.948 |
-| `nc400` | 0.970 | 0.994 | 0.995 / 0.994 / 0.996 | 0.996 / 0.993 / 0.998 |
-| `model` | 0.984 | 1.024 | 0.991 / 0.947 / 0.938 | 0.977 / 0.975 / 0.959 |
+| `nc25` | `f64` | 0.976 | 0.991 | −0.014 |
+| | `c64` 3m | 0.940 | 0.948 | −0.008 |
+| | `c32` 3m | 0.943 | 0.942 | +0.000 |
+| `nc400` | `f64` | 0.995 | 0.994 | +0.002 |
+| | `c64` 3m | 1.001 | 0.998 | +0.003 |
+| `model` | `f64` | **1.011** | 1.024 | −0.013 |
+| | `f32` | **0.975** | 0.984 | −0.009 |
+| | `c64` planar / 1m / 3m | **0.972 / 0.967 / 0.956** | 0.977 / 0.975 / 0.959 | ≤0.009 |
+| | `c32` planar / 1m / 3m | **0.984 / 0.929 / 0.928** | 0.991 / 0.947 / 0.938 | ≤0.018 |
 
-If those survive the clean re-run they say something important — that the
-analytical model helps `f64` by 2.4% and *hurts* the complex methods by 2–6%, which
-would make part 9's portability claim conditional rather than general. That is
-exactly why they are being re-measured rather than reported.
-`scripts/rusty-phase4-seq.sbatch` is the run; the `nc` oracle row (1.008–1.016)
-suggests `nc` has almost nothing in it either way.
+**The confound was real and small: `|delta| <= 1.8` percentage points, mostly under
+1.** No conclusion moves. So holding these arms back was the right procedure — a
+−3.2% rejection can swamp a 2% effect and there was no way to know in advance that
+it would not — and the answer is that the placed grid was quotable after all. Worth
+recording in that order, because the next person will face the same choice with the
+same absence of information.
+
+`nc` is confirmed to have nothing in it: shrinking it costs 2–6% (worst in 3m),
+enlarging it does nothing, and the `nc`-only oracle is 1.008–1.016.
+
+### The analytical model loses on the first machine it was supposed to help, and its `kc` is why
+
+`model` is **below `base` in 11 of 12 columns**, and its one gain — `f64` at 1.011 —
+is barely twice the 0.4% floor. In the complex methods it costs **1.6% to 7.2%**.
+See part 9 for what that does to D23.
+
+The cause is attributable, and attributing it is exactly what part 7's
+single-parameter arms were for. The model predicts a shallower `kc` for every
+complex method; the pinned-`kc` arms price that depth directly, and the two agree:
+
+| method | model's `kc` (legacy) | `model` arm | pinned-`kc` arm at that depth |
+|---|---|---|---|
+| `c64` 3m | 128 (256) | 0.959 | `kc128` = **0.960** |
+| `c64` 1m | 128 (256) | 0.975 | `kc128` = 0.969 |
+| `c64` planar | 192 (256) | 0.977 | between `kc128` 0.956 and `kc256` 0.997 |
+| `c32` 1m | 160 (384) | 0.947 | between `kc128` 0.916 and `kc256` 0.989 |
+| `c32` 3m | 170 (384) | 0.938 | between `kc128` 0.903 and `kc256` 0.981 |
+| `c32` planar | 256 (384) | 0.991 | `kc256` = 0.982 |
+
+**The model arm's damage is its `kc` and nothing else.** Its `mc` rises 4–6x and its
+`nc` about 20x, and neither shows up — which is consistent rather than surprising,
+since `mc` is a plateau and `nc` has nothing in it. So the model's `mc`/`nc`
+reconstruction is harmless and its `kc` equation is the whole problem.
+
+A mechanism, offered as a hypothesis and **not** measured: BLIS eq. (4)–(6) size the
+`A` micro-panel to fill whole L1 ways, reserving one for the unpacked `C`
+micro-tile, on the assumption of a real GEMM micro-kernel with one accumulator
+plane. The planar/1m/3m kernels carry two or three planes and two to four reals per
+complex element, so "the `A` micro-panel" is not the thing the L1 actually has to
+hold, and the equation returns a `kc` too small in proportion. That is testable
+against the existing grid and is the obvious next step — see part 9.
 
 ### What this means for the default `KC`
 
@@ -2026,16 +2073,64 @@ for most corpus cases means one `jc` block. The packed-`A` footprint stays
 equalised across methods (894–914 KiB against legacy's 512–576), so the
 1m-versus-planar fairness invariant holds and 1m's `mc` is still the smaller.
 
-### Status
+### Status — superseded by measurement; read the next subsection
 
-The **portability** problem is solved — uniformly decent with no hand tuning on
-any machine whose cache hierarchy it can see. The **optimality** question on this
-machine is untouched and deliberately so. `A13`'s upper bound on `mc` — the strip
-of `D` a `jr` pass revisits — is still absent from the model, marked in the code
-where it would go, and `mc` rising 4–6x is exactly the arm that bound would
-punish. So the model is now a *second arm of the pending grid* rather than a
-change: `phase4e-blocking.sh` gained a `model` arm, and the two are only
-comparable once measured end to end in the shipping configuration (A20).
+The claim as written in this section was: the **portability** problem is solved —
+uniformly decent with no hand tuning on any machine whose cache hierarchy it can
+see — while the **optimality** question on `ccqlin038` was untouched and
+deliberately so. `A13`'s upper bound on `mc` was noted as absent from the model and
+`mc` rising 4–6x flagged as the arm that bound would punish. The model was left as
+a *second arm of the pending grid* rather than a change, to be judged end to end in
+the shipping configuration (A20).
+
+That judgement has now happened, and it went against the model.
+
+### Measured on the first foreign machine, and it loses
+
+**`worker5040`/`worker5175` (Zen2, AVX2) is exactly the test this model was built
+for** — a machine whose cache hierarchy is nothing like the one the legacy
+constants were hand-fitted to (512 KiB private L2 against those constants' 512 KiB
+`A`-block budget, i.e. they ask for the entire L2; 16 MiB L3 per four cores against
+25 MiB per eight). If the model were going to win anywhere it should have won here.
+
+It does not. Measured in the clean single-core regime (part 7), `model` against
+`base`:
+
+| | `f32` | `f64` | `c32` planar / 1m / 3m | `c64` planar / 1m / 3m |
+|---|---|---|---|---|
+| `model` | 0.975 | **1.011** | 0.984 / 0.929 / 0.928 | 0.972 / 0.967 / 0.956 |
+
+**Below `base` in 11 of 12 columns**, by 1.6–7.2% in the complex methods, against a
+0.4% floor. Its single gain is `f64` at +1.1%.
+
+**Two things this does and does not mean.** It does *not* refute the paper: BLIS's
+own configuration is recovered exactly for SandyBridge, Kaveri and the TI C6678 by
+the reconstruction, and those unit tests still pass. What it refutes is the
+inference this project drew from it — that an analytically derived blocking is
+*therefore* a safe default for **this** engine. The failure is localised: part 7
+attributes the whole loss to the model's `kc`, which it predicts shallower for every
+complex method (`c64` 1m 256→128, `c32` 1m 384→160), while the grid's pinned-`kc`
+arms independently show shallower is worse and deeper is better. The model's `mc`
+(up 4–6x) and `nc` (up ~20x) cost nothing measurable, so A13's missing upper bound —
+the thing this section flagged as the risk — **was not the problem**. The problem
+was the half of the derivation taken straight from the paper.
+
+The likely reason, as a hypothesis: eq. (4)–(6) size the `A` micro-panel to whole L1
+ways for a real micro-kernel with one accumulator plane, and the planar/1m/3m
+kernels carry two or three planes and two to four reals per complex element. The
+quantity the L1 must hold is not the one the equation models. Testing that means
+re-deriving `kc` with the per-element real count and plane count carried through,
+then scoring it against the grid that now exists — no machine time.
+
+**Recommendation: leave `TENSORCONTRACT_BLOCKMODEL` defaulting to `legacy`.** D23
+is unchanged as a decision — the probing, the descriptors and `tcbench info` are
+all worth having and are not in question — but the model must not become the
+default on this evidence. Flipping it is the user's call and is deliberately not
+done in the same commit as this measurement.
+
+| # | Assumption | Status |
+|---|---|---|
+| A33 | An analytically derived blocking is a safe default on an unseen machine, so it solves portability. | **Refuted on the first unseen machine.** The model loses in 11 of 12 columns on Zen2, by up to 7.2% in the complex methods, against hand-fitted constants belonging to a completely different hierarchy. Localised to its `kc`; its `mc`/`nc` are harmless. "Analytical" bought traceability and cost throughput, and the two were assumed to come together. |
 
 | # | Assumption | Status |
 |---|---|---|

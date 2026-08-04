@@ -1,0 +1,34 @@
+SCOPED GRID: only arms [base nc25 nc400 model base2] -- this is not the full grid
+SCOPED GRID: only arms [base nc25 nc400 model base2] -- this is not the full grid
+host worker5175  128 physical cores, SMT width 1, 32 L3 domains
+10 arms, 1 concurrent, cpus 0
+host worker5175  128 physical cores, SMT width 1, 32 L3 domains
+10 arms, 1 concurrent, cpus 0
+  18:36:39 bl-base-f64c64   cpu0    dom0    1327.0s  rc=0  self 100%  co-tenants: none
+  18:36:39 bl-base-f64c64   cpu0    dom0    1327.0s  rc=0  self 100%  co-tenants: none
+  19:00:28 bl-nc25-f64c64   cpu0    dom0    1428.5s  rc=0  self 100%  co-tenants: none
+  19:00:28 bl-nc25-f64c64   cpu0    dom0    1428.5s  rc=0  self 100%  co-tenants: none
+  19:22:46 bl-nc400-f64c64  cpu0    dom0    1337.8s  rc=0  self 100%  co-tenants: none
+  19:22:46 bl-nc400-f64c64  cpu0    dom0    1337.8s  rc=0  self 100%  co-tenants: none
+  19:46:21 bl-model-f64c64  cpu0    dom0    1415.1s  rc=0  self 100%  co-tenants: none
+  19:46:21 bl-model-f64c64  cpu0    dom0    1415.1s  rc=0  self 100%  co-tenants: none
+  20:08:25 bl-base2-f64c64  cpu0    dom0    1324.0s  rc=0  self 100%  co-tenants: none
+  20:08:25 bl-base2-f64c64  cpu0    dom0    1324.0s  rc=0  self 100%  co-tenants: none
+  20:19:31 bl-base-f32c32   cpu0    dom0     666.6s  rc=0  self 100%  co-tenants: none
+  20:19:31 bl-base-f32c32   cpu0    dom0     666.6s  rc=0  self 100%  co-tenants: none
+  20:31:27 bl-nc25-f32c32   cpu0    dom0     715.9s  rc=0  self 100%  co-tenants: none
+  20:31:27 bl-nc25-f32c32   cpu0    dom0     715.9s  rc=0  self 100%  co-tenants: none
+  20:42:37 bl-nc400-f32c32  cpu0    dom0     670.4s  rc=0  self 100%  co-tenants: none
+  20:42:37 bl-nc400-f32c32  cpu0    dom0     670.4s  rc=0  self 100%  co-tenants: none
+  20:54:54 bl-model-f32c32  cpu0    dom0     736.5s  rc=0  self 100%  co-tenants: none
+  20:54:54 bl-model-f32c32  cpu0    dom0     736.5s  rc=0  self 100%  co-tenants: none
+  21:06:02 bl-base2-f32c32  cpu0    dom0     668.0s  rc=0  self 100%  co-tenants: none
+
+10 arms in 171.5 min wall (sum of arm times 171.5 min)
+observed overlap per arm: min 0, max 0
+  21:06:02 bl-base2-f32c32  cpu0    dom0     668.0s  rc=0  self 100%  co-tenants: none
+
+10 arms in 171.5 min wall (sum of arm times 171.5 min)
+observed overlap per arm: min 0, max 0
+grid complete; score rules with scripts/blocking-score-rules.py
+grid complete; score rules with scripts/blocking-score-rules.py

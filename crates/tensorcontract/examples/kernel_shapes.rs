@@ -275,7 +275,11 @@ mod sweep {
     ) {
         println!("\n=== {title} (L = {lanes} lanes/register, {regs} registers) ===\n");
         println!(
-            "`live` is accumulators + A plane(s) + broadcasts; `!` marks a shape over budget.\n"
+            "`live` is accumulators + A plane(s) + broadcasts; `!` marks a shape over budget,\n\
+             which is `live >= regs`, not `live > regs`: **measured on AVX2** (Phase 4 part 11,\n\
+             A30) every `live == 16` shape collapses to 21-33 GF/s beside a 48-53 GF/s sibling\n\
+             at `live <= 15`, so one register is not available to the shape. Verified on AVX2\n\
+             only -- the AVX-512 sweep predates this column -- and flagged the conservative way.\n"
         );
         print!(
             "{:<8} {:>8} {:>4} {:>5} {:>5} {:>4} {:>6} {:>6}",
@@ -305,7 +309,8 @@ mod sweep {
                 c.nr,
                 acc,
                 live,
-                if live > regs { "!" } else { " " },
+                // `>=`, not `>`: see the legend above. A30.
+                if live >= regs { "!" } else { " " },
                 loads,
                 fma,
                 fma as f64 / loads as f64,
