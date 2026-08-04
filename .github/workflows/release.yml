@@ -1,0 +1,121 @@
+# Everything a release needs *checked*, and nothing a release does.
+#
+# This workflow deliberately publishes nothing. It runs on a `v*` tag and on
+# demand, and its job is to fail before a human runs `cargo publish` rather than
+# after: `cargo publish` cannot be undone, a version can be yanked but never
+# removed, and the name is claimed forever.
+#
+# The steps a human still performs are in RELEASING.md, in order. This file is the
+# gate; that file is the procedure.
+
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  # The tag, the manifest, the changelog and the header must all agree. Getting
+  # this wrong is the cheapest possible mistake to make and the most annoying to
+  # undo, since the tag is what the Yggdrasil recipe pins by checksum.
+  consistency:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Versions agree
+        run: |
+          manifest=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n1)
+          echo "Cargo.toml: $manifest"
+
+          # On a tag, the tag must be exactly v<manifest version>.
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            test "${GITHUB_REF_NAME}" = "v${manifest}" \
+              || { echo "tag ${GITHUB_REF_NAME} != v${manifest}"; exit 1; }
+          fi
+
+          # The header's macros. `abi_layout.rs` checks these too, but that test
+          # only runs where a Rust toolchain does, and this is the gate a release
+          # goes through.
+          h=crates/tensorprimitives-tapp/include/tapp.h
+          hv="$(sed -n 's/^#define TAPP_VERSION_MAJOR \(.*\)$/\1/p' $h)"
+          hv="$hv.$(sed -n 's/^#define TAPP_VERSION_MINOR \(.*\)$/\1/p' $h)"
+          hv="$hv.$(sed -n 's/^#define TAPP_VERSION_PATCH \(.*\)$/\1/p' $h)"
+          test "$hv" = "$manifest" || { echo "tapp.h says $hv"; exit 1; }
+          grep -q "define TAPP_VERSION_STRING \"$manifest\"" $h
+
+          # The changelog must have a section for this version, and it must not
+          # still be marked unreleased on a tag.
+          grep -q "^## ${manifest}" CHANGELOG.md \
+            || { echo "CHANGELOG.md has no section for ${manifest}"; exit 1; }
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            grep -q "^## ${manifest} — unreleased" CHANGELOG.md \
+              && { echo "CHANGELOG.md still says 'unreleased'"; exit 1; }
+          fi
+
+          # The Julia package tracks the same version.
+          jv=$(sed -n 's/^version = "\(.*\)"$/\1/p' julia/TensorPrimitives/Project.toml | head -n1)
+          test "$jv" = "$manifest" \
+            || { echo "julia/TensorPrimitives is $jv, not $manifest"; exit 1; }
+
+          # The recipe builds the version being released.
+          grep -q "^version = v\"${manifest}\"" packaging/yggdrasil/build_tarballs.jl \
+            || { echo "the Yggdrasil recipe does not name ${manifest}"; exit 1; }
+
+          echo "all version statements agree on ${manifest}"
+
+      - name: The recipe does not still point at a placeholder checksum
+        if: github.ref_type == 'tag'
+        run: |
+          if grep -q '"0\{64\}"' packaging/yggdrasil/build_tarballs.jl; then
+            echo "packaging/yggdrasil/build_tarballs.jl still has the placeholder sha256."
+            echo "Fill it in with:"
+            echo "  curl -sL https://github.com/lkdvos/tensorprimitives-rs/archive/refs/tags/${GITHUB_REF_NAME}.tar.gz | sha256sum"
+            exit 1
+          fi
+
+  # `cargo publish` without publishing. Only the engine can be checked: the TAPP
+  # crate depends on it by path *and* version, so packaging it fails at "failed to
+  # prepare local package for uploading" until `tensorcontract` is in the index.
+  # That is the documented publish order, not a gap to work around.
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo publish --dry-run --locked -p tensorcontract
+
+  # Build the distributable artifact the way a distribution does -- SONAME set at
+  # link time, debug info off, installed through `install.sh` -- and attach it to
+  # the release. Convenience only: the JLL is built from source by Yggdrasil, not
+  # from these files.
+  artifacts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build and install
+        env:
+          RUSTFLAGS: -D warnings -C link-arg=-Wl,-soname,libtensorprimitives_tapp.so
+          CARGO_PROFILE_RELEASE_DEBUG: 0
+        run: |
+          cargo build --release --locked -p tensorprimitives-tapp
+          crates/tensorprimitives-tapp/install.sh --prefix="${PWD}/dist"
+          readelf -d dist/lib/libtensorprimitives_tapp.so | grep SONAME
+          tar czf "tensorprimitives-tapp-x86_64-linux-gnu.tar.gz" -C dist .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tensorprimitives-tapp-x86_64-linux-gnu
+          path: tensorprimitives-tapp-x86_64-linux-gnu.tar.gz
+      - name: Attach to the release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${GITHUB_REF_NAME}" \
+            tensorprimitives-tapp-x86_64-linux-gnu.tar.gz --clobber

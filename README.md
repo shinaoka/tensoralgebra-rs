@@ -271,6 +271,35 @@ libraries yields plausible wrong numbers with no error. Select the ABI with the
 `tblis13` cargo feature; the harness self-checks at startup and aborts on
 mismatch.
 
+### From C or C++
+
+The header is shipped rather than fetched — `crates/tensorprimitives-tapp/include/tapp.h`
+versions with the implementation, because upstream TAPP has no releases and no
+tags. `examples/c-consumer` is a CMake project that consumes it three ways
+(corrosion, a prebuilt library, an installed prefix), and CI compiles and runs all
+three. `examples/c-consumer/README.md` has the details, including the link flags
+cargo will not set for you.
+
+```bash
+cargo build --release -p tensorprimitives-tapp
+crates/tensorprimitives-tapp/install.sh --prefix=/opt/tapp
+cc myprog.c $(PKG_CONFIG_PATH=/opt/tapp/lib/pkgconfig \
+              pkg-config --cflags --libs tensorprimitives-tapp) -lm
+```
+
+### From Julia
+
+`julia/TensorPrimitives` wraps the same ABI, including a `TensorOperations.jl`
+backend, so an existing `@tensor` expression routes through this engine by adding
+one keyword:
+
+```julia
+@tensor backend = TAPPBackend() C[i, j] := conj(A[i, k, l]) * B[l, k, j]
+```
+
+Neither it nor its JLL is registered yet. `packaging/yggdrasil/build_tarballs.jl`
+builds the JLL and `julia/TensorPrimitives/README.md` says how to run it locally.
+
 ## Running the benchmarks
 
 ```bash

@@ -148,6 +148,25 @@ see `DECISIONS.md` A21.
   architecture. Documented for hand-building sites, used by CI and by the recipe,
   and `install.sh` warns when they are missing.
 
+### Added — Julia and a binary distribution
+
+* **A BinaryBuilder recipe**, `packaging/yggdrasil/build_tarballs.jl`, producing
+  `tensorprimitives_tapp_jll` over 15 platforms. It calls the same `install.sh` a
+  site install does, so the layout a JLL presents is the layout CI tests. It carries
+  a `TAPP_LOCAL_SRC` switch so the file that gets submitted is the file that was
+  dry-run.
+* **`julia/TensorPrimitives`**, a Julia package in two layers: `LibTAPP`, a
+  complete `ccall` wrapper over `<tapp.h>` with handles as distinct Julia types and
+  finalizers; and `TAPPBackend`, a `TensorOperations.jl` backend. The contraction
+  mapping needs no permutation and no temporary — arbitrary extents, element strides
+  and per-operand conjugation go straight to the ABI — which is the engine's central
+  claim, now exercised from Julia. 64 tests, each checked against
+  `TensorOperations`' own backend on the same inputs.
+* **`RELEASING.md`** and a `release` CI workflow that checks a release and
+  publishes nothing: the five places a version is written must agree, the recipe
+  must not still hold a placeholder checksum, and `cargo publish --dry-run` must
+  pass.
+
 ### Added — portability
 
 * **Eleven cross-compilation targets checked in CI**, which had never been done:
