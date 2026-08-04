@@ -22,40 +22,31 @@ Its distinguishing feature is **three interchangeable complex methods**
 (planar, 1m, 3m) behind one switch, sharing every other line of the engine, so
 they can be benchmarked against each other and against TBLIS on equal footing.
 
-## Current state (2026-08-03)
+## Current state (2026-08-04)
 
-* **Phase 1 complete.** Design doc, repo, harness, baselines, premise check.
-* **Phase 2 complete.** Engine is correct and framework-complete.
-* **Phase 3 complete.** AVX-512 micro-kernels for `f32`/`f64` and all three
-  complex methods, runtime-dispatched; register blocks chosen by measurement.
-  Absolute performance is meaningful from here on. The three-way comparison is
-  done — see below and the Phase 3 report. **AVX2 kernels now exist too** (one
-  macro body per method across both ISAs, dispatch `avx512f` → `avx2+fma` →
-  scalar), correct but with *provisional, unmeasured* register blocks — Phase 5's
-  multi-arch item is no longer empty. The AVX-512 instruction stream is
-  byte-identical to before, so all Phase 3/4 numbers stand.
-* **Phase 4 in progress.** Item 1 (the write-back) is **done**: the profiled
-  2x defect is closed in all four dtypes for +12–17% corpus geometric mean.
-  **Item 1c (the micro-tile row block) is done** — a menu of register blocks
-  per method plus a rule needing three measured guards; worth 1.026 corpus
-  geomean in `c64` planar, and its more valuable output was pricing the
-  orientation at ~2x. **Item 1d (the orientation rule) is done** — the
-  discriminant A14 had recorded as unknown was found, worth +1.0–2.8% corpus
-  geomean in every 32-bit column and up to 1.48x per case. **Item 2
-  (`MC`/`KC`/`NC`) is built but unmeasured** — the grid is written and
-  smoke-tested and needs ~7.5 h of an idle machine, and it now carries a
-  **cache-model arm** (part 9) as well as the parameter arms. **Item 4's
-  threading is implemented, correct and off by default**, now a 2-D `pm x pn`
-  partition, also unmeasured; **K-parallelism is ruled out on evidence** (A21).
-  See `DECISIONS.md` Phase 4 report parts 5–9.
-* **Phase 5 in progress.** The multi-arch item (AVX2, above); **the C/C++
-  consumption surface** — a shipped header
+* **Phases 1–3 complete.** Design doc, repo, harness, baselines, premise check;
+  a correct and framework-complete engine; AVX-512 micro-kernels for `f32`/`f64`
+  and all three complex methods, runtime-dispatched, register blocks measured.
+  **AVX2 kernels exist too** — one macro body per method across both ISAs,
+  dispatch `avx512f` → `avx2+fma` → scalar — and all eight of their register
+  blocks are now measured and confirmed. The AVX-512 instruction stream is
+  byte-identical to before AVX2 landed, so every Phase 3/4 number stands.
+* **Phase 4: items 1, 1c, 1d and 2 are closed; item 4 is measured but off.**
+  Item 1 (the write-back) closed the profiled 2x defect in all four dtypes for
+  +12–17% corpus geomean. Item 1c added a *menu* of register blocks and a guarded
+  rule (1.026 in `c64` planar), and priced the orientation at ~2x. Item 1d found
+  the missing discriminant — the rule has to be antisymmetric — for +1.0–2.8% in
+  every 32-bit column and up to 1.48x per case. **Item 2 (`MC`/`KC`/`NC`) is
+  closed with a negative result**, below. Item 4's threading is implemented,
+  correct, measured on two topologies and **off by default**; K-parallelism is
+  ruled out on evidence (A21). Items 3 and the rest of the list are unstarted.
+* **Phase 5 in progress.** The C/C++ consumption surface — a shipped header
   (`crates/tensorprimitives-tapp/include/tapp.h`), a CMake/corrosion consumer
   under `examples/c-consumer` that CI compiles and runs in *three* link modes, a
   panic boundary at the ABI, and a vendored-offline build job (D36–D38, Phase 5
-  interlude); and **the distribution surface** — a version symbol and header
-  macros checked against each other, link-time SONAME/install-name, prefix install
-  plus pkg-config, eleven cross-compile targets in CI, a BinaryBuilder recipe under
+  interlude); and the distribution surface — a version symbol and header macros
+  checked against each other, link-time SONAME/install-name, prefix install plus
+  pkg-config, eleven cross-compile targets in CI, a BinaryBuilder recipe under
   `packaging/yggdrasil`, and a Julia package under `julia/TensorPrimitives` with a
   `TensorOperations.jl` backend. See D39, D40 and the Phase 5 report part 2. The
   engine was not touched by any of it.
@@ -67,19 +58,25 @@ they can be benchmarked against each other and against TBLIS on equal footing.
   and the two Apple targets are unverified because they need the Xcode SDK licence
   accepted.
 
-  **The CHANGELOG's confidence table is the release-facing summary of everything
-  parts 11–13 measured**, and it is the one place where a stale "unmeasured" would
-  reach a user rather than a maintainer. It was reconciled against them: AVX2 blocks
-  measured, the model measured and losing, the blocking grid swept with an `f64`-only
-  recommendation not taken, threading measured on two topologies, and A35's unfixed
-  register-block defect stated rather than carried. Update it in the same commit as
-  any future measurement — nothing else in CI will catch it.
+  **The CHANGELOG's confidence table is the release-facing summary of what has
+  been measured**, and the one place where a stale claim reaches a user rather
+  than a maintainer. Update it in the same commit as any future measurement —
+  nothing in CI will catch it. The same goes for the README's "what is tuned"
+  section.
 
-**Both pending measurements are done** — on Rusty `rome` nodes, 2026-08-03, jobs
-6745376 (`worker5040`) and 6745978 (`worker5175`). Read `DECISIONS.md` parts 7, 8,
-8b, 9, 10 and 11. **Nothing they measured is comparable to a single-core number in
-this repo**: different machine, different cache hierarchy, AVX2 not AVX-512. Every
-ratio in them is within-session, against a floor re-derived there.
+**The engine-vs-baseline numbers in the README are Phase 3 (2026-08-02) and
+understate the engine**, because every Phase 4 gain landed after them. The
+re-measurement is built and not yet run: `scripts/compare-bench.sh`, wrapped for
+a cluster node by `scripts/rusty-compare.sbatch`. It wants an exclusive machine
+for ~3.5 h.
+
+**Four cluster sessions are done.** Rusty `rome` (Zen2, AVX2) jobs 6745376
+(`worker5040`) and 6745978 (`worker5175`) on 2026-08-03, 6751550 (`worker5137`)
+on 2026-08-04; and `icelake` (Ice Lake-SP, AVX-512) job 6746817 (`worker6016`) on
+2026-08-03. Read `DECISIONS.md` parts 7, 8, 8b, 9, 10 and 11. **Nothing they
+measured is comparable to a single-core number taken on `ccqlin038`**: different
+machine, different cache hierarchy, and on `rome` a different instruction set.
+Every ratio in them is within-session against a floor re-derived there.
 
 Four results and four decisions handed back, none of them taken:
 
@@ -113,7 +110,10 @@ warm-up arm**; drift is a function of how far apart two arms are, not one number
 but **rejected on memory-bound cases** (−3.2%), so traffic-changing arms need their
 own sequential run (A27). Drive a cluster session with
 `sbatch scripts/rusty-phase4.sbatch` (or `scripts/node-session.sh <stage>` by hand);
-`-C icelake` runs the same thing on the AVX-512 hierarchy still uncovered.
+`-C icelake` runs the same thing on the second AVX-512 hierarchy, which has now had
+`shapes` and `threads` but not the blocking grid. `scripts/README.md` indexes every
+script and says which are superseded; `bench-results/README.md` indexes the data and
+every directory carries a `PROVENANCE.txt`.
 
 Workspace MSRV is **1.89** (AVX-512 intrinsics stabilised there).
 
@@ -270,15 +270,20 @@ three counts. No AVX2 path yet; deferred to Phase 5's multi-arch work.
    tested and refuted on the way (longer column run; maximise write-back
    regularity). 21 cases still take the slower arm — a different family, worth
    up to 1.36x, with both arms already measured in `bench-results/phase4d`.
-2. **Sweep `MC`/`KC`/`NC`**, still the untouched Phase 2 heuristic. `KC` is now
-   known to be first-order: it decides whether the `A` sliver is an L1 resident
-   or an L2 stream, which is what the whole method ranking turns on. 1c added a
-   second input: the *register block* is depth-conditional too (`c64` 3m wants
-   a wider `MR` at `k <= 24`, worth 1.088), so vary the shape alongside `kc`
-   rather than holding the Phase 3 table fixed.
+2. **`MC`/`KC`/`NC` — CLOSED, with a negative result.** Swept on Zen2 and on the
+   reference machine. `KC` is first-order — it decides whether the `A` sliver is
+   an L1 resident or an L2 stream, which is what the method ranking turns on —
+   but there is no few-percent win in it here: `kc = 384` is the measured optimum
+   and the shipped 256 is close, `MC` is a plateau, pinned `kc = 512` is a Zen2
+   result that goes negative on Cascade Lake, and coupled deepening failed its
+   end-to-end A/B. **Do not reopen without a new machine or a new mechanism.**
+   The one thing still worth doing is item 4 of the Resume-here list: re-run the
+   *row-block* grid at the chosen `kc`, since the Phase 3 shapes were chosen at a
+   depth the engine may not use.
 3. **Dispatch the complex method by shape** — 3m on memory-bound shapes,
    planar otherwise. The inversion is measured and large enough to exploit.
-4. **Threading — implemented, unmeasured.** BLIS-style, a 2-D `pm x pn`
+4. **Threading — implemented, measured on two topologies, off by default.**
+   BLIS-style, a 2-D `pm x pn`
    partition of the *output*: row strips of whole `MR` panels by column groups of
    whole `NR` blocks, per-thread packed `A`, one shared L3-sized packed `B`,
    `std::thread::scope`, static partitioning. `pn > 1` only when the row axis
@@ -288,9 +293,13 @@ three counts. No AVX2 path yet; deferred to Phase 5's multi-arch work.
    `Plan::with_threads` opts in) so every committed single-core number stays
    reproducible. **K-parallelism is ruled out on evidence, not skipped** — see
    A21; do not build per-thread accumulators without a shape that demands them.
-   Remaining limits: threads are spawned per call rather than pooled, and `NC`'s
-   L3 budget is charged per core in the legacy blocking (the model arm fixes it,
-   A23). Measure with `scripts/phase4f-threads.sh` — it wants a whole socket.
+   Remaining limits, both fixable and neither structural: threads are spawned per
+   call rather than pooled, and `Plan::partition` does not know how many L3
+   domains the thread set spans — which is the one input that explains why Zen2
+   saturates by 16–32 while Ice Lake reaches 10.6x/15.3x at 32 and is still
+   climbing (A36). Make the `panels >= p` early return domain-aware rather than
+   removing it; on a one-L3-per-socket machine it is correct. Re-measure with
+   `scripts/phase4f-threads.sh` — it wants a whole socket.
    Then: small-`k` handling, prefetch, block-scatter
    regularity exploitation, and the rest of the low-arithmetic-intensity work
    from Phase 1 (fusing the `pc` loop so `C` is touched once rather than
@@ -351,43 +360,41 @@ Both baselines currently live outside the repo at
 `../baselines/tblis-{1.3.0,2.0}-install` (built 2026-08-02, same commits as
 Phase 1). If they are gone, rebuild them — it is ~30 min unattended.
 
-Three reproducible measurement entry points:
+**`scripts/README.md` is the index** — what each of the 27 scripts is for, which
+are superseded and by what, and the rules they encode. The entry points that
+matter most:
 
 ```bash
-# The Phase 4 A/B pattern: A, B, A' with a repeat bracketing the treatment,
-# plus sibling-CPU occupancy. Copy this shape for any new comparison. ~2 h.
-scripts/phase4-remeasure.sh 4 bench-results/phase4
+# The engine against its baselines. Warm-up arm discarded, both TBLIS ABIs from
+# prebuilt binaries so nothing compiles mid-run, two repeat arms that derive the
+# session's own floor. Takes an OUTDIR. ~3.5 h. Supersedes phase3-bench.sh,
+# which writes flat into bench-results/ and would overwrite committed data.
+TBLIS_ROOT_2X=../baselines/tblis-2.0-install \
+TBLIS_ROOT_13=../baselines/tblis-1.3.0-install \
+  scripts/compare-bench.sh prep                       # the only compile
+  scripts/compare-bench.sh bench-results/$(hostname -s)-$(scripts/arch-label.sh)
 
-# Turn two sweep CSVs into the ratio tables used throughout DECISIONS.md.
-# Needs no CPU; run it on committed data to check the tooling still agrees.
-scripts/compare-sweeps.py BASE_CSVS NEW_CSVS
+# A/B one runtime switch, end to end: warm-up, A, B, A'. ~2 h. Supersedes
+# phase4-remeasure.sh, whose output is cited so it is kept but not used.
+scripts/ab.sh bench-results/ab-<name> "TENSORCONTRACT_<SWITCH>=<value>"
 
-# The Phase 4.1c pattern, and the better one when the choice is discrete: sweep
-# the *whole grid* of options once (~2 h), then score candidate rules against it
-# offline, as many as you like, for free. This is how the row-block rule was
-# derived and how the orientation rule should be.
+# When the choice is discrete, sweep the *whole grid* once and score candidate
+# rules against it offline, as often as you like, for free. Both the row-block
+# and orientation rules were settled this way; the grids are still committed.
 scripts/phase4c-rowblock.sh  4 bench-results/phase4c   # every register block
 scripts/phase4d-orient.sh    4 bench-results/phase4d   # both orientation arms
-scripts/phase4e-blocking.sh  4 bench-results/phase4e   # the MC/KC/NC grid, ~7 h
 scripts/phase4f-threads.sh auto bench-results/phase4f  # thread scaling, ~1 h,
                                                        # wants a whole socket
 scripts/rowblock-score-rules.py bench-results/phase4c/shapes.csv bench-results/phase4c
 scripts/orient-score-rules.py   bench-results/phase4d/features.csv bench-results/phase4d
-scripts/blocking-score-rules.py bench-results/phase4e/features.csv bench-results/phase4e
+scripts/blocking-score-rules.py bench-results/ccqlin038-blocking/features.csv \
+                                bench-results/ccqlin038-blocking
 
-# The two analyses: no CPU cost, no data touched, exactly reproducible. Safe to
-# run while a benchmark is in flight, and the right way to decide which
-# measurements are worth making.
+# No CPU cost, no data touched, exactly reproducible. Safe while a benchmark is
+# in flight, and the right way to decide which measurements are worth making.
+scripts/compare-sweeps.py BASE_CSVS NEW_CSVS    # the ratio tables in DECISIONS.md
 ./target/release/tcbench shapes --csv out.csv   # what each MR does to write-back
 ./target/release/tcbench orient --csv out.csv   # both arms' structural features
-```
-
-```bash
-# The Phase 3 measurement set: verify, GEMM-roofline premise, full corpus
-# sweeps, ragged stress, and the TBLIS 1.3.0 comparison. ~4 h, single core.
-TBLIS_ROOT_2X=../baselines/tblis-2.0-install \
-TBLIS_ROOT_13=../baselines/tblis-1.3.0-install \
-  scripts/phase3-bench.sh 64 3
 
 # Micro-kernel register-block sweep. Needs no baselines. ~8 min.
 cargo run --release -p tensorcontract --example kernel_shapes
@@ -402,10 +409,14 @@ with an end-to-end A/B in the configuration that actually ships (A20).
 On a cluster node, submit the whole session unattended:
 
 ```bash
-sbatch scripts/rusty-phase4.sbatch      # rome, exclusive, 1 node, 12 h
+sbatch --constraint=icelake scripts/rusty-compare.sbatch  # engine vs baselines
+sbatch scripts/rusty-phase4.sbatch                        # rome, exclusive, 12 h
 ```
 
-It runs `prep, shapes, threads, validate, grid`, decides the grid's placement with
+Submitting is a human step — never automate it, and only `squeue`/`sacct`/`sinfo`
+and `scontrol show` may be executed here at all.
+
+`rusty-phase4.sbatch` runs `prep, shapes, threads, validate, grid`, decides the grid's placement with
 `scripts/placement-verdict.py` (the rule pre-registered in `DECISIONS.md` part 10),
 and falls back to a scoped sequential grid inside the remaining wall time if the
 placement is rejected. Or drive the same stages by hand:

@@ -47,7 +47,7 @@ roofline, and it is not meant to be — it only has to separate 5 GF/s cases fro
 
 Usage: thread-width.py [-p 8,16,64] FEATURES_CSV BASELINE_CSV...
   e.g. scripts/thread-width.py -p 8,16,32,64,128 \\
-           bench-results/phase4e/features.csv \\
+           bench-results/ccqlin038-blocking/features.csv \\
            bench-results/phase4/rm-A-f64c64.csv bench-results/phase4/rm-A-f32c32.csv
 """
 import argparse

@@ -227,6 +227,69 @@ caveat is item 4 above: the shapes were chosen at the old `kc`.
 
 ---
 
+## Contents
+
+This file is append-only and ordered **newest report last**. That order is
+load-bearing: a later section routinely retracts an earlier one, and the
+retractions are the most useful entries here. Nothing below is ever rewritten in
+place — a correction is a new subsection that says what it corrects.
+
+Reference sections, at the top and kept current:
+
+| | |
+|---|---|
+| [Resume here](#resume-here) | state, what exists, what is settled, what is open |
+| [Environment](#environment) | the reference machine, both TBLIS baselines, the ABI break |
+| [Standing assumptions](#standing-assumptions) | A1– , with status: confirmed, refuted, open |
+| [Build-vs-reuse decisions](#build-vs-reuse-decisions) / [Design decisions](#design-decisions) | D1– |
+
+Phase reports, in the order they were written:
+
+| report | subject |
+|---|---|
+| Phase 1 | the premise check: the complex-weakness thesis is real against TBLIS v1.3.0, refuted against 2.0-dev, and the cause is mundane |
+| Phase 2 | correct, framework-complete engine |
+| Phase 2b | three interchangeable complex methods |
+| Phase 3 | AVX-512 micro-kernels, the three-way comparison, and a 2x defect localised |
+| Phase 4 part 1 (+2–5) | the write-back; the orientation rule; a negative result on depth-adaptive `MC`; what an exclusive machine changed; item 1c, the micro-tile row block |
+| Phase 4 part 6 | item 1d: the orientation discriminant — the rule has to be antisymmetric |
+| Phase 4 part 7 | item 2: the `MC`/`KC`/`NC` grid — **and the A/B that closes it with a negative result** |
+| Phase 4 part 8 | item 4: threading, measured on Zen2 and Ice Lake |
+| Phase 4 part 8b | the partition becomes 2-D |
+| Phase 4 part 9 | blocking that transfers — the analytical model, and it loses |
+| Phase 4/5 interlude | AVX2 kernels, and where the model can be trusted |
+| Phase 5 part 1 | what preparing v0.1 found |
+| Phase 5 part 2 | the distribution surface, and a Julia consumer |
+| Phase 4 part 10 | taking the two pending measurements to a cluster node |
+| Phase 4 part 11 | the AVX2 register blocks, measured; A24, A34, A35 |
+| Phase 5 interlude | making the C surface consumable |
+
+Note that the section order is **not** chronological past part 7: parts 10 and 11
+sit after the Phase 5 reports because that is when they were written, and part 10
+contains the pre-registration that parts 7–9 consume. The Resume-here block is
+the reliable summary of current status.
+
+### Three navigational defects, recorded rather than fixed
+
+Fixing any of these would mean rewriting entries that other entries cite, which
+is exactly what append-only forbids. They are named here instead.
+
+* **`A27`, `A31` and `A32` are each used twice**, for unrelated claims. The
+  methodology ones — placement, the discarded warm-up arm, drift as a function of
+  arm distance — are in the Phase 4 parts. The Phase 5 C-surface reports reuse
+  `A31` and `A32` for the shipped header and the panic boundary. **Every citation
+  elsewhere in this repo means the methodology ones.** `A27` appears twice
+  consistently: once as the pre-registered hypothesis, once confirmed.
+* **"Parts 11–13" are referred to twice and do not exist.** The Phase 4 set is
+  parts 1–6, 7, 8, 8b, 9, 10 and 11. Read those references as "parts 10 and 11",
+  which is where the measurements they mean actually are.
+* A `### Why this shape of experiment` heading appeared twice in a row inside
+  part 7, with nothing between them. The stray copy was removed when this
+  contents section was added — an empty duplicate heading carries no claim, so
+  deleting it retracts nothing.
+
+---
+
 ## Environment
 
 All measurements in this file were taken on:
@@ -1803,8 +1866,6 @@ conclusions all turn on effects of 3–26%, so none of them moves.
 
 Per-case floor on this machine, from the `k <= 64` identical-arm spread: **~4%**
 (against Zen2's 6.2%).
-
-### Why this shape of experiment
 
 ### Why this shape of experiment
 
