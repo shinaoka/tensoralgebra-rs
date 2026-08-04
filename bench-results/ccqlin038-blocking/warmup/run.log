@@ -2,3 +2,4 @@ SCOPED GRID: only arms [base] -- this is not the full grid
 host ccqlin038.flatironinstitute.org  16 physical cores, SMT width 2, 2 L3 domains
 2 arms, 1 concurrent, cpus 4
 NOTE: SMT is on. Leaders are primary siblings and their siblings are left idle, but nothing prevents the OS from using them.
+  22:02:27 bl-base-f64c64   cpu4    dom0     867.2s  rc=0  self 100%  co-tenants: cpu0=51%, cpu1=5%, cpu3=15%, cpu5=6%, cpu7=5%, cpu16=6%, cpu19=8%

@@ -81,7 +81,21 @@ command -v cargo >/dev/null || {
 cargo --version
 echo
 
-OUT=${OUT:-bench-results/$(hostname -s)-zen2}
+# Label from what the machine reports, not from the partition this script was first
+# written for. Hardcoding `-zen2` here filed an Ice Lake run under a Zen2 name once
+# already; a directory name is a provenance claim.
+OUT=${OUT:-bench-results/$(hostname -s)-$(
+    python3 -c "
+import re
+m=''
+for l in open('/proc/cpuinfo'):
+    if l.startswith('model name'): m=l.split(':',1)[1].strip().lower(); break
+for pat, tag in (('epyc 7[0-9]*2','zen2'), ('epyc 9','zen4'), ('epyc','zen'),
+                 ('platinum 83','icelake'), ('gold 63','skylake'),
+                 ('gold 62','cascadelake'), ('xeon','intel')):
+    if re.search(pat, m): print(tag); break
+else: print(re.sub(r'[^a-z0-9]+','-',m)[:16] or 'x86')
+")}
 export SIZE=${SIZE:-64}
 export REPS=${REPS:-3}
 mkdir -p "$OUT"
