@@ -1696,6 +1696,31 @@ the same L2 budget — not a bigger `kc` constant.** It is also the change with 
 mechanism behind it rather than a fitted number, which is what makes it plausible on
 a third machine.
 
+**Scoped offline against both grids, which is where it stops being uniform.** `ck512`
+per dtype and method, on each machine:
+
+| dtype / method | Cascade Lake | Zen2 | worse of the two |
+|---|---|---|---|
+| **`f64` real** | **1.029** | **1.031** | **1.029** |
+| `f32` real | 1.014 | 0.988 | 0.988 |
+| `c32` planar / 1m / 3m | 0.999 / 1.034 / 1.009 | 1.006 / 1.007 / 1.004 | 0.999 |
+| `c64` planar | 1.000 | 1.006 | 1.000 |
+| `c64` 1m | **0.945** | 1.006 | **0.945** |
+| `c64` 3m | 0.974 | 0.987 | 0.974 |
+
+So the change is **`f64`-only**: +2.9% and +3.1%, the one column where both machines
+agree on a gain well outside their floors. `f32` and `c32` are neutral, `c64` planar
+is neutral, and **`c64` 1m loses 5.5%** on the reference machine.
+
+The pattern has a mechanism, and it is the same one: coupling *shrinks* `mc` as it
+deepens `kc`, and the methods that lose are exactly those whose derived `mc` is
+already smallest — 1m derives half of planar's by design (see "The three complex
+methods"), so at `kc = 512` its `mc` falls to a handful of `MR` panels and the `ic`
+loop stops amortising anything. That predicts the loss ordering observed (`c64` 1m
+worst, then `c64` 3m) and suggests the general form of the rule: couple only while
+`mc` stays above some small multiple of `MR`. That form is scorable against these two
+grids offline, for free, and has not been done.
+
 Still not taken in the same commit as the measurement, and it needs an end-to-end
 A/B in the shipping configuration (A20) before it becomes a default.
 
