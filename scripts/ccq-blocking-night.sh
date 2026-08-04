@@ -45,7 +45,9 @@
 # session it reported 4.4% where the true repeat precision was 0.02%. An idle
 # workstation is exactly the cold package that produces that.
 #
-# Cost: 18 arms x 2 dtype pairs plus the warm-up. Roughly 5-6 h here.
+# Cost: 19 arms x 2 dtype pairs plus the warm-up, so 40 jobs at roughly 11 min
+# (`f64c64`) and 6 min (`f32c32`) each on this machine — about 7 h. Overnight, not
+# an evening.
 set -e
 [ "${BASH_SOURCE[0]}" = "$0" ] || { echo "run me, do not source me" >&2; return 1; }
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -83,7 +85,7 @@ ARMS_ONLY="base" scripts/phase4e-blocking.sh "$CPU" "$OUT/warmup" "$SIZE" "$REPS
     >> "$LOG" 2>&1
 say "warm-up done; the package is now at the clock the rest of the run will see"
 
-say "grid: 18 arms"
+say "grid: 19 arms x 2 dtype pairs = 38 jobs"
 ARMS_ONLY="base kc64 kc128 kc256 kc384 kc512 kc768 kc1024 basem ck256 ck512 mc25 mc50 mc200 mc400 nc25 nc400 model base2" \
     scripts/phase4e-blocking.sh "$CPU" "$OUT" "$SIZE" "$REPS" >> "$LOG" 2>&1
 say "grid complete"
