@@ -600,8 +600,13 @@ impl Plan {
     /// `columns_beat_rows` is that predicate, kept as a pure function of four
     /// numbers so its whole truth table can be pinned by a test on any machine.
     ///
-    /// It is **off by default** (D22 is the user's call, and every committed
-    /// threaded number was measured without it). The choice is deliberately
+    /// It is **on by default** since D44, and `TENSORCONTRACT_PARTITION=legacy`
+    /// asks for the ungated rule by name. It was off while it was unmeasured;
+    /// it is on because the measurement came back a no-op on 392 of 392 cases
+    /// where one L3 serves the thread set, and 1.133 corpus geomean at 64
+    /// threads where sixteen do. A single-threaded caller cannot observe it at
+    /// all — `l3_domains(1)` is 1, so condition 1 never holds. The choice is
+    /// deliberately
     /// binary — `p x 1` or `1 x p`, the two arms that were actually measured —
     /// rather than a cross-domain traffic term added to the cost model above: a
     /// term large enough to move the `k = 24` family moves 263 of 392
@@ -1099,15 +1104,17 @@ fn columns_beat_rows(blocks: usize, k: usize, p: usize, domains: usize) -> bool 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[cfg_attr(not(feature = "std"), allow(dead_code))]
 enum PartitionMode {
-    /// [`Plan::partition`]'s rule, with the `panels >= p` early return
-    /// unconditional. The default, and what every committed threaded number was
-    /// measured with.
+    /// [`Plan::partition`]'s rule with the `panels >= p` early return
+    /// unconditional. No longer the default (D44); reachable as
+    /// `TENSORCONTRACT_PARTITION=legacy`, because every threaded number
+    /// committed before 2026-08-04 was measured with it and reproducing one
+    /// means asking for it by name.
     Rule,
     /// The same rule with the early return **gated on the L3 domain count**, so
     /// a thread set that spans several L3s takes the column axis on shallow
-    /// contractions wide enough to afford it. Off by default: it is a
-    /// recommendation waiting on its end-to-end measurement, not a shipped
-    /// default. See [`Plan::partition`] and [`columns_beat_rows`].
+    /// contractions wide enough to afford it. **The default** (D44), and a no-op
+    /// on any machine where one L3 serves the thread set. See
+    /// [`Plan::partition`] and [`columns_beat_rows`].
     Domain,
     /// One-dimensional over the oriented `M` direction — the partition Phase 4
     /// item 4 shipped, kept reachable so the 2-D rule can be measured against
@@ -1132,8 +1139,11 @@ fn partition_override() -> PartitionMode {
         use std::sync::OnceLock;
         static ENV: OnceLock<PartitionMode> = OnceLock::new();
         *ENV.get_or_init(|| {
+            // Unset means the domain-aware rule (D44). `legacy` is how the
+            // pre-2026-08-04 behaviour is asked for by name, and it is what every
+            // threaded number committed before that date was measured with.
             let Ok(v) = std::env::var("TENSORCONTRACT_PARTITION") else {
-                return PartitionMode::Rule;
+                return PartitionMode::Domain;
             };
             let v = v.trim().to_ascii_lowercase();
             match v.as_str() {

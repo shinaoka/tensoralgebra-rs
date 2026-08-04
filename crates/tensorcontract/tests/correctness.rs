@@ -895,9 +895,12 @@ fn threaded_case<T>(
         // to change. The two assertions above and the bitwise comparison are
         // never skipped: running the whole suite under a pinned partition is a
         // cheap way to test an arm no shape would otherwise reach.
+        // Unset is the domain-aware rule since D44; `legacy` asks for the old
+        // one by name. Both are rules and keep every assertion below except the
+        // one the gate exists to change.
         let mode = std::env::var("TENSORCONTRACT_PARTITION").unwrap_or_default();
-        let domain_aware = mode == "domain";
-        if mode.is_empty() || domain_aware {
+        let domain_aware = mode.is_empty() || mode == "domain";
+        if domain_aware || mode == "legacy" {
             assert!(
                 pm * pn <= p,
                 "{what}: partition oversubscribes the thread count"
@@ -1187,9 +1190,16 @@ fn thread_partition_rule() {
     }
     // A col-major `m x n` output with `m >= MR` keeps the row role with `M`, so
     // the panel and block counts are exactly `m/MR` and `n/NR`.
+    //
+    // `k` is deliberately **deeper than both shallow-`k` guards** (the row-block
+    // rule's 32 and the partition gate's `BANDWIDTH_BOUND_K` of 64). That makes
+    // this a test of the cost-model rule alone, on any machine: with a shallow
+    // `k` the gate would fire wherever the thread set spans several L3s, so
+    // `case(40, 40, 8)` would answer `1x8` on a chiplet CI runner and `8x1` on
+    // a one-L3-per-socket one, and the test would be a machine detector.
     let case = |panels: usize, blocks: usize, p: usize| -> (usize, usize) {
         let (mr, nr, _) = tensorcontract::kernel::selected_config::<f64>(ComplexMethod::Planar);
-        let (m, n, k) = ((panels * mr) as i64, (blocks * nr) as i64, 8);
+        let (m, n, k) = ((panels * mr) as i64, (blocks * nr) as i64, 128);
         let la = Layout::col_major(&[m, k]);
         let lb = Layout::col_major(&[k, n]);
         let ld = Layout::col_major(&[m, n]);
