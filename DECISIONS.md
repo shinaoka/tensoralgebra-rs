@@ -3738,6 +3738,45 @@ sliver geometry as well as the register block — and this project has been wron
 about exactly that kind of extrapolation before. What changed is that settling it
 now costs one sweep arm instead of a rebuild.
 
+### A provenance defect in the confirmation run, since it is mine
+
+The two confirmation jobs (6753208 `worker5479` rome, 6753209 `worker6150` Ice
+Lake) were submitted at commit `d62b9e2` and **run in place** —
+`rusty-phase4.sbatch` does `cd "$SLURM_SUBMIT_DIR"` and every arm invokes
+`./target/release/tcbench` from the shared checkout. I then wrote the D43 change
+in the same working tree and rebuilt that binary at 14:44:49, **while 6753208's
+threads stage was running**. Timeline:
+
+| time | event |
+|---|---|
+| 14:36:49 | 6753208 prep builds at `d62b9e2`; threads stage starts |
+| 14:38:58 | its discarded warm-up arm completes |
+| **14:44:49** | **`target/release/tcbench` relinked from the D43 tree** |
+| 14:45:26 | 6753209 prep finds the binary current, does *not* relink, starts its threads stage on the D43 binary |
+
+So on `worker5479` the arms launched before 14:44:49 ran one binary and those
+after ran another, and `worker6150` ran the second one throughout while its
+`PROVENANCE` says `d62b9e2`. The project's rule is "do not compile while a
+benchmark is in flight"; it is written about CPU contention on a shared
+workstation, and it turns out to protect something else as well on a cluster —
+the *binary*, through a shared `target/`.
+
+**Checked rather than assumed, and the delta is inert.** D43 is a re-keying plus
+one appended menu entry in `cfg_avx512_f32`, which an AVX2 node never consults at
+all. On the machine where the menu did grow, the selected shape is unchanged on
+**392 of 392 case-dtype-methods**: `worker6016`'s `features.csv` (Ice Lake, built
+before any of this) and `worker6150`'s (Ice Lake, built from the D43 tree) agree
+on `(mr, nr, arm)` everywhere, and on all 49 `f32`/`c32` planar entries in
+particular. The runs therefore stand, and the partition arms — which is what they
+were booked for — touch none of this code.
+
+**What to do differently**, and it is cheaper than the rule it replaces: a
+cluster job should build into its own `CARGO_TARGET_DIR` under
+`bench-results/<node>-<arch>/`, so a submit-directory edit cannot reach a running
+arm and the binary is archived beside the numbers it produced. Until that exists,
+treat the submit directory as frozen for the duration of a job — including
+`cargo test`, which relinks the same artefacts.
+
 | # | Decision | Rationale |
 |---|---|---|
 | D43 | The row-block menu is addressed by **position**, not by `MR`: `row_blocks` yields `(MR, NR)` and `config_at` takes an index. A repeated `MR` is legal; a repeated shape is not. | An `MR`-keyed menu cannot express an `NR`-only alternate, and the Phase 3 sweep produced one that beats the shipped default (A35). Keying by position makes it reachable at run time (A15's preference for a switch over a rebuild), makes `idx=` honest, and costs the rule nothing because the rule never read `NR`. Appending rather than inserting keeps the committed grid's index numbering valid. |

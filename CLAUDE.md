@@ -441,6 +441,14 @@ Stages run one at a time, only `prep` compiles, and `topology.py` /
 `run-arms.py` record which cores were busy for every arm so exclusivity is
 evidence rather than assumption. See `DECISIONS.md` part 10.
 
+**A cluster job runs in the submit directory and uses its `target/`.** So
+"do not compile while a benchmark is in flight" applies to *this* machine even
+when the benchmark is on a compute node: `cargo build` — and `cargo test`, which
+relinks the same artefacts — replaces the very binary the running job invokes for
+each arm, and the job will not notice. This happened on 2026-08-04 (part 13) and
+was inert only by luck. **Treat the submit directory as frozen for the duration of
+a job.** The real fix is a per-job `CARGO_TARGET_DIR`; it does not exist yet.
+
 Benchmarks are single-core measurements: **do not compile, build a baseline or
 run anything else on the machine while one is in flight.** Pinning is not
 enough — the pinned core's **hyperthread sibling** shares L1d and L2, which is
