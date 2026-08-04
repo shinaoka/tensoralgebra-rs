@@ -1911,16 +1911,82 @@ flattened it would be contention or a bug rather than the partition. Scored:
   partition limit at all. They are the memory-bound `k = 24` cases, and the reason
   they flatten turns out not to be contention either. See part 8b.
 
-#### The default stays off, with numbers
+#### Ice Lake: the same code scales twice as well, and it identifies the mechanism
+
+A second session (job 6746817, `worker6016`, Ice Lake-SP, `STAGES="shapes threads"`,
+one 48 MiB L3 per 32-core socket) ran the same arms. Its `t1`/`t1b` floor is
+**0.4–0.6%**. Against the same session's `t1`:
+
+| threads | Zen2 `f64` | **Ice Lake `f64`** | Zen2 `c64` 3m | **Ice Lake `c64` 3m** |
+|---|---|---|---|---|
+| 8 | 4.72 | 6.17 | 6.23 | 6.96 |
+| 16 | 5.76 | **9.67** | 7.65 | **12.26** |
+| 32 | 5.68 | **10.59** | 8.06 | **15.33** |
+
+At 32 threads Ice Lake reaches 48% of linear in `c64` 3m and 33% in `f64`, against
+Zen2's 25% and 18% — **roughly twice the parallel efficiency from identical code**,
+and still rising at 32 where Zen2 had already turned over.
+
+And the partition sweep, on the `abcijk` family, forced partition against the rule:
+
+| threads | `pn/rule` `f64` | `pn/rule` `c64` | `pm/rule` (control) |
+|---|---|---|---|
+| 4 | 0.988 | 0.944 | 1.003–1.005 |
+| 8 | 0.962 | 0.843 | 1.001–1.003 |
+| 16 | 0.983 | 0.806 | 1.002 |
+| 32 | **1.014** | 0.934 | 0.987–0.988 |
+
+**The 4.3x that a 1-D `N` split won on Zen2 is simply absent here.** So the effect
+is not a property of the partition — it is a property of the *topology*, and both
+findings now have one mechanism:
+
+`NC` sizes the shared packed-`B` panel for **an L3**. On Ice Lake there is one L3 per
+socket, so "shared" means what the design assumed and the panel is genuinely shared.
+On Zen2, 64 threads span **sixteen** separate 16 MiB L3s, so a panel every thread
+must read whole is effectively replicated across sixteen caches and re-streamed from
+memory. Under `64x1` every thread needs all of `B`, which maximises that traffic;
+under `1x64` each thread owns a narrow column group and touches only its own slice,
+which fits its local L3. That explains the 4.3x *and* the halved scaling efficiency
+with a single cause, which neither a barrier-count nor a false-sharing story does.
+
+**This retargets the fix.** Removing `Plan::partition`'s `panels >= p` early return
+would be wrong: on a one-L3-per-socket machine the early return is *correct* and `pn`
+buys nothing. What the rule is missing is **how many L3 domains the thread set
+spans** — a quantity the engine already probes for D23 (`cores_sharing`). Keep
+`pm = p` when the threads share one L3; split `N` so each thread's `B` slice fits its
+local L3 when they do not.
+
+**Not yet conclusive, and the gap is nameable.** Zen2 was measured at 64 threads
+over 16 domains and Ice Lake at 32 over one, so thread count and domain count moved
+together. The clean version runs `PARTITION_SWEEP=1` on `rome`, where `t4` is one CCX
+and `t64` is sixteen: if the `pn` advantage grows with domains crossed *within one
+machine*, the account is confirmed. That is a ~30-minute job and it did not exist
+when the `rome` session ran — the sweep was built afterwards, for this purpose.
+
+#### The default: revised by the second machine
 
 Threading is off by default (D22) purely because it was unmeasured. It is now
-measured, and the recommendation is **still off** — but for a specific and fixable
-reason rather than a general one. It scales cleanly to 8 threads in every dtype;
-what fails is 16 and beyond, where the loss is concentrated in per-call thread
-spawning, barrier cost across 16 L3 domains, and one wrong branch in
-`Plan::partition` (part 8b). None of those is structural. Turning it on is a
-decision for the user, per D22, and is deliberately not taken in the same commit
-as the measurement.
+measured on two machines, and **the first machine alone would have given the wrong
+recommendation.**
+
+On Zen2 the honest reading was "off": scaling turned over at 16–32 threads and
+reached 5.7–8.1x on 64 cores. On Ice Lake the same code reaches **10.6x (`f64`) and
+15.3x (`c64` 3m) on 32 cores and is still climbing**, with a 0.4–0.6% floor. Those
+are numbers worth having on by default.
+
+So the recommendation is **conditional, and the condition is the topology**: enable
+it where the threads share an L3 (one L3 per socket, i.e. Intel here), and treat
+chiplet machines as the limited case until the partition is domain-aware. That is
+not a satisfying default to ship — `TENSORCONTRACT_THREADS` still defaults to 1 —
+but it is the shape of the answer, and the domain-aware partition is a small change
+to `Plan::partition` over a quantity the engine already probes.
+
+Two limits remain and are independent of topology: threads are spawned per
+`execute` call rather than pooled (first-order for the small repeated contractions
+Phase 1 named as the real headroom), and Zen2's occupancy of 29–36% at 64 threads
+says most of the wall clock there is not compute. Turning the default on is the
+user's decision per D22 and is deliberately not taken in the same commit as the
+measurement.
 
 | # | Assumption | Status |
 |---|---|---|
@@ -2050,6 +2116,7 @@ plausible mechanism for a real effect turned out to be the wrong one.
 
 | # | Assumption | Status |
 |---|---|---|
+| A36 | The 4.3x that a 1-D `N` partition wins on the memory-bound family is a property of the partition rule. | **Refuted by a second topology.** Absent on Ice Lake (`pn/rule` 1.014 at 32 threads against Zen2's 2.26x geomean), where one L3 serves the whole socket. It is a property of how many L3 domains the shared packed-`B` panel is spread across, which also explains Ice Lake scaling twice as well on identical code. So the fix is a domain-aware partition, **not** removing the `panels >= p` early return — on a one-L3-per-socket machine that early return is correct. |
 | A28 | The 2-D partition rule and `PACK_WEIGHT` behave at node scale as they do at 8 threads. | **Refuted, but not where predicted.** `PACK_WEIGHT` is fine — it correctly keeps the complex methods off the `N` axis, which costs them 25–32% when forced. What fails is the `panels >= p` early return that precedes it: worth up to 4.3x on the 18 memory-bound `abcijk` cases in the real dtypes at 64 threads. The 2-D machinery itself is vindicated at 1.6–3.4x on the cases it fires on. |
 
 Correctness is unchanged in kind and stronger in coverage: bitwise identity with

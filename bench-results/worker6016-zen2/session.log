@@ -141,3 +141,5 @@ best per method at kc = 384:
 [2026-08-03T21:48:55-04:00] shapes done
 [2026-08-03T21:48:55-04:00] outdir: bench-results/worker6016-zen2
 [2026-08-03T21:48:55-04:00] threads: scaling curve plus the two partition arms
+[2026-08-03T23:02:57-04:00] threads done
+[2026-08-03T23:02:57-04:00] outdir: bench-results/worker6016-zen2

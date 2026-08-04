@@ -2,3 +2,6 @@ SCOPED GRID: only arms [base kc64 kc128 kc256 kc384 kc512 kc768 kc1024 basem ck2
 host ccqlin038.flatironinstitute.org  16 physical cores, SMT width 2, 2 L3 domains
 38 arms, 1 concurrent, cpus 4
 NOTE: SMT is on. Leaders are primary siblings and their siblings are left idle, but nothing prevents the OS from using them.
+  22:22:57 bl-base-f64c64   cpu4    dom0     821.4s  rc=0  self 100%  co-tenants: none
+  22:42:00 bl-kc64-f64c64   cpu4    dom0    1143.5s  rc=0  self 100%  co-tenants: none
+  22:57:27 bl-kc128-f64c64  cpu4    dom0     926.3s  rc=0  self 100%  co-tenants: none
