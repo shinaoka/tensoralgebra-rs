@@ -96,9 +96,13 @@ mean over the corpus unless stated. Noise floor on an exclusive machine is
 * A corrected, antisymmetric **orientation rule**: **1.028** in `f32`,
   **1.022** in `c32` 1m, best case **1.48x**, 64-bit flat. Within 0.4% of a
   hindsight oracle in `f32`.
-* Of the three complex methods, **planar is fastest** over the corpus, but the
-  ranking **inverts on memory-bound shapes** where 3m wins. The Phase 3 margins
-  (3–8%) have narrowed and are no longer current — re-measure before quoting one.
+* Of the three complex methods, **planar is fastest** over the corpus *on
+  AVX-512*, but the ranking **inverts on memory-bound shapes** where 3m wins. The
+  Phase 3 margins (3–8%) have narrowed and are no longer current — re-measure
+  before quoting one. The ranking also depends on the instruction set: at the
+  kernel level on **AVX2**, 3m comes first in `f32`/`c32`, the opposite of AVX-512
+  (A24). Since AVX2 is what most machines run, do not carry the AVX-512 ranking
+  over to one.
 
 ### Confidence — what is measured and what is only correct
 
@@ -107,13 +111,13 @@ The distinction matters more than the numbers, so it is stated per item.
 | Component | Status |
 |---|---|
 | Correctness of everything below, in every dtype, method, ISA and thread count | **Tested** against a brute-force oracle, and in the harness against TTGT and TBLIS. Randomised extents and axis orders, diagonals, reductions, negative strides, empty and scalar cases, all 16 conjugation masks, shapes that cross every cache-blocking level, and the irregular block-scatter path |
-| AVX-512 register blocks | **Measured** (`examples/kernel_shapes`), per method and element type, at the `kc` the engine uses |
+| AVX-512 register blocks | **Measured** (`examples/kernel_shapes`), per method and element type, at the `kc` the engine uses — **on one microarchitecture.** Two later findings qualify this and neither is fixed in this release: register blocks turn out to be a property of the *microarchitecture*, not of the instruction set, so Cascade Lake's winners are not Ice Lake's (A34); and one of the eight shipped configurations disagrees with the sweep that chose it — `planar` `f32`/`c32` ships `32x6` where the sweep's own output names `32x5`, **7.8% faster** at the operating `kc`, and `32x5` is not even on the menu (A35) |
 | Write-back, orientation and row-block rules | **Measured** — whole-grid sweeps over all 392 corpus case-dtype-methods, scored offline |
-| **AVX2 register blocks** | **Provisional and unmeasured.** Chosen from the register budget and a uop model on an AVX-512-only machine. The register-pressure part was verified in the disassembly; "which of the shapes that fit is fastest" is a guess. `examples/kernel_shapes` sweeps an AVX2 grid and is the calibration path — run it on a Haswell/Zen box |
-| **Default cache blocking (`MC`/`KC`/`NC`)** | **Untuned.** Three constants — `kc = 384/256` by real size, a 512 KiB packed-`A` budget, a 3 MiB packed-`B` budget — fitted to *one* Cascade Lake workstation's 1 MiB L2 and 25 MiB L3. Nothing about them transfers to another cache hierarchy. The sweep that would tune them is designed and scripted but has not been run |
-| **The analytical blocking model** | **Implemented, unmeasured, off by default.** It predicts a `kc` 2.4–8x smaller than the constants, i.e. an L1-resident `A` sliver, which is a large enough change that it must not be enabled on prediction alone |
-| **Threading** | **Implemented, correct, unmeasured, off by default.** Bitwise-identical results are asserted; *scaling* has never been measured. Threads are spawned per call rather than pooled, and in the default blocking `NC`'s L3 budget is charged per core |
-| Absolute throughput off this one machine | **Unknown.** Every number in `DECISIONS.md` is single-core on `ccqlin038` |
+| **AVX2 register blocks** | **Measured, and all eight shipped shapes are the winners** — on Zen2 (`worker5040`), where the `avx2`-without-`avx512` dispatch branch also executed on real hardware for the first time. They stopped being a guess with no code change. Read with A34 above: this is one AVX2 microarchitecture, not AVX2 in general |
+| **Default cache blocking (`MC`/`KC`/`NC`)** | **Swept, and still shipping the untuned constants.** `KC` is first-order and the default is too shallow; `MC` is a wide plateau and not worth tuning. The deepening that *two* machines agree on is **`f64`-only** — `kc = 512`, +2.9% and +3.1% — and is neutral or negative elsewhere, so it is a recommendation this release does not take. The constants remain `kc = 384/256` by real size, fitted to one Cascade Lake workstation |
+| **The analytical blocking model** | **Measured, and it loses. Off by default and staying there.** On the first unseen machine it is worse in **11 of 12 columns**, by up to 7.2% in the complex methods, and the whole loss is attributable to its `kc` (A33). It was built to solve portability and does not; the hypothesis is refuted rather than pending |
+| **Threading** | **Scaling measured on two machines, still off by default.** Bitwise-identical results are asserted at every thread count. Scaling is strongly topology-dependent: Zen2 saturates by 16–32 and declines at 64, Ice Lake reaches 48% of linear at 32 in `c64` 3m. `Plan::partition` is missing the one input that explains both — how many L3 domains the thread set spans — and a 4.3x partition win on Zen2 is **absent on Ice Lake** (A36), so the first machine alone would have produced the wrong rule. Threads are still spawned per call rather than pooled |
+| Absolute throughput off the reference machine | **Partially known, and not comparable.** There are now Zen2 and Ice Lake sessions, but every ratio in them is within-session against a floor re-derived there: different cache hierarchy, and AVX2 rather than AVX-512 on Zen2. No number from them may be compared with a single-core number measured on `ccqlin038` |
 
 `K`-parallelism is deliberately absent, on evidence rather than by omission —
 see `DECISIONS.md` A21.
@@ -164,7 +168,7 @@ see `DECISIONS.md` A21.
   finalizers; and `TAPPBackend`, a `TensorOperations.jl` backend. The contraction
   mapping needs no permutation and no temporary — arbitrary extents, element strides
   and per-operand conjugation go straight to the ABI — which is the engine's central
-  claim, now exercised from Julia. 64 tests, each checked against
+  claim, now exercised from Julia. 76 tests, each checked against
   `TensorOperations`' own backend on the same inputs.
 * **`RELEASING.md`** and a `release` CI workflow that checks a release and
   publishes nothing: the five places a version is written must agree, the recipe

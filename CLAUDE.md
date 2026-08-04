@@ -67,6 +67,14 @@ they can be benchmarked against each other and against TBLIS on equal footing.
   and the two Apple targets are unverified because they need the Xcode SDK licence
   accepted.
 
+  **The CHANGELOG's confidence table is the release-facing summary of everything
+  parts 11–13 measured**, and it is the one place where a stale "unmeasured" would
+  reach a user rather than a maintainer. It was reconciled against them: AVX2 blocks
+  measured, the model measured and losing, the blocking grid swept with an `f64`-only
+  recommendation not taken, threading measured on two topologies, and A35's unfixed
+  register-block defect stated rather than carried. Update it in the same commit as
+  any future measurement — nothing else in CI will catch it.
+
 **Both pending measurements are done** — on Rusty `rome` nodes, 2026-08-03, jobs
 6745376 (`worker5040`) and 6745978 (`worker5175`). Read `DECISIONS.md` parts 7, 8,
 8b, 9, 10 and 11. **Nothing they measured is comparable to a single-core number in

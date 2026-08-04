@@ -2606,6 +2606,14 @@ since upstream `error.h` fixes only `TAPP_SUCCESS`.
   but means a 64-core machine gets one thread and a foreign cache hierarchy gets
   constants fitted to `ccqlin038`. Flipping either needs the two pending
   measurements, not a decision.
+
+  **Superseded, and not in the direction this expected.** Both measurements have
+  since been taken (parts 11–13). The blocking model **loses** on the first unseen
+  machine and stays off on evidence rather than for want of it (A33); threading's
+  scaling turned out to be topology-dependent in a way `Plan::partition` does not
+  model, and the one machine measured first would have produced the wrong rule
+  (A36). So "flipping either needs a measurement" was right about the process and
+  wrong about the outcome: the measurements argued for leaving both alone.
 * Publication itself, which is a human step and deliberately not automated.
 
 ## Phase 5 report, part 2: the distribution surface, and a Julia consumer
@@ -2766,9 +2774,13 @@ former as a null `C` operand.
 
 ### Two things a reader should not take from this section
 
-* **No performance was measured.** Nothing here is a throughput claim, the two
-  pending Phase 4 measurements are still pending, and the CHANGELOG's confidence
-  table is unchanged on every performance row.
+* **No performance was measured *here*.** Nothing in this section is a throughput
+  claim and no code in it can change one: the engine was not touched. The two Phase
+  4 measurements this branch was written alongside have since landed on `main`
+  (parts 11–13), and the CHANGELOG's confidence table has been updated from *those*
+  — five rows, none of them because of anything in this section. If a reader arrives
+  at a new Julia backend and infers that something got faster, the answer is that a
+  binary distribution was built, not a kernel.
 * **Threading is still not reachable from Julia**, because
   `TAPP_execute_product` ignores its executor argument and `TENSORCONTRACT_THREADS`
   is read once per process. The Julia wrapper documents that rather than papering
@@ -2777,10 +2789,20 @@ former as a null `C` operand.
 
 ### Still open before publishing
 
-Unchanged from part 1 on defaults, plus:
+Unchanged from part 1 on defaults — and see the note added there: both measurements
+have landed and both argued for leaving the defaults alone, so the honest v0.1
+position is "off on evidence" rather than "off pending evidence". Plus:
 
 * The **tag, the crates.io publish and the Yggdrasil PR**, in that order, for the
   reasons in `RELEASING.md`. All three are human steps.
+* **One known unfixed defect is now release-facing.** A35 found, in committed data
+  and at no machine cost, that `planar` `f32`/`c32` ships the register block `32x6`
+  where the Phase 3 sweep's own output names `32x5`, 7.8% faster at the operating
+  `kc`. It is recorded in the CHANGELOG's confidence table rather than quietly
+  carried, because shipping a known register-block defect under a table that says
+  "measured" is exactly the kind of claim this project has spent two phases learning
+  not to make. Fixing it needs a corpus A/B — kernel margin is not corpus margin —
+  so it is a decision for whoever cuts the tag, not something to slip in.
 * **The repository is private.** Yggdrasil builds only from publicly downloadable
   sources, so the recipe's `ArchiveSource` cannot resolve until it is public and
   tagged. Making it public also publishes this file and 9 MB of benchmark CSVs,
