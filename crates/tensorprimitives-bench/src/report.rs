@@ -113,6 +113,22 @@ pub fn print_environment() {
             h.source.name(),
             cache::block_model().name()
         );
+        // How many L3 domains this run's threads span, which is what the
+        // domain-aware partition gate turns on (A36). Printed as a small table
+        // rather than one number because the whole point is that it is a function
+        // of the thread count and of the machine, and a session that quotes "16
+        // domains" without saying at what width is quoting nothing. `l3_domains`
+        // and not `cores_sharing` directly, so `TENSORCONTRACT_L3_DOMAINS` shows
+        // up here when it is set.
+        let widths: Vec<usize> = [1, 4, 8, 16, 32, 64, 128]
+            .into_iter()
+            .filter(|&t| t == 1 || t <= 2 * std::thread::available_parallelism().map_or(1, |n| n.get()))
+            .collect();
+        let spans: Vec<String> = widths
+            .iter()
+            .map(|&t| format!("t{t}={}", cache::l3_domains(t)))
+            .collect();
+        println!("l3 domains  : {}", spans.join(" "));
     }
     println!(
         "baselines   : tblis={} blas={}",

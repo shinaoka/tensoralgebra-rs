@@ -888,12 +888,16 @@ fn threaded_case<T>(
             pm <= panels && pn <= blocks,
             "{what}: partition exceeds the panel/block counts, so some thread gets nothing"
         );
-        // Everything else here is about the *rule*, and `TENSORCONTRACT_PARTITION`
-        // deliberately overrides the rule and the thread count both, so it is
-        // skipped when that is set. The two assertions above and the bitwise
-        // comparison are not: running the whole suite under a pinned partition is
-        // a cheap way to test an arm no shape would otherwise reach.
-        if std::env::var_os("TENSORCONTRACT_PARTITION").is_none() {
+        // Everything else here is about the *rule*, and a *pinned*
+        // `TENSORCONTRACT_PARTITION` deliberately overrides the rule and the
+        // thread count both, so it is skipped for those. `domain` is a rule and
+        // not a pin, so it keeps every assertion below except the one it exists
+        // to change. The two assertions above and the bitwise comparison are
+        // never skipped: running the whole suite under a pinned partition is a
+        // cheap way to test an arm no shape would otherwise reach.
+        let mode = std::env::var("TENSORCONTRACT_PARTITION").unwrap_or_default();
+        let domain_aware = mode == "domain";
+        if mode.is_empty() || domain_aware {
             assert!(
                 pm * pn <= p,
                 "{what}: partition oversubscribes the thread count"
@@ -901,11 +905,24 @@ fn threaded_case<T>(
             if panels >= p {
                 // The regime the whole corpus but four cases is in: the row axis
                 // fills the threads by itself, and then the partition must be
-                // exactly the 1-D one, unchanged from before `N` was split.
-                assert_eq!(
-                    (pm, pn),
-                    (p, 1),
-                    "{what}: the row axis alone fills the threads, so this must stay 1-D"
+                // exactly the 1-D one, unchanged from before `N` was split — the
+                // one exception being the domain-aware gate, which swaps the axes
+                // when the threads span several L3s and the column axis can fill
+                // them too. Which of the two it picks is decided by conditions
+                // `partition_rule_is_domain_aware` covers exhaustively and this
+                // test cannot see; what it pins here is that the answer is still
+                // **1-D in one direction or the other, never a grid**, since a
+                // grid in this regime would mean the gate had leaked into the
+                // cost model.
+                let want: &[(usize, usize)] = if domain_aware {
+                    &[(p, 1), (1, p)]
+                } else {
+                    &[(p, 1)]
+                };
+                assert!(
+                    want.contains(&(pm, pn)),
+                    "{what}: the row axis alone fills the threads, so this must stay 1-D \
+                     (one of {want:?})"
                 );
             }
             if matches!(want, Split::TwoD | Split::Grid) && p > panels {
@@ -1160,7 +1177,13 @@ fn threaded_clamps_below_one_cell_per_thread() {
 #[test]
 fn thread_partition_rule() {
     if std::env::var_os("TENSORCONTRACT_PARTITION").is_some() {
-        return; // the rule is pinned away; there is nothing of it to check
+        // The rule is pinned away, or replaced by the domain-aware one; either
+        // way there is nothing of *this* rule to check. The domain-aware gate is
+        // a pure function and is pinned exhaustively by
+        // `plan::tests::domain_gate_needs_all_three_conditions`, which needs no
+        // particular machine — this test's shapes are all shallow enough to trip
+        // it, so it could not double as a check on the gate anyway.
+        return;
     }
     // A col-major `m x n` output with `m >= MR` keeps the row role with `M`, so
     // the panel and block counts are exactly `m/MR` and `n/NR`.

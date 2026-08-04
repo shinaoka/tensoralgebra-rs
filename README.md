@@ -161,6 +161,7 @@ process restart rather than a rebuild. None of them changes results.
 | `TENSORCONTRACT_THREADS` | thread count, default **1**. Results are bitwise identical at any count |
 | `TENSORCONTRACT_KERNEL` | `auto` (default) \| `scalar` \| `avx2` \| `avx512` — pin the instruction set |
 | `TENSORCONTRACT_BLOCKMODEL` | `legacy` (default) \| `model` — derive cache blocking from probed cache descriptors instead of hardcoded constants. Measured on a foreign machine and **worse in 11 of 12 columns**, so `legacy` is the default on evidence |
+| `TENSORCONTRACT_PARTITION` | `legacy` (default) \| `domain` — which rule apportions the threads over the output. `domain` gates the "row axis fills the threads, so use it" shortcut on how many L3 domains the thread set spans: on a machine with one L3 per socket it changes nothing, and on a chiplet machine it is predicted worth **1.14 geometric mean over the corpus at 64 threads** (up to 3.4x on individual memory-bound cases). Off by default pending its end-to-end measurement. `m`, `n` and `<pm>x<pn>` pin the partition outright, for A/B measurement |
 | `TENSORCONTRACT_DEEPEN` | `on` — coupled deepening: `kc = 512` for `f64` real geometry with `mc`/`nc` re-derived at that depth. Off by default, pending an end-to-end A/B. Worth **+2.9%** on Cascade Lake and **+3.1%** on Zen2, and scoped to `f64` on purpose: coupling shrinks `mc`, which the methods whose `mc` is already smallest cannot afford (`c64` 1m loses 5.5%) |
 
 `Plan::with_complex_method`, `Plan::with_threads` and `Plan::with_blocking` are

@@ -101,6 +101,15 @@ Four results and four decisions handed back, none of them taken:
   10.6x (`f64`) and 15.3x (`c64` 3m) on 32 cores and the 4.3x is *absent* (A36), so
   the early return is right where threads share one L3 and wrong where they span
   many — make it domain-aware rather than removing it. Zen2 remains the limited case.
+  **Done: the gate is built** (D41, part 12), behind `TENSORCONTRACT_PARTITION=domain`
+  and off by default. It is scored exactly against the committed grids rather than
+  guessed — predicted **1.423 on the 144 case-dtype-methods it moves, 1.138 corpus
+  geomean at 64 Zen2 threads, and bit-identical on Ice Lake at every width up to
+  the socket** — and it awaits the confirmation run named in part 12. Two things
+  came out of building it: a cross-domain traffic term in the cost model **cannot
+  be calibrated** (A38, four refuted variants), and **per-case ratios at 64 threads
+  are unreadable** at ±11% p10/p90 with tails to 1.55, so only per-family geomeans
+  mean anything at that width (A39).
 * **D26's eight AVX2 register blocks are all confirmed** as the measured winners —
   they stop being a guess with no code change. On AVX2 the *kernel-level* ranking
   puts 3m first in `f32`/`c32`, the opposite of AVX-512 (A24).
@@ -278,19 +287,24 @@ three counts. No AVX2 path yet; deferred to Phase 5's multi-arch work.
    rather than holding the Phase 3 table fixed.
 3. **Dispatch the complex method by shape** — 3m on memory-bound shapes,
    planar otherwise. The inversion is measured and large enough to exploit.
-4. **Threading — implemented, unmeasured.** BLIS-style, a 2-D `pm x pn`
-   partition of the *output*: row strips of whole `MR` panels by column groups of
-   whole `NR` blocks, per-thread packed `A`, one shared L3-sized packed `B`,
-   `std::thread::scope`, static partitioning. `pn > 1` only when the row axis
-   cannot fill the threads. Results are **bitwise identical to serial at every
-   thread count and every partition** (no reduction is parallelised), which is the
-   invariant the tests assert. Off by default (`TENSORCONTRACT_THREADS` or
-   `Plan::with_threads` opts in) so every committed single-core number stays
-   reproducible. **K-parallelism is ruled out on evidence, not skipped** — see
-   A21; do not build per-thread accumulators without a shape that demands them.
-   Remaining limits: threads are spawned per call rather than pooled, and `NC`'s
-   L3 budget is charged per core in the legacy blocking (the model arm fixes it,
-   A23). Measure with `scripts/phase4f-threads.sh` — it wants a whole socket.
+4. **Threading — implemented and measured on three nodes.** BLIS-style, a 2-D
+   `pm x pn` partition of the *output*: row strips of whole `MR` panels by column
+   groups of whole `NR` blocks, per-thread packed `A`, one shared L3-sized packed
+   `B`, `std::thread::scope`, static partitioning. `pn > 1` only when the row axis
+   cannot fill the threads — **or, under `TENSORCONTRACT_PARTITION=domain`, when
+   the thread set spans several L3 domains and the case is wide and shallow
+   enough** (D41, part 12; off by default, predicted 1.138 corpus geomean at 64
+   Zen2 threads, a no-op on one-L3-per-socket machines). Results are **bitwise
+   identical to serial at every thread count and every partition** (no reduction
+   is parallelised), which is the invariant the tests assert. Off by default
+   (`TENSORCONTRACT_THREADS` or `Plan::with_threads` opts in) so every committed
+   single-core number stays reproducible. **K-parallelism is ruled out on
+   evidence, not skipped** — see A21; do not build per-thread accumulators without
+   a shape that demands them. Remaining limits: threads are spawned per call
+   rather than pooled, and `NC`'s L3 budget is charged per core in the legacy
+   blocking (the model arm fixes it, A23). Measure with
+   `scripts/phase4f-threads.sh` — it wants a whole socket, and it runs and
+   discards a warm-up arm (A31).
    Then: small-`k` handling, prefetch, block-scatter
    regularity exploitation, and the rest of the low-arithmetic-intensity work
    from Phase 1 (fusing the `pc` loop so `C` is touched once rather than
@@ -374,6 +388,11 @@ scripts/phase4f-threads.sh auto bench-results/phase4f  # thread scaling, ~1 h,
 scripts/rowblock-score-rules.py bench-results/phase4c/shapes.csv bench-results/phase4c
 scripts/orient-score-rules.py   bench-results/phase4d/features.csv bench-results/phase4d
 scripts/blocking-score-rules.py bench-results/phase4e/features.csv bench-results/phase4e
+# Same pattern for the partition: the committed threading grids already measured
+# both arms the domain-aware gate chooses between, so it scores exactly, offline,
+# before a node is booked. It also prints this session's *per-case* precision from
+# the identical-partition repeats in the same data — read that first.
+scripts/partition-score-rule.py -p 64 -d 16 bench-results/worker5137-zen2
 
 # The two analyses: no CPU cost, no data touched, exactly reproducible. Safe to
 # run while a benchmark is in flight, and the right way to decide which
@@ -445,7 +464,8 @@ Useful environment variables:
 | `TENSORCONTRACT_MC_PCT/_NC_PCT` | scale the *derived* `mc`/`nc`, so each dtype and method keeps its budget share |
 | `TENSORCONTRACT_KC_COUPLE` | set `kc` *and* re-derive `mc`/`nc` at that depth; the item 2 grid's second arm |
 | `TENSORCONTRACT_DEEPEN` | `on`: coupled deepening at the one setting two machines agree on — `kc = 512` for `f64` real geometry, `mc`/`nc` re-derived. Off by default pending the end-to-end A/B (A20). Not a grid arm: this is the shippable form of part 7's recommendation |
-| `TENSORCONTRACT_PARTITION` | `m` \| `n` \| `<pm>x<pn>`: pin the thread partition instead of using `Plan::partition`'s rule |
+| `TENSORCONTRACT_PARTITION` | `legacy` (default) \| `domain`: which partition *rule*; or `m` \| `n` \| `<pm>x<pn>` to pin the partition outright. `domain` gates `Plan::partition`'s `panels >= p` early return on the L3 domain count (D41) — a no-op on every one-L3-per-socket machine, worth a predicted 1.14 corpus geomean at 64 Zen2 threads. Off by default pending its end-to-end A/B |
+| `TENSORCONTRACT_L3_DOMAINS` | override how many L3 domains the thread set is taken to span. The derivation assumes compact placement (A37); this is how a *scattered* cpuset, or a single-domain machine, can exercise the other case without a rebuild |
 | `TENSORCONTRACT_THREADS` | thread count, default **1**. Results are bitwise identical at any value, so this is never a correctness or accuracy decision. Also runs the whole test suite through the threaded driver, which is worth doing after any driver change |
 | `TENSORCONTRACT_ORIENT` | `none` \| `swap`: pin the row/column orientation; `legacy`: the Phase 4.1 rule |
 | `TENSORCONTRACT_WRITEBACK` | `gather` forces the general scatter write-back |

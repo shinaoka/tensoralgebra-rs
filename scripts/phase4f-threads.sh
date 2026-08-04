@@ -43,12 +43,32 @@
 # panels than the AVX-512 reference and a completely different partition-limited
 # population. The arms that price the rule against its two extremes:
 #
-#   TENSORCONTRACT_PARTITION=m   1-D over `M`, i.e. the partition before 2-D
-#   TENSORCONTRACT_PARTITION=n   1-D over `N`, the other extreme
-#   (unset)                      the rule
+#   TENSORCONTRACT_PARTITION=m        1-D over `M`, i.e. the partition before 2-D
+#   TENSORCONTRACT_PARTITION=n        1-D over `N`, the other extreme
+#   TENSORCONTRACT_PARTITION=domain   the domain-aware gate: the shipped rule
+#                                     except that the `panels >= p` early return
+#                                     gives way to the column axis when the thread
+#                                     set spans several L3s (A36)
+#   (unset)                           the shipped rule
+#
+# The `domain` arm is the one this script now exists to settle. It should
+# reproduce the `n` arm on the memory-bound family and the rule everywhere else,
+# which is a prediction and not a hope: `scripts/partition-score-rule.py` derives
+# it from the committed grids before the node is booked, and the run either meets
+# it or the gate is wrong. On a one-L3-per-socket machine the arm is bit-identical
+# to the rule at every thread count up to the socket, so a difference there is
+# contention and nothing else — which makes Ice Lake a free null control.
 #
 # The sweep CSV's notes column carries `t<threads>/<pm>x<pn>`, so which partition
 # ran is recoverable from the data rather than only from the run log.
+#
+# A **discarded warm-up arm** runs first (A31). The session's opening arm runs on
+# a cold package at single-core boost and nothing else does, which came back as a
+# uniform 3-5% "noise floor" on three separate nodes while inflating every ratio
+# measured against it. The warm-up is at the top thread count, so it costs about
+# 1/TOP of a `t1` arm and loads every core — which is the state the rest of the
+# session runs in. Whether it worked is visible in the output: `t1` against `t1b`
+# should now come back near 1.000 rather than 0.95-0.97.
 #
 # Cost: the `t1` arms dominate, so roughly (2 + sum over thread counts of 1/nt)
 # arm-times per dtype pair. Nothing else may run on the node, and this one wants
@@ -58,6 +78,7 @@
 #   THREADS="1 2 4 8"     override the thread counts
 #   CROSS_SOCKET=1        add a whole-node arm at the full core count, labelled
 #                         separately because it is a different question
+#   NO_WARMUP=1           skip the discarded warm-up arm (do not, without a reason)
 set -e
 [ "${BASH_SOURCE[0]}" = "$0" ] || { echo "run me, do not source me" >&2; return 1; }
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -238,6 +259,15 @@ PY
     echo "  $(date +%H:%M:%S) $tag done: $(head -3 "$OUT/$tag.cpu" | tr '\n' '|')"
 }
 
+# The discarded warm-up (A31). It is deliberately the *first* thing that runs and
+# deliberately never read: its only job is that some other arm is not the one that
+# meets a cold package. At the top thread count it loads every core in the cpuset
+# for a fraction of a `t1` arm's wall clock.
+if [ -z "${NO_WARMUP:-}" ]; then
+    echo "warm-up arm (discarded, A31): t$TOP"
+    run "wu-t$TOP-discard" "$TOP" f64,c64
+fi
+
 for pair in f64,c64 f32,c32; do
     t=${pair/,/}
     for nt in $THREADS; do
@@ -250,6 +280,11 @@ for pair in f64,c64 f32,c32; do
     # partition.
     run "th-t$TOP-pm-$t" "$TOP" "$pair" m
     run "th-t$TOP-pn-$t" "$TOP" "$pair" n
+    # The candidate rule, over the whole corpus, so the cases it must *not* touch
+    # are measured alongside the ones it must. That is the column a ratio against
+    # the rule alone cannot supply, and it is what caught a contaminated A/B in
+    # part 7.
+    run "th-t$TOP-dom-$t" "$TOP" "$pair" domain
     # `PARTITION_SWEEP=1` prices the axis choice *as a function of thread count*,
     # on the memory-bound family only so it is cheap. On Zen2 a 1-D `N` partition
     # beat the rule by up to 4.3x on exactly these cases (part 8b) and the
@@ -263,7 +298,7 @@ for pair in f64,c64 f32,c32; do
     if [ -n "${PARTITION_SWEEP:-}" ]; then
         for nt in $THREADS; do
             [ "$nt" = 1 ] && continue
-            for arm in m n; do
+            for arm in m n domain; do
                 FILT=(--case "${PARTITION_CASE:-abcijk}")
                 run "ps-t$nt-$arm-$t" "$nt" "$pair" "$arm"
             done
@@ -323,9 +358,23 @@ done
 echo
 echo "partition arms, each against the rule at the same thread count:"
 for pair in f64c64 f32c32; do
-    for arm in pm pn; do
+    for arm in pm pn dom; do
         echo "== $pair t$TOP partition=$arm"
         scripts/compare-sweeps.py "$OUT/th-t$TOP-$pair.csv" "$OUT/th-t$TOP-$arm-$pair.csv" \
             | head -20
     done
 done
+
+# And the prediction the `dom` arm above is being held to, re-derived here from
+# the committed grids so the run log carries both numbers side by side. It needs
+# the domain count, which `topology.py` has already printed.
+if [ -f "$OUT/../features.csv" ]; then
+    DOM=$(python3 -c "
+import json
+t = json.load(open('$OUT/topology.json'))
+per = max(1, min(len(d['cpus']) for d in t['domains']))
+print(max(1, -(-$TOP // per)))" 2>/dev/null || echo 1)
+    echo
+    echo "predicted from the committed grid (L3 domains spanned at t$TOP: $DOM):"
+    scripts/partition-score-rule.py -p "$TOP" -d "$DOM" "$OUT/.." || true
+fi

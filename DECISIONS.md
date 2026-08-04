@@ -172,7 +172,8 @@ Headlines, and four decisions they hand back:
   two-thirds of the time. The 2-D partition is vindicated at 1.6–3.4x, but
   `Plan::partition`'s `panels >= p` early return costs up to **4.3x** on 18 cases.
   **Recommended: default stays off** until the spawn cost and that early return are
-  addressed — both fixable, neither structural.
+  addressed — both fixable, neither structural. *The early return is now addressed
+  (part 12, D41) and awaits its confirmation run; the spawn cost is not.*
 * **D26's eight AVX2 register blocks are all confirmed** as the measured winners, so
   they stop being a guess with no code change.
 
@@ -182,12 +183,26 @@ traffic-sensitive arms got their own sequential job. It returned 20.4x on the gr
 
 What the two runs left open, in priority order:
 
-1. **Make `Plan::partition` L3-domain-aware.** The `panels >= p` early return costs
-   up to 4.3x on the memory-bound family at 64 threads on Zen2 and **nothing at all
-   on Ice Lake** (A36), so the branch is correct where threads share one L3 and wrong
-   where they span many. The missing input is how many L3 domains the thread set
-   covers, which the engine already probes for D23. Confirm within one machine first:
-   `PARTITION_SWEEP=1 STAGES=threads` on `rome`, ~30 min.
+1. ~~**Make `Plan::partition` L3-domain-aware.**~~ **Built — see part 12 (D41).**
+   The early return is now *gated* on `l3_domains(p) > 1` (plus `blocks >= p` and
+   `k <= 64`, both of which stop the fix from costing more than it returns),
+   behind `TENSORCONTRACT_PARTITION=domain` and off by default. It is scored
+   exactly against the committed grids rather than guessed: **1.423 on the 144
+   case-dtype-methods it moves, 1.138 corpus geomean at 64 Zen2 threads, and
+   bit-identical to the shipped rule on Ice Lake at every width up to the
+   socket.** What remains is the confirmation run and then D22:
+
+   ```bash
+   PARTITION_SWEEP=1 STAGES=threads sbatch -C rome scripts/rusty-phase4.sbatch
+   ```
+
+   ~1.5–2 h. Part 12 pre-registers what it must show and what would falsify it,
+   and `scripts/phase4f-threads.sh` now prints the prediction beside the result.
+   Two by-products worth not re-deriving: a cross-domain traffic term in the cost
+   model **cannot be calibrated** (A38, four variants refuted), and **per-case
+   ratios at 64 threads are unreadable** — p10 0.885 / p90 1.107 with tails to
+   1.55 on repeats of an identical partition, so only per-family geomeans are
+   quotable at that width (A39).
 2. **Nothing in blocking.** Item 2 is closed (part 7): coupled deepening failed its
    A/B, pinned deepening is machine-specific and negative here, `MC` has no win, the
    model loses, and the `C`-traffic account was falsified. Three candidate changes and
@@ -3472,6 +3487,194 @@ since a test step is the only thing that keeps the dev-dependency half honest.
 |---|---|---|
 | A31 | The shipped header agrees with the library it describes. | **Now tested rather than assumed.** `examples/c-consumer` compiles the header with a C compiler, links the built library and checks numerical results in `f64` and `c64`; CI runs it in both the corrosion and prebuilt modes. Previously no C compiler saw the header at any point. |
 | A32 | A Rust panic reaching the C boundary is acceptable because it is memory-safe. | **Rejected as a policy.** Memory-safe but process-fatal, and the engine panics on allocation conditions a caller can hit. D38 converts it to an error code on the three entry points that can raise it. |
+
+## Phase 4 report, part 12: the partition becomes L3-domain-aware
+
+**Status: built, off by default, predicted but not yet measured end to end.**
+The prediction is in this section, it is exact rather than hoped for, and the
+confirmation run either meets it or the gate is wrong.
+
+Part 8b diagnosed `Plan::partition`'s first line as costing up to 4.3x at 64
+threads, and part 8 then refuted the obvious fix: removing the early return is
+wrong, because on a machine with one L3 per socket the early return is *correct*
+(Ice Lake, 32 threads on one domain, `pn/rule` 1.014). A36 is settled on three
+nodes and in all four dtypes — the driver is the number of L3 domains the thread
+set spans, not the thread count. This part turns that into code.
+
+### The change
+
+`CacheHierarchy::l3_domains(threads)` is new and is three lines: `threads`
+divided by the cores that share an L3, which the probe already reports for D23.
+`tcbench info` prints it as a function of thread count, because a session that
+says "16 domains" without saying at what width has said nothing.
+
+`Plan::partition`'s early return is now **gated, not removed** (D41). In the
+regime where the row axis alone fills the threads, the column axis takes them
+instead when all three of these hold:
+
+| condition | why it is there |
+|---|---|
+| `domains > 1` | The mechanism. `NC` sizes the shared packed-`B` panel for *an* L3; under `p x 1` every thread reads the whole panel, so it is replicated across every domain the thread set covers. Two single-domain points an order of magnitude apart in thread count (Zen2 t4, Ice Lake t32) are both null. |
+| `blocks >= p` | The column axis must be able to fill the threads by itself, or the swap buys locality by giving up cores. The corpus's narrow half loses 2–5x on a forced `1 x p` for exactly this reason, and it is the largest population in the `n` arm. |
+| `k <= 64` | The penalty being dodged is **bandwidth**, so it cannot dominate a compute-bound case. `k` is this corpus's knob for that, and the guard confines the rule to the population the evidence covers — see the negative result below. |
+
+It is a **binary** choice between `p x 1` and `1 x min(p, blocks)`, which are the
+only two arms any session has measured, and it is reached only from the early
+return: the cost model below it is untouched, so the narrow-`M` regime the 2-D
+partition was built for behaves exactly as it did.
+
+`TENSORCONTRACT_PARTITION` gains `domain` (and `legacy`, the default, spelled
+out). It is a *rule*, not a pin, so unlike `m`/`n`/`<pm>x<pn>` the test suite
+keeps asserting the rule's invariants under it — which is how "bitwise identical
+to serial at every thread count **and every partition**" now covers the new path
+as well. The correctness suite exercises the swapped branch on 60-odd shapes and
+is green in every combination of `{default, domain} x {avx512, scalar} x
+{1, 4, forced-16 domains}`.
+
+### The prediction, made before the node is booked
+
+`scripts/partition-score-rule.py` replays the gate over a committed grid and
+scores it against the arms that grid already measured. Both arms exist for every
+case: the gate only ever selects the rule's own partition or the forced `1 x p`
+one, and part 8b measured both on the whole corpus. So this is not a model of the
+answer, it *is* the answer, up to the session-to-session drift of running it
+again.
+
+On `worker5137` (Zen2, 4 cores per 16 MiB L3), whole corpus at 64 threads — 16
+domains — the gate moves **144 of 392 case-dtype-methods**, all of them the
+`abcijk` family, and nothing else:
+
+| dtype | n | predicted arm/rule |
+|---|---|---|
+| `f64` | 18 | **1.947** |
+| `f32` | 18 | **2.647** |
+| `c64` | 54 | 1.172 |
+| `c32` | 54 | 1.266 |
+| all changed | 144 | **1.423** |
+
+which is **1.138 over the whole 392** with the unchanged cases counted at 1.000,
+or per dtype 1.277 / 1.430 / 1.060 / 1.091. At 16 threads (4 domains) it moves
+the same population for 1.242. At **4 threads — one domain — it changes nothing**,
+and on **Ice Lake at any thread count up to the socket it changes nothing at
+all**: the gate is bit-identical to the shipped rule there, which makes that
+machine a free null control rather than a second experiment.
+
+Put beside part 8's scaling curve, that is the difference between 5.97x and
+~7.6x on 64 Zen2 cores in `f64`, and it closes most of the gap between Zen2's
+parallel efficiency and Ice Lake's on identical code — which is what the
+mechanism predicted it should do.
+
+### The negative result: a traffic term cannot be calibrated, and here is why not
+
+The first design was the principled one — add a cross-domain `B`-replication term
+to the cost model and let it decide — and it does not work. Four attempts, each
+scored offline against the grid:
+
+* A term in `min(pm, domains)` large enough to move the `k = 24` family moves
+  **263 of 392 case-dtype-methods onto intermediate grids** like `4 x 16` and
+  `8 x 8` that no session has ever run. The term saturates at `pm >= domains`, so
+  its optimum is an intermediate, not `1 x p`.
+* Restricted to the two extremes, the switch-over weight is **33.6** for `f64`
+  `abcijk`, **56.7** for `f64` `ijkl`, **50.6** for `c64` `abcijk` and **56.2**
+  for `c64` `ijkl`. The measurement wants the first three to switch and the
+  fourth not to. There is no weight that does that: the two `ijkl` thresholds are
+  1% apart and want opposite answers.
+* Making the term count *reals* rather than elements — so 1m's four-reals-per-`A`
+  and 3m's three-plane traffic enter, and the `D == 1` behaviour is provably
+  unchanged for every method — moves the pair to 66.0 and 67.6 and leaves them
+  still inverted.
+* Adding the `A`-side traffic term that makes the model symmetric (`min(pn, d)`
+  domains read each row strip) ranks `ijkl` as *more* inclined to the column axis
+  than `abcijk`, which is backwards by a factor of two in the measurement.
+
+So the mechanism that explains the domain count does **not** explain which wide
+families want the swap, and four plausible accounts of it are refuted. The
+threshold that does separate them is `k`, by a factor of 40 — and a threshold on
+a bandwidth-boundness proxy is at least the right *kind* of quantity for a
+bandwidth effect. It is stated as a confinement of scope, not as a mechanism.
+
+**What it costs to be that conservative, stated rather than hidden.** The same
+session says a forced column split is worth 1.168–1.801 on the wide
+*compute-bound* families (`ijkl-*`, `ij-ik-kj`) in the real dtypes, and 0.715–0.876
+in the complex ones. Flipping those too is a **0.916 geomean over the 96
+case-dtype-methods involved** — a loss, because the complex populations are three
+times the real ones — so leaving them alone is the right call on this evidence
+even before the one-machine, one-session caveat. The `n` arm already prices that
+variant in every future run; nothing new is needed to revisit it.
+
+### A methodological result: per-case ratios at 64 threads are not readable
+
+The `m` arm at 64 threads produces the **same partition as the rule** on 366 of
+392 case-dtype-methods, so those ratios are pure repeats and measure this
+session's per-case precision directly. They come back geomean 0.997 with **p10
+0.885 and p90 1.107, and tails to 0.80 and 1.55** — on the `abcijk` family in
+`f64`, 0.801 to 1.545.
+
+Per-family geomeans are good to 1–2% and everything quoted above is one. **No
+per-case number at 64 threads on this corpus means anything**, which is why the
+gate was not fitted to one, and why `partition-score-rule.py` prints that control
+first and labels the per-case column as spread rather than as a result. This is
+the same lesson as A31 and A32 in a third form: the floor is a property of the
+measurement's shape, and it has to be re-derived in-session every time.
+
+### The threading default: recommended on, conditionally, and not flipped here
+
+D22 is the user's call and this commit does not take it. With the numbers now in
+hand the recommendation is:
+
+* **Turn it on where one L3 serves the thread set.** Ice Lake reaches 10.6x
+  (`f64`) and 15.3x (`c64` 3m) on 32 cores and is still climbing, with a 0.4–0.6%
+  floor. The domain-aware gate is a no-op there, so this needs nothing else.
+* **On chiplet machines, turn it on together with `TENSORCONTRACT_PARTITION=domain`,
+  once the confirmation run has met the prediction above.** Zen2's 5.5–8.1x at 64
+  cores was measured with the defect the gate fixes; the predicted post-gate
+  figure is ~7.6x in `f64`, and the remaining shortfall against Ice Lake is
+  occupancy (29–36% at 64 threads), i.e. the per-call thread spawn and the
+  small-contraction work Phase 1 named — not the partition.
+* **Two limits are unchanged and independent of topology**: threads are spawned
+  per `execute` call rather than pooled, and `NC`'s L3 budget is charged per core
+  in the legacy blocking.
+
+Shipping the gate on by default is a separate decision from shipping *threads* on
+by default, and it should be taken first, because it is a no-op on every
+single-domain machine and a large win on the others.
+
+### The confirmation run, and what would falsify it
+
+```bash
+PARTITION_SWEEP=1 STAGES=threads sbatch -C rome scripts/rusty-phase4.sbatch
+```
+
+~1.5–2 h. `phase4f-threads.sh` now runs a `domain` arm beside `m` and `n`, over
+the whole corpus at the top thread count and across the thread-count sweep on the
+memory-bound family, and prints the prediction from this section next to the
+result. Pre-registered, so it cannot be reinterpreted afterwards:
+
+1. **`dom/rule` on the `abcijk` family must reproduce `n/rule`** to within the
+   session's own floor, at 64 threads and at 16, in all four dtypes. It is the
+   same partition, so anything else is contention.
+2. **`dom/rule` on every other case must be 1.000** — the same code path runs.
+   This is the column the change cannot touch, and it is the check that caught a
+   contaminated A/B in part 7. If it moves, nothing else in the run counts.
+3. **At 4 threads (one domain) `dom` must equal `rule` exactly.**
+4. `t1` against `t1b` should now come back near 1.000 rather than 0.95–0.97,
+   because a discarded warm-up arm runs first (A31). If it does not, the warm-up
+   is at the wrong thread count and the floor is still a cold-start artefact.
+
+A run on `-C icelake` is a stronger null than a repeat here: the gate must be
+bit-identical to the rule at every thread count up to the socket.
+
+| # | Decision | Rationale |
+|---|---|---|
+| D41 | `Plan::partition`'s `panels >= p` early return is **gated** on `l3_domains(p) > 1`, `blocks >= p` and `k <= 64`, and then swaps to `1 x min(p, blocks)`. Behind `TENSORCONTRACT_PARTITION=domain`, off by default. | Removing the early return is wrong on a one-L3-per-socket machine, where it is worth nothing and the code is already right; A36 identifies the domain count as the discriminator and the engine already probes it. The other two conditions are the ones that stop the fix from costing 2–5x on the narrow half and 25% on the complex compute-bound half. Binary rather than modelled because a traffic term cannot be calibrated (this part) and because the two arms it chooses between are the two that were measured. |
+| D42 | The choice is made in a pure function, `columns_beat_rows(blocks, k, p, domains)`, with the legacy default expressed as `domains = 1`. | The gate's whole truth table is then pinnable by a unit test on any machine rather than only on a chiplet one, and each of the three conditions gets a case that turns it off alone — the `abcijk` family satisfies all three, so a gate that quietly stopped consulting one of them would still look right on the corpus. |
+
+| # | Assumption | Status |
+|---|---|---|
+| A36 | The 4.3x that a 1-D `N` partition wins on the memory-bound family is a property of the partition rule. | **Refuted; now implemented as a property of the topology.** See part 8. D41 is the code. |
+| A37 | `l3_domains(p)` may assume **compact placement**: `p` threads occupy `p` consecutive physical cores, filling one L3 domain before starting the next. | **Assumed, and true of every measurement in this file.** `phase4f-threads.sh` builds its cpusets that way by construction (`cpuset_for` takes the first `nt` cores in domain order) and a whole-node run leaves nothing to spread over. A *scattered* placement spans more domains than this counts, and the error is in the safe direction: it under-counts, so the rule falls back to the behaviour every committed number was measured with. `TENSORCONTRACT_L3_DOMAINS` overrides it, which is what the still-unbuilt `--spread` cpuset arm would use to close A36's one residual gap. |
+| A38 | A cross-domain traffic term in the partition cost model can be calibrated to select the column axis where measurement wants it. | **Refuted, four ways** — see the negative result above. The weights that separate the two `abcijk`/`ijkl` pairs are 1% apart and want opposite answers, in element units and in real units alike, and the symmetric two-sided model ranks the two families backwards. Do not re-derive it without a new mechanism. |
+| A39 | Per-case ratios at 64 threads are readable at the ±6% the reference machine reports. | **Refuted on this corpus and this width.** Repeats of an identical partition run p10 0.885 / p90 1.107 with tails to 0.80–1.55. Only per-family geomeans (1–2%) are quotable at this thread count, and the control that shows it comes out of the same data at no cost. |
 
 ## Phases 4 (rest) – 5
 

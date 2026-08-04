@@ -569,6 +569,46 @@ impl Plan {
     /// call is a question for `scripts/phase4f-threads.sh`, and
     /// `TENSORCONTRACT_PARTITION=n` is the arm to measure it against.
     ///
+    /// # The domain-aware gate, `TENSORCONTRACT_PARTITION=domain`
+    ///
+    /// The early return above — "the row axis fills the threads, so use it" — is
+    /// **correct only where the threads share one L3**, and it is wrong by up to
+    /// 4.3x where they span many (A36, part 8b). The shared packed `B` panel is
+    /// sized for *an* L3; under `p x 1` every thread reads the whole panel, so on
+    /// a chiplet machine it is replicated across every domain the thread set
+    /// covers and re-streamed from memory once per domain. Under `1 x p` each
+    /// thread owns a slice that fits its local L3.
+    ///
+    /// So the fix is to *gate* the early return on
+    /// [`cache::l3_domains`](crate::kernel::cache::l3_domains), not to remove it:
+    /// on a one-L3-per-socket machine the early return is right and `pn` buys
+    /// nothing (Ice Lake, 32 threads on one domain: 1.014). With
+    /// `TENSORCONTRACT_PARTITION=domain` the row axis gives way to the column
+    /// axis when **all three** of these hold, and the partition is unchanged
+    /// otherwise:
+    ///
+    /// 1. the thread set spans more than one L3 domain — the mechanism, and the
+    ///    only quantity A36 separates from thread count;
+    /// 2. the column axis can fill the threads by itself (`blocks >= p`), so the
+    ///    swap costs no parallelism. Without this the corpus's narrow cases lose
+    ///    2–5x by running on a fraction of their cores;
+    /// 3. the contraction is shallow, `k <= 64`. The penalty being dodged is
+    ///    bandwidth, so it can only dominate where the case is bandwidth-bound;
+    ///    the wide compute-bound families were measured *losing* 25% in the
+    ///    complex methods from the same swap.
+    ///
+    /// `columns_beat_rows` is that predicate, kept as a pure function of four
+    /// numbers so its whole truth table can be pinned by a test on any machine.
+    ///
+    /// It is **off by default** (D22 is the user's call, and every committed
+    /// threaded number was measured without it). The choice is deliberately
+    /// binary — `p x 1` or `1 x p`, the two arms that were actually measured —
+    /// rather than a cross-domain traffic term added to the cost model above: a
+    /// term large enough to move the `k = 24` family moves 263 of 392
+    /// case-dtype-methods onto intermediate grids like `4 x 16` that no session
+    /// has ever run. Those intermediates are the obvious next question and are
+    /// not this change.
+    ///
     /// `TENSORCONTRACT_PARTITION=m` restores the 1-D `M` partition exactly, `=n`
     /// forces a 1-D `N` partition, and `=<pm>x<pn>` pins both — so the axis
     /// choice is a run-time A/B rather than a diff between two builds (A15), and
@@ -588,17 +628,29 @@ impl Plan {
         let blocks = cols.div_ceil(nr.max(1)).max(1);
         let p = self.threads();
 
-        match partition_override() {
-            PartitionMode::Rule => {}
+        let domain_aware = match partition_override() {
+            PartitionMode::Rule => false,
+            PartitionMode::Domain => true,
             PartitionMode::Rows => return (p.min(panels), 1),
             PartitionMode::Cols => return (1, p.min(blocks)),
             PartitionMode::Pin(pm, pn) => {
                 return (pm.clamp(1, panels), pn.clamp(1, blocks));
             }
-        }
+        };
         // The row direction alone fills the threads: the 1-D partition, bit for
         // bit the pre-2-D behaviour, and the only case the corpus mostly needs.
+        // Unless the threads do not share an L3, the column axis could fill them
+        // just as well, and the case is shallow enough for the replicated `B`
+        // panel to be what limits it — then, and only then, the axes swap.
         if panels >= p {
+            let domains = if domain_aware {
+                crate::kernel::cache::l3_domains(p)
+            } else {
+                1
+            };
+            if columns_beat_rows(blocks, self.a_k.len(), p, domains) {
+                return (1, p.min(blocks));
+            }
             return (p, 1);
         }
         let mut best = (1, 1);
@@ -990,13 +1042,56 @@ fn row_block_override() -> RowBlock {
     }
 }
 
+/// The depth below which a contraction is bandwidth-bound enough for the
+/// cross-domain `B` replication to be what limits it. The project's existing
+/// memory-bound criterion is `min(n, k) <= 64` (see `CLAUDE.md`) and this is the
+/// same 64; the corpus puts `k = 24` on one side of it and `k >= 204` on the
+/// other, so nothing in it is near the boundary and the threshold is a
+/// separation, not a tuned constant.
+const SHALLOW_K: usize = 64;
+
+/// The domain-aware gate: in the regime where the row axis alone fills the
+/// threads (`panels >= p`, which the caller has already established), should the
+/// column axis take them instead?
+///
+/// All three conditions were put here by measurement:
+///
+/// 1. **`domains > 1`** — the thread set spans more than one L3. This is the
+///    mechanism, and the only quantity A36 separates from thread count: Ice Lake
+///    runs 32 threads over one domain and reads 1.014, Zen2 runs 4 over one and
+///    reads 1.031, while three multi-domain points rise monotonically to 2.38x.
+///    Passing `1` is also how [`Plan::partition`] expresses the legacy default.
+/// 2. **`blocks >= p`** — the column axis can fill the threads by itself, so the
+///    swap costs no parallelism. Without it the corpus's narrow cases lose 2–5x
+///    by running on a fraction of their cores.
+/// 3. **`k <= SHALLOW_K`** — the penalty being dodged is bandwidth, so it can
+///    only dominate where the case is bandwidth-bound, and `k` is this corpus's
+///    knob for that. The whole effect was measured on the `k = 24` family; the
+///    wide compute-bound families (`ijkl-*`, `ij-ik-kj`, `k` 2704–5184) were
+///    measured *losing* 25% in the complex methods from the same swap. The guard
+///    confines the rule to the population the evidence covers.
+///
+/// A pure function of four numbers so that the whole truth table can be pinned
+/// by a test on any machine, rather than only on a chiplet one.
+fn columns_beat_rows(blocks: usize, k: usize, p: usize, domains: usize) -> bool {
+    domains > 1 && blocks >= p && k <= SHALLOW_K
+}
+
 /// What `TENSORCONTRACT_PARTITION` asked for. Without `std` there is no
 /// environment to read, so only `Rule` is ever constructed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[cfg_attr(not(feature = "std"), allow(dead_code))]
 enum PartitionMode {
-    /// [`Plan::partition`]'s rule.
+    /// [`Plan::partition`]'s rule, with the `panels >= p` early return
+    /// unconditional. The default, and what every committed threaded number was
+    /// measured with.
     Rule,
+    /// The same rule with the early return **gated on the L3 domain count**, so
+    /// a thread set that spans several L3s takes the column axis on shallow
+    /// contractions wide enough to afford it. Off by default: it is a
+    /// recommendation waiting on its end-to-end measurement, not a shipped
+    /// default. See [`Plan::partition`] and [`columns_beat_rows`].
+    Domain,
     /// One-dimensional over the oriented `M` direction — the partition Phase 4
     /// item 4 shipped, kept reachable so the 2-D rule can be measured against
     /// it as a run-time A/B rather than a diff between two builds.
@@ -1009,10 +1104,11 @@ enum PartitionMode {
     Pin(usize, usize),
 }
 
-/// `TENSORCONTRACT_PARTITION=m|n|<pm>x<pn>` pins how the threads are laid out
-/// over the output instead of deriving it from the shape. Read once per process;
-/// for measurement only, and none of it affects correctness — every partition
-/// gives bitwise identical results.
+/// `TENSORCONTRACT_PARTITION=legacy|domain|m|n|<pm>x<pn>` selects the partition
+/// rule, or pins the layout outright instead of deriving it from the shape.
+/// `legacy` (the default) and `domain` are *rules*; `m`, `n` and `<pm>x<pn>` are
+/// pins. Read once per process; for measurement only, and none of it affects
+/// correctness — every partition gives bitwise identical results.
 fn partition_override() -> PartitionMode {
     #[cfg(feature = "std")]
     {
@@ -1026,6 +1122,8 @@ fn partition_override() -> PartitionMode {
             match v.as_str() {
                 "m" | "rows" | "1d" => PartitionMode::Rows,
                 "n" | "cols" => PartitionMode::Cols,
+                "domain" | "domains" => PartitionMode::Domain,
+                "legacy" | "rule" => PartitionMode::Rule,
                 _ => match v.split_once('x') {
                     Some((pm, pn)) => match (pm.parse::<usize>(), pn.parse::<usize>()) {
                         (Ok(pm), Ok(pn)) => PartitionMode::Pin(pm.max(1), pn.max(1)),
@@ -1200,6 +1298,37 @@ mod tests {
 
     fn lay(e: &[i64]) -> Layout {
         Layout::col_major(e)
+    }
+
+    /// The domain-aware gate's whole truth table, machine-independently.
+    ///
+    /// Every one of the three conditions is here because measurement put it
+    /// there, so each gets a case that turns it off on its own — a gate that
+    /// quietly stopped consulting one of them would still look right on the
+    /// corpus's `abcijk` family, which satisfies all three.
+    #[test]
+    fn domain_gate_needs_all_three_conditions() {
+        // The measured population: 64 threads over 16 L3 domains, 1024 column
+        // blocks against 768 row panels, `k = 24`. Worth up to 4.3x (A36).
+        assert!(columns_beat_rows(1024, 24, 64, 16));
+        // One L3 domain: the early return is *correct* here, at any thread count.
+        // Ice Lake reaches 32 threads on one domain and reads 1.014 — the point
+        // that separates domain count from thread count — so it is pinned at both
+        // ends of the thread range.
+        assert!(!columns_beat_rows(1024, 24, 32, 1));
+        assert!(!columns_beat_rows(1024, 24, 4, 1));
+        // Too few column blocks to feed the threads: swapping would run the case
+        // on a fraction of its cores, which the corpus's narrow half pays 2-5x for.
+        assert!(!columns_beat_rows(63, 24, 64, 16));
+        assert!(columns_beat_rows(64, 24, 64, 16));
+        // Deep enough to be compute-bound: the cross-domain penalty is a
+        // bandwidth cost and cannot dominate here. `ijkl-*` and `ij-ik-kj` sit on
+        // this side and were measured *losing* 25% in the complex methods.
+        assert!(!columns_beat_rows(1024, 2704, 64, 16));
+        assert!(columns_beat_rows(1024, SHALLOW_K, 64, 16));
+        assert!(!columns_beat_rows(1024, SHALLOW_K + 1, 64, 16));
+        // Serial is never a partition question.
+        assert!(!columns_beat_rows(1024, 24, 1, 1));
     }
 
     #[test]

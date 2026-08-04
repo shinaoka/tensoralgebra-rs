@@ -211,6 +211,61 @@ impl CacheHierarchy {
     pub fn cores_sharing(&self, lvl: &CacheLevel) -> usize {
         (lvl.shared_by / self.threads_per_core()).max(1)
     }
+
+    /// How many **L3 domains** a run of `threads` threads spans.
+    ///
+    /// This is the input the partition rule was missing (A36): the shared packed
+    /// `B` panel is sized for *an* L3, so whether "shared" means what the design
+    /// assumed depends on how many separate L3s the thread set covers. One L3
+    /// per socket gives 1 at every thread count up to the socket; a chiplet
+    /// machine with a 4-core L3 gives 1 at 4 threads and 16 at 64.
+    ///
+    /// **Compact placement is assumed**: `threads` threads occupy `threads`
+    /// consecutive physical cores, filling one domain before starting the next.
+    /// That is what `scripts/phase4f-threads.sh` does by construction and what a
+    /// whole-node run does anyway; a *scattered* placement spans more domains
+    /// than this reports, and the error is in the safe direction — it under-counts,
+    /// so the rule falls back to the behaviour every committed number was measured
+    /// with. `TENSORCONTRACT_L3_DOMAINS` overrides it for exactly that case; see
+    /// [`l3_domains`].
+    ///
+    /// A machine with no L3 at all has nothing shared to spread, so every core is
+    /// its own domain.
+    pub fn l3_domains(&self, threads: usize) -> usize {
+        let threads = threads.max(1);
+        match &self.l3 {
+            Some(l3) => threads.div_ceil(self.cores_sharing(l3)),
+            None => threads,
+        }
+    }
+}
+
+/// How many L3 domains a `threads`-wide run spans on *this* machine.
+///
+/// [`CacheHierarchy::l3_domains`] over [`hierarchy`], with
+/// `TENSORCONTRACT_L3_DOMAINS` overriding the derivation. The override exists
+/// because the derivation assumes compact placement: it is how a scattered
+/// cpuset (the same thread count spread one-per-domain instead of packed) can be
+/// measured against a packed one without a rebuild, and it is how the rule is
+/// exercised on a machine that has only one domain.
+///
+/// Read once per process, like every other environment switch here.
+pub fn l3_domains(threads: usize) -> usize {
+    #[cfg(feature = "std")]
+    {
+        use std::sync::OnceLock;
+        static ENV: OnceLock<Option<usize>> = OnceLock::new();
+        let forced = *ENV.get_or_init(|| {
+            std::env::var("TENSORCONTRACT_L3_DOMAINS")
+                .ok()
+                .and_then(|v| v.trim().parse::<usize>().ok())
+                .filter(|&n| n > 0)
+        });
+        if let Some(n) = forced {
+            return n.min(threads.max(1));
+        }
+    }
+    hierarchy().l3_domains(threads)
 }
 
 /// The cache hierarchy of this machine: sysfs, then `CPUID`, then [`BUILTIN`].
@@ -808,6 +863,35 @@ mod tests {
         assert_eq!(h.threads_per_core(), 2);
         assert_eq!(h.cores_sharing(&h.l2.unwrap()), 1);
         assert_eq!(h.cores_sharing(&h.l3.unwrap()), 8);
+    }
+
+    /// The input the partition rule was missing (A36), on the two topologies
+    /// Phase 4 measured: a socket-wide L3 spans one domain right up to the socket
+    /// and a chiplet L3 starts spanning them almost immediately. That difference
+    /// is the whole content of the rule, so it is pinned here rather than left to
+    /// whatever machine happens to run the suite.
+    #[test]
+    fn l3_domains_separates_a_socket_l3_from_a_chiplet_one() {
+        let socket = CASCADE; // 16 logical CPUs on the L3, SMT 2 -> 8 cores
+        assert_eq!(socket.l3_domains(1), 1);
+        assert_eq!(socket.l3_domains(8), 1);
+        assert_eq!(socket.l3_domains(9), 2); // a second socket, or oversubscribed
+        assert_eq!(socket.l3_domains(32), 4);
+
+        // Zen2: four cores per 16 MiB L3, SMT off in the measured allocation.
+        let mut chiplet = CASCADE;
+        chiplet.l1d.shared_by = 1;
+        chiplet.l3 = Some(CacheLevel {
+            shared_by: 4,
+            ..CASCADE.l3.unwrap()
+        });
+        assert_eq!(chiplet.l3_domains(4), 1); // the point null in all four dtypes
+        assert_eq!(chiplet.l3_domains(16), 4); // 1.17-1.27x for the column axis
+        assert_eq!(chiplet.l3_domains(64), 16); // up to 4.3x
+
+        // No L3 at all: nothing is shared, so every thread is its own domain.
+        let none = CacheHierarchy { l3: None, ..CASCADE };
+        assert_eq!(none.l3_domains(8), 8);
     }
 
     #[cfg(feature = "std")]

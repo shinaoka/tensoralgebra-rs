@@ -63,7 +63,15 @@ PACK_WEIGHT = 8
 
 
 def partition(panels, blocks, nr, p):
-    """`Plan::partition`, replayed offline. Keep in step with plan.rs."""
+    """`Plan::partition`, replayed offline. Keep in step with plan.rs.
+
+    The **legacy** rule, deliberately: the domain-aware gate (D41) only ever swaps
+    `p x 1` for `1 x min(p, blocks)` in a regime where `blocks >= p`, so it leaves
+    `pm * pn` — the only thing this file reports — unchanged at `p`. What the gate
+    is worth is a different question, answered by
+    `scripts/partition-score-rule.py` against measured arms rather than modelled
+    here.
+    """
     if panels >= p:
         return (p, 1)
     best, best_cost = (1, 1), None
