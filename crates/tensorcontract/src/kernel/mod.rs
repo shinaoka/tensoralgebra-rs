@@ -276,6 +276,24 @@ impl Blocking {
     /// the comparison meaningless.
     pub fn derive(real_bytes: usize, a_reals: usize, b_reals: usize) -> Blocking {
         let kc = if real_bytes <= 4 { 384 } else { 256 };
+        // Coupled deepening, measured on two machines and **off by default**
+        // pending the end-to-end A/B (part 7). `TENSORCONTRACT_DEEPEN=on` gives
+        // 8-byte reals a `kc` of 512 with `mc`/`nc` re-derived against the same
+        // budgets, which is worth +2.9% on Cascade Lake and +3.1% on Zen2 —
+        // where the *pinned* `kc = 512` arm is 0.961 and 1.050 respectively, so
+        // it is the coupling and not the depth that transfers.
+        //
+        // Scoped to `f64` real geometry deliberately. Coupling shrinks `mc` as it
+        // deepens `kc`, and the methods whose derived `mc` is already smallest
+        // cannot afford that: `c64` 1m loses 5.5% on the reference machine, 3m
+        // 2.6%, while `f32`/`c32`/`c64`-planar are neutral. The general form —
+        // couple while `mc` stays above a small multiple of `MR` — is scorable
+        // against the two committed grids offline and is not done yet.
+        let deepen = real_bytes == 8
+            && a_reals == 1
+            && b_reals == 1
+            && env_is("TENSORCONTRACT_DEEPEN", "on");
+        let kc = if deepen { 512 } else { kc };
         // A *coupled* `kc` override re-derives `mc`/`nc` against the same cache
         // budgets at the new depth; the plain `TENSORCONTRACT_KC` override
         // changes `kc` alone and leaves the `D` strip a `jr` pass revisits
@@ -492,6 +510,19 @@ fn env_usize(_key: &str) -> Option<usize> {
     #[cfg(not(feature = "std"))]
     {
         None
+    }
+}
+
+/// Is `key` set to exactly `val`? A bool rather than the string, so the `no_std`
+/// arm needs no allocation and the call sites cannot drift on parsing.
+fn env_is(_key: &str, _val: &str) -> bool {
+    #[cfg(feature = "std")]
+    {
+        std::env::var(_key).is_ok_and(|v| v == _val)
+    }
+    #[cfg(not(feature = "std"))]
+    {
+        false
     }
 }
 
@@ -1167,6 +1198,19 @@ mod tests {
             let x = Blocking::derive(real_bytes, a, b);
             (x.mc, x.kc, x.nc)
         };
+        // Coupled deepening is opt-in (part 7). Rather than skip when it is on,
+        // assert what it does — including that it moves **only** `f64` real, which
+        // is the whole point of scoping it and the thing a silent widening would
+        // break. Following the orientation tests' precedent: a test that stops
+        // testing anything when a switch is set is worse than no test.
+        if env_is("TENSORCONTRACT_DEEPEN", "on") {
+            assert_eq!(d(8, 1, 1), (128, 512, 768), "f64 real, deepened");
+            assert_eq!(d(8, 2, 2), (128, 256, 768), "c64 planar must not deepen");
+            assert_eq!(d(8, 4, 2), (64, 256, 768), "c64 1m must not deepen");
+            assert_eq!(d(8, 3, 3), (85, 256, 512), "c64 3m must not deepen");
+            assert_eq!(d(4, 1, 1), (341, 384, 2048), "f32 real must not deepen");
+            return;
+        }
         // 8-byte reals: `kc = 256`, half a 1 MiB L2 for A, 3 MiB of L3 for B.
         assert_eq!(d(8, 1, 1), (256, 256, 1536), "f64 real");
         assert_eq!(d(8, 2, 2), (128, 256, 768), "c64 planar");
