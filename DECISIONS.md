@@ -2813,6 +2813,54 @@ decided by bytes moved per useful flop across the *driver*, not inside the kerne
 | A24 | The AVX-512 method ranking (planar > 1m > 3m at the operating `kc`) carries over to AVX2. | **Refuted at the kernel level, in the direction predicted.** 3m is first in `f32`/`c32` at the operating `kc` and first in both precisions at `kc = 16`; planar is last or next-to-last in every AVX2 column. End-to-end confirmation is not in this session. |
 | A30 | The register-block sweep's `live <= 16` budget is the real one. | **Refuted, by one register.** Every `live == 16` shape collapses to 21–33 GF/s beside a 48–53 GF/s sibling at `live <= 15`. All eight shipped defaults sit at 14 or 15, so nothing shipped is affected — but the annotation is wrong and would mislead the next person choosing a shape. |
 
+### The register block is per-microarchitecture, not per-ISA
+
+An Ice Lake session (job 6746817, `worker6016`, `STAGES="shapes threads"`) ran the
+same sweep on a *second AVX-512 Intel core*, which had never been done — every
+AVX-512 shape in `kernel::x86` was measured on Cascade Lake. Three of the four
+`f64`/`c64` defaults are still the winners there. `real` is not, and the reversal is
+symmetric:
+
+| shape (`MV x NR`) | acc | live | Cascade Lake @ `kc = 256` | Ice Lake @ `kc = 256` |
+|---|---|---|---|---|
+| `real 3 x 8` — **shipped** | 24 | 28 | **88.4** | 68.3 |
+| `real 3 x 9` | 27 | 31 | 81.3 | **74.6** |
+
+Each machine prefers the other's loser by about 9%: `3x8` wins by 8.7% on Cascade
+Lake and loses by 9.2% on Ice Lake. Both machines were swept over the same candidate
+set — `3x9` was on Cascade Lake's list and was correctly rejected there — so this is
+not a coverage gap, it is a genuine disagreement between two microarchitectures with
+the *same ISA and the same 32 registers*.
+
+The mechanism is visible in the depth columns: at `kc = 64` both machines prefer
+`3x9` (109.7 against 107.6 on Cascade Lake, 97.7 against 90.9 on Ice Lake), and the
+flip happens only at the operating depth. `3x9` carries 27 accumulator registers to
+`3x8`'s 24 and `live = 31` against 28 — the A30 budget exactly — so it puts more
+pressure on the L1 that also holds the `A` micro-panel. **Ice Lake's L1d is 48 KiB
+12-way against Cascade Lake's 32 KiB 8-way**, which is precisely the room `3x9`
+needs and does not get on the older core.
+
+**Dispatch selects shapes by ISA only**, so on every Ice Lake machine this engine
+currently runs a `real` kernel 9.2% off its own optimum — and Ice Lake is the second
+largest CPU partition on this cluster.
+
+Worth noting what makes the fix cheap: the engine *already* probes cache descriptors
+for D23, and L1 geometry alone separates these two cores (48 KiB/12-way against
+32 KiB/8-way) with no CPUID model table and no new machinery. That is a better
+discriminator than a vendor/family list because it names the thing that actually
+causes the difference.
+
+Not done, and it should be: `c64`/`c32` were only checked against the shipped
+default here, `f32`/`c32` on Ice Lake are unanalysed, and whether a single compromise
+shape exists that is within noise of both optima is unknown. None of that needs a new
+allocation — `bench-results/worker6016-*/kernel-shapes.txt` and
+`bench-results/phase3-kernel-shapes.txt` are both committed and the comparison is
+arithmetic.
+
+| # | Assumption | Status |
+|---|---|---|
+| A34 | Register blocks are a property of the instruction set, so one measurement per ISA is enough (the premise of D19 and of `cfg_avx512_*` / `cfg_avx2_*`). | **Refuted.** Cascade Lake and Ice Lake, same ISA and same 32 registers, disagree by ~9% in opposite directions on the `real` `f64` shape, because Ice Lake's 48 KiB 12-way L1 accommodates an accumulator footprint Cascade Lake's 32 KiB 8-way does not. Shapes are per-microarchitecture; probed L1 geometry is enough to tell these two apart. |
+
 ## Phase 5 interlude: making the C surface consumable
 
 Prompted by a concrete external ask — a colleague evaluating this for the
