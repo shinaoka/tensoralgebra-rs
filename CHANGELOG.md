@@ -154,7 +154,11 @@ see `DECISIONS.md` A21.
   `tensorprimitives_tapp_jll` over 15 platforms. It calls the same `install.sh` a
   site install does, so the layout a JLL presents is the layout CI tests. It carries
   a `TAPP_LOCAL_SRC` switch so the file that gets submitted is the file that was
-  dry-run.
+  dry-run. **13 of the 15 have been built and audited**, each producing an identical
+  layout containing a real shared library; the two Apple targets are unbuilt because
+  they require accepting the Xcode SDK licence. `riscv64-linux-gnu` and
+  `aarch64-unknown-freebsd` are excluded — no Rust toolchain shard exists for them —
+  as is `i686-w64-mingw32`, per BinaryBuilder's own documentation.
 * **`julia/TensorPrimitives`**, a Julia package in two layers: `LibTAPP`, a
   complete `ccall` wrapper over `<tapp.h>` with handles as distinct Julia types and
   finalizers; and `TAPPBackend`, a `TensorOperations.jl` backend. The contraction

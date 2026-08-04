@@ -185,6 +185,14 @@ products = [
 # reason to expand its platforms over them, *and* it does not silence the original
 # warning. `check_csl_libs` agrees: it flags `libgomp` and `libatomic`, not
 # `libgcc_s`. If a reviewer asks, this paragraph is the answer.
+#
+# On Windows the equivalent warning names `bcryptprimitives.dll`, which is a
+# Windows 10+ system DLL that Rust's standard library imports for randomness and
+# that the auditor's system-library list does not know about. Same situation, same
+# answer: it is present wherever the DLL can run, and there is no JLL to point at.
+#
+# These are the only two unresolved-library warnings this build produces. A *third*
+# one would be a real finding.
 dependencies = Dependency[]
 
 build_tarballs(

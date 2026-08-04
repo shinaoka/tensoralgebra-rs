@@ -2368,6 +2368,23 @@ considered done. Four corrections, none of which a careful reading produced:
   suite loading it, not by argument. Reverted to an empty dependency list with the
   reasoning attached in the recipe, since a reviewer will ask.
 
+**Thirteen of the fifteen platforms were then built and audited locally**, and all
+thirteen produced a tarball with a real shared library in it and an identical
+layout: `lib/` (or `bin/` on Windows), `include/tapp.h`, `lib/pkgconfig/`,
+`share/licenses/`. `x86_64-w64-mingw32` behaves as predicted — the artifact is
+`tensorprimitives_tapp.dll` with no `lib` prefix, it lands in `bin/` because that is
+what `${libdir}` is there, the import library goes to `lib/`, and the two-name
+`LibraryProduct` finds it without renaming anything. `i686` linked, which `cargo
+check` could not establish. The two not built are the Apple targets, and only
+because accepting the Xcode SDK licence is not a decision to take on someone's
+behalf.
+
+Exactly **three** distinct audit warnings across all thirteen, all understood:
+the `cpuid` one below, `libgcc_s.so.1` on ELF, and `bcryptprimitives.dll` on
+Windows — the last a Windows 10+ system DLL that Rust's standard library imports
+for randomness and that the auditor's system-library list does not know. A fourth
+would be a real finding, and the recipe says so.
+
 And one **prediction confirmed verbatim**, which is why D40 exists. The audit log
 reads: *"contains a `cpuid` instruction; refusing to analyze for minimum instruction
 set, as it may dynamically select the proper instruction set internally. Would have
