@@ -45,11 +45,18 @@
 #
 #   TENSORCONTRACT_PARTITION=m        1-D over `M`, i.e. the partition before 2-D
 #   TENSORCONTRACT_PARTITION=n        1-D over `N`, the other extreme
-#   TENSORCONTRACT_PARTITION=domain   the domain-aware gate: the shipped rule
-#                                     except that the `panels >= p` early return
-#                                     gives way to the column axis when the thread
-#                                     set spans several L3s (A36)
-#   (unset)                           the shipped rule
+#   TENSORCONTRACT_PARTITION=legacy   the ungated rule, i.e. the behaviour before
+#                                     D44 and what every threaded number committed
+#                                     before 2026-08-04 was measured with
+#   (unset)                           the shipped rule, which since D44 **is** the
+#                                     domain-aware gate
+#
+# **The baseline arm is `legacy`, not `domain`.** Until D44 the default was the
+# ungated rule and `domain` was the treatment; now the default *is* `domain`, so a
+# `domain` arm measures the default twice and yields nothing. Job 6753208's data
+# has `-dom` tags and is the treatment; anything run after D44 has `-leg` tags and
+# is the baseline. Do not compare a `-dom` column with a `-leg` column as if they
+# were the same arm — they are on opposite sides of the ratio.
 #
 # The `domain` arm is the one this script now exists to settle. It should
 # reproduce the `n` arm on the memory-bound family and the rule everywhere else,
@@ -343,11 +350,12 @@ for pair in f64,c64 f32,c32; do
     # partition.
     run "th-t$TOP-pm-$t" "$TOP" "$pair" m
     run "th-t$TOP-pn-$t" "$TOP" "$pair" n
-    # The candidate rule, over the whole corpus, so the cases it must *not* touch
-    # are measured alongside the ones it must. That is the column a ratio against
-    # the rule alone cannot supply, and it is what caught a contaminated A/B in
-    # part 7.
-    run "th-t$TOP-dom-$t" "$TOP" "$pair" domain
+    # The *pre-D44* rule, over the whole corpus, so the cases the gate must not
+    # touch are measured alongside the ones it must. That is the column a ratio
+    # against the default alone cannot supply, and it is what caught a
+    # contaminated A/B in part 7. Read it as baseline/treatment: `rule` is the
+    # gate now, `leg` is what it replaced.
+    run "th-t$TOP-leg-$t" "$TOP" "$pair" legacy
     # `PARTITION_SWEEP=1` prices the axis choice *as a function of thread count*,
     # on the memory-bound family only so it is cheap. On Zen2 a 1-D `N` partition
     # beat the rule by up to 4.3x on exactly these cases (part 8b) and the
@@ -361,7 +369,7 @@ for pair in f64,c64 f32,c32; do
     if [ -n "${PARTITION_SWEEP:-}" ]; then
         for nt in $THREADS; do
             [ "$nt" = 1 ] && continue
-            for arm in m n domain; do
+            for arm in m n legacy; do
                 FILT=(--case "${PARTITION_CASE:-abcijk}")
                 run "ps-t$nt-$arm-$t" "$nt" "$pair" "$arm"
             done
@@ -384,7 +392,7 @@ for pair in f64,c64 f32,c32; do
         PK_CPUS=$(cpuset_for "$SP_T")
         echo "spread arms: t$SP_T packed on [$PK_CPUS] vs spread on [$SP_CPUS] ($SP_DOMS domains)"
         FILT=(--case "${PARTITION_CASE:-abcijk}")
-        for arm in rule m n domain; do
+        for arm in rule m n legacy; do
             a=$arm; [ "$arm" = rule ] && a=""
             run "sp-t$SP_T-packed-$arm-$t" "$SP_T" "$pair" "$a" "$PK_CPUS"
             run "sp-t$SP_T-spread-$arm-$t" "$SP_T" "$pair" "$a" "$SP_CPUS" "$SP_DOMS"
@@ -452,7 +460,7 @@ done
 echo
 echo "partition arms, each against the rule at the same thread count:"
 for pair in f64c64 f32c32; do
-    for arm in pm pn dom; do
+    for arm in pm pn leg; do
         echo "== $pair t$TOP partition=$arm"
         scripts/compare-sweeps.py "$OUT/th-t$TOP-$pair.csv" "$OUT/th-t$TOP-$arm-$pair.csv" \
             | head -20
@@ -498,7 +506,7 @@ if [ -n "${SPREAD:-}" ]; then
     echo "the two n/rule ratios are the comparison; pm/rule is the control."
     for pair in f64c64 f32c32; do
         for place in packed spread; do
-            for arm in m n domain; do
+            for arm in m n legacy; do
                 echo "== $pair t$SP_T $place partition=$arm"
                 scripts/compare-sweeps.py \
                     "$OUT/sp-t$SP_T-$place-rule-$pair.csv" \
