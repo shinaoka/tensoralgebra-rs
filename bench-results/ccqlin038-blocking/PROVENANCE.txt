@@ -1,0 +1,32 @@
+The MC/KC/NC grid on the reference machine, overnight.
+
+  machine : ccqlin038.flatironinstitute.org
+            Intel Xeon Gold 6244, Cascade Lake-SP, 2 x 8 cores, AVX-512
+            32 KiB L1d, 1 MiB L2/core, 25.3 MiB L3/socket
+  date    : 2026-08-03T21:47:59 -> 2026-08-04T05:31:08 (commit aee3c91)
+  script  : scripts/ccq-blocking-night.sh 4 bench-results/ccqlin038-blocking
+  pinning : cpu4, taskset, arms sequential; whole-L3-domain occupancy per arm
+  host    : topology.json, and the head of night.log
+
+What is in it: `bl-<arm>-<dtype>` for 19 blocking arms in two dtype pairs, a
+discarded warm-up grid under `warmup/`, `features.csv`, `score.txt` from
+`scripts/blocking-score-rules.py` and `placement-audit.txt` from
+`scripts/grid-placement-audit.py`.
+
+Why it matters: this is the reference machine's answer to the same grid
+`worker5040-zen2/phase4e/` ran on Zen2, and it *reverses* it. Pinned `kc = 512`
+is worth 1.050 on Zen2 and 0.961 here, so it is a machine-specific result and
+must not ship. The analytical model costs 14% (f64) to 34% (c32 1m) here against
+2-7% on Zen2 -- its `kc` sinks it on Zen2 and its `mc` sinks it here, so both
+halves of the derivation are wrong, on different machines.
+
+The `base` arm in this grid was itself 1-2% slow (`basem`/`base2` read
+1.010-1.020), which inflates every `arm / base` ratio in it. That contamination
+is the reason the +2.9% here and the +3.1% on Zen2 agreed, and it was only
+caught by the end-to-end A/B in `../ab-deepen/`. Read the two together;
+this directory alone will mislead you in the optimistic direction.
+
+Note: the naming here is host-prefixed while the same experiment on Zen2 sits at
+`worker5040-zen2/phase4e/`. See ../README.md for the two schemes.
+
+Read with: DECISIONS.md "Phase 4 report, part 7".

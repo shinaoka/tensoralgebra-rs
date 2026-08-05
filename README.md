@@ -13,17 +13,18 @@ No transposed copies, no temporary workspace, no FFI in the hot path. The
 algorithm is Matthews' block-scatter-matrix tensor contraction
 (arXiv:1607.00291) inside BLIS's five-loop, two-level-packing structure.
 
-> **Status: prerelease.** The engine is correct, vectorised and benchmarked
-> against TBLIS on a single machine. It is *not* yet tuned for machines other
-> than that one, and the table under [Performance](#performance-and-what-is-actually-measured) says exactly which claims are measured and which are not.
-> The API may still change.
+> **Status: prerelease.** The engine is correct, vectorised, and benchmarked
+> against TBLIS on three machines. Tuning is a different matter, and the section
+> on [what is and is not tuned](#what-is-tuned-and-what-is-not) says exactly
+> which claims are measured, on which microarchitecture, and which are not
+> claimed at all. The API may still change.
 >
 > What you get today, by hardware:
 >
 > | | micro-kernels | tuned? |
 > |---|---|---|
-> | x86-64 with AVX-512F | AVX-512, per method | register blocks **measured** on a Cascade Lake Xeon; cache blocking hand-set for that machine and not yet swept |
-> | x86-64 with AVX2+FMA | AVX2, per method | correct; register blocks **modelled, not measured** |
+> | x86-64 with AVX-512F | AVX-512, per method | register blocks **measured on Cascade Lake**, and they do not transfer — an Ice Lake machine runs three of the eight shipped shapes 9–13% off its own optimum. Cache blocking is fitted to the same Cascade Lake workstation and has now been swept: it is near optimal there |
+> | x86-64 with AVX2+FMA | AVX2, per method | register blocks **measured on Zen2**, and all eight shipped shapes were confirmed as the winners |
 > | anything else | portable scalar | correct; slow by design |
 >
 > Threading and an analytical cache-blocking model are implemented and **off by
@@ -120,42 +121,129 @@ here are for. Any claim about awkward strides needs one of them named.
 
 ## Performance, and what is actually measured
 
-Single core, Xeon Gold 6244 (Cascade Lake, AVX-512), full 49-case TCCG corpus at
-64 MiB nominal tensor size, planar method, GF/s counting 2 flops per real MAC and
-8 per complex one. Raw CSVs in [`bench-results/`](bench-results/):
+Single core, **Intel Ice Lake-SP, AVX-512** (2 x 32 cores, SMT off; 48 KiB
+12-way L1d, 1280 KiB 20-way L2 per core, 48 MiB L3 per socket — the geometry the
+engine itself probed), full 49-case
+TCCG corpus at 64 MiB nominal tensor size, planar method, GF/s counting 2 flops
+per real MAC and 8 per complex one. **Measured 2026-08-04/05** on an exclusive
+cluster node, against **TBLIS 2.0-dev** (`develop` @ `555320c`) and **TBLIS
+v1.3.0** in the same runs. Raw CSVs and provenance in
+[`bench-results/worker6156-icelake/`](bench-results/README.md):
 
 | dtype | min | median | geomean | max |
 |---|---|---|---|---|
-| `f32` | 4.8 | 61.4 | 62.3 | **161.2** |
-| `f64` | 1.5 | 35.4 | 34.4 | **70.7** |
-| `c32` | 8.1 | 93.7 | 89.2 | **168.4** |
-| `c64` | 4.0 | 49.5 | 48.7 | **83.5** |
+| `f32` | 11.0 | 74.8 | 77.2 | **168.8** |
+| `f64` | 7.1 | 44.7 | 43.7 | **71.6** |
+| `c32` | 25.5 | 121.0 | 113.9 | **179.3** |
+| `c64` | 15.7 | 62.0 | 63.3 | **91.1** |
 
-For scale, OpenBLAS on the same core reaches ~96 GF/s for both `dgemm` and
-`zgemm` on large square shapes. The corpus deliberately spans compute-bound and
-badly memory-bound contractions, which is why the min and max differ by 20x or
-more; the single worst case (`adbjc-cbdka-kj`) is memory-bound for every engine
-measured, TBLIS included.
+The corpus deliberately spans compute-bound and badly memory-bound contractions,
+which is why min and max differ by an order of magnitude; the worst cases are
+memory-bound for every engine measured, TBLIS included.
+
+**How well this is known.** The whole set was run **twice**, in separate
+allocations three hours apart, and the two runs agree across all twenty
+dtype × engine columns to **0.997–1.003**. Within each run, a repeat arm 2.5 h
+from its original reproduces it to 0.998–1.001 with **0 of 980** case points
+outside ±6%. A discarded warm-up arm precedes everything, and every arm records
+occupancy for its whole L3 domain — all of them came back with no co-tenants.
+
+**Against the baselines**, median over the 12-case premise set at 200 MiB, same
+run, same core, everything single-threaded:
+
+| dtype | this engine | TBLIS 2.0-dev | TTGT (OpenBLAS) | engine ÷ TBLIS 2.0 |
+|---|---|---|---|---|
+| `f64` | 46.5 | 30.8 | 14.0 | **1.51x** |
+| `c64` | 64.0 | 48.8 | 25.9 | **1.31x** |
+| `f32` | 81.1 | 45.6 | 25.9 | **1.78x** |
+| `c32` | 123.2 | 88.3 | 49.2 | **1.40x** |
+
+Over the full 49-case corpus the engine is 1.95–2.20x TTGT in every dtype.
+
+> **What these numbers are not.** They are Ice Lake, and the previous set was
+> Cascade Lake, so **the difference between them is not the improvement the
+> optimisation work bought.** Two different things changed at once. The Phase 4
+> gains are real and separately measured — the write-back orientation fix is
+> +12–17% of corpus geometric mean in all four dtypes on the reference machine,
+> the orientation rule up to 1.48x per case — but attributing any part of the
+> table above to them would be wrong. Nothing in this repo permits comparing a
+> number from one machine with a number from another.
+>
+> The engine is also **handicapped** in this table: its register blocks were
+> chosen on Cascade Lake and three of the eight are 9–13% off on Ice Lake, and its
+> complex-method ranking does not transfer here either. It wins these columns
+> while running shapes picked for a different microarchitecture.
 
 **The counterintuitive part, and the project's main technical result:** complex
-throughput is *higher* than real on the same shapes — 49.5 against 35.4 GF/s in
-double, 93.7 against 61.4 in single, at the median. A complex MAC is four real
+throughput is *higher* than real on the same shapes — 62.0 against 44.7 GF/s in
+double, 121.0 against 74.8 in single, at the median. A complex MAC is four real
 FMAs on twice the bytes, so complex contraction has **twice the arithmetic
 intensity** and amortises packing and indexing overhead better. Complex is not
-the weak spot; low arithmetic intensity is, in either domain.
+the weak spot; low arithmetic intensity is, in either domain. This is a
+within-run ratio, so it holds where the absolute numbers are not comparable: it
+came out 1.449 (`c64`/`f64`) and 1.474 (`c32`/`f32`) here, against 1.416 and
+1.432 on Cascade Lake — the same result on two microarchitectures.
 
-**On the three methods:** planar wins on the corpus geometric mean in both
-precisions, by single-digit percent, and the ranking **inverts on memory-bound
-shapes** where 3m's 25% flop saving wins. The deciding quantity is bytes moved
-per useful flop, not flop count and not in-register shuffles. Exact margins moved
-during optimisation work and are being re-measured, so this README does not quote
-a number for them — see the Phase 3 and Phase 4 reports in
-[`DECISIONS.md`](DECISIONS.md), which record the mechanism and every measurement.
+**On the three methods, and this changed.** Planar wins the corpus geometric mean
+in both precisions on both AVX-512 machines measured. But the *ordering below it*
+and the much-quoted inversion on memory-bound shapes are **Cascade Lake results
+that do not transfer.** On Cascade Lake 3m was the fastest of the three on
+memory-bound shapes, where its 25% flop saving pays; on Ice Lake 3m is last in
+every column, wins 0 of 49 cases, and sits at 0.694 (`c64`) and 0.744 (`c32`)
+against planar where Cascade Lake had it at 0.956 and 0.921. That is partly
+confounded with the wrong register blocks above and cannot be fully separated
+without an Ice Lake shape sweep. The deciding quantity is still bytes moved per
+useful flop — the mechanism is intact — but **do not treat the ranking, or the
+inversion, as a property of the engine.** On AVX2 the kernel-level ordering
+differs again, putting 3m first in `f32`/`c32`; that is a kernel measurement with
+panels packed and hot, not a corpus ranking, and the corpus-level AVX2 comparison
+has not been made.
 
-**Not measured, and so not claimed:** anything on AVX2 hardware; anything
-threaded; anything with the analytical cache-blocking model enabled; any machine
-whose cache hierarchy differs from the one above while the default (hardcoded)
-blocking is in force.
+## What is tuned, and what is not
+
+The most useful thing measurement established here is where the tuning stops.
+
+**Register blocks are per-microarchitecture, not per-ISA** — which was assumed
+the other way round, and dispatch still selects them by instruction set alone.
+Cascade Lake and Ice Lake, same ISA and same 32 registers, disagree by up to 13%
+on three of the eight shipped shapes, each machine preferring the other's loser
+by about 9%. Ice Lake's 48 KiB 12-way L1d accommodates an accumulator footprint
+Cascade Lake's 32 KiB 8-way does not. So on any Ice Lake machine this engine
+currently runs a `real` kernel 9.2% off its own optimum. The AVX-512 blocks are
+measured on Cascade Lake, the AVX2 blocks on Zen2 — where all eight were
+confirmed as the winners — and neither set is a claim about anything else.
+
+**Cache blocking is fitted to the reference machine, and swept.** `KC` is
+first-order: it decides whether the `A` sliver is an L1 resident or an L2 stream,
+which is what the whole complex-method ranking turns on. But there is no
+few-percent win left in `MC`/`KC`/`NC` there — `kc = 384` is the measured optimum
+and the shipped 256 is close to it, `MC` is a plateau a sixteenfold range moves
+by at most 3%, and a deeper coupled setting that looked like +3% on two machines
+failed its end-to-end A/B. That item is closed, on evidence. It says nothing
+about a machine with a different hierarchy.
+
+**The analytical blocking model is off by default because it lost**, not because
+it is unmeasured. It was built to solve exactly the portability problem above,
+and on the first unseen machine it was worse in 11 of 12 columns by up to 7.2%.
+On the reference machine it costs 14–34%. Its `kc` sinks it on one machine and
+its `mc` on the other, so both halves of the derivation are wrong — in different
+places. The probing and the cache descriptors it introduced are worth having and
+are still used; the default is not changing.
+
+**Threading is off by default, and not for lack of data.** Scaling is measured
+on two topologies and is strongly topology-dependent: Zen2 saturates by 16–32
+threads and declines at 64, while Ice Lake reaches 10.6x (`f64`) and 15.3x
+(`c64` 3m) on 32 cores and is still climbing. One thing is still missing and one has been fixed: threads are spawned per call rather than pooled, which is the whole story below ~1 MiB where 64 threads run 1.2–10x *slower* than serial; but `Plan::partition` now knows how many L3 domains the thread set spans, and gating its early return on that — rather than removing it — is the default (`TENSORCONTRACT_PARTITION=domain`). That is worth 1.13 corpus geometric mean at 64 Zen2 threads and provably changes nothing on a machine with one L3 per socket. Results are bitwise identical at every thread count and every partition, so none of this is ever a correctness or accuracy decision.
+
+**One known defect, stated because it ships.** In `planar` `f32`/`c32` the
+register block is `32x6`, where the Phase 3 sweep's own output names `32x5` as
+**7.8% faster** at the operating `kc`. The shipped shape appears to have been
+picked by a bytes-per-flop model over the measurement sitting next to it. It is
+not fixed here — but it *is* now testable, which it was not when it was found. The row-block menu was keyed by `MR`, and `32x5` shares its `MR` with the shipped `32x6`, so the menu could not express an `NR`-only alternate and no runtime switch could reach it. Re-keying the menu by position fixed that: `TENSORCONTRACT_ROWBLOCK=idx=3` selects `32x5` end to end. It stays unfixed on purpose, because a kernel margin is not a corpus margin — `NR` changes the loop count and the packed sliver geometry — so the corpus effect has to be measured before the default moves. It was found inside committed raw output months after the fact, at no machine cost, which is the argument for committing raw output.
+
+**Not measured, and so not claimed:** absolute throughput on any machine other
+than the Cascade Lake reference; the corpus-level method ranking on AVX2;
+anything on non-x86 hardware.
 
 ## Switches
 
@@ -165,11 +253,20 @@ process restart rather than a rebuild. None of them changes results.
 | variable | effect |
 |---|---|
 | `TENSORCONTRACT_COMPLEX` | `planar` \| `1m` \| `3m` — the complex method |
-| `TENSORCONTRACT_THREADS` | thread count, default **1**. Results are bitwise identical at any count |
-| `TENSORCONTRACT_KERNEL` | `auto` (default) \| `scalar` \| `avx2` \| `avx512` — pin the instruction set |
+| `TENSORCONTRACT_THREADS` | thread count, default **1**. Results are bitwise identical at any count, so this is never a correctness or accuracy decision. Off by default for the two reasons under [what is tuned](#what-is-tuned-and-what-is-not), and because it keeps every committed single-core number reproducible |
+| `TENSORCONTRACT_KERNEL` | `auto` (default) \| `scalar` \| `avx2` \| `avx512` — pin the instruction set. A pinned ISA the CPU lacks falls back to scalar, so `avx2` is how the AVX2 kernels get exercised on an AVX-512 machine |
 | `TENSORCONTRACT_BLOCKMODEL` | `legacy` (default) \| `model` — derive cache blocking from probed cache descriptors instead of hardcoded constants. Measured on a foreign machine and **worse in 11 of 12 columns**, so `legacy` is the default on evidence |
 | `TENSORCONTRACT_PARTITION` | `domain` (default) \| `legacy` — which rule apportions the threads over the output. `domain` gates the "row axis fills the threads, so use it" shortcut on how many L3 domains the thread set spans. Measured: it changes **nothing at all** on a machine with one L3 per socket (the identical partition on 392 of 392 corpus cases) and is worth **1.13 geometric mean over the corpus at 64 threads** on a chiplet machine, up to 3.0x on individual memory-bound cases. Single-threaded callers never reach it. `legacy` is the ungated rule; `m`, `n` and `<pm>x<pn>` pin the partition outright, for A/B measurement |
-| `TENSORCONTRACT_DEEPEN` | `on` — coupled deepening: `kc = 512` for `f64` real geometry with `mc`/`nc` re-derived at that depth. Off by default, pending an end-to-end A/B. Worth **+2.9%** on Cascade Lake and **+3.1%** on Zen2, and scoped to `f64` on purpose: coupling shrinks `mc`, which the methods whose `mc` is already smallest cannot afford (`c64` 1m loses 5.5%) |
+| `TENSORCONTRACT_DEEPEN` | `on` — coupled deepening: `kc = 512` for `f64` real geometry with `mc`/`nc` re-derived at that depth. **Off by default because it failed its end-to-end A/B**, and kept only as a record of the experiment. It looked like +3% on two machines; both grids' `base` arm was 1–2% slow, so every `arm/base` ratio was inflated identically and the agreement was a shared artefact rather than a replication. Corrected, the treatment is ≈0.977 |
+
+Plus the levers that exist so a fast path can be A/B-tested at run time rather
+than as a diff between two builds — `TENSORCONTRACT_ORIENT` (`none` | `swap` |
+`legacy`, the row/column orientation), `_ROWBLOCK` (`base` | `auto` | `mr=<n>` |
+`idx=<i>`, the micro-tile row block — `idx=3` reaches the `32x5` shape the known
+defect below is about), `_WRITEBACK` (`gather` forces the general scatter path),
+and `_MC`/`_KC`/`_NC` with their `_MC_PCT`/`_NC_PCT`/`_KC_COUPLE` relatives for
+cache blocking. None of them affects correctness; they exist for measurement, and
+a build-to-build diff already produced one wrong sign here.
 
 `Plan::with_complex_method`, `Plan::with_threads` and `Plan::with_blocking` are
 the programmatic equivalents, and take precedence.
@@ -323,7 +420,7 @@ cargo build --release -p tensorprimitives-bench --features tblis,blas
 
 # the Phase 1 premise check
 ./target/release/tcbench premise --size 64 --reps 3 --dtype f64,c64 \
-    --engines tblis,ttgt --csv bench-results/premise-f64c64.csv
+    --engines tblis,ttgt --csv /tmp/premise-f64c64.csv
 
 # the same against the last stable TBLIS release (note the feature and ABI)
 cargo build --release -p tensorprimitives-bench --features tblis13,blas
@@ -334,10 +431,31 @@ TBLIS_ROOT=/path/to/tblis-1.3.0-install \
 ./target/release/tcbench premise --size 64 --stress ragged --dtype f64,c64
 
 # full corpus sweep
-./target/release/tcbench sweep --size 32 --csv bench-results/sweep.csv
+./target/release/tcbench sweep --size 32 --csv /tmp/sweep.csv
 ```
 
-Raw results from the runs quoted above are committed under `bench-results/`.
+Or run the whole comparison set the way this project runs it — a discarded
+warm-up arm, both TBLIS ABIs from prebuilt binaries so nothing compiles mid-run,
+and two repeat arms that derive the session's own noise floor instead of
+importing one:
+
+```bash
+TBLIS_ROOT_2X=../baselines/tblis-2.0-install \
+TBLIS_ROOT_13=../baselines/tblis-1.3.0-install \
+  scripts/compare-bench.sh prep                              # the only compile
+  scripts/compare-bench.sh bench-results/$(hostname -s)-$(scripts/arch-label.sh)
+```
+
+**It wants an exclusive machine for about three and a half hours**, and that is
+not pedantry: pinning is not enough, because the pinned core's SMT sibling shares
+L1d and L2, which is what every cache-blocking measurement here turns on. Two
+Phase 4 conclusions had to be corrected after re-measuring on a quiet machine.
+[`scripts/README.md`](scripts/README.md) indexes the rest, including the Slurm
+wrappers and the offline analyses that cost no CPU at all.
+
+Raw results from every run quoted anywhere in this repo are committed under
+[`bench-results/`](bench-results/README.md), one `PROVENANCE.txt` per directory
+saying which machine and date produced it.
 
 ## Testing
 

@@ -66,5 +66,10 @@ grids in `examples/kernel_shapes` so its register blocks can be calibrated.
 * When comparing real and complex, hold the *shape* fixed. Re-sizing per
   precision, as upstream TCCG does, makes the ratio meaningless.
 * If a claim depends on irregular block scatter, say which `--stress` mode
-  produced it and quote the observed `regA`. The unperturbed TCCG corpus is
-  fully regular and cannot support such a claim.
+  produced it and quote the observed `regA`. Do **not** repeat the old shorthand
+  that the unperturbed TCCG corpus is "fully regular" — it is not, at this
+  engine's register blocks. TCCG rounds stride-1 extents to multiples of 24,
+  which is regular only for a block that divides 24, and the shipped `f32`/`c32`
+  blocks are `MR` 16, 32 and 48. `reg_a < 1.0` on 42.9% of the corpus as the
+  orientation rule actually picks it (Phase 4 part 14). `--stress` buys *severe*
+  irregularity, not the only departure from 1.00.

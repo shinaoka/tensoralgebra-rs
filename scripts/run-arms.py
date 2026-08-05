@@ -29,8 +29,11 @@ The job file is one arm per line, whitespace-separated:
     <tag>  <dtype-list>  [ENV=VAL ...]
 
 Blank lines and `#` comments are ignored. Every arm gets the same `--size`,
-`--reps`, `--case` and `--engines`, so an arm differs from another only by its
-environment, which is the whole point of the runtime-switch discipline (A15).
+`--reps`, `--case`, `--engines`, `--subcommand` and `--stress`, so an arm differs
+from another only by its environment, which is the whole point of the
+runtime-switch discipline (A15). A job file that needs a different measurement
+— `premise` rather than `sweep`, or a stress mode — is a separate invocation, so
+that "these arms are comparable" stays true by construction.
 
 Usage:
     scripts/run-arms.py --outdir DIR --jobs N [--sequential] JOBFILE
@@ -92,6 +95,14 @@ def main():
     ap.add_argument("--reps", default="3")
     ap.add_argument("--case", default="")
     ap.add_argument("--engines", default="planar,1m,3m")
+    ap.add_argument("--subcommand", default="sweep", choices=("sweep", "premise"),
+                    help="which tcbench measurement to run for every arm in this "
+                         "invocation (default sweep). `premise` takes the same "
+                         "options and is the efficiency-against-a-GEMM-ceiling "
+                         "measurement, so it needs the same occupancy record")
+    ap.add_argument("--stress", default="",
+                    help="none|ragged|padded, passed straight through; the only "
+                         "way to exercise the block-scatter gather path")
     ap.add_argument("--jobs", type=int, help="concurrent arms (default: 75%% of L3 domains)")
     ap.add_argument("--sequential", action="store_true",
                     help="one arm at a time on a single domain; the fallback regime")
@@ -170,11 +181,13 @@ def main():
         if a.fake:
             cmd = ["taskset", "-c", str(cpu)] + a.fake.split()
         else:
-            cmd = ["taskset", "-c", str(cpu), a.bin, "sweep",
+            cmd = ["taskset", "-c", str(cpu), a.bin, a.subcommand,
                    "--size", a.size, "--reps", a.reps,
                    "--engines", a.engines, "--dtype", job["dtype"], "--csv", csv]
             if a.case:
                 cmd += ["--case", a.case]
+            if a.stress:
+                cmd += ["--stress", a.stress]
         before, start = proc_stat(), time.time()
         with open(os.path.join(a.outdir, f"{job['tag']}.txt"), "w") as log:
             rc = subprocess.call(cmd, env=env, stdout=log, stderr=subprocess.STDOUT)
@@ -186,6 +199,9 @@ def main():
                     f"domain {slot['domain']} = cpus {topology.compress(dom)}, "
                     f"numa {slot['numa']}\n")
             f.write(f"# window {end - start:.1f}s; env {' '.join(job['env']) or '(none)'}\n")
+            f.write(f"# tcbench {a.subcommand}"
+                    + (f" --stress {a.stress}" if a.stress else "")
+                    + f" --engines {a.engines} --size {a.size} --reps {a.reps}\n")
             for c in sorted(occ):
                 mark = " <- measurement thread" if c == cpu else ""
                 f.write(f"cpu{c} busy {occ[c]:.1f}%{mark}\n")
@@ -194,6 +210,8 @@ def main():
             f.write("# domain co-tenancy: "
                     + (", ".join(others) if others else "none above 5%") + "\n")
         rec = dict(tag=job["tag"], dtype=job["dtype"], env=job["env"], cpu=cpu,
+                   subcommand=a.subcommand, stress=a.stress or None,
+                   engines=a.engines, size=a.size, reps=a.reps,
                    domain=slot["domain"], numa=slot["numa"], rc=rc,
                    start=start, end=end, seconds=end - start,
                    own_busy=occ.get(cpu), domain_busy=occ)

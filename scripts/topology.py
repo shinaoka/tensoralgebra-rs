@@ -172,8 +172,24 @@ def discover():
             }
         )
 
+    # The CPU model string. Recorded because it was missing when it was wanted:
+    # `bench-results/worker6156-icelake` had cores, caches, NUMA and SMT width but
+    # nothing that named the part, so a README could not say which CPU produced
+    # its headline table without guessing. A provenance file that cannot name the
+    # CPU is not provenance.
+    model = ""
+    try:
+        with open("/proc/cpuinfo") as f:
+            for line in f:
+                if line.startswith("model name"):
+                    model = line.split(":", 1)[1].strip()
+                    break
+    except OSError:
+        pass
+
     return {
         "host": read("/proc/sys/kernel/hostname") or os.uname().nodename,
+        "cpu_model": model,
         "slurm_job": os.environ.get("SLURM_JOB_ID"),
         "slurm_nodelist": os.environ.get("SLURM_JOB_NODELIST"),
         "online_cpus": len(online),
@@ -256,6 +272,8 @@ def main():
     if not a.quiet:
         t = topo
         print(f"host            : {t['host']}")
+        if t.get("cpu_model"):
+            print(f"cpu             : {t['cpu_model']}")
         if t["slurm_job"]:
             print(f"slurm           : job {t['slurm_job']} on {t['slurm_nodelist']}")
         print(f"cpus allowed    : {t['allowed_count']} of {t['online_cpus']} online "
