@@ -146,7 +146,13 @@ fi
 # `PARTITION_SWEEP=1`, `SPREAD=1` and `SP_T` are passed through to the threads
 # stage; see phase4f-threads.sh. `SPREAD` is the within-machine separation of
 # domain count from thread count (A36's residual gap) and is cheap.
-STAGES=${STAGES:-"shapes threads validate grid"}   # `small` is opt-in; see phase4g-small.sh
+# `small` is opt-in, and `ARMS` is how the spawn-cost switches get measured — it
+# sweeps several configurations against a `base` arm in one session, at ~30 min per
+# arm. `ab.sh` cannot do this job: it never sets a thread count, so
+# `TENSORCONTRACT_POOL` and `_AMORTISE` are no-ops in every one of its arms.
+#
+#   ARMS="base;pool:TENSORCONTRACT_POOL=on" STAGES=small sbatch scripts/rusty-phase4.sbatch
+STAGES=${STAGES:-"shapes threads validate grid"}
 export PARTITION_SWEEP=${PARTITION_SWEEP:-}
 export SPREAD=${SPREAD:-}
 export RAGGED=${RAGGED:-}

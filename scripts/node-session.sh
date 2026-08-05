@@ -148,11 +148,17 @@ stage_threads() {
 }
 
 stage_small() {
-    say "small: does threading still pay on small contractions? (~20-30 min)"
+    say "small: does threading still pay on small contractions? (~30 min per arm)"
     guard_nothing_else
     # The one regime `threads` cannot answer: every case there has 64 MiB
     # operands, and threads are spawned per call. This is what the threading
     # default (D22) is missing.
+    #
+    # `ARMS` (see phase4g-small.sh) sweeps several configurations against a `base`
+    # arm in one session, which is the only way the ratios mean anything — and it
+    # is the right instrument for `TENSORCONTRACT_POOL` / `_AMORTISE`, because
+    # `ab.sh` never sets a thread count and both are no-ops at `p == 1`. Budget
+    # 30 min per arm.
     scripts/phase4g-small.sh auto "$OUT/phase4g" 2>&1 | tee -a "$OUT/phase4g.log"
     say "small done"
 }
