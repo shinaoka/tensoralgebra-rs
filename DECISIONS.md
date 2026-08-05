@@ -3726,6 +3726,61 @@ And a genuine positive result, cheaply held: the TBLIS 2.0 baseline is **measure
 to be build-insensitive at publication sizes**, where before it was an
 assumption nobody had tested.
 
+### Replicated, and the baselines placed
+
+Job 6754877 stage 2 ran the **whole comparison set a second time** on the same
+node, against the multi-config TBLIS 2.0 (231 min, rc=0). Data in
+`compare-tblis-x86_64/`. So there are now two independent full runs, in separate
+allocations three hours apart, and they agree across **all twenty dtype × engine
+columns to 0.997–1.003**. The second run's own near and session floors are both
+1.000–1.002. The `tblis` column agrees to 0.998–1.001, which confirms the A/B
+verdict a second way — a full run does not see the build difference either.
+
+That is the strongest evidence base this repo has for any comparison number: two
+runs, each internally bracketed, agreeing at the level of their own floors.
+
+**The Phase 1 headline replicates, and one number is identical to three digits.**
+Efficiency against a same-shape GEMM ceiling, mean over the 12 premise cases at
+200 MiB, complex efficiency ÷ real efficiency *within each engine*:
+
+| engine | `f64`→`c64` | `f32`→`c32` | Cascade Lake, Phase 1 |
+|---|---|---|---|
+| **TBLIS v1.3.0** (latest stable) | **0.215** | — | **0.215** |
+| TBLIS 2.0-dev | 1.413 | 1.306 | 1.06 / 1.15 |
+| TTGT (OpenBLAS) | 1.307 | 1.348 | 1.17 |
+| this engine, planar | 1.316 | 1.232 | — |
+| this engine, 3m | 0.934 | 0.950 | — |
+
+**TBLIS v1.3.0's 0.215 on Ice Lake is the same 0.215 measured on Cascade Lake**,
+and that is not a coincidence to be marvelled at — it is the mechanism confirming
+itself. 1.x has no complex micro-kernel for any post-Sandy-Bridge x86
+configuration, so complex runs the generic template while real gets tuned
+assembly, on *both* machines. The ratio is a property of the software, not of the
+hardware, which is exactly what Phase 1 concluded from the flat-across-shapes
+diagnostic. Nothing in this project has replicated so cleanly.
+
+The refutation against 2.0-dev is *stronger* here than on the reference machine
+(1.413 against 1.06). 3m is the only engine below 1.0, consistent with A37.
+
+**Where the engine sits, median GF/s over those 12 cases** — same run, same core,
+single-threaded throughout:
+
+| dtype | this engine | TBLIS 2.0-dev | TTGT | engine ÷ TBLIS 2.0 |
+|---|---|---|---|---|
+| `f64` | 46.5 | 30.8 | 14.0 | **1.51x** |
+| `c64` | 64.0 | 48.8 | 25.9 | **1.31x** |
+| `f32` | 81.1 | 45.6 | 25.9 | **1.78x** |
+| `c32` | 123.2 | 88.3 | 49.2 | **1.40x** |
+
+This is a materially better position than the README's current claim of "roughly
+parity with TBLIS 2.0 on complex", which was a Cascade Lake Phase 1 number
+(42.5 against 42.4 in `c64`) taken before every Phase 4 gain. **Two caveats keep
+it honest.** It is a different machine, so it is not evidence of how much Phase 4
+bought — that remains unmeasured and needs a `ccqlin038` run. And the engine is
+*handicapped* here: A34 says three of the eight shipped register blocks are 9–13%
+off on Ice Lake, and A37 says the method ranking does not transfer. It wins these
+columns while running shapes chosen for a different microarchitecture.
+
 ### Assumptions added
 
 | # | Assumption | Status |

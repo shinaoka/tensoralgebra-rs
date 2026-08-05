@@ -115,54 +115,83 @@ irregular gather path never runs. Any claim about awkward strides needs the
 
 ## Performance, and what is actually measured
 
-Single core, **Xeon Gold 6244** (Cascade Lake-SP, AVX-512), full 49-case TCCG
-corpus at 64 MiB nominal tensor size, planar method, GF/s counting 2 flops per
-real MAC and 8 per complex one, **measured 2026-08-02** against **TBLIS 2.0-dev**
-in the same run. Raw CSVs in [`bench-results/`](bench-results/README.md):
+Single core, **Intel Ice Lake-SP, AVX-512** (2 x 32 cores, SMT off; 48 KiB
+12-way L1d, 1280 KiB 20-way L2 per core, 48 MiB L3 per socket — the geometry the
+engine itself probed), full 49-case
+TCCG corpus at 64 MiB nominal tensor size, planar method, GF/s counting 2 flops
+per real MAC and 8 per complex one. **Measured 2026-08-04/05** on an exclusive
+cluster node, against **TBLIS 2.0-dev** (`develop` @ `555320c`) and **TBLIS
+v1.3.0** in the same runs. Raw CSVs and provenance in
+[`bench-results/worker6156-icelake/`](bench-results/README.md):
 
 | dtype | min | median | geomean | max |
 |---|---|---|---|---|
-| `f32` | 4.8 | 61.4 | 62.3 | **161.2** |
-| `f64` | 1.5 | 35.4 | 34.4 | **70.7** |
-| `c32` | 8.1 | 93.7 | 89.2 | **168.4** |
-| `c64` | 4.0 | 49.5 | 48.7 | **83.5** |
+| `f32` | 11.0 | 74.8 | 77.2 | **168.8** |
+| `f64` | 7.1 | 44.7 | 43.7 | **71.6** |
+| `c32` | 25.5 | 121.0 | 113.9 | **179.3** |
+| `c64` | 15.7 | 62.0 | 63.3 | **91.1** |
 
-> **These numbers understate the current engine, and by a lot.** They are the
-> Phase 3 set. Everything the optimisation work bought landed *after* them — the
-> write-back orientation fix alone is +12–17% of corpus geometric mean in all
-> four dtypes, and the orientation rule is worth up to 1.48x on individual cases.
-> Nobody has yet run the baseline set against the current build, so rather than
-> quote a mixture of old absolute numbers and new relative ones, this section
-> quotes the old ones and says so. The re-measurement is
-> [`scripts/compare-bench.sh`](scripts/README.md) and is pending an exclusive
-> machine.
+The corpus deliberately spans compute-bound and badly memory-bound contractions,
+which is why min and max differ by an order of magnitude; the worst cases are
+memory-bound for every engine measured, TBLIS included.
 
-For scale, OpenBLAS on the same core reaches ~96 GF/s for both `dgemm` and
-`zgemm` on large square shapes. The corpus deliberately spans compute-bound and
-badly memory-bound contractions, which is why the min and max differ by 20x or
-more; the single worst case (`adbjc-cbdka-kj`) is memory-bound for every engine
-measured, TBLIS included.
+**How well this is known.** The whole set was run **twice**, in separate
+allocations three hours apart, and the two runs agree across all twenty
+dtype × engine columns to **0.997–1.003**. Within each run, a repeat arm 2.5 h
+from its original reproduces it to 0.998–1.001 with **0 of 980** case points
+outside ±6%. A discarded warm-up arm precedes everything, and every arm records
+occupancy for its whole L3 domain — all of them came back with no co-tenants.
+
+**Against the baselines**, median over the 12-case premise set at 200 MiB, same
+run, same core, everything single-threaded:
+
+| dtype | this engine | TBLIS 2.0-dev | TTGT (OpenBLAS) | engine ÷ TBLIS 2.0 |
+|---|---|---|---|---|
+| `f64` | 46.5 | 30.8 | 14.0 | **1.51x** |
+| `c64` | 64.0 | 48.8 | 25.9 | **1.31x** |
+| `f32` | 81.1 | 45.6 | 25.9 | **1.78x** |
+| `c32` | 123.2 | 88.3 | 49.2 | **1.40x** |
+
+Over the full 49-case corpus the engine is 1.95–2.20x TTGT in every dtype.
+
+> **What these numbers are not.** They are Ice Lake, and the previous set was
+> Cascade Lake, so **the difference between them is not the improvement the
+> optimisation work bought.** Two different things changed at once. The Phase 4
+> gains are real and separately measured — the write-back orientation fix is
+> +12–17% of corpus geometric mean in all four dtypes on the reference machine,
+> the orientation rule up to 1.48x per case — but attributing any part of the
+> table above to them would be wrong. Nothing in this repo permits comparing a
+> number from one machine with a number from another.
+>
+> The engine is also **handicapped** in this table: its register blocks were
+> chosen on Cascade Lake and three of the eight are 9–13% off on Ice Lake, and its
+> complex-method ranking does not transfer here either. It wins these columns
+> while running shapes picked for a different microarchitecture.
 
 **The counterintuitive part, and the project's main technical result:** complex
-throughput is *higher* than real on the same shapes — 49.5 against 35.4 GF/s in
-double, 93.7 against 61.4 in single, at the median. A complex MAC is four real
+throughput is *higher* than real on the same shapes — 62.0 against 44.7 GF/s in
+double, 121.0 against 74.8 in single, at the median. A complex MAC is four real
 FMAs on twice the bytes, so complex contraction has **twice the arithmetic
 intensity** and amortises packing and indexing overhead better. Complex is not
-the weak spot; low arithmetic intensity is, in either domain. This one is a ratio
-within a single run, so unlike the absolute numbers above it is not disturbed by
-being out of date.
+the weak spot; low arithmetic intensity is, in either domain. This is a
+within-run ratio, so it holds where the absolute numbers are not comparable: it
+came out 1.449 (`c64`/`f64`) and 1.474 (`c32`/`f32`) here, against 1.416 and
+1.432 on Cascade Lake — the same result on two microarchitectures.
 
-**On the three methods:** planar wins on the corpus geometric mean in both
-precisions, and the ranking **inverts on memory-bound shapes** where 3m's 25%
-flop saving wins. The deciding quantity is bytes moved per useful flop, not flop
-count and not in-register shuffles. No margin is quoted here on purpose: the
-Phase 3 margins narrowed under the Phase 4 work, which helped 3m most, so any
-number would be stale. The ranking also depends on the **instruction set** — at
-the kernel level on AVX2, 3m comes first in `f32`/`c32`, the opposite of AVX-512.
-That is a kernel measurement with panels already packed and hot, so it is the
-kernel's contribution to a ranking rather than a ranking; the corpus-level AVX2
-comparison has not been made. Since AVX2 is what most machines run, do not carry
-the AVX-512 ordering over to one.
+**On the three methods, and this changed.** Planar wins the corpus geometric mean
+in both precisions on both AVX-512 machines measured. But the *ordering below it*
+and the much-quoted inversion on memory-bound shapes are **Cascade Lake results
+that do not transfer.** On Cascade Lake 3m was the fastest of the three on
+memory-bound shapes, where its 25% flop saving pays; on Ice Lake 3m is last in
+every column, wins 0 of 49 cases, and sits at 0.694 (`c64`) and 0.744 (`c32`)
+against planar where Cascade Lake had it at 0.956 and 0.921. That is partly
+confounded with the wrong register blocks above and cannot be fully separated
+without an Ice Lake shape sweep. The deciding quantity is still bytes moved per
+useful flop — the mechanism is intact — but **do not treat the ranking, or the
+inversion, as a property of the engine.** On AVX2 the kernel-level ordering
+differs again, putting 3m first in `f32`/`c32`; that is a kernel measurement with
+panels packed and hot, not a corpus ranking, and the corpus-level AVX2 comparison
+has not been made.
 
 ## What is tuned, and what is not
 

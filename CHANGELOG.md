@@ -82,12 +82,18 @@ added later without breaking existing dependents.
 
 ### Performance
 
-Single core, Xeon Gold 6244 (Cascade Lake), full 49-case TCCG corpus, geometric
-mean over the corpus unless stated. The noise floor those runs measured was
-**±1.3% on a corpus geomean and ±6% per case**; anything smaller is not a result.
-That figure belongs to those sessions on that machine and should not be carried
-into a new one — drift is a function of how far apart two arms are, from 0.02%
-at a minute to 4.4% across a cold start (A32). Derive it in session.
+Single core, full 49-case TCCG corpus, geometric mean over the corpus unless
+stated. **Every entry names its machine, because none of them may be compared
+with another**: the optimisation results below are Xeon Gold 6244 (Cascade Lake),
+the baseline comparison is Ice Lake-SP, and the AVX2 results are Zen2.
+
+Noise floors are derived in session, never imported. The Cascade Lake sessions
+measured **±1.3% on a corpus geomean and ±6% per case**; the exclusive Ice Lake
+node measured **0.998–1.001 with 0 of 980 case points outside ±6%**, roughly 5x
+tighter. Drift is a function of how far apart two arms are and of the machine —
+0.02% at a minute to 4.4% across a cold start on a boost-happy node (A32), and
+undetectable over four hours on an exclusive SMT-off one. Take the floor from the
+session, and be aware that problem size is a separate confound from time (A39).
 
 * Write-back **orientation** fix (compute `D^T = B^T A^T` when `D`'s column
   direction is the contiguous one): **+12–17%** in all four dtypes, closing a
@@ -100,13 +106,21 @@ at a minute to 4.4% across a cold start (A32). Derive it in session.
 * A corrected, antisymmetric **orientation rule**: **1.028** in `f32`,
   **1.022** in `c32` 1m, best case **1.48x**, 64-bit flat. Within 0.4% of a
   hindsight oracle in `f32`.
-* Of the three complex methods, **planar is fastest** over the corpus *on
-  AVX-512*, but the ranking **inverts on memory-bound shapes** where 3m wins. The
-  Phase 3 margins (3–8%) have narrowed and are no longer current — re-measure
-  before quoting one. The ranking also depends on the instruction set: at the
-  kernel level on **AVX2**, 3m comes first in `f32`/`c32`, the opposite of AVX-512
-  (A24). Since AVX2 is what most machines run, do not carry the AVX-512 ranking
-  over to one.
+* Of the three complex methods, **planar is fastest** over the corpus on both
+  AVX-512 machines measured. The ordering below it, and the inversion on
+  memory-bound shapes where 3m's flop saving pays, are **Cascade Lake results that
+  do not transfer**: on Ice Lake 3m is last in every column and wins 0 of 49 cases
+  (0.694 `c64`, 0.744 `c32` against planar, where Cascade Lake had 0.956 and
+  0.921), and the inversion is absent (A37). Partly confounded with the register
+  blocks being wrong there (A34). The ranking also depends on the instruction set:
+  at the kernel level on **AVX2**, 3m comes first in `f32`/`c32`, the opposite of
+  AVX-512 (A24). Do not treat the ranking as a property of the engine.
+* **Against the baselines on Ice Lake** — median over the 12-case premise set at
+  200 MiB, single core, everything single-threaded — the engine reaches
+  **1.51x `f64`, 1.31x `c64`, 1.78x `f32`, 1.40x `c32`** over **TBLIS 2.0-dev**,
+  and 1.95–2.20x over TTGT across the full corpus. Measured twice in separate
+  allocations, agreeing to 0.997–1.003 on all twenty columns. Not comparable with
+  any Cascade Lake number, and not evidence of what the Phase 4 work bought.
 
 ### Confidence — what is measured and what is only correct
 
@@ -121,7 +135,9 @@ The distinction matters more than the numbers, so it is stated per item.
 | **Default cache blocking (`MC`/`KC`/`NC`)** | **Swept on two machines, and closed with a negative result: there is no few-percent win here.** `KC` is first-order — it decides whether the `A` sliver is an L1 resident or an L2 stream — but on the reference machine `kc = 384` is the optimum and the shipped 256 is close to it, while `MC` is a wide plateau a sixteenfold range moves by at most 3%. Pinned `kc = 512` is a *machine-specific* result and must not ship: 1.050 on Zen2, **0.961** on Cascade Lake. Coupled deepening looked like +3% on both machines and **failed its end-to-end A/B** — both grids' `base` arm was 1–2% slow, inflating every `arm/base` ratio identically, so the two-machine agreement was a shared artefact rather than a replication; control-corrected the treatment is ≈0.977. `TENSORCONTRACT_DEEPEN=on` survives as an off-by-default record of that experiment, not as a pending improvement. Shipped defaults remain `kc = 384/256` by real size, fitted to one Cascade Lake workstation. Three candidate changes and a mechanism all died on measurement; do not reopen without a new machine or a new mechanism |
 | **The analytical blocking model** | **Measured, and it loses. Off by default and staying there.** On the first unseen machine it is worse in **11 of 12 columns**, by up to 7.2% in the complex methods, and the whole loss is attributable to its `kc` (A33). It was built to solve portability and does not; the hypothesis is refuted rather than pending |
 | **Threading** | **Scaling measured on two machines, still off by default.** Bitwise-identical results are asserted at every thread count. Scaling is strongly topology-dependent: Zen2 saturates by 16–32 and declines at 64, Ice Lake reaches 48% of linear at 32 in `c64` 3m. `Plan::partition` is missing the one input that explains both — how many L3 domains the thread set spans — and a 4.3x partition win on Zen2 is **absent on Ice Lake** (A36), so the first machine alone would have produced the wrong rule. Threads are still spawned per call rather than pooled |
-| Absolute throughput off the reference machine | **Partially known, and not comparable.** There are now Zen2 and Ice Lake sessions, but every ratio in them is within-session against a floor re-derived there: different cache hierarchy, and AVX2 rather than AVX-512 on Zen2. No number from them may be compared with a single-core number measured on `ccqlin038` |
+| Absolute throughput off the reference machine | **Measured on Ice Lake, twice, and it is the best-known set here — but still not comparable with the reference machine.** Two full engine-vs-baseline runs in separate allocations agree to 0.997–1.003 on all twenty dtype × engine columns, each internally bracketed by a repeat arm 2.5 h away reading 0.998–1.001 with 0 of 980 case points outside ±6%. The Zen2 sessions remain within-session only. **No number from any of them may be differenced against a `ccqlin038` number** — which is why the improvement the Phase 4 work bought is still unmeasured end to end |
+| **The complex-method ranking, off Cascade Lake** | **Measured and it does not transfer (A37).** Planar still wins the corpus, but 3m falls from 0.956/0.921 against planar to 0.694/0.744 on Ice Lake, is last in every column, and wins 0 of 49 cases — and the memory-bound inversion that Phase 4 item 3 was to exploit is absent. Confounded with A34's wrong register blocks and not separable without an Ice Lake shape sweep. Item 3 must not ship as an unconditional rule |
+| **The TBLIS 2.0 baseline's build** | **Measured, and it does not matter at these sizes — but it decides whether the baseline runs at all.** The install every number here used was configured `BLIS_CONFIG_FAMILY=auto`, hence skx-only, and **SIGILLs on any machine without AVX-512**. Rebuilt multi-config it is identical at 64 MiB and 200 MiB (0.997–1.000 against a 0.998–1.003 floor), so the comparison numbers stand; an earlier claim that the skx build understated TBLIS 2.0 by up to 1.68x was measured at 8 MiB and is withdrawn (A38, A39) |
 
 `K`-parallelism is deliberately absent, on evidence rather than by omission —
 see `DECISIONS.md` A21.
