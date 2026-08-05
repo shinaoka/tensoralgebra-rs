@@ -106,7 +106,12 @@ case,group,dtype,engine,m,n,k,macs,seconds,gflops,regular_a,regular_b,notes
 `regular_a` / `regular_b` are the block-scatter regularity fractions — quote them
 in any claim about awkward strides, and say which `--stress` mode produced them.
 `notes` carries the kernel, the register block, the orientation arm and the
-blocking actually used, which is what makes a row reproducible.
+blocking, which is what makes a row reproducible — **with one trap**: the `mc` there is
+the *derived* blocking (`plan_config`), not the value the driver allocates the
+per-thread packed-`A` buffer from, which is `min(mc, ceil(m/mr)*mr)` capped at
+`driver.rs:404`. The two coincide whenever `m` is large, which on this corpus is
+almost always, so a footprint analysis that forgets the cap gets the right answer for
+the wrong reason and the wrong answer on a narrow case.
 
 Sessions run through `scripts/run-arms.py` also leave, per arm, a `.txt`
 transcript, a `.cpu` file recording occupancy for **every core in that arm's L3

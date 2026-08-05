@@ -873,14 +873,17 @@ confined below a megabyte, and part 16's "benign bandwidth ceiling" above 1 MiB 
 substantially this. The guard is refuted in the form built (above, D52); the batched
 API remains unmeasured.
 
-**What would reopen it.** One thing, and it is open now: **the cost is not thread
-creation** (A53). It is size-dependent — 37 µs/thread at 0.25 MiB rising to 66–94 µs
-at 16 MiB — where creation is not. The named candidate is the per-thread packed-`A`
-buffer, allocated inside each thread's closure on every call, so 64 fresh threads mean
-64 fresh allocator arenas faulting in fresh pages. If that is right, **hoisting those
-allocations out of the per-call closure is a smaller fix that helps the unpooled path
-too**, and the prediction is that the residual after hoisting is flat at ~37 µs/thread.
-Nobody has tried it.
+**What would reopen it.** One thing, and it is a question rather than a task: **why
+the win scales with size is unknown** (A53). A fixed ~37 µs/thread is solid and
+confirms this entry's own 20–36 µs independently, but the pooled-vs-unpooled difference
+also has a proportional component, so the per-thread figure overstates it. The
+per-thread packed-`A` buffer was the named candidate and is **refuted**: `ap_len` is
+identical at all four sizes, because `mc` never binds against `m` at these shapes — so
+hoisting those allocations has no measured basis. Untested candidates: scheduler
+placement of freshly created threads, whose penalty accrues over the thread's life;
+and barrier skew, whose count grows with `N/NC` x `K/KC`. A microbenchmark separating
+spawn from placement from barrier count would settle it, and needs no corpus and no
+exclusive node.
 
 ## A baseline built from the right source at the right commit is the right baseline (A45)
 

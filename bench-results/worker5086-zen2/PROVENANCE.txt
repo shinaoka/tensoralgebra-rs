@@ -67,7 +67,7 @@ proof of none. The guard's is **12-14% of points**, far outside that floor.
    16 MiB `f64`, unpooled peaks at 6.20@t32 and pooled reaches 13.19@t32. Much of
    what was attributed to bandwidth was fixed cost.
 
-## And the cost removed is not thread spawn
+## And the cost removed is more than thread spawn -- but the excess is unexplained
 
 Median per-call time removed at t64, divided by 64:
 
@@ -77,12 +77,23 @@ Median per-call time removed at t64, divided by 64:
     16 MiB  93.6                      66.2
 
 A spawn cost is size-independent. At 0.25 MiB this lands at the top of A43's
-20-36 us; by 16 MiB it is 2.5x that. **Hypothesis, not a result:** the per-thread
-packed-`A` buffer. `Panel::new(ap_len)` is called inside each thread's closure on
-every call and `ap_len` grows with the problem until `mc` saturates, so 64 fresh
-threads mean 64 fresh allocator arenas faulting in fresh pages each call, while
-pooled workers reuse theirs. If that holds, hoisting the `Panel` allocations out of
-the per-call closure is a smaller fix that captures part of the same win.
+20-36 us -- an independent confirmation of it -- and by 16 MiB it is 2.5x that.
+
+**Read that column with care: it is partly an artefact.** It divides the whole
+pooled-vs-unpooled difference by the thread count, which assumes a pure fixed cost. The
+difference is neither purely fixed (2.4 -> 6.0 ms) nor purely proportional (ratio
+9.6 -> 2.1), so dividing manufactures some of the growth.
+
+The per-thread packed-`A` buffer was offered as the mechanism and is **refuted from
+this same data**: `ap_len` is identical at all four sizes (65536 reals in f64, 22528 in
+c64, 135168 in f32, 46080 in c32), because `mc` never binds against `m` at these
+shapes. Do not hoist those allocations expecting a win. Note also the trap that turned
+up in checking it -- the `mc` in the `notes` column is the *derived* blocking from
+`plan_config`, not the capped value the driver allocates from (`driver.rs:404`, `:445`)
+-- so any footprint analysis from these CSVs must apply the cap itself.
+
+What is solid: a fixed ~37 us/thread. The size-scaling component is unexplained;
+scheduler placement of fresh threads and barrier skew are untested candidates.
 
 Not comparable to anything measured on ccqlin038, and the absolute speedups are not
 comparable to part 16's -- different node. Every ratio here is within-session.

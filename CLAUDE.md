@@ -58,11 +58,12 @@ Five things that decide what you may say and do:
   correctly-threaded caller 10–39% while rescuing an over-threaded one, and on top of
   the pool it is pure loss. **The batched API is unmeasured**, and block-sparse — its
   second half — is not built.
-* **The cost the pool removes is not thread creation** (A53). It is size-dependent:
-  37 µs/thread at 0.25 MiB, 66–94 µs at 16 MiB. The named candidate is the
-  per-thread packed-`A` buffer allocated inside each thread's closure on every call.
-  Hoisting those allocations out is a smaller unbuilt fix that would help the
-  unpooled path too.
+* **Why the pool's win scales with size is unknown** (A53), and the obvious
+  explanation is refuted. A fixed ~37 µs/thread is solid and confirms A43
+  independently; beyond that the pooled-vs-unpooled difference has a proportional
+  component, so the per-thread framing overstates it. The per-thread packed-`A`
+  buffer was the named candidate and `ap_len` turns out to be identical at every
+  size, so **do not hoist those allocations expecting a win**.
 * **The engine-vs-baseline numbers in `README.md` are Ice Lake**
   (`worker6156`, jobs 6753260 / 6754877, 2026-08-04/05): 1.31–1.78x TBLIS
   2.0-dev, 1.95–2.20x TTGT. They are **not** differenceable against the Phase 3

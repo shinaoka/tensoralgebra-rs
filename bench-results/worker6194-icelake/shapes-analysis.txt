@@ -1,0 +1,52 @@
+host        : worker6194
+target      : x86_64 / linux
+cpu features: avx2 fma avx512f avx512dq 
+caches      : L1=48KiB/12-way/1sh L2=1280KiB/20-way/1sh L3=49152KiB/12-way/32sh (via sysfs), blocking=legacy
+l3 domains  : t1=1 t4=1 t8=1 t16=1 t32=1 t64=2 t128=4
+baselines   : tblis=false blas=false
+
+row-block menus over 49 cases, stress=none
+
+`wb` is the fraction of output row blocks that avoid the write-back's gather
+path at that MR; `regA` is the row operand's block-scatter regularity. `>` marks
+the shape TENSORCONTRACT_ROWBLOCK=auto would pick, `*` the kernel default.
+
+case                   type method       m       n       k  shapes
+ajbdc-ckbad-jk          c32     1m  331776      24      24  *32x6 wb=0.00 regA=0.00    >24x8 wb=1.00 regA=1.00     16x8 wb=0.67 regA=0.67     8x12 wb=1.00 regA=1.00   
+ajbdc-ckbad-jk          c64 planar  331776      24      24  *16x6 wb=0.67 regA=0.67    >24x3 wb=1.00 regA=1.00     8x8 wb=1.00 regA=1.00   
+abcijk-ijma-mkbc        c32     1m    9216    4096      24  *32x6 wb=0.00 regA=0.00    >24x8 wb=1.00 regA=1.00     16x8 wb=0.67 regA=0.67     8x12 wb=1.00 regA=1.00   
+abcijk-ijma-mkbc        c64 planar    9216    4096      24  *16x6 wb=0.67 regA=0.67    >24x3 wb=1.00 regA=1.00     8x8 wb=1.00 regA=1.00   
+abcijk-ijmb-mkac        c32     1m    6144    6144      24  *32x6 wb=0.00 regA=0.00    >24x8 wb=1.00 regA=1.00     16x8 wb=0.67 regA=1.00     8x12 wb=1.00 regA=1.00   
+abcijk-ijmb-mkac        c64 planar    6144    6144      24  *16x6 wb=0.67 regA=1.00    >24x3 wb=1.00 regA=1.00     8x8 wb=1.00 regA=1.00   
+abcijk-ikma-mjbc        c32     1m    9216    4096      24  *32x6 wb=0.00 regA=0.00    >24x8 wb=1.00 regA=1.00     16x8 wb=0.67 regA=0.67     8x12 wb=1.00 regA=1.00   
+abcijk-ikma-mjbc        c64 planar    9216    4096      24  *16x6 wb=0.67 regA=0.67    >24x3 wb=1.00 regA=1.00     8x8 wb=1.00 regA=1.00   
+abcijk-ikmb-mjac        c32     1m    6144    6144      24  *32x6 wb=0.00 regA=0.00    >24x8 wb=1.00 regA=1.00     16x8 wb=0.67 regA=1.00     8x12 wb=1.00 regA=1.00   
+abcijk-ikmb-mjac        c64 planar    6144    6144      24  *16x6 wb=0.67 regA=1.00    >24x3 wb=1.00 regA=1.00     8x8 wb=1.00 regA=1.00   
+abcijk-jkma-mibc        c32     1m    9216    4096      24  *32x6 wb=0.00 regA=0.00    >24x8 wb=1.00 regA=1.00     16x8 wb=0.67 regA=0.67     8x12 wb=1.00 regA=1.00   
+abcijk-jkma-mibc        c64 planar    9216    4096      24  *16x6 wb=0.67 regA=0.67    >24x3 wb=1.00 regA=1.00     8x8 wb=1.00 regA=1.00   
+abcijk-jkmb-miac        c32     1m    6144    6144      24  *32x6 wb=0.00 regA=0.00    >24x8 wb=1.00 regA=1.00     16x8 wb=0.67 regA=1.00     8x12 wb=1.00 regA=1.00   
+abcijk-jkmb-miac        c64 planar    6144    6144      24  *16x6 wb=0.67 regA=1.00    >24x3 wb=1.00 regA=1.00     8x8 wb=1.00 regA=1.00   
+abcijk-eiac-jkeb        c32     1m    6144    6144      24  *32x6 wb=0.00 regA=0.00    >24x8 wb=1.00 regA=1.00     16x8 wb=0.67 regA=1.00     8x12 wb=1.00 regA=1.00   
+abcijk-eiac-jkeb        c64 planar    6144    6144      24  *16x6 wb=0.67 regA=1.00    >24x3 wb=1.00 regA=1.00     8x8 wb=1.00 regA=1.00   
+abcijk-eibc-jkea        c32     1m    4096    9216      24  *32x6 wb=0.00 regA=0.00    >24x8 wb=1.00 regA=1.00     16x8 wb=0.67 regA=0.67     8x12 wb=1.00 regA=1.00   
+abcijk-eibc-jkea        c64 planar    4096    9216      24  *16x6 wb=0.67 regA=0.67    >24x3 wb=1.00 regA=1.00     8x8 wb=1.00 regA=1.00   
+abcijk-ejac-ikeb        c32     1m    6144    6144      24  *32x6 wb=0.00 regA=0.00    >24x8 wb=1.00 regA=1.00     16x8 wb=0.67 regA=1.00     8x12 wb=1.00 regA=1.00   
+abcijk-ejac-ikeb        c64 planar    6144    6144      24  *16x6 wb=0.67 regA=1.00    >24x3 wb=1.00 regA=1.00     8x8 wb=1.00 regA=1.00   
+abcijk-ejbc-ikea        c32     1m    4096    9216      24  *32x6 wb=0.00 regA=0.00    >24x8 wb=1.00 regA=1.00     16x8 wb=0.67 regA=0.67     8x12 wb=1.00 regA=1.00   
+abcijk-ejbc-ikea        c64 planar    4096    9216      24  *16x6 wb=0.67 regA=0.67    >24x3 wb=1.00 regA=1.00     8x8 wb=1.00 regA=1.00   
+abcijk-ekac-ijeb        c32     1m    6144    6144      24  *32x6 wb=0.00 regA=0.00    >24x8 wb=1.00 regA=1.00     16x8 wb=0.67 regA=1.00     8x12 wb=1.00 regA=1.00   
+abcijk-ekac-ijeb        c64 planar    6144    6144      24  *16x6 wb=0.67 regA=1.00    >24x3 wb=1.00 regA=1.00     8x8 wb=1.00 regA=1.00   
+abcijk-ekbc-ijea        c32     1m    4096    9216      24  *32x6 wb=0.00 regA=0.00    >24x8 wb=1.00 regA=1.00     16x8 wb=0.67 regA=0.67     8x12 wb=1.00 regA=1.00   
+abcijk-ekbc-ijea        c64 planar    4096    9216      24  *16x6 wb=0.67 regA=0.67    >24x3 wb=1.00 regA=1.00     8x8 wb=1.00 regA=1.00   
+
+26 of 392 case-dtype-methods would change shape.
+13 of those move a majority-gather output onto the regular path outright.
+84 have no shape on their menu that clears the gather path at all.
+
+by dtype:
+  f32    0 / 49  would change shape
+  f64    0 / 49  would change shape
+  c32   13 / 147 would change shape
+  c64   13 / 147 would change shape
+
+wrote bench-results/worker6194-icelake/shapes.csv

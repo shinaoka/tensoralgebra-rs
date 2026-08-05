@@ -100,12 +100,15 @@ the batched API remains unmeasured.
      sbatch --constraint=icelake scripts/rusty-phase4.sbatch
    ```
 
-2. **Hoist the per-thread `Panel` allocations out of the per-call closure**, and
-   re-measure. Part 18 found the cost the pool removes is **size-dependent**
-   (37 µs/thread at 0.25 MiB, 66–94 µs at 16 MiB), which thread creation is not, so
-   the buffer allocation and its page faults are the named candidate (A53). This is
-   a smaller change than either shipped answer, it helps the unpooled path too, and
-   the prediction to check is that the residual goes flat at ~37 µs/thread.
+2. **Find out why the pool's win scales with size — do not build the fix that was
+   proposed for it.** Part 18 offered the per-thread `Panel` allocation as the
+   candidate and the same part refutes it: `ap_len` is identical at all four sizes, so
+   hoisting those allocations has no measured basis (A53). What is solid is a fixed
+   ~37 µs/thread; the scaling component is unexplained, and the two untested candidates
+   are scheduler placement of freshly created threads and barrier skew growing with
+   `N/NC` x `K/KC`. **This is a question, not a task**, and the cheapest form of it is a
+   microbenchmark that separates spawn from placement from barrier count — no corpus
+   and no exclusive node needed.
 3. **Block-sparse**, the unbuilt half of the batched API. The batch axis exists and
    is static; block-sparse is where items differ in *size* rather than in
    regularity, which is the one place D47's null result does not reach, and where
@@ -3813,18 +3816,46 @@ A thread-creation cost is size-independent. At 0.25 MiB this lands at 37.2 µs i
 it. By 16 MiB it is 2.5x that. **So "the pool removes the ~20–36 µs/thread spawn",
 which is how part 17 words it, is an incomplete account** (A53).
 
-**Hypothesis, explicitly not a result:** the per-thread packed-`A` buffer.
-`Panel::new(ap_len)` is called *inside* each thread's closure on every call, and
-`ap_len` grows with the problem until `mc` saturates. Sixty-four freshly spawned
-threads mean 64 fresh allocator arenas faulting in fresh pages every call — of order
-32 MiB at 16 MiB blocking — where pooled workers reuse theirs. That scales with size;
-spawn does not.
+**A hypothesis was offered here and is now refuted, from committed data and at no
+machine cost.** The candidate was the per-thread packed-`A` buffer: `Panel::new(ap_len)`
+is called *inside* each thread's closure on every call, so 64 fresh threads mean 64
+fresh allocator arenas faulting in fresh pages, and if `ap_len` grew with the problem
+that would scale with size where spawn does not.
 
-If it holds there is a **third, smaller fix nobody has built**: hoist the `Panel`
-allocations out of the per-call closure so buffers persist across calls. It would
-capture part of the pool's win without a pool, it helps the unpooled path too, and it
-is testable in isolation. Do not assume it — the prediction is that the residual after
-hoisting is flat at ~37 µs/thread, and that is a measurement.
+**`ap_len` does not grow.** It is `panel_len(min(mc, ceil(m/mr)*mr), mr, kc, ..)`, and
+across all four sizes the footprint is *identical* — 65536 reals in `f64`, 22528 in
+`c64`, 135168 in `f32`, 46080 in `c32` — because even at 0.25 MiB the median oriented
+`m` is 384, comfortably above every `mc` in play, so the cap never binds. The buffer
+at 0.25 MiB is the same buffer as at 16 MiB. Its allocation cannot explain a cost that
+grows 2.5x between them.
+
+**A trap found on the way, worth more than the hypothesis was.** The first attempt at
+this check read the `mc` recorded in each CSV's `notes` column — and `notes` comes from
+`plan_config`, which returns the *derived* blocking, while the driver caps it at
+`driver.rs:404` and allocates from the capped value at `:445`. The two agree here only
+because `m` is large; on a narrow case they would not, and any analysis of buffer
+footprints from these CSVs has to apply the cap itself.
+
+**So the mechanism of the size-scaling component is unidentified**, and the honest
+reading is that the "µs/thread" framing above is partly an artefact of my own
+arithmetic: it assumes the whole pooled-vs-unpooled difference is a fixed per-call cost
+and divides by the thread count, so any proportional component appears as growth. The
+difference is neither purely fixed (it grows 2.4 → 6.0 ms) nor purely proportional (the
+ratio falls 9.6 → 2.1), and fitting two parameters to four points on one node would be
+over-fitting.
+
+What is solid: **a fixed component of ~37 µs/thread**, visible at 0.25 MiB where
+parallel work is negligible, identical in both dtype pairs, and an independent
+confirmation of A43's 20–36 µs. What is not: everything about the rest. Two candidates
+remain, neither testable from this data — scheduler placement of freshly created
+threads, whose penalty accrues over the thread's life and so scales with runtime; and
+barrier skew, whose count grows with `N/NC` x `K/KC` and hence with size.
+
+**Consequently the "third, smaller fix" this section originally proposed — hoisting the
+`Panel` allocations out of the per-call closure — is not justified.** Its premise was
+that the buffer grows, and the buffer does not. It might still help by removing a
+constant allocation, but that is a different and much weaker claim, and nothing here
+supports building it.
 
 #### What is not measured
 
@@ -3857,7 +3888,7 @@ from outside.
 |---|---|---|
 | A43 | Per-call thread spawn is a second-order cost. | **Refuted, and now measured directly rather than inferred.** Removing it is worth up to 11.6x at 0.25 MiB and 64 threads, and 2.0–2.8x even at 16 MiB. The 0.25 MiB figure of 37.2 µs/thread, identical in both dtype pairs, independently confirms the 20–36 µs part 16 inferred from a different node. |
 | A50 | A guard fitted to the sub-megabyte regime will misjudge the saturation above it. | **Confirmed, and the misjudgement is the other way round from the worry.** The guard is inert above 4 MiB (0.98–1.09), so it does no damage there. What was misjudged is the *saturation itself*: it is largely fixed cost, not bandwidth. |
-| A53 | The cost a thread pool removes is thread creation. | **Refuted.** It is size-dependent — 37 µs/thread at 0.25 MiB, 66–94 µs at 16 MiB — where thread creation is not. The per-thread packed-`A` allocation and its page faults are the named candidate, and hoisting those buffers out of the per-call closure is a cheaper fix that has not been tried. |
+| A53 | The cost a thread pool removes is thread creation, and the part that scales with size is the per-thread packed-`A` allocation. | **First half refuted, second half refuted too.** The pooled-vs-unpooled difference is not a pure fixed cost: it grows 2.4 → 6.0 ms with size while the ratio falls 9.6 → 2.1, so it has a proportional component and the "µs/thread" figure manufactures growth by dividing a mixed quantity by the thread count. The named candidate is *also* wrong: `ap_len` is byte-identical at all four sizes (65536 reals in `f64`, 22528 in `c64`), because `mc` never binds against `m` at these shapes. **A fixed ~37 µs/thread is solid** and confirms A43 independently; the scaling component's mechanism is **unknown**, with scheduler placement and barrier skew as untested candidates. Nothing supports hoisting the `Panel` allocations. |
 | A54 | A rule that consumes a caller's parameter can be validated at one value of it. | **Refuted, and it is A20 in a third form.** D48's guard scores 0 points slower than serial at `requested = 64` and loses 39% at `requested = 4` on the same size. The offline scoring simulated only 64, so the losing half of the trade was invisible by construction. Score across the caller's parameter, as `partition-score-rule.py` does with `-p` and `-d`. |
 
 ## Packaging and distribution
