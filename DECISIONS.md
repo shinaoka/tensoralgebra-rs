@@ -35,7 +35,7 @@ silent, `fmt` clean. Workspace MSRV 1.89.
 | 1 — exploration and design | **complete.** Premise resolved with data; the founding thesis is refuted and the displaced finding is better (see `REFUTED.md`) |
 | 2 / 2b — correct engine, three complex methods | **complete** |
 | 3 — micro-kernels | **complete.** AVX-512 for `f32`/`f64` and all three complex methods; AVX2 added later, both measured |
-| 4 — profiling and improvement | **in progress.** Items 1, 1c, 1d closed with wins; item 2 closed with a negative result; **item 3 dropped** (below); item 4 built and measured, threads still off by default |
+| 4 — profiling and improvement | **in progress.** Items 1, 1c, 1d closed with wins; item 2 closed with a negative result; **item 3 dropped** (below); item 4 built and measured on seven nodes, and its three answers to the per-call spawn cost — the amortisation guard, the thread pool, the batched API — are built and **all off or inert by default, none A/B'd** (part 17). Threads still default to 1 |
 | 5 — packaging | **in progress.** C surface, distribution surface, Julia consumer all exist. **Nothing published, nothing tagged**, on purpose |
 
 ### The one open engine question
@@ -76,39 +76,47 @@ results.** Never state either as a property of the engine.
 
 ### What to do next, in order
 
-1. **A per-job `CARGO_TARGET_DIR` in `scripts/rusty-phase4.sbatch`.** A cluster
-   job runs in the submit directory and uses its `target/`, so a `cargo build` or
-   `cargo test` here replaces the binary a running arm invokes, mid-run. This
-   happened on 2026-08-04 and was inert only by luck. ~5 lines, and it removes a
-   whole class of contamination.
-2. **An amortisation guard on the thread count**, so a threading default can
-   become safe. Cap `p` so the spawn cost stays a bounded fraction of estimated
-   serial work; fitting the 0.25 MiB rung at "spawn ≤ 50% of serial" gives
-   `p <= 5`, where `t4` is the measured optimum. **Do not fit it to the
-   saturation above 1 MiB** — that is a bandwidth ceiling and a different
-   mechanism (D46).
-3. **Pool the threads**, removing the ~20–36 µs/thread rather than steering
-   around it. `rayon` is refuted for this path on structural grounds — see
-   `REFUTED.md` — so this is our own parked-thread pool, and the build-vs-reuse
-   call gets recorded.
-4. **The batched API** (batched first, then block-sparse). Parallelising over the
-   batch gives one spawn per batch instead of one per contraction, there are no
-   barriers, and fork-join fits — so `rayon` *does* fit here.
-5. **Close the remaining orientation gap.** 21 case-dtype-methods still take the
+**Items 1–4 of the previous list are done** — see part 17. All three answers to the
+per-call spawn cost are built, plus the batched API, plus the per-job build tree.
+None of the three has an end-to-end A/B, and that is now the top of the list.
+
+1. **A/B the pool.** It should be a strict improvement wherever threading is used
+   at all, so it goes first and it is the cheapest to interpret:
+
+   ```bash
+   scripts/ab.sh bench-results/ab-pool "TENSORCONTRACT_POOL=on"
+   ```
+
+   Then **the guard on top of it** (`TENSORCONTRACT_AMORTISE=on`), which is the
+   one that has only been scored offline — the exact state `TENSORCONTRACT_DEEPEN`
+   was in when it looked like +3% and then failed (A20). Run both at a *small*
+   size as well as the default 64 MiB: the effect lives below a megabyte and
+   `--size 64` cannot see it. Then, and only then, a threading default (D22).
+2. **Block-sparse**, the unbuilt half of the batched API. The batch axis exists and
+   is static; block-sparse is where items differ in *size* rather than in
+   regularity, which is the one place D47's null result does not reach, and where
+   a dynamic claim over the batch belongs.
+3. **Close the remaining orientation gap.** 21 case-dtype-methods still take the
    slower arm, worth up to 1.36x, and they are a different population from the
    `abcijk` family the rule was derived on. Both arms are already in
    `bench-results/phase4d/or-*`, so a candidate costs no machine time:
    `scripts/orient-score-rules.py`.
-6. **Re-run the row-block grid at the chosen `kc`.** `kc` decides the regime and
+4. **Re-run the row-block grid at the chosen `kc`.** `kc` decides the regime and
    the shape is chosen inside it; the Phase 3 shapes were chosen at a depth the
    engine may no longer use.
-7. **A35's A/B**, which is now reachable and has never been run:
+5. **A35's A/B**, reachable since D43 and never run:
    `scripts/ab.sh bench-results/ab-rowblock-idx3 "TENSORCONTRACT_ROWBLOCK=idx=3"`.
-8. Then the rest of Phase 4: small-`k` handling, `pc`-loop fusion **for small `K`
-   only**, a pack-free fast path for already-unit-stride block scatter, prefetch.
+6. **The Ice Lake 3m register-block sweep**, which is the only thing that
+   deconfounds A44 from A34 — see "item 3 is dropped" above. No baselines, ~8 min.
+7. Then the rest of Phase 4: small-`k` handling, `pc`-loop fusion **for small `K`
+   only** (it is not the general enabler earlier drafts implied — see
+   `REFUTED.md`), a pack-free fast path for already-unit-stride block scatter,
+   prefetch.
+8. Route the batch axis through the thread pool too, removing its one remaining
+   spawn set.
 
-Items 1–4 need no cluster time. Items 5–7 need none either (5) or an exclusive
-machine (6, 7).
+Items 2, 3 and 8 need no cluster time. Items 1, 4 and 5 want an exclusive machine;
+item 6 wants one but only for eight minutes.
 
 ### Settled — do not re-derive
 
@@ -169,7 +177,7 @@ Reference sections, kept current:
 | [Resume here](#resume-here) | state, the open question, what to do next |
 | [Environment](#environment) | the reference machine, the cluster nodes, both TBLIS baselines, the ABI break |
 | [Measurement rules](#measurement-rules) | the noise floors, each with its session and thread count, and the rules that produced them |
-| [Standing assumptions](#standing-assumptions) | A1–A48, one line each, with where the full account is |
+| [Standing assumptions](#standing-assumptions) | A1–A52, one line each, with where the full account is |
 | [Build-vs-reuse decisions](#build-vs-reuse-decisions) | every dependency taken or declined |
 | [Design decisions](#design-decisions) | D1–D47, complete, in one place |
 
@@ -181,7 +189,7 @@ Reports, by topic. Live chapters first, closed phases last:
 | [The write-back and the two shape rules](#the-write-back-and-the-two-shape-rules) | parts 1–5, 6, 13 | the 2x defect and its real cause; the row-block menu and rule; the orientation rule and its discriminant; the menu keyed by position |
 | [Cache blocking](#cache-blocking) | parts 7, 9 | the `MC`/`KC`/`NC` grid and the A/B that closes item 2; the analytical model, and it loses |
 | [Micro-kernels across instruction sets](#micro-kernels-across-instruction-sets) | AVX2 interlude, part 11 | AVX2 from the same macro bodies; the AVX2 register blocks measured; A24, A34, A35 |
-| [Threading](#threading) | parts 8, 8b, 12, 14, 15, 16 | the scheme and its scaling on seven nodes; the 2-D partition; the domain-aware gate; load imbalance; what TBLIS does; the two experiments that decide the default |
+| [Threading](#threading) | parts 8, 8b, 12, 14, 15, 16, 17 | the scheme and its scaling on seven nodes; the 2-D partition; the domain-aware gate; load imbalance; what TBLIS does; the two experiments that decide the default; three answers to the spawn cost and the batch axis |
 | [Packaging and distribution](#packaging-and-distribution) | Phase 5 parts 1, 2, C-surface interlude | quality gates, the API tiers, the TAPP conformance suite, the C header and consumer, cross-compilation, the JLL and the Julia package |
 | [The baseline comparison](#the-baseline-comparison) | Phase 5 part 3 | the engine against TBLIS and TTGT, re-measured; A44–A46 |
 | [Archive: phases 1–3](#archive-phases-13) | Phase 1, 2, 2b, 3 | closed and unlikely to be reopened: the premise check, the correct engine, the three methods, the AVX-512 kernels and the three-way comparison |
@@ -200,7 +208,7 @@ reorganised:
 | 11 | micro-kernels across instruction sets |
 | 12 | threading |
 | 13 | the write-back and the two shape rules |
-| 14, 15, 16 | threading |
+| 14, 15, 16, 17 | threading |
 | Phase 5 parts 1, 2, and the C-surface interlude | packaging and distribution |
 | Phase 5 part 3 | the baseline comparison |
 
@@ -217,6 +225,9 @@ Two things a citation may trip over:
   That is how a refutation is tracked, not a collision. The threading branch's
   `A37`–`A43` kept their numbers when the docs branch merged; the docs branch's
   three became `A44`–`A46`.
+* **`A49` does not exist.** Part 17's three assumptions were drafted as A47–A49
+  and renumbered to `A50`–`A52` when the C-surface pair took A47/A48. A gap is
+  cheaper than a third meaning for a number.
 * Two references to "parts 11–13" in the Phase 5 reports were written when those
   parts did not exist and meant **parts 10 and 11**; they have been corrected in
   place.
@@ -419,6 +430,9 @@ in [`REFUTED.md`](REFUTED.md).
 | A46 | This file's measurement rules (A27, A31, A32) cover the ways a comparison can mislead. | **Refuted: they are all about time, and problem size is a separate axis.** A 1.68x claim measured at 8 MiB vanishes at the sizes actually published, and is withdrawn. | comparison (part 3); `REFUTED.md` |
 | A47 | The shipped header agrees with the library it describes. *(was the second `A31`)* | **Now tested rather than assumed.** `examples/c-consumer` compiles the header with a C compiler, links the built library and checks numbers; CI runs three link modes. | packaging (C-surface interlude) |
 | A48 | A Rust panic reaching the C boundary is acceptable because it is memory-safe. *(was the second `A32`)* | **Rejected as a policy.** Memory-safe but process-fatal, and the engine panics on allocation conditions a caller can hit. D38 converts it to an error code. | packaging (C-surface interlude) |
+| A50 | A guard fitted to the sub-megabyte regime will misjudge the saturation above it. | **Confirmed, and the guard is scoped accordingly** — larger constants score better at 16 MiB precisely because capping threads helps against a bandwidth ceiling, which is a second mechanism. The constant is chosen on small-size evidence alone. | threading (part 17) |
+| A51 | A pool can degrade gracefully when it has fewer workers than the requested width. | **False for this driver, and it would deadlock.** Indices `t` and `t + pn` share a `pm`-way barrier. `try_broadcast` declines all-or-nothing and the caller spawns instead. | threading (part 17) |
+| A52 | Mutex poisoning is a detail in a pool whose state has no invariants a panic can break. | **False in effect, and a test found it.** A worker's panic poisons the submission mutex, after which the pool declines *permanently*. Recover from poison; decline only on `WouldBlock`. | threading (part 17) |
 
 ---
 
@@ -491,6 +505,10 @@ does not restate them.
 | D45 | **Bitwise identity with serial is no longer a design constraint.** | The user's call, 2026-08-04. It remains *true* today and the tests still assert it, so nothing is being given up yet — but future work may trade it. Two things this does not license, recorded so they are not assumed: concurrent read-modify-write on an output block is a data race regardless of what one thinks of float ordering, so exclusive access per block is still required; and A21 (no `K`-parallelism) was argued from *shape* — needing it implies fewer than `p` micro-tiles in the whole output, which bounds arithmetic intensity — so it survives independently. |
 | D46 | Do **not** flip `TENSORCONTRACT_THREADS` to a fixed non-1 default. | Measured: at 64 threads, contractions below ~1 MiB run 1.2–10x *slower* than serial, and the optimal thread count walks 4 → 64 across the size range. A fixed default is wrong at every size but one, and wrong by an order of magnitude at the small end — which is the regime Phase 1 named as this project's real headroom. |
 | D47 | Do not build cost-weighted or dynamic partitioning for the dense path on current evidence. | `--stress ragged` raises heterogeneous cases from 11.7% to 87.2% at aperiodic fractions and parallel efficiency does not move (0.976–1.124). TBLIS reached the same conclusion by inaction (part 15). Revisit for block-sparse, where the imbalance is block *size*, not block *regularity*. |
+| D48 | The thread-count **amortisation guard** — each thread must be given at least `MIN_FMAS_PER_THREAD = 3e6` real FMAs — behind `TENSORCONTRACT_AMORTISE=on`, **off by default**. | D46 said no *fixed* thread count can be the default because the optimum walks 4 → 64 across 0.25 → 64 MiB. A guard makes a default safe rather than optimal: it converts an order-of-magnitude regression into "no worse than serial", which is the property a default needs. Stated as FMAs per thread it holds the spawn *fraction* constant (~0.2 at 30 µs and 20 G FMAs/s) rather than the count, so it is one constant and not a table. Calibrated offline against `bench-results/worker5139-zen2/phase4g/`, where it leaves **0 of 588 points slower than serial at all four sizes** against 565/229/57/3 unguarded, and where every value in `[3e6, 8e6]` does the same — a plateau, per D29's precedent of checking a modelled constant's insensitivity. Weighted by real FMAs per MAC (1 real, 4 planar/1m, 3 for 3m) because an unweighted `m*n*k` misjudges the two domains in opposite directions. Off by default because every threaded number committed before 2026-08-05 was measured uncapped, `phase4f-threads.sh` asks for an exact width and means it, and this has only been scored offline — the state `TENSORCONTRACT_DEEPEN` was in before it failed its A/B (A20). |
+| D49 | A **parked-thread pool** with one operation, `try_broadcast(n, f)`, behind `TENSORCONTRACT_POOL=on`, **off by default**. Build, not `rayon`. | Per-call spawn is ~20–36 µs per thread and first-order below a megabyte (A43); a pool removes it rather than steering around it. `rayon` is refused for this axis on a structural ground, not a preference: the driver is SPMD-with-barriers, and a task that blocks on a barrier inside a bounded pool deadlocks when the pool has fewer workers than participants. `ThreadPool::broadcast` fits the shape but ties the parallel degree to the pool size where `Plan::partition` chooses it per contraction, and a global pool inside a library fights the host runtime — concretely here, since the Julia package and the C consumers bring their own. What is built is ~200 lines of `std`: a mailbox per worker so the submitter wakes only the workers it needs, a shared completion counter, and the submitting thread taking index 0 so a serial caller never causes a thread to exist. `try_broadcast` declines **all-or-nothing** (A48) and recovers from mutex poisoning (A49). Off by default for D48's reasons. |
+| D50 | A **batched API** — `batch::BatchItem`, `contract_batched` — with the batch as the *only* parallel axis and each item running serially, via `driver::execute_capped`. Fork-join on `std::thread::scope`; `rayon` fits and is still not used. | It removes the spawn *count* rather than the cost: one spawn set per batch instead of one per contraction, which is the right axis for the many-small-contractions workload Phase 1 named as the real headroom. Nesting the axes would spend the saving again inside every item, hence the cap of 1 per item. Soundness is the borrow checker's: items live in a `&mut [BatchItem]`, so `chunks_mut` *proves* the outputs disjoint and there is no unsafe block in the fan-out. Validation is all-or-nothing before any item runs, which a loop over `Plan::run` cannot give and which is the reason to prefer this entry point even at one thread. `rayon` genuinely fits this axis — no barriers, plain fork-join — and is declined only because ten lines of `std` do it and the crate already owns a pool that can be extended here; recorded so the objection is not mistaken for the inner path's, which is a soundness one. The split is static and contiguous, and **block-sparse is not built**: that is where items differ in *size* rather than in regularity, which is the one place D47's null result does not reach. |
+| D51 | Every measurement script resolves its binary from `TC_TARGET` (default `target/`), and the `.sbatch` wrappers set it to `target-job-$SLURM_JOB_ID`. | A cluster job runs in the submit directory and used its `target/`, so a `cargo build` on the workstation — or a `cargo test`, which relinks the same artefacts — replaced the executable each arm invokes, mid-session, and the job did not notice. It happened on 2026-08-04 (part 13) and was inert only by luck; "treat the submit directory as frozen" is a rule that depends on remembering, and this removes the class instead. `node-session.sh` exports it as `CARGO_TARGET_DIR` so the build and the arms agree by construction. The two jobs that never compile *snapshot* the prebuilt binaries into it, which also closes the failure that killed job 6753197: a concurrent `prep` left a 0-byte executable that every arm ran for 0.0 s with `rc=0`. |
 
 ---
 
@@ -3417,6 +3435,207 @@ or a smaller working set makes the engine compute-bound at scale, re-run it.
 |---|---|---|
 | A41 | Blocks of a block-scatter contraction are equal-cost, so partitioning by block count balances the load. | **False in the premise, true in the consequence.** Blocks genuinely differ in cost — part 14 measured the heterogeneity and it is large. But making it 7.5x more prevalent and aperiodic changes parallel efficiency by less than the noise floor, so the imbalance does not *cost* at these thread counts on this machine class. Stated this way because the premise may matter again where the consequence does not follow — a compute-bound machine, or block-sparse. |
 | A43 | Per-call thread spawn is a second-order cost, worth fixing after the partition. | **Refuted at small sizes.** ~20–36 µs per thread, which is the entire story below 1 MiB: a 0.22 ms `f32` contraction takes 2.2 ms on 64 threads. It is first-order for exactly the workload Phase 1 identified as the headroom. |
+
+### Part 17: three answers to the spawn cost, and the batch axis
+
+**Status: built, correct, and measured only offline.** All three are **off or
+inert by default** and each is a run-time switch, so the next session can A/B them
+against the shipped behaviour in one process-restart rather than as a diff between
+two builds (A15). Written after part 16 established that per-call spawn is
+first-order below a megabyte (A43) and that no *fixed* thread count can be the
+default (D46).
+
+Part 16 left one problem with three distinct answers, and they compose rather than
+compete:
+
+| answer | what it does to the ~20–36 µs/thread | switch |
+|---|---|---|
+| amortisation guard | **steers around it** — caps the thread count so it stays a bounded fraction of the work | `TENSORCONTRACT_AMORTISE=on` |
+| thread pool | **removes it** — parked workers instead of `std::thread::scope` | `TENSORCONTRACT_POOL=on` |
+| batched API | **removes the count** — one spawn set per batch instead of one per contraction | `tensorcontract::batch` |
+
+#### The amortisation guard, calibrated against a committed grid
+
+The rule is one line: each thread must be given at least `MIN_FMAS_PER_THREAD`
+real FMAs, so `p <= work_fmas / C` clamped to `[1, requested]`. Written that way
+it holds the spawn **fraction** constant rather than the thread count — with spawn
+`S` and machine rate `R` FMAs/s, spawn over serial time is
+`(W/C) * S / (W/R) = S * R / C`, independent of the problem. At `S = 30 µs`,
+`R ≈ 20 G` FMAs/s and `C = 3e6` that fraction is **0.2**.
+
+`work_fmas` is `m * n * k` weighted by real FMAs per logical MAC — 1 real, 4
+planar/1m, **3 for 3m**, which is exactly the flop saving that method exists for.
+Unweighted `m * n * k` misjudges the two domains in opposite directions, because at
+a fixed byte size a complex contraction has half the elements and four times the
+arithmetic per element.
+
+`C` was **not guessed**: `bench-results/worker5139-zen2/phase4g/` already measured
+all 588 case-dtype-method points at 1, 2, 4, 8, 16, 32 and 64 threads at four
+sizes, so candidate constants score exactly, offline, for free — the same method
+that settled the row-block rule, the orientation rule and the partition gate.
+Corpus geometric mean against serial with 64 threads requested throughout, and the
+count of points left slower than serial:
+
+| nominal size | unguarded | `C = 2e6` | **`C = 3e6`** | `C = 4e6` | `C = 8e6` | per-case oracle |
+|---|---|---|---|---|---|---|
+| 0.25 MiB | **0.20**, 565 slower, worst **0.022** | 1.33, 0 | **1.66, 0** | 1.18, 0 | 1.04, 0 | 2.40 |
+| 1 MiB | 1.32, 229 slower, worst 0.077 | 3.98, 0 | **3.50, 0** | 3.31, 0 | 2.50, 0 | 4.94 |
+| 4 MiB | 2.91, 57 slower, worst 0.363 | 5.38, 0 | **4.60, 0** | 5.11, 0 | 3.81, 0 | 6.37 |
+| 16 MiB | 5.48, 3 slower, worst 0.800 | 5.50, **3** | **5.67, 0** | 5.76, 0 | 6.65, 0 | 7.42 |
+
+Three things this table says that the corpus-geomean table in part 16 could not:
+
+* **The damage is far worse per case than per corpus.** Part 16 reported the 0.25
+  MiB geomean at 0.14–0.10; per case the worst point runs at **0.022**, i.e. 45x
+  slower on 64 threads than on one.
+* **1 MiB is not safe either.** Part 16's corpus geomean at 1 MiB is 1.10 for
+  `t64`, which reads as "no longer a loss". Per case, **229 of 588 points are still
+  slower than serial there**, worst 0.077. "Below ~1 MiB" understates where the
+  guard is needed.
+* **The guard beats no guard at every size, not only at the small end.** At 16 MiB
+  it also removes the three points that were slower unguarded.
+
+`C = 3e6` is chosen and the choice is a plateau, not a peak: every value in
+`[3e6, 8e6]` leaves 0 points slower at all four sizes, and the spread between them
+is inside the ±11% per-case floor a 64-thread measurement has (A39). The choice
+between *guard* and *no guard* is not inside any floor. Weighting by method is
+worth having: unweighted, the same scoring gives 1.23 at 0.25 MiB against 1.66.
+
+**What it deliberately does not do** is predict the saturation above ~1 MiB, where
+the best count is `t8`–`t32` rather than `t64`. That is a bandwidth ceiling — a
+different mechanism, and benign — and fitting one constant to two mechanisms is how
+the analytical blocking model lost (A33). At 16 MiB this rule caps only 60 of 588
+points and never below 36 threads, which is the intended near-inertness.
+
+`C` bundles the machine's rate, so it is a fitted constant with `kc`'s caveat and
+the opposite sign: **a faster machine wants a larger one.** A single unrepeated
+observation on the shared 16-core reference machine — 8 threads on the 0.25 MiB
+`ij-ik-kj` case — has the guard capping to 2 and *costing* throughput there, which
+is consistent with a lower thread count making the total spawn cost smaller. That
+is one rep on a shared machine and is not a measurement; it is recorded because it
+is the direction the caveat predicts, and because it is why the guard is off by
+default rather than on.
+
+#### The thread pool, and the deadlock that rules out the obvious reuse
+
+`crates/tensorcontract/src/pool.rs`, ~200 lines including its tests, no dependency.
+One `Mutex`/`Condvar` mailbox per worker, a shared completion counter, and one
+operation: `try_broadcast(n, f)` runs `f(0)` … `f(n-1)` and returns when all have
+finished. The submitting thread takes index 0, so width `n` needs `n-1` workers and
+**a serial caller never causes a thread to exist**.
+
+Three design points that are not free choices:
+
+1. **`rayon::scope`/`spawn` deadlocks by construction here.** Our parallelism is
+   SPMD-with-barriers — `pn` barriers of width `pm`, two rendezvous per `(jc, pc)`
+   iteration. A task that blocks on a barrier occupies a worker thread, so a pool
+   with fewer workers than barrier participants never schedules the rest and the
+   barrier never opens. `ThreadPool::broadcast` *does* fit the shape but ties the
+   parallel degree to the pool size, where `Plan::partition` chooses `(pm, pn)` per
+   contraction; and a global pool inside a library fights the host runtime, which
+   for this project means the Julia package and the C consumers concretely rather
+   than hypothetically. See `REFUTED.md`.
+2. **`try_broadcast` declines all-or-nothing.** Two cases: another broadcast is in
+   flight (one completion counter serves the pool), or fewer than `n-1` workers
+   could be spawned. The tempting graceful degradation — fold the surplus indices
+   onto the submitting thread — is a **deadlock**, because indices `t` and `t + pn`
+   share a barrier and running them sequentially waits forever for a participant
+   that has already left. Declining costs the spawn saving for that call and
+   nothing else: the driver answers a decline with `std::thread::scope`, which is
+   the shipped path anyway. (A51.)
+3. **Poisoning must not brick the pool.** This was found by the test, not by
+   reading: a worker's panic propagates through `try_broadcast` while it holds the
+   submission mutex, so the *next* broadcast finds it poisoned. Handled with
+   `TryLockError::Poisoned(e) => e.into_inner()`, so `WouldBlock` is the only
+   decline. Without it, the pool would silently stop pooling for the life of any
+   process in which one contraction ever panicked — and `Panel::new` asserts on an
+   allocation it cannot satisfy, so that is reachable (D38, A52).
+
+The driver now writes one thread's whole job as a closure of its grid index and
+reaches it two ways, pooled or spawned, so the arms cannot drift apart. The
+partition, the strips and therefore the arithmetic are identical, which is why the
+result stays bitwise identical to serial either way — asserted by running the whole
+suite at 2, 4 and 8 threads with the pool on.
+
+**Directional only, and stated as such**: on the shared reference machine at 8
+threads, 0.25 MiB `ij-ik-kj` reads 24.4 GF/s unpooled against 43.0 and 80.1 GF/s
+pooled on two runs, and 16 MiB reads 328.3 against 329.7 — large at the small end,
+a no-op at the large end, which is what the mechanism predicts. The 2x spread
+between the two pooled runs is why this is not a number: it is a shared machine and
+five reps. The measurement is `scripts/ab.sh` on an exclusive node.
+
+#### The batched API
+
+`crates/tensorcontract/src/batch.rs`: `BatchItem` plus `contract_batched` /
+`contract_batched_with_threads`. Many independent contractions, **the batch as the
+only parallel axis**, each item running serially — nesting the two axes would spend
+the spawn saving again inside every item, which is the whole point of the batch.
+`driver::execute_capped` is how "serially" is expressed, and it is additive:
+`execute` is that with no cap.
+
+Three things worth recording:
+
+* **Soundness is the borrow checker's, not a comment's.** Items are held in a
+  `&mut [BatchItem]` and each item's `d` is a `&mut` borrow, so the outputs are
+  *proved* disjoint; `chunks_mut` hands each thread an exclusive slice. There is no
+  unsafe block on the caller's side and none in the fan-out.
+* **All or nothing on validation.** Every item's bounds are checked before any item
+  runs, so a batch containing one bad item writes to no output at all. A loop over
+  `Plan::run` cannot give that, and a partially executed batch leaves the caller
+  unable to say which outputs are valid. This is the reason to prefer the batched
+  entry point even at one thread.
+* **`rayon` fits here and is still not used**, for a much weaker reason than the
+  inner path's: fork-join over disjoint `&mut` chunks is ten lines of
+  `std::thread::scope`, and the crate already owns a pool that can be extended to
+  this axis. Recorded so the next person does not re-derive it — the objection here
+  is *unnecessary*, not *unsound*.
+
+The split is static and contiguous by item count. Balancing it by estimated work is
+the obvious refinement and is deliberately not guessed at: D47 measured that
+block-scatter load imbalance does not cost on the dense path, and the case where it
+plausibly does is **block-sparse, where items differ in size rather than in
+regularity**, which is not built. That is the same division TBLIS makes — a dynamic
+atomic-claim scheduler for its sparse formats, static partitioning for dense (part
+15) — reached independently.
+
+**Block-sparse is not started**, and that is the honest state of the second half of
+this item.
+
+#### Two hygiene fixes that belong here
+
+* **A per-job `CARGO_TARGET_DIR`.** A cluster job runs in the submit directory and
+  used its `target/`, so a `cargo build` on the workstation — or a `cargo test`,
+  which relinks the same artefacts — replaced the very executable each arm invokes,
+  mid-session, with nothing reporting it. It happened on 2026-08-04 (part 13) and
+  was inert only by luck. Every script now resolves its binary from `TC_TARGET`
+  (default `target/`, so hand runs are unchanged) and the `.sbatch` wrappers set it
+  to `target-job-$SLURM_JOB_ID`. The two prebuilt-binary jobs *snapshot* into it
+  instead, because they never compile — which also closes the failure that killed
+  job 6753197, where a concurrent `prep` left a 0-byte executable that every arm
+  then ran for 0.0 s with `rc=0`.
+* **The harness reports the thread count it *used*.** `sweep`'s `notes` column read
+  `t{requested}`; under the guard that would claim `t64` for a contraction that ran
+  on two threads. It now reports `t{used}/of{requested}` when they differ, because a
+  CSV that misstates its own configuration is the provenance error this project has
+  had to retract twice.
+
+#### What is not measured
+
+Everything, on a machine. All three answers are scored offline or checked for
+correctness; none has an end-to-end A/B on an exclusive node, which is exactly the
+state `TENSORCONTRACT_DEEPEN` was in when it looked like +3% and then failed (A20).
+The order matters and is cheap: the pool first, since it should be a strict
+improvement wherever threading is used at all, then the guard on top, then a
+threading default. Each is `scripts/ab.sh` with one switch.
+
+*Decisions introduced here: D48, D49, D50, D51 — stated in [Design decisions](#design-decisions).*
+
+| # | Assumption | Status |
+|---|---|---|
+| A43 | Per-call thread spawn is a second-order cost, worth fixing after the partition. | **Refuted, and now worse than part 16 reported.** Per *case* rather than per corpus, the 0.25 MiB worst point runs at **0.022** — 45x slower on 64 threads than on one — and at 1 MiB, where the corpus geomean reads 1.10, **229 of 588 points are still slower than serial**. "Below ~1 MiB" understates it. |
+| A50 | A guard fitted to the sub-megabyte regime will misjudge the saturation above it. | **Confirmed, and the guard is scoped accordingly.** `C = 3e6` caps only 60 of 588 points at 16 MiB and never below 36 threads. Larger constants score *better* at 16 MiB (6.65 at `C = 8e6`) precisely because capping threads helps against a bandwidth ceiling — which is a second mechanism, and fitting one constant to two is how A33's model lost. The constant is chosen on the small-size evidence alone. |
+| A51 | A pool can degrade gracefully when it has fewer workers than the requested width. | **False for this driver, and it would deadlock.** Indices `t` and `t + pn` share a `pm`-way barrier, so folding surplus indices onto one thread waits forever for a participant that has already left. `try_broadcast` therefore declines all-or-nothing and the caller spawns instead. |
+| A52 | Mutex poisoning is a detail in a pool whose state has no invariants a panic can break. | **False in effect, and the test found it.** A worker's panic propagates while the submitter holds the submission mutex, so the next broadcast finds it poisoned and declines — permanently. The pool would silently stop pooling for the life of any process in which one contraction panicked, and `Panel::new` asserts on an unsatisfiable allocation, so that is reachable. Recover from poison; decline only on `WouldBlock`. |
 
 ## Packaging and distribution
 

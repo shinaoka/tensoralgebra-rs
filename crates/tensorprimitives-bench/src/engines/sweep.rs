@@ -189,12 +189,23 @@ where
         // it goes the partition actually used, `pm x pn`, because a case that
         // cannot fill the threads from one axis is exactly what a scaling run is
         // looking for and the CSV should say so without re-deriving it.
-        let threads = p.threads();
-        let tag = if threads == 1 {
+        // `amortised_threads`, not `threads`: with `TENSORCONTRACT_AMORTISE=on` the
+        // driver caps the count on small work, and a CSV row claiming `t64` for a
+        // contraction that ran on two threads is a provenance error of exactly the
+        // kind this project has had to retract before. Requested and used are the
+        // same number whenever the guard is off, which is the default.
+        let threads = p.amortised_threads(T::IS_COMPLEX);
+        let tag = if threads == 1 && p.threads() == 1 {
             String::new()
         } else {
-            let (pm, pn) = p.partition(mr, nr);
-            format!("t{threads}/{pm}x{pn} ")
+            let (pm, pn) = p.partition_with(mr, nr, threads);
+            let asked = p.threads();
+            let cap = if asked == threads {
+                String::new()
+            } else {
+                format!("/of{asked}")
+            };
+            format!("t{threads}{cap}/{pm}x{pn} ")
         };
         let notes = format!(
             "{} {mr}x{nr} {orient} {}x{}x{} {tag}{}",

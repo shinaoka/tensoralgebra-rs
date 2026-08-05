@@ -36,13 +36,16 @@
 //! different promises:
 //!
 //! 1. **The contraction API** — [`contract`], [`Plan`], [`Layout`],
-//!    [`TensorView`], [`TensorViewMut`], [`Element`], [`Error`], and the
-//!    per-plan choices [`Plan::with_complex_method`], [`Plan::with_threads`],
-//!    [`Plan::with_blocking`]. Ordinary semver: a breaking change here needs a
-//!    major version.
+//!    [`TensorView`], [`TensorViewMut`], [`Element`], [`Error`], the per-plan
+//!    choices [`Plan::with_complex_method`], [`Plan::with_threads`],
+//!    [`Plan::with_blocking`], and the batched entry points
+//!    [`batch::contract_batched`] / [`batch::BatchItem`]. Ordinary semver: a
+//!    breaking change here needs a major version.
 //! 2. **Introspection of the engine's own decisions** — [`PlanStats`],
 //!    [`plan::Scatters`], [`Plan::transposes_gemm`], [`Plan::row_block`],
-//!    [`Plan::partition`], [`kernel::selected_config`], [`kernel::cache`] and
+//!    [`Plan::partition`], [`Plan::partition_with`],
+//!    [`Plan::amortised_threads`], [`Plan::work_fmas`],
+//!    [`kernel::selected_config`], [`kernel::cache`] and
 //!    friends. The *signatures* are semver-stable, and they exist so that a
 //!    benchmark harness or an alternative execution strategy can describe
 //!    exactly what this engine would do. The *values* are tuning outputs and
@@ -86,9 +89,13 @@
 
 #![warn(missing_docs)]
 
+#[cfg(feature = "std")]
+pub mod batch;
 mod buffer;
 mod driver;
 mod pack;
+#[cfg(feature = "std")]
+mod pool;
 mod writeback;
 
 pub mod element;

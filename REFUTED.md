@@ -367,9 +367,19 @@ build-vs-reuse row for `rayon`; part 15's note that TBLIS also spawns its
 parallel region per call (`external/tci/src/tci/parallel.c:24`) and so has no
 advantage here either.
 
-**What would reopen it.** Nothing for the intra-contraction path. **rayon fits
-the batched API**, where the axis is the batch, there are no barriers, and
-fork-join is the right shape — that is a different question and is open.
+**What would reopen it.** Nothing for the intra-contraction path. Our own
+parked-thread pool is built instead (D49,
+`crates/tensorcontract/src/pool.rs`), and building it surfaced two things worth
+carrying: a pool must decline **all-or-nothing** rather than folding surplus indices
+onto one thread, which would deadlock on the shared barrier (A51); and it must
+recover from mutex poisoning, or one panicking contraction stops it pooling for the
+life of the process (A52).
+
+**rayon does fit the batched API** — the batch axis has no barriers and plain
+fork-join is right. It is still not used there, but for a much weaker reason: ten
+lines of `std::thread::scope` do the same job and the crate already owns a pool that
+can be extended to that axis (D50). The objection on the batch axis is
+*unnecessary*, not *unsound*, and that distinction is the point of this entry.
 
 ## `K`-parallelism (A21)
 
@@ -762,13 +772,22 @@ that is a **bandwidth ceiling**, a different mechanism, and benign. **A guard
 fitted to the first must not be fitted to the second.**
 
 **Confidence.** `measured once` — one Zen2 node, seven size rungs, speedups taken
-against `t1` at the same size so the fixed cost is inside the measurement.
+against `t1` at the same size so the fixed cost is inside the measurement. **Worse
+per case than the corpus geomean showed**: re-scored per point from the same data,
+the 0.25 MiB worst case runs at **0.022** (45x), and at 1 MiB — where the corpus
+geomean reads 1.10 and looks safe — **229 of 588 points are still slower than
+serial**.
 
 **Evidence.** `bench-results/worker5139-zen2/phase4g/` (job 6754849);
 `scripts/phase4g-small.sh`. Part 16; A43; D46.
 
-**What would reopen it.** It is open by design — this is the finding task 3
-items 2 and 3 act on. Re-measure both regimes after pooling.
+**What would reopen it.** It is open by design, and three answers are now built and
+off by default: the amortisation guard (D48), the thread pool (D49) and the batched
+API (D50). **Re-measure both regimes after each**, and note that the guard is
+deliberately scoped to the spawn regime only — larger constants score better above
+1 MiB precisely because capping threads helps against a *bandwidth* ceiling, and
+fitting one constant to two mechanisms is how the analytical blocking model lost
+(A50, A33).
 
 ## A baseline built from the right source at the right commit is the right baseline (A45)
 

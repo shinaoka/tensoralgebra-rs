@@ -100,9 +100,22 @@
 //! Known limits, in the order they will bite (see the Phase 4 report):
 //! parallelism is capped at `ceil(M / MR) * ceil(N / NR)`, and a column group can
 //! only be as wide as the `jc` block it is cut from, so a tail `NC` block with
-//! fewer slivers than groups leaves some threads idle for that block;
-//! `std::thread::scope` spawns per `execute` call rather than reusing a pool; and
-//! `NC`'s L3 budget is still charged as if one core owned the cache.
+//! fewer slivers than groups leaves some threads idle for that block; and `NC`'s
+//! L3 budget is still charged as if one core owned the cache.
+//!
+//! The per-call spawn cost that used to head that list — `std::thread::scope`
+//! rather than a pool, ~20–36 µs per thread and the whole story below a megabyte
+//! (A43, D46) — now has three answers, all opt-in and all measurable against the
+//! shipped behaviour as run-time switches:
+//!
+//! * [`Plan::amortised_threads`](crate::plan::Plan::amortised_threads) caps the
+//!   thread count so the cost stays a bounded fraction of the work
+//!   (`TENSORCONTRACT_AMORTISE=on`) — it steers around the cost;
+//! * [`crate::pool`] reuses parked threads instead of spawning
+//!   (`TENSORCONTRACT_POOL=on`) — it removes the cost;
+//! * [`crate::batch`] parallelises over a *batch* of contractions, paying one
+//!   spawn set for the batch rather than one per contraction — it removes the
+//!   count.
 
 use std::sync::Barrier;
 
@@ -255,6 +268,40 @@ pub unsafe fn execute<T>(
     T: Element,
     T::Real: KernelSet,
 {
+    // SAFETY: forwarded unchanged; `usize::MAX` imposes no cap, so the thread
+    // count is the plan's, exactly as before this parameter existed.
+    unsafe { execute_capped(plan, alpha, a, b, beta, c, d, usize::MAX) }
+}
+
+/// [`execute`], with an upper bound on the threads this call may use.
+///
+/// The bound exists for the batched path: parallelising over a *batch* means each
+/// contraction in it must run serially, or the two axes nest and the spawn saving
+/// the batch axis exists for is spent again inside every item. Passing 1 is how
+/// that is expressed, and it costs nothing here — the `p == 1` branch below is the
+/// pre-threading code path.
+///
+/// # Safety
+///
+/// As [`execute`].
+// Eight arguments, against clippy's seven: seven of them are the contraction
+// itself — `alpha`, four operands, `beta` and the plan — and bundling them into a
+// struct to satisfy a count would put a layer between the ABI-facing entry points
+// and the loop nest for no reader's benefit.
+#[allow(clippy::too_many_arguments)]
+pub(crate) unsafe fn execute_capped<T>(
+    plan: &Plan,
+    alpha: T,
+    a: *const T,
+    b: *const T,
+    beta: T,
+    c: *const T,
+    d: *mut T,
+    max_threads: usize,
+) where
+    T: Element,
+    T::Real: KernelSet,
+{
     if plan.is_empty() {
         return;
     }
@@ -363,8 +410,17 @@ pub unsafe fn execute<T>(
     // each; it caps them at the panel and block counts, so a contraction with
     // three row panels and two column blocks uses six threads at most however
     // many were asked for and however much work it contains.
+    // The thread count the partition is derived from is the *amortised* one: with
+    // `TENSORCONTRACT_AMORTISE=on` it is capped so per-call spawn stays a bounded
+    // fraction of the work, which is what stops a sub-megabyte contraction being
+    // an order of magnitude slower on 64 threads than on one (A43, D46). Off by
+    // default, in which case this is `plan.threads()` exactly. The element type
+    // is only known here, which is why `Plan` cannot do it alone.
     let npanels = m.div_ceil(mr);
-    let (pm, pn) = plan.partition(mr, nr);
+    let want = plan
+        .amortised_threads(T::IS_COMPLEX)
+        .min(max_threads.max(1));
+    let (pm, pn) = plan.partition_with(mr, nr, want);
     let p = pm * pn;
 
     // Panel sizes come from the kernel's declared per-k sliver widths, so a
@@ -442,27 +498,45 @@ pub unsafe fn execute<T>(
     // the threads take no barrier at all.
     let bars: Vec<Barrier> = (0..pn).map(|_| Barrier::new(pm)).collect();
     let bars = &bars;
+
+    // One thread's whole job, as a function of its index in the `pm x pn` grid.
+    // Written once and reached two ways — from a pooled broadcast or from
+    // `std::thread::scope` — so the two arms cannot drift apart. They differ only
+    // in where the threads come from; the partition, the strips and therefore the
+    // arithmetic are identical, which is why the result stays bitwise identical to
+    // serial under either.
+    let cell = |t: usize| {
+        let cx = &cx;
+        let (r, g) = (t / pn, t % pn);
+        let bpart = BPart {
+            g,
+            pn,
+            r,
+            pm,
+            bar: (pm > 1).then(|| &bars[g]),
+        };
+        let lo = (r * npanels / pm) * mr;
+        let hi = (((r + 1) * npanels / pm) * mr).min(cx.m);
+        let mut ap = Panel::<T::Real>::new(ap_len);
+        let mut tile = Panel::<T::Real>::new(cx.ukr.tile);
+        // SAFETY: `execute`'s contract covers the accesses; the strips and column
+        // groups partition the output, so this thread's writes are disjoint from
+        // every other thread's.
+        unsafe { run_strip::<T>(cx, lo, hi, ap.as_mut_ptr(), tile.as_mut_ptr(), bpart) };
+    };
+
+    // Pooled if asked for and if the pool can serve this width, otherwise spawn.
+    // `try_broadcast` runs nothing when it declines, so this is a real either/or
+    // and never a partial execution. Off by default: see `crate::pool`.
+    #[cfg(feature = "std")]
+    if crate::pool::enabled() && crate::pool::try_broadcast(p, &cell) {
+        return;
+    }
+
     std::thread::scope(|scope| {
         for t in 0..p {
-            let cx = &cx;
-            let (r, g) = (t / pn, t % pn);
-            let bpart = BPart {
-                g,
-                pn,
-                r,
-                pm,
-                bar: (pm > 1).then(|| &bars[g]),
-            };
-            scope.spawn(move || {
-                let lo = (r * npanels / pm) * mr;
-                let hi = (((r + 1) * npanels / pm) * mr).min(cx.m);
-                let mut ap = Panel::<T::Real>::new(ap_len);
-                let mut tile = Panel::<T::Real>::new(cx.ukr.tile);
-                // SAFETY: `execute`'s contract covers the accesses; the strips
-                // and column groups partition the output, so this thread's
-                // writes are disjoint from every other thread's.
-                unsafe { run_strip::<T>(cx, lo, hi, ap.as_mut_ptr(), tile.as_mut_ptr(), bpart) };
-            });
+            let cell = &cell;
+            scope.spawn(move || cell(t));
         }
     });
 }

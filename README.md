@@ -34,9 +34,12 @@ algorithm is Matthews' block-scatter-matrix tensor contraction
 > megabyte, 64 threads run **1.2–10x slower than serial**, because threads are
 > spawned per call rather than pooled, and the optimal thread count walks 4 → 64
 > across the size range — so a fixed default would be wrong at every size but one.
+> Three opt-in answers to that exist (a thread pool, a thread-count amortisation
+> guard, and a batched entry point that parallelises over the batch instead); all
+> three are off or inert by default and **none has been A/B'd end to end yet**.
 > The blocking model is off because it was measured and **lost**, on the first
-> machine it was meant to help. Turning either on is one call or one environment
-> variable, and results are bitwise identical either way.
+> machine it was meant to help. Turning any of them on is one call or one
+> environment variable, and results are bitwise identical either way.
 >
 > The project's original thesis — that complex contraction is where existing
 > engines leave the most on the table, because interleaved storage compounds
@@ -246,12 +249,22 @@ knows how many L3 domains the thread set spans, and gating its early return on
 that — rather than removing it — is the default
 (`TENSORCONTRACT_PARTITION=domain`). That is worth **1.13 corpus geometric mean
 at 64 Zen2 threads** and provably changes nothing on a machine with one L3 per
-socket. Still missing: **threads are spawned per call rather than pooled**, at
+socket. Still costing: **threads are spawned per call rather than pooled by default**, at
 ~20–36 µs per thread, which is the whole story below ~1 MiB — there 64 threads run
 **1.2–10x slower than serial**, and the optimal thread count walks 4 → 8 → 16 → 32
 → 64 across 0.25 → 64 MiB. That is why the default is 1 rather than a fixed
 non-1 number: a fixed default is wrong at every size but one. Above ~1 MiB the
 curve saturates on a bandwidth ceiling instead, which is benign.
+
+Three opt-in answers to the spawn cost are built, and the honest state of all three
+is *correct, and measured only offline*: `TENSORCONTRACT_POOL=on` reuses parked
+threads; `TENSORCONTRACT_AMORTISE=on` caps the thread count so spawn stays a
+bounded fraction of the work; and `batch::contract_batched` pays one spawn set per
+batch instead of one per contraction. The guard is calibrated against a committed
+grid — 588 case-dtype-method points at seven thread counts and four sizes, where it
+leaves none slower than serial against 565 of 588 at 0.25 MiB unguarded — but a grid
+score is not an end-to-end A/B, and this project has already had one look like +3%
+and then fail. Do not read a speedup into any of them yet.
 
 Results are bitwise identical at every thread count and every partition, so none
 of this is ever a correctness or accuracy decision.
@@ -295,6 +308,8 @@ process restart rather than a rebuild. None of them changes results.
 | `TENSORCONTRACT_KERNEL` | `auto` (default) \| `scalar` \| `avx2` \| `avx512` — pin the instruction set. A pinned ISA the CPU lacks falls back to scalar, so `avx2` is how the AVX2 kernels get exercised on an AVX-512 machine |
 | `TENSORCONTRACT_BLOCKMODEL` | `legacy` (default) \| `model` — derive cache blocking from probed cache descriptors instead of hardcoded constants. Measured on a foreign machine and **worse in 11 of 12 columns**, so `legacy` is the default on evidence |
 | `TENSORCONTRACT_PARTITION` | `domain` (default) \| `legacy` — which rule apportions the threads over the output. `domain` gates the "row axis fills the threads, so use it" shortcut on how many L3 domains the thread set spans. Measured: it changes **nothing at all** on a machine with one L3 per socket (the identical partition on 392 of 392 corpus cases) and is worth **1.13 geometric mean over the corpus at 64 threads** on a chiplet machine — 1.43 over the 144 cases it actually moves, and 2.1–2.4 on the memory-bound `abcijk` family in the real dtypes. Those are per-family geometric means, which is the only granularity a 64-thread measurement supports. Single-threaded callers never reach it. `legacy` is the ungated rule; `m`, `n` and `<pm>x<pn>` pin the partition outright, for A/B measurement |
+| `TENSORCONTRACT_POOL` | `on` — reuse parked threads instead of spawning per call, which removes the ~20–36 µs per thread that makes threading a *loss* on small contractions. Off by default: every threaded number committed before 2026-08-05 was measured with per-call spawn, and this has not had an end-to-end A/B |
+| `TENSORCONTRACT_AMORTISE` | `on` — cap the thread count so the spawn cost stays a bounded fraction of the work (at least 3e6 real FMAs per thread). Scored against a committed grid of 588 case-dtype-method points at seven thread counts and four sizes: it leaves **none of them slower than serial**, against 565 of 588 at 0.25 MiB unguarded, worst case 0.022. Off by default for the same reason as the pool |
 | `TENSORCONTRACT_DEEPEN` | `on` — coupled deepening: `kc = 512` for `f64` real geometry with `mc`/`nc` re-derived at that depth. **Off by default because it failed its end-to-end A/B**, and kept only as a record of the experiment. It looked like +3% on two machines; both grids' `base` arm was 1–2% slow, so every `arm/base` ratio was inflated identically and the agreement was a shared artefact rather than a replication. Corrected, the treatment is ≈0.977 |
 
 Plus the levers that exist so a fast path can be A/B-tested at run time rather
@@ -308,6 +323,22 @@ a build-to-build diff already produced one wrong sign here.
 
 `Plan::with_complex_method`, `Plan::with_threads` and `Plan::with_blocking` are
 the programmatic equivalents, and take precedence.
+
+### Many small contractions
+
+If you have a batch of independent contractions rather than one big one, the batch
+is the right parallel axis: `batch::contract_batched` pays **one** spawn set for the
+whole batch instead of one per contraction, and each item runs serially inside.
+Every item's bounds are checked before any item runs, so a batch containing one bad
+item writes to no output at all — which a loop over `Plan::run` cannot give you, and
+is a reason to prefer it even at one thread.
+
+```rust
+use tensorcontract::batch::{contract_batched, BatchItem};
+
+let mut items: Vec<BatchItem<'_, f64>> = /* one per contraction */ vec![];
+contract_batched(&mut items)?;
+```
 
 Threading partitions the *output* — row strips of micro-panels by column groups,
 never the contraction index — so every output element has exactly one owning

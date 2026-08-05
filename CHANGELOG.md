@@ -55,6 +55,24 @@ added later without breaking existing dependents.
 * **Cache blocking** with hardcoded constants by default, plus an analytical
   model derived from probed cache descriptors (sysfs, then x86 `CPUID`, then
   conservative built-ins) behind `TENSORCONTRACT_BLOCKMODEL=model`.
+* **A batched entry point**, `batch::contract_batched` / `batch::BatchItem`, for
+  many independent contractions, with the **batch** as the only parallel axis: one
+  spawn set per batch instead of one per contraction, which is the axis that matters
+  for the many-small-contractions workload. Every item's bounds are validated before
+  any item runs, so a batch with one bad item writes to no output at all. Soundness
+  is the borrow checker's — items live in a `&mut` slice, so the outputs are *proved*
+  disjoint — and there is no unsafe block in the fan-out.
+* **Two opt-in answers to per-call thread spawn**, both **off by default** and
+  neither yet A/B'd end to end: `TENSORCONTRACT_POOL=on` reuses parked threads
+  instead of spawning (~20–36 µs per thread removed), and
+  `TENSORCONTRACT_AMORTISE=on` caps the thread count so the spawn cost stays a
+  bounded fraction of the work. The guard is calibrated offline against a committed
+  grid of 588 case-dtype-method points at seven thread counts and four sizes, where
+  it leaves **none slower than serial** against 565 of 588 at 0.25 MiB unguarded
+  (worst case 0.022, i.e. 45x). `rayon` is declined for the intra-contraction path
+  on a structural ground — the driver is SPMD-with-barriers and a task blocking on a
+  barrier inside a bounded pool deadlocks — and declined for the batch axis, where it
+  would fit, only because ten lines of `std` do the same job.
 * **Multi-threading** behind `Plan::with_threads` / `TENSORCONTRACT_THREADS`,
   default **1**. A 2-D `pm x pn` static partition of the *output*: every element
   has one owning thread accumulating over the full `K` in the original order, so
@@ -139,7 +157,7 @@ The distinction matters more than the numbers, so it is stated per item.
 | **AVX2 register blocks** | **Measured, and all eight shipped shapes are the winners** — on Zen2 (`worker5040`), where the `avx2`-without-`avx512` dispatch branch also executed on real hardware for the first time. They stopped being a guess with no code change. Read with A34 above: this is one AVX2 microarchitecture, not AVX2 in general |
 | **Default cache blocking (`MC`/`KC`/`NC`)** | **Swept on two machines, and closed with a negative result: there is no few-percent win here.** `KC` is first-order — it decides whether the `A` sliver is an L1 resident or an L2 stream — but on the reference machine `kc = 384` is the optimum and the shipped 256 is close to it, while `MC` is a wide plateau a sixteenfold range moves by at most 3%. Pinned `kc = 512` is a *machine-specific* result and must not ship: 1.050 on Zen2, **0.961** on Cascade Lake. Coupled deepening looked like +3% on both machines and **failed its end-to-end A/B** — both grids' `base` arm was 1–2% slow, inflating every `arm/base` ratio identically, so the two-machine agreement was a shared artefact rather than a replication; control-corrected the treatment is ≈0.977. `TENSORCONTRACT_DEEPEN=on` survives as an off-by-default record of that experiment, not as a pending improvement. Shipped defaults remain `kc = 384/256` by real size, fitted to one Cascade Lake workstation. Three candidate changes and a mechanism all died on measurement; do not reopen without a new machine or a new mechanism |
 | **The analytical blocking model** | **Measured, and it loses. Off by default and staying there.** On the first unseen machine it is worse in **11 of 12 columns**, by up to 7.2% in the complex methods, and the whole loss is attributable to its `kc` (A33). It was built to solve portability and does not; the hypothesis is refuted rather than pending |
-| **Threading** | **Scaling measured on seven nodes (five Zen2, two Ice Lake), off by default and now off for a measured reason.** Below ~1 MiB at 64 threads it is 1.2–10x *slower* than serial — per-call thread spawn is ~20–36 µs per thread — and the optimal thread count walks 4 → 64 across the size range, so a fixed default is wrong at every size but one (D46). Bitwise-identical results are asserted at every thread count *and every partition*. Scaling is strongly topology-dependent: Zen2 saturates by 16–32 and declines at 64, Ice Lake reaches 48% of linear at 32 in `c64` 3m. A 4.3x partition win on Zen2 is **absent on Ice Lake** (A36), so the first machine alone would have produced the wrong rule. Threads are still spawned per call rather than pooled |
+| **Threading** | **Scaling measured on seven nodes (five Zen2, two Ice Lake), off by default and now off for a measured reason.** Below ~1 MiB at 64 threads it is 1.2–10x *slower* than serial — per-call thread spawn is ~20–36 µs per thread — and the optimal thread count walks 4 → 64 across the size range, so a fixed default is wrong at every size but one (D46). Bitwise-identical results are asserted at every thread count *and every partition*. Scaling is strongly topology-dependent: Zen2 saturates by 16–32 and declines at 64, Ice Lake reaches 48% of linear at 32 in `c64` 3m. A 4.3x partition win on Zen2 is **absent on Ice Lake** (A36), so the first machine alone would have produced the wrong rule. Threads are spawned per call by default; a pool and an amortisation guard exist behind `TENSORCONTRACT_POOL` / `_AMORTISE` and are **scored offline only — no end-to-end A/B** |
 | **The domain-aware partition** (`TENSORCONTRACT_PARTITION=domain`) | **Measured on two topologies, it met its pre-registered prediction, and it is now the default (D44).** It supplies the input `Plan::partition` was missing (how many L3 domains the thread set spans) and *gates* the `panels >= p` early return on it rather than removing it, which would be wrong where one L3 serves the socket. Predicted from another node's grid before the run: 1.423 on the 144 case-dtype-methods it moves, 1.138 corpus. Measured: **1.433 and 1.133** drift-corrected, on exactly 144 of 392, and **0 of 392 moved on a one-L3-per-socket machine**. The effect is monotone in domain count and flat in thread count, including a fixed-16-thread arm that varies only the packing (1.19x packed over 4 domains, **2.74x spread over 16**). Corpus scaling at 64 Zen2 cores goes 5.81 → 7.54 (`f64`) and 5.51 → 7.88 (`f32`). `TENSORCONTRACT_PARTITION=legacy` restores the ungated rule, which is what every threaded number committed before 2026-08-04 was measured with. Reproduce the prediction with `scripts/partition-score-rule.py`; raw arms in `bench-results/worker5479-zen2` and `worker6150-icelake` |
 | Absolute throughput off the reference machine | **Measured on Ice Lake, twice, and it is the best-known set here — but still not comparable with the reference machine.** Two full engine-vs-baseline runs in separate allocations agree to 0.997–1.003 on all twenty dtype × engine columns, each internally bracketed by a repeat arm 2.5 h away reading 0.998–1.001 with 0 of 980 case points outside ±6%. The Zen2 sessions remain within-session only. **No number from any of them may be differenced against a `ccqlin038` number** — which is why the improvement the Phase 4 work bought is still unmeasured end to end |
 | **The complex-method ranking, off Cascade Lake** | **Measured and it does not transfer (A44).** Planar still wins the corpus, but 3m falls from 0.956/0.921 against planar to 0.694/0.744 on Ice Lake, is last in every column, and wins 0 of 49 cases — and the memory-bound inversion that Phase 4 item 3 was to exploit is absent. Confounded with A34's wrong register blocks and not separable without an Ice Lake shape sweep. Item 3 must not ship as an unconditional rule |
@@ -220,8 +238,13 @@ see `DECISIONS.md` A21.
   inversion that would have justified it is a Cascade Lake result and is absent on
   Ice Lake, where the same rule would be a pessimisation (A44). See
   [`REFUTED.md`](REFUTED.md) for the reopening condition.
-* No thread pool, no `pc`-loop fusion, no pack-free fast path for already
-  unit-stride block scatter, no software prefetch.
+* No `pc`-loop fusion, no pack-free fast path for already unit-stride block
+  scatter, no software prefetch. `pc` fusion is **not** the general enabler earlier
+  notes implied — at `K = 3744` and `mc = 256` the fused packed `A` block is 7.7 MB
+  in `f64` — so it is a small-`K` optimisation, unbuilt.
+* No block-sparse batching. The dense batched API exists; block-sparse is where
+  items differ in *size* rather than in regularity, which is the one place D47's
+  null result on load imbalance does not reach.
 * `tensorprimitives-bench` (the TCCG harness, the TBLIS and OpenBLAS-TTGT
   baselines, the GEMM roofline and the stride-stress modes) is in the repository
   but `publish = false`.

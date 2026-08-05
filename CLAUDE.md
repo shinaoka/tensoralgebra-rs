@@ -45,10 +45,19 @@ MSRV **1.89** (AVX-512 intrinsics stabilised there).
 
 Three things that decide what you may say and do:
 
-* **The default configuration is: 1 thread, `legacy` blocking constants, the
-  `domain` partition rule, the antisymmetric orientation rule, the guarded
-  row-block rule, planar complex.** The domain-aware partition gate is the
-  default (D44); the *thread count* is not, and now for a measured reason (D46).
+* **The default configuration is: 1 thread, no amortisation guard, no thread
+  pool, `legacy` blocking constants, the `domain` partition rule, the
+  antisymmetric orientation rule, the guarded row-block rule, planar complex.**
+  The domain-aware partition gate is the default (D44); the *thread count* is not,
+  and now for a measured reason (D46).
+* **Three answers to the per-call spawn cost are built and none is A/B'd** (part
+  17): the amortisation guard (`TENSORCONTRACT_AMORTISE=on`, D48), the thread pool
+  (`TENSORCONTRACT_POOL=on`, D49) and the batched API (`tensorcontract::batch`,
+  D50). The guard is calibrated offline against a committed grid; the pool and the
+  batch are correctness-checked only. **Do not turn any of them on in a default or
+  quote a number for them before `scripts/ab.sh` has run** — that is exactly the
+  state `TENSORCONTRACT_DEEPEN` was in when it looked like +3% and then failed
+  (A20). Block-sparse, the second half of the batched item, is not built.
 * **The engine-vs-baseline numbers in `README.md` are Ice Lake**
   (`worker6156`, jobs 6753260 / 6754877, 2026-08-04/05): 1.31–1.78x TBLIS
   2.0-dev, 1.95–2.20x TTGT. They are **not** differenceable against the Phase 3
@@ -264,6 +273,8 @@ results are bitwise identical across all of them.
 | `TENSORCONTRACT_KERNEL` | `auto` (default) \| `scalar` \| `avx2` \| `avx512`: pin the instruction set. A pinned ISA the CPU lacks falls back to scalar, so `avx2` is how the AVX2 kernels get exercised on an AVX-512 machine |
 | `TENSORCONTRACT_THREADS` | thread count, default **1**. Bitwise identical at any value, so never a correctness or accuracy decision. Also runs the whole test suite through the threaded driver — worth doing after any driver change |
 | `TENSORCONTRACT_PARTITION` | `domain` (**default** since D44) \| `legacy`: which partition *rule*; or `m` \| `n` \| `<pm>x<pn>` to pin it outright. `domain` gates `Plan::partition`'s `panels >= p` early return on the L3 domain count — a measured no-op on 392 of 392 cases where one L3 serves the thread set, 1.133 corpus geomean at 64 Zen2 threads where sixteen do. `legacy` is the ungated rule, which is what every threaded number committed before 2026-08-04 was measured with |
+| `TENSORCONTRACT_AMORTISE` | `on`: cap the thread count so per-call spawn stays a bounded fraction of the work (≥ 3e6 real FMAs per thread). **Off by default.** D48; scored offline at 0 of 588 points slower than serial against 565 unguarded at 0.25 MiB, and never A/B'd |
+| `TENSORCONTRACT_POOL` | `on`: reuse parked threads instead of spawning per `execute` call, removing the ~20–36 µs/thread. **Off by default** so every pre-2026-08-05 threaded number stays reproducible. D49; never A/B'd |
 | `TENSORCONTRACT_L3_DOMAINS` | override how many L3 domains the thread set is taken to span. The derivation assumes compact placement (A37); this exercises the other case without a rebuild |
 | `TENSORCONTRACT_BLOCKMODEL` | `legacy` (default) \| `model`: the analytical cache model instead of the hardcoded constants. `legacy` is the default **on evidence** — the model loses in 11 of 12 columns on a foreign machine (A33) |
 | `TENSORCONTRACT_MC` / `_KC` / `_NC` | override cache blocking absolutely |
