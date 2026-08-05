@@ -1,80 +1,152 @@
 # Decisions, assumptions and phase reports
 
-Newest phase report last. Every material decision is recorded here so the run
-is auditable after the fact.
+The audit trail: every material decision, every assumption and what became of it,
+and every phase report with the data behind it.
+
+**How this file is organised.** Reference material first — [state](#resume-here),
+[index](#index), [machines](#environment), [measurement rules](#measurement-rules),
+[assumptions](#standing-assumptions), [decisions](#design-decisions) — then the
+reports, grouped by **topic**. Each report keeps the `part N` name it was written
+under, so every existing citation still resolves; the [index](#index) maps part
+numbers to chapters.
+
+**Refuted results live in [`REFUTED.md`](REFUTED.md)**, one entry per thing tried,
+with a confidence level, evidence, and — the field that matters — what would
+reopen it. The full accounts stay here and `REFUTED.md` points at them. It is not
+part of the per-session reading list; consult it before proposing any performance
+idea.
+
+**How to add to this file.** A report goes into the topic chapter it belongs to,
+not at the end. A decision goes in the [decisions table](#design-decisions) and
+nowhere else — reports name the numbers they introduced and stop. An assumption is
+*restated* wherever its status changes; that duplication is deliberate and is how
+a refutation is tracked. "Resume here" is **rewritten**, never appended to. A
+refutation gets an entry in `REFUTED.md` in the same commit as the measurement.
 
 ---
 
 ## Resume here
 
-**State as of 2026-08-05.** Phases 1, 2 and 3 are complete and their gates are
-met. Phase 4 items 1, 1c, 1d and 2 are closed; item 4 is measured and off by
-default. Phase 5 is in progress.
+**State, 2026-08-05.** Tests green (9 suites), `clippy --workspace --all-targets`
+silent, `fmt` clean. Workspace MSRV 1.89.
 
-**Newest first, since it changes what may be quoted** (full account in the Phase 5
-report part 3, at the end of this file):
+| phase | state |
+|---|---|
+| 1 — exploration and design | **complete.** Premise resolved with data; the founding thesis is refuted and the displaced finding is better (see `REFUTED.md`) |
+| 2 / 2b — correct engine, three complex methods | **complete** |
+| 3 — micro-kernels | **complete.** AVX-512 for `f32`/`f64` and all three complex methods; AVX2 added later, both measured |
+| 4 — profiling and improvement | **in progress.** Items 1, 1c, 1d closed with wins; item 2 closed with a negative result; **item 3 dropped** (below); item 4 built and measured, threads still off by default |
+| 5 — packaging | **in progress.** C surface, distribution surface, Julia consumer all exist. **Nothing published, nothing tagged**, on purpose |
 
-* **The engine-vs-baseline comparison is re-measured and current.** Two
-  independent Ice Lake runs, jobs 6753260 and 6754877 on `worker6156`, agreeing to
-  0.997–1.003 across all twenty dtype × engine columns. The engine reaches
-  1.31–1.78x TBLIS 2.0-dev and 1.95–2.20x TTGT. **TBLIS v1.3.0's 0.215
-  complex-over-real efficiency reproduced identically to Cascade Lake** — the
-  ratio is a property of the software, not the machine, exactly as Phase 1
-  argued. The README and CHANGELOG now carry these numbers.
-* **Still unmeasured: what Phase 4 bought end to end.** Those runs are Ice Lake
-  and the Phase 3 table is Cascade Lake; the two cannot be differenced. A
-  `ccqlin038` run of `scripts/compare-bench.sh` is the only thing that supplies it.
-* **A44 — the complex-method ranking does not transfer, and item 3's premise fails
-  on Ice Lake.** 3m drops to 0.694/0.744 against planar, is last in every column
-  and wins 0 of 49 cases; the memory-bound inversion is absent. Confounded with
-  A34. **Item 3 must not ship as an unconditional rule.** This is the substantive
-  open engine question.
-* **A45/A46 — a baseline's *configuration* is part of its identity**, and problem
-  size is a confound separate from time. A claim that the skx-only TBLIS 2.0
-  understated the baseline by 1.68x was measured at 8 MiB and is **withdrawn**; at
-  64 and 200 MiB the two builds are identical. The skx build does SIGILL on Zen2,
-  which is why `../baselines/tblis-2.0-x86_64-install` now exists.
+### The one open engine question
 
-What exists:
-
-* `crates/tensorcontract` — the engine. Correct and framework-complete: index
-  analysis with folding, scatter/block-scatter, packing in four formats, three
-  complex methods, five-loop driver, scattered write-back, brute-force oracle.
-  Micro-kernels are **AVX-512 for `f32`/`f64` and all three complex methods**,
-  runtime-dispatched, with the portable scalar path retained behind
-  `TENSORCONTRACT_KERNEL=scalar`. No AVX2 path yet.
-* `crates/tensorprimitives-tapp` — TAPP C ABI, verified against the upstream
-  headers, exercised end to end through the C entry points.
-* `crates/tensorprimitives-bench` — `tcbench` with `verify` / `premise` /
-  `sweep` / `info`, plus two *analyses* that touch no data and cost no CPU, so
-  they are safe to run while a benchmark is in flight: `shapes` (what each
-  register block would do to the write-back) and `orient` (the structural
-  features of both orientation arms). TBLIS (1.3 and 2.x) and OpenBLAS-TTGT
-  baselines; the TCCG corpus; GEMM roofline; stride-stress modes; CSV output.
-* `bench-results/` — raw CSVs for every measurement quoted in this file, all
-  committed. `phase3-*` is the Phase 3 set; `phase4/rm-*` is the Phase 4
-  re-measurement on an exclusive machine and is the one to compare against.
-  **`phase4c/rb-*` and `phase4d/or-*` are the two grids**: every register block,
-  and both orientation arms, for all 392 corpus case-dtype-methods. They are the
-  most valuable asset here — a candidate rule can be scored against them offline
-  for free, and that is how both Phase 4.1c and 4.1d were settled.
-* `scripts/` — `env.sh` (toolchain + single-threading), `phase3-bench.sh` (the
-  Phase 3 measurement set), `phase4-remeasure.sh` (the A/B pattern to copy),
-  `phase4c-rowblock.sh` and `phase4d-orient.sh` (the two grids),
-  `compare-sweeps.py` (turns two sweep CSVs into the ratio tables in this file),
-  and `rowblock-decompose.py` / `rowblock-score-rules.py` /
-  `orient-score-rules.py` (score candidate rules offline against a grid — the
-  pattern to copy for any further discrete tuning decision). For running any of
-  it on a cluster node: `node-session.sh` (stages a whole session),
-  `topology.py` (what machine is this, and where may a thread go),
-  `run-arms.py` (independent arms one per L3 domain, with per-domain occupancy),
-  `validate-placement.sh` + `placement-spread.py` (is concurrent placement safe
-  here). See part 10.
-
-Sanity check on a fresh checkout, in this order:
+**What Phase 4 bought, end to end, is still unmeasured.** The current
+engine-vs-baseline numbers are Ice Lake (jobs 6753260 and 6754877, `worker6156`)
+and the Phase 3 table they would be differenced against is Cascade Lake. Two
+things changed at once, so the difference is not attributable. Only a
+`ccqlin038` run supplies it:
 
 ```bash
-cargo test --workspace --release              # 6 green suites
+TBLIS_ROOT_2X=../baselines/tblis-2.0-install \
+TBLIS_ROOT_13=../baselines/tblis-1.3.0-install \
+  scripts/compare-bench.sh prep                       # the only compile
+  scripts/compare-bench.sh bench-results/$(hostname -s)-$(scripts/arch-label.sh)
+```
+
+~3.5 h, and it wants the machine to itself.
+
+### Item 3 is dropped, and what replaces it
+
+**Phase 4 item 3 — "dispatch 3m on memory-bound shapes, planar otherwise" — is
+dropped as a rule** (user's decision, 2026-08-05). Its premise was the ranking
+inversion Phase 3 measured on Cascade Lake, and A44 shows the inversion is absent
+on Ice Lake, where 3m is last in every column and wins 0 of 49 cases. An
+unconditional rule is a pessimisation there; a per-microarchitecture rule needs
+per-microarchitecture shape tables that do not exist.
+
+What survives is one cheap experiment, because the result is **confounded with
+A34**: an **Ice Lake register-block sweep extended to 3m**. It needs no
+baselines, `examples/kernel_shapes` is ~8 minutes, and
+`bench-results/worker6016-icelake/kernel-shapes.txt` is that sweep for the shapes
+A34 already covered. See `REFUTED.md`, "the complex-method ranking … as facts
+about the engine".
+
+**Consequence for quoting: the ranking and the inversion are Cascade Lake
+results.** Never state either as a property of the engine.
+
+### What to do next, in order
+
+1. **A per-job `CARGO_TARGET_DIR` in `scripts/rusty-phase4.sbatch`.** A cluster
+   job runs in the submit directory and uses its `target/`, so a `cargo build` or
+   `cargo test` here replaces the binary a running arm invokes, mid-run. This
+   happened on 2026-08-04 and was inert only by luck. ~5 lines, and it removes a
+   whole class of contamination.
+2. **An amortisation guard on the thread count**, so a threading default can
+   become safe. Cap `p` so the spawn cost stays a bounded fraction of estimated
+   serial work; fitting the 0.25 MiB rung at "spawn ≤ 50% of serial" gives
+   `p <= 5`, where `t4` is the measured optimum. **Do not fit it to the
+   saturation above 1 MiB** — that is a bandwidth ceiling and a different
+   mechanism (D46).
+3. **Pool the threads**, removing the ~20–36 µs/thread rather than steering
+   around it. `rayon` is refuted for this path on structural grounds — see
+   `REFUTED.md` — so this is our own parked-thread pool, and the build-vs-reuse
+   call gets recorded.
+4. **The batched API** (batched first, then block-sparse). Parallelising over the
+   batch gives one spawn per batch instead of one per contraction, there are no
+   barriers, and fork-join fits — so `rayon` *does* fit here.
+5. **Close the remaining orientation gap.** 21 case-dtype-methods still take the
+   slower arm, worth up to 1.36x, and they are a different population from the
+   `abcijk` family the rule was derived on. Both arms are already in
+   `bench-results/phase4d/or-*`, so a candidate costs no machine time:
+   `scripts/orient-score-rules.py`.
+6. **Re-run the row-block grid at the chosen `kc`.** `kc` decides the regime and
+   the shape is chosen inside it; the Phase 3 shapes were chosen at a depth the
+   engine may no longer use.
+7. **A35's A/B**, which is now reachable and has never been run:
+   `scripts/ab.sh bench-results/ab-rowblock-idx3 "TENSORCONTRACT_ROWBLOCK=idx=3"`.
+8. Then the rest of Phase 4: small-`k` handling, `pc`-loop fusion **for small `K`
+   only**, a pack-free fast path for already-unit-stride block scatter, prefetch.
+
+Items 1–4 need no cluster time. Items 5–7 need none either (5) or an exclusive
+machine (6, 7).
+
+### Settled — do not re-derive
+
+Each of these cost a measurement. The full entry, with what would reopen it, is
+in [`REFUTED.md`](REFUTED.md).
+
+1. **The complex-weakness thesis** is refuted against TBLIS 2.0-dev (1.06) and
+   confirmed against TBLIS v1.3.0 (0.215), for a mundane reason: 1.x has no
+   complex micro-kernel outside Sandy Bridge.
+2. **The real headroom is low arithmetic intensity in either domain**, not
+   complex. TBLIS 2.0 runs 0.85 of a same-shape GEMM ceiling on large
+   compute-bound contractions and 0.34 on small-`k` skinny ones.
+3. **The corpus is 49 cases, not 48** (D11, `DESIGN.md` §5.2).
+4. **The corpus is not "fully regular"** — that shorthand is wrong and steered
+   conclusions for three phases (A4). Quote the `--stress` mode and the observed
+   `reg_a` with any awkward-stride claim.
+5. **Write-back regularity is not a performance predictor.** It is a gate on a
+   change, never an objective; it has pointed the wrong way three times.
+6. **The complex-method ranking and the memory-bound inversion are Cascade Lake
+   results** and do not transfer (A44). Planar wins the corpus on both AVX-512
+   machines measured; nothing below that may be quoted without naming the machine.
+7. **`K`-parallelism is ruled out on evidence** (A21), and D45 does not reopen it.
+8. **Register blocks are measured** — AVX-512 on Cascade Lake, AVX2 on Zen2 — and
+   are per-*microarchitecture*, not per-ISA (A34). Do not re-derive them;
+   `examples/kernel_shapes` re-derives them if the machine changes.
+
+### Before believing anything in this file
+
+* **No number measured on one machine may be compared with a number measured on
+  another.** Every ratio here is within-session against a floor derived in that
+  session. See [measurement rules](#measurement-rules); floors are per session
+  *and per thread count*.
+* Raw CSVs for every number are committed under
+  [`bench-results/`](bench-results/README.md), one `PROVENANCE.txt` per directory.
+* Sanity check on a fresh checkout, in this order:
+
+```bash
+cargo test --workspace --release              # 9 green suites
 TENSORCONTRACT_KERNEL=scalar cargo test --workspace --release
 cargo clippy --workspace --all-targets        # silent
 cargo build --release -p tensorprimitives-bench
@@ -82,271 +154,81 @@ cd bench-results/phase4 && python3 ../../scripts/compare-sweeps.py \
     rm-A-f64c64.csv,rm-A-f32c32.csv rm-A2-f64c64.csv,rm-A2-f32c32.csv
 ```
 
-The last one re-derives the published noise floor from committed data and
-should print geomeans of 0.99–1.01 without touching the CPU. If it does not,
-the analysis tooling has drifted from the numbers in this file.
-
-Settled; do not re-open without new data:
-
-1. The complex-weakness thesis is refuted against TBLIS 2.0 and confirmed
-   against TBLIS 1.3.0, for a mundane reason (1.x has no complex micro-kernel
-   outside Sandy Bridge). See the Phase 1 report.
-2. The real headroom is low arithmetic intensity in either domain.
-3. The TCCG corpus cannot test awkward-stride claims without `--stress`.
-4. The corpus is 49 cases, not 48.
-5. **Write-back regularity is not a performance predictor.** The fraction of
-   output row blocks that avoid the gather path explains the write-back path
-   and nothing else: maximising it scores 0.936 in `f32` as a row-block rule
-   (A16) and 0.936 as an orientation rule (part 6). It has now pointed the
-   wrong way three times. It is a *gate* on a change, never an objective.
-6. **The three-way comparison is done and planar wins**, by 3–8% geometric
-   mean over the corpus in both precisions — but the ranking inverts on
-   memory-bound shapes, where 3m wins. The mechanism is bytes moved per useful
-   flop, not flop count and not shuffles. See the Phase 3 report. *Caveat added
-   in Phase 4:* the margin has narrowed, because 3m gained most from the
-   write-back work (`c32` 3m is now the best cumulative improvement at 1.167,
-   against planar's 1.116). The mechanism is unchanged; the margin is not.
-   Re-measure before quoting a ranking.
-
-**Phase 4 item 1 is done** — see the Phase 4 report, parts 1–4. The 2x
-write-back defect is closed in all four dtypes (2.75x / 2.02x / 2.17x / 2.23x
-on the affected cases) for **+12–17% corpus geometric mean**, with no case left
-slower beyond noise.
-
-**Measure with `scripts/phase4-remeasure.sh`, not ad hoc.** Everything in
-Phase 4 was first measured on a shared workstation, and two conclusions had to
-be corrected: the write-back was reported as "a wash in double" (it is +2–3%)
-and a 4–5% `f32` regression was reported that does not exist. The script runs
-`A, B, A'` so a repeat brackets the treatment, and records sibling-CPU
-occupancy. **Noise floor on an exclusive machine: ±1.3% on a 49-case geomean,
-±6% per case.** Quote that, not a control-group inference.
-
-Two things came out of item 1 that are worth carrying forward:
-
-* The cause was **not** the mechanism Phase 3 named. It was the row/column
-  *orientation* of the matrix view, not the write-back's own L2 traffic. See
-  A10.
-* The orientation choice depends on `MR`, so it is not a property of the plan
-  alone (A11), and it must only be taken when the swap leaves the micro-tile
-  row block unbroken — the guard is empirical and the case it guards against
-  is **not fully explained**. Do not remove it without re-measuring
-  `abcijk-*mb-*` in `f32`.
-
-**Phase 4 item 1c is done** — see the Phase 4 report, part 5. The row-block
-menu and its guarded rule ship on by default; `c64` planar gains **1.026**
-corpus geomean (1.124 on the 12 cases it fires on), `c32` 1m 1.006 (1.108 on
-7), everything else is inside the noise floor, and one case out of 392 is left
-7% slower. It also **prices the orientation at ~2x** on the nine known misses
-and shows `MR` is the wrong instrument for buying it.
-
-**Phase 4 item 1d is done too** — see the Phase 4 report, part 6. The
-orientation rule's missing discriminant was found: the rule must be
-*antisymmetric* under exchanging the two directions, which neither previous
-version was. Condition 2 became a preference with a fallback ("row block fits,
-else the shorter run goes in the row role"), which is 12 better / 0 worse over
-both arms of all 392 case-dtype-methods and closes `f32` to within 0.4% of a
-hindsight oracle. Removing the row-block rule's now-obsolete guard 3 on top is
-worth another 1.218 on six `c32` 1m cases. End to end against Phase 4.1:
-**`f32` 1.028, `c32` 1m 1.022, `c32` planar 1.013, `c32` 3m 1.010**, 64-bit
-flat, best case 1.48x, one genuine per-case regression at 7%.
-
-**Since the last measurement, four things were built and none was measured.**
-All are correct, all are off or inert by default, and the whole set is green
-across ten combinations of the switches (default, `scalar`, `avx2`, 8 threads
-crossed with each, partition pinned to `m`/`n`/`2x2`, `blockmodel=model`, and a
-debug build):
-
-* **AVX2 kernels and ISA dispatch** (`avx512f` → `avx2+fma` → scalar), one macro
-  body per method across both ISAs. The AVX-512 instruction stream is
-  byte-identical to before — verified by disassembling both trees — so every
-  number in this file stands. Register blocks are *provisional and unmeasured*.
-  See the AVX2 interlude and D24–D26.
-* **The analytical cache-blocking model** (part 9, D23), behind
-  `TENSORCONTRACT_BLOCKMODEL=model`, default `legacy`. Predicts a `kc` 2.4–8x
-  smaller than the constants, i.e. an L1-resident `A` sliver.
-* **2-D threading** (part 8b, D27–D29), still off by default.
-* **The corpus's parallel width and the case against K-parallelism** (A21).
-
-**v0.1 packaging is in progress** — see the Phase 5 report, part 1, which is
-mostly a list of quality gates that had never run. CI is fixed and expanded,
-docs and the public API surface are settled (D30), the README is current, the
-CHANGELOG exists, `cargo package` succeeds for all three crates, and MSRV is
-verified at 1.89 (D31). Publishing is a human step and is not automated.
-
-**Both pending measurements are done.** They ran on Rusty `rome` nodes on
-2026-08-03 — jobs 6745376 (`worker5040`, 179 min: register blocks, thread scaling,
-placement validation, the blocking grid) and 6745978 (`worker5175`, 204 min: the
-traffic-sensitive blocking arms, sequentially). Read parts 7, 8, 8b, 9, 10 and 11.
-**Nothing they measured is comparable to a single-core number elsewhere in this
-file**: different machine, different cache hierarchy, and AVX2 rather than AVX-512.
-
-Headlines, and four decisions they hand back:
-
-* **Item 2 is closed with a negative result: there is no few-percent win in
-  `MC`/`KC`/`NC` on the reference machine.** Pinned `kc = 512` must not ship (0.961 on
-  Cascade Lake). Coupled deepening looked like +3% on two machines and **failed its
-  end-to-end A/B** — both grids' `base` arm was 1–2% slow, inflating every `arm/base`
-  ratio identically, so the "agreement" was a shared artefact. `kc = 384` is the
-  measured optimum and the shipped 256 is close to it. See part 7's A/B subsection.
-* **The analytical blocking model loses in 11 of 12 columns** on the first foreign
-  machine, by up to 7.2% in the complex methods, and part 7 attributes the whole
-  loss to its `kc`. **Leave `TENSORCONTRACT_BLOCKMODEL=legacy`** (A33). D23's
-  probing and descriptors stay; the default does not change.
-* **Threading scales to 8 and saturates by 16–32**, declining at 64 with cores idle
-  two-thirds of the time. The 2-D partition is vindicated at 1.6–3.4x, but
-  `Plan::partition`'s `panels >= p` early return costs up to **4.3x** on 18 cases.
-  **Recommended: default stays off** until the spawn cost and that early return are
-  addressed — both fixable, neither structural. *The early return is now addressed
-  (part 12, D41) and awaits its confirmation run; the spawn cost is not.*
-* **D26's eight AVX2 register blocks are all confirmed** as the measured winners, so
-  they stop being a guess with no code change.
-
-Concurrent placement (24 arms, one per L3 domain) was validated at +0.3% on the
-corpus and **rejected at −3.2% on the memory-bound half**, which is why the
-traffic-sensitive arms got their own sequential job. It returned 20.4x on the grid.
-
-What the two runs left open, in priority order:
-
-1. ~~**Make `Plan::partition` L3-domain-aware.**~~ **Built — see part 12 (D41).**
-   The early return is now *gated* on `l3_domains(p) > 1` (plus `blocks >= p` and
-   `k <= 64`, both of which stop the fix from costing more than it returns),
-   behind `TENSORCONTRACT_PARTITION=domain` and off by default. It is scored
-   exactly against the committed grids rather than guessed: **1.423 on the 144
-   case-dtype-methods it moves, 1.138 corpus geomean at 64 Zen2 threads, and
-   bit-identical to the shipped rule on Ice Lake at every width up to the
-   socket.** What remains is the confirmation run and then D22:
-
-   ```bash
-   PARTITION_SWEEP=1 STAGES=threads sbatch -C rome scripts/rusty-phase4.sbatch
-   ```
-
-   **Done, 2026-08-04, jobs 6753208 / 6753209 — all four pre-registered checks
-   pass and the prediction held to 1%.** Measured 1.433 on the 144 it moves and
-   1.133 corpus (predicted 1.423 / 1.138), 0 of 392 moved on a one-L3-per-socket
-   machine, and a fixed-16-thread arm varying only the packing reads 1.19x packed
-   over 4 domains against 2.74x spread over 16. **What is left is D22**: the
-   recommendation is to default the gate on first, then threads.
-   Two by-products worth not re-deriving: a cross-domain traffic term in the cost
-   model **cannot be calibrated** (A38, four variants refuted), and **per-case
-   ratios at 64 threads are unreadable** — p10 0.885 / p90 1.107 with tails to
-   1.55 on repeats of an identical partition, so only per-family geomeans are
-   quotable at that width (A39).
-2. **Nothing in blocking.** Item 2 is closed (part 7): coupled deepening failed its
-   A/B, pinned deepening is machine-specific and negative here, `MC` has no win, the
-   model loses, and the `C`-traffic account was falsified. Three candidate changes and
-   a mechanism all died on measurement; the shipped constants are near optimal on this
-   machine class. **Do not reopen without a new machine or a new mechanism.**
-3. **Pool the threads.** Spawning per `execute` call is the leading suspect for
-   occupancy falling to 29–36% at 64 threads (part 8), and it is first-order for the
-   small repeated contractions Phase 1 identified as the real headroom.
-4. **Re-run the row-block grid at the chosen `kc`**, which was always the intended
-   order (part 7): `kc` decides the regime and the shape is chosen inside it. Now
-   that `kc = 512` is indicated for 8-byte reals, the Phase 3 register-block table
-   was chosen at a depth the engine may no longer use.
-5. **Close the remaining orientation gap.** 21 case-dtype-methods still take the
-   slower arm, worth up to 1.36x, and they are a different population from the
-   `abcijk` family the rule was derived on. Both arms are in
-   `bench-results/phase4d/or-*`, so a candidate costs nothing to score with
-   `scripts/orient-score-rules.py`. Untouched by the `rome` runs.
-6. **Dispatch the complex method by shape** (item 3), still unstarted, and now with
-   a new input: on AVX2 the kernel-level ranking puts 3m *first* in `f32`/`c32`
-   (part 11), the opposite of AVX-512.
-7. Then the rest of the Phase 4 list: small-`k` handling, fusing the `pc` loop so
-   `C` is touched once, a pack-free fast path for unit-stride block scatter,
-   prefetch.
-
-An `icelake` session remains the open portability question: `rome` answered AVX2 and
-a second cache hierarchy, but AVX-512 on a *different Intel* hierarchy — which is
-where the legacy constants are wrong in a different direction — was deliberately not
-covered. `scripts/rusty-phase4.sbatch` runs there unchanged with `-C icelake`.
-
-Do not re-derive the register blocks. The AVX-512 ones are measured (Phase 3)
-and recorded in `kernel::x86`; the **AVX2 ones are now measured too** and all eight
-were confirmed as the winners they were guessed to be (part 11), so neither set is
-open. `examples/kernel_shapes` re-derives them if the machine changes. Since Phase
-4.1c each method carries a *menu* of them and the default is still the measured
-choice — the menu adds alternates, it does not re-litigate the default. The one
-caveat is item 4 above: the shapes were chosen at the old `kc`.
+The last one re-derives a published noise floor from committed data and should
+print geomeans of 0.99–1.01 without touching the CPU. If it does not, the
+analysis tooling has drifted from the numbers in this file.
 
 ---
 
-## Contents
+## Index
 
-This file is append-only and ordered **newest report last**. That order is
-load-bearing: a later section routinely retracts an earlier one, and the
-retractions are the most useful entries here. Nothing below is ever rewritten in
-place — a correction is a new subsection that says what it corrects.
-
-Reference sections, at the top and kept current:
+Reference sections, kept current:
 
 | | |
 |---|---|
-| [Resume here](#resume-here) | state, what exists, what is settled, what is open |
-| [Environment](#environment) | the reference machine, both TBLIS baselines, the ABI break |
-| [Standing assumptions](#standing-assumptions) | A1– , with status: confirmed, refuted, open |
-| [Build-vs-reuse decisions](#build-vs-reuse-decisions) / [Design decisions](#design-decisions) | D1– |
+| [Resume here](#resume-here) | state, the open question, what to do next |
+| [Environment](#environment) | the reference machine, the cluster nodes, both TBLIS baselines, the ABI break |
+| [Measurement rules](#measurement-rules) | the noise floors, each with its session and thread count, and the rules that produced them |
+| [Standing assumptions](#standing-assumptions) | A1–A48, one line each, with where the full account is |
+| [Build-vs-reuse decisions](#build-vs-reuse-decisions) | every dependency taken or declined |
+| [Design decisions](#design-decisions) | D1–D47, complete, in one place |
 
-Phase reports, in the order they were written:
+Reports, by topic. Live chapters first, closed phases last:
 
-| report | subject |
+| chapter | reports | subject |
+|---|---|---|
+| [Running a measurement session](#running-a-measurement-session) | part 10 | node choice as experiment design, the placement pre-registration, the zero-CPU tooling |
+| [The write-back and the two shape rules](#the-write-back-and-the-two-shape-rules) | parts 1–5, 6, 13 | the 2x defect and its real cause; the row-block menu and rule; the orientation rule and its discriminant; the menu keyed by position |
+| [Cache blocking](#cache-blocking) | parts 7, 9 | the `MC`/`KC`/`NC` grid and the A/B that closes item 2; the analytical model, and it loses |
+| [Micro-kernels across instruction sets](#micro-kernels-across-instruction-sets) | AVX2 interlude, part 11 | AVX2 from the same macro bodies; the AVX2 register blocks measured; A24, A34, A35 |
+| [Threading](#threading) | parts 8, 8b, 12, 14, 15, 16 | the scheme and its scaling on seven nodes; the 2-D partition; the domain-aware gate; load imbalance; what TBLIS does; the two experiments that decide the default |
+| [Packaging and distribution](#packaging-and-distribution) | Phase 5 parts 1, 2, C-surface interlude | quality gates, the API tiers, the TAPP conformance suite, the C header and consumer, cross-compilation, the JLL and the Julia package |
+| [The baseline comparison](#the-baseline-comparison) | Phase 5 part 3 | the engine against TBLIS and TTGT, re-measured; A44–A46 |
+| [Archive: phases 1–3](#archive-phases-13) | Phase 1, 2, 2b, 3 | closed and unlikely to be reopened: the premise check, the correct engine, the three methods, the AVX-512 kernels and the three-way comparison |
+
+**Part number → chapter**, for citations written before this file was
+reorganised:
+
+| part | chapter |
 |---|---|
-| Phase 1 | the premise check: the complex-weakness thesis is real against TBLIS v1.3.0, refuted against 2.0-dev, and the cause is mundane |
-| Phase 2 | correct, framework-complete engine |
-| Phase 2b | three interchangeable complex methods |
-| Phase 3 | AVX-512 micro-kernels, the three-way comparison, and a 2x defect localised |
-| Phase 4 part 1 (+2–5) | the write-back; the orientation rule; a negative result on depth-adaptive `MC`; what an exclusive machine changed; item 1c, the micro-tile row block |
-| Phase 4 part 6 | item 1d: the orientation discriminant — the rule has to be antisymmetric |
-| Phase 4 part 7 | item 2: the `MC`/`KC`/`NC` grid — **and the A/B that closes it with a negative result** |
-| Phase 4 part 8 | item 4: threading, measured on Zen2 and Ice Lake |
-| Phase 4 part 8b | the partition becomes 2-D |
-| Phase 4 part 9 | blocking that transfers — the analytical model, and it loses |
-| Phase 4/5 interlude | AVX2 kernels, and where the model can be trusted |
-| Phase 5 part 1 | what preparing v0.1 found |
-| Phase 5 part 2 | the distribution surface, and a Julia consumer |
-| Phase 4 part 10 | taking the two pending measurements to a cluster node |
-| Phase 4 part 11 | the AVX2 register blocks, measured; A24, A34, A35 |
-| Phase 5 interlude | making the C surface consumable |
-| Phase 4 part 12 | the partition becomes L3-domain-aware (D41, D44); A37 |
-| Phase 4 part 13 | the row-block menu is keyed by position, so A35 is reachable (D43) |
-| Phase 4 part 14 | load imbalance, and the "corpus is fully regular" correction; A41 |
-| Phase 4 part 15 | what TBLIS actually does about threading |
-| Phase 4 part 16 | the two experiments that decide the threading default; D46, A43 |
-| Phase 5 part 3 | the comparison re-measured on Ice Lake; the method ranking does not travel; A44–A46 |
+| 1, 2, 3, 4, 5 (one section, "part 1") | the write-back and the two shape rules |
+| 6 | the write-back and the two shape rules |
+| 7 | cache blocking |
+| 8, 8b | threading |
+| 9 | cache blocking |
+| 10 | running a measurement session |
+| 11 | micro-kernels across instruction sets |
+| 12 | threading |
+| 13 | the write-back and the two shape rules |
+| 14, 15, 16 | threading |
+| Phase 5 parts 1, 2, and the C-surface interlude | packaging and distribution |
+| Phase 5 part 3 | the baseline comparison |
 
-Note that the section order is **not** chronological past part 7: parts 10 and 11
-sit after the Phase 5 reports because that is when they were written, and part 10
-contains the pre-registration that parts 7–9 consume. The Resume-here block is
-the reliable summary of current status.
+Two things a citation may trip over:
 
-### Three navigational defects, recorded rather than fixed
-
-Fixing any of these would mean rewriting entries that other entries cite, which
-is exactly what append-only forbids. They are named here instead.
-
-* **Assumption numbers have collided twice, and both collisions are live.**
-  `A27`, `A31` and `A32` are each used twice for unrelated claims. The
-  methodology ones — placement, the discarded warm-up arm, drift as a function of
-  arm distance — are in the Phase 4 parts. The Phase 5 C-surface reports reuse
-  `A31` and `A32` for the shipped header and the panic boundary. **Every citation
-  elsewhere in this repo means the methodology ones.** `A27` appears twice
-  consistently: once as the pre-registered hypothesis, once confirmed. Separately,
-  the docs branch and the threading branch both reached `A37` while working in
-  parallel; the threading branch's `A37`–`A43` kept those numbers and the docs
-  branch's three were renumbered to **`A44`–`A46`** when the two were merged. Any
-  citation of `A37`–`A39` predating 2026-08-05 means the threading branch's.
-* **"Parts 11–13" are referred to twice and do not exist.** The Phase 4 set is
-  parts 1–6, 7, 8, 8b, 9, 10 and 11. Read those references as "parts 10 and 11",
-  which is where the measurements they mean actually are.
-* A `### Why this shape of experiment` heading appeared twice in a row inside
-  part 7, with nothing between them. The stray copy was removed when this
-  contents section was added — an empty duplicate heading carries no claim, so
-  deleting it retracts nothing.
+* **`A31` and `A32` were each used for two unrelated claims.** The methodology
+  ones keep their numbers, because every citation in the repository means those:
+  `A31` is the cold-start artefact, `A32` is drift-as-a-function-of-separation.
+  The Phase 5 C-surface pair was **renumbered to `A47` (the shipped header agrees
+  with the library) and `A48` (a panic at the C boundary is acceptable)**. Any
+  citation of A31/A32 predating 2026-08-05 means the methodology ones.
+* **`A27` appears twice on purpose** — once as the pre-registered hypothesis,
+  once with its verdict — as do A7, A8, A9, A10, A11, A12, A24, A28, A36 and A41.
+  That is how a refutation is tracked, not a collision. The threading branch's
+  `A37`–`A43` kept their numbers when the docs branch merged; the docs branch's
+  three became `A44`–`A46`.
+* Two references to "parts 11–13" in the Phase 5 reports were written when those
+  parts did not exist and meant **parts 10 and 11**; they have been corrected in
+  place.
 
 ---
 
 ## Environment
 
-All measurements in this file were taken on:
+### The reference machine
+
+The only machine the shipped blocking constants and the AVX-512 register blocks
+were fitted to, and the one every `phase3-*` / `phase4*` number was measured on:
 
 | | |
 |---|---|
@@ -355,55 +237,188 @@ All measurements in this file were taken on:
 | ISA | AVX-512F/DQ/BW/VL/VNNI, 2 FMA units per core |
 | cache | 32 KiB L1d, 1 MiB L2 per core, 25.3 MiB shared L3 per socket |
 | memory | 251 GiB, 2 NUMA nodes |
-| toolchain | rustc 1.97.1, gcc 13.3.0 (module), cmake 3.31.6; workspace MSRV 1.89 (see D20) |
-| TBLIS (A) | v1.3.0 (tag `c4f81e0`, 2 Jul 2025) — the latest **stable** release, re-checked 2026-08-02: still the newest tag |
-| TBLIS (B) | `develop` @ `555320c` (4 Dec 2025), version string 2.0, BLIS auto-configured for `skx` — an **unreleased** development snapshot, now 8 months past the newest tag (`v2.0-beta2`) |
+| toolchain | rustc 1.97.1, gcc 13.3.0 (module), cmake 3.31.6; workspace MSRV 1.89 (D20) |
 | BLAS | OpenBLAS 0.3.29 (`openblas/single-0.3.29` module) |
 
-Both TBLIS baselines were rebuilt from source for Phase 3, at the same commits,
-under `../baselines/tblis-{1.3.0,2.0}-install` relative to the repo. They are
-not in the repo and not in the build; `scripts/phase3-bench.sh` takes their
-prefixes from `TBLIS_ROOT_13` and `TBLIS_ROOT_2X`. The rebuild reproduces the
-Phase 1 headline to three digits, which is the check that it is the same
-baseline — see the Phase 3 report.
+It is **shared during working hours.** Long benchmarks go off-hours; the
+zero-CPU analyses are what to run during the day.
 
-Both TBLIS versions are measured. They behave completely differently on
-complex data, and the difference is the single most important result in this
-document — see the Phase 1 report.
+Reference for the single-core ceiling: OpenBLAS `dgemm` reaches ~96 GF/s and
+`zgemm` ~96 GF/s on large square shapes here, so the two domains have effectively
+the same ceiling (A3), which is what makes the efficiency-ratio metric mean
+something.
 
-Note a silent ABI break between them: `type_t` swaps `TYPE_DOUBLE` and
+### The cluster nodes
+
+Rusty and Popeye are Slurm systems and **have no Cascade Lake**, so every cluster
+session answers a portability question rather than "is it fast". Submitting is a
+human step and is never automated.
+
+| node | uarch | ISA | topology | date | job | what it measured |
+|---|---|---|---|---|---|---|
+| `worker5040` | Zen2 (`rome`) | AVX2, **no AVX-512** | 64 cores/socket, 4 per 16 MiB L3 → 16 domains | 2026-08-03 | 6745376 | AVX2 register blocks; first thread scaling; the blocking grid; placement validation |
+| `worker5175` | Zen2 | AVX2 | as above | 2026-08-03 | 6745978 | the three traffic-changing blocking arms, sequentially (A27) |
+| `worker6016` | Ice Lake-SP | AVX-512 | 2x32 cores, **one 48 MiB L3 per socket** | 2026-08-03 | 6746817 | the second Intel hierarchy: A34 (blocks are per-uarch) and A36 (the partition win is absent) |
+| `worker5137` | Zen2 | AVX2 | as `worker5040` | 2026-08-04 | 6751550 | that the partition effect follows **L3 domains spanned**, not thread count |
+| `worker5479` | Zen2 | AVX2 | as `worker5040` | 2026-08-04 | 6753208 | the domain-gate confirmation run, Zen2 arm |
+| `worker6150` | Ice Lake-SP | AVX-512 | as `worker6016` | 2026-08-04 | 6753209 | the same, Ice Lake arm: **0 of 392 cases moved** |
+| `worker5139` | Zen2 | AVX2 | as `worker5040` | 2026-08-04 | 6754849 | small contractions: the spawn cost, and why a fixed thread default is wrong |
+| `worker5178` | Zen2 | AVX2 | as `worker5040` | 2026-08-04 | 6755009 | `--stress ragged`: load imbalance does not cost |
+| `worker6156` | Ice Lake-SP | AVX-512, SMT off | as `worker6016` | 2026-08-04/05 | 6753260, 6754877 | **the engine against its baselines**, twice; the TBLIS-build A/B |
+
+### The two TBLIS baselines, and a trap in each
+
+| | |
+|---|---|
+| TBLIS (A) | **v1.3.0** (tag `c4f81e0`, 2 Jul 2025) — the latest *stable* release, re-checked 2026-08-02: still the newest tag |
+| TBLIS (B) | `develop` @ `555320c` (4 Dec 2025), version string **2.0** — an *unreleased* development snapshot, 8 months past the newest tag (`v2.0-beta2`) |
+
+They behave completely differently on complex data and the difference is this
+project's single most important measured result. **Any statement about TBLIS
+performance must name the version** (A2b).
+
+**Trap 1 — a silent ABI break.** `type_t` swaps `TYPE_DOUBLE` and
 `TYPE_SCOMPLEX` (1.3: `DOUBLE=1, SCOMPLEX=2`; 2.0: `SCOMPLEX=1, DOUBLE=2`).
-Mixing them produces plausible-looking wrong numbers with no error. The harness
-has a `tblis13` cargo feature and a startup self-check
-(`tblis::verify_type_tags`) that multiplies a known matrix in each dtype and
-aborts on mismatch.
+Mixing them produces plausible wrong numbers with no error. The harness has a
+`tblis13` cargo feature and a startup self-check (`tblis::verify_type_tags`) that
+multiplies a known matrix in each dtype and aborts on mismatch (D12).
 
-All runs are **single-threaded** (`TBLIS_NUM_THREADS=1`, `OPENBLAS_NUM_THREADS=1`,
-engine is not yet threaded).
+**Trap 2 — TBLIS 2.0's install is ISA-specific.** It was configured with
+`BLIS_CONFIG_FAMILY=auto`, which detects the *build* machine, so its BLIS is
+**skx-only** and SIGILLs on any machine without AVX-512 — it killed a `rome` job
+two seconds in. `../baselines/tblis-2.0-x86_64-install` is the same source with
+`BLIS_CONFIG_FAMILY=x86_64`, multi-configuration with runtime dispatch, and is
+what a non-AVX-512 node needs. **Keep both**: the `auto` build is what every
+committed number used, so prefer it wherever it runs.
+`scripts/rusty-compare.sbatch` chooses by grepping `avx512f` out of
+`/proc/cpuinfo` and records the choice in each run's `PROVENANCE.txt`. TBLIS
+1.3.0 needs none of this care — it is genuinely multi-config. Verify a claim like
+this with `nm`, not `strings`: the config *name* table is compiled in whether or
+not the kernels are (A45).
 
-Reference for single-core ceiling: OpenBLAS `dgemm` reaches ~96 GF/s and
-`zgemm` ~96 GF/s on large square shapes here, so the two domains have
-effectively the same ceiling, as expected.
+Both baselines live outside the repo at `../baselines/tblis-{1.3.0,2.0}-install`
+(built 2026-08-02, same commits as Phase 1). If they are gone, rebuild them — it
+is ~30 min unattended, and `scripts/env.sh` documents the recipe. TBLIS 1.3.0
+uses autotools; build the harness against it with `--features tblis13,blas`.
+
+Single-core measurements pin everything single-threaded
+(`TBLIS_NUM_THREADS=1`, `OPENBLAS_NUM_THREADS=1`, `TENSORCONTRACT_THREADS=1`);
+`scripts/env.sh` does it.
+
+---
+
+## Measurement rules
+
+**There is no project-wide noise floor.** A floor is a property of a session, a
+machine *and a thread count*, and quoting one outside its own is how three
+published numbers here turned out to be artefacts. Every floor below is derived
+in the session it labels.
+
+| session | machine | width | floor |
+|---|---|---|---|
+| Phase 4 A/Bs, exclusive | `ccqlin038`, Cascade Lake | 1 thread | **±1.3% on a 49-case geomean, ±6% per case.** Anything smaller is not a result |
+| `compare-bench.sh`, exclusive SMT-off | `worker6156`, Ice Lake-SP | 1 thread | **0.995–1.003** at minutes' separation, **0.998–1.001** at 2.5 h, **0 of 980** case points outside ±6%. The tightest in this file, ~5x `ccqlin038` |
+| `rusty-phase4.sbatch`, exclusive | Zen2 `rome` | 1 thread | **0.02% at 69 s, 1.1–1.9% at ~1 h, 4.4% across the opening cold start** (A31, A32) |
+| partition arms, exclusive | `worker5479`, Zen2 | **64 threads** | per-case **p10 0.885 / p90 1.107, tails 0.80–1.55**, on repeats of an *identical* partition. Only per-family geomeans (1–2%) are quotable (A39) |
+| partition arms, exclusive | `worker6150`, Ice Lake-SP | **32 threads** | per-case **p10 0.915 / p90 1.108** over 392 identical-partition repeats. So A39 is a property of threaded measurement here, not of one machine |
+
+Nine rules, each of which cost something to learn. The full accounts are in
+[`REFUTED.md`](REFUTED.md) under *Measurement methodology*.
+
+1. **Name the thread count and the session with every floor.** A per-case ratio
+   at 64 threads is not readable at all (A39).
+2. **Derive the floor in-session, from repeats adjacent to the arms being
+   compared** (A32). Identical-configuration arms already in a grid are free
+   repeats — find them before booking machine time.
+3. **Run and discard a warm-up arm** (A31) — and do not treat it as sufficient
+   (A40). Every current script does; `phase3-bench.sh` predates it.
+4. **Include columns the change cannot touch, and check they do not move.** This
+   drift-corrected the domain gate's headline from 1.449 to 1.433 and caught a
+   contaminated A/B before that.
+5. **Measure at the size you publish at** (A46). Problem size is a confound
+   separate from time, and none of the timing rules catches it.
+6. **Prefer a runtime switch to a rebuild** (A15). A build-to-build A/B produced
+   a wrong *sign* on a real effect. Every fast path gets an environment variable.
+7. **Sweep the grid once and score rules offline** — as many candidates as you
+   like, for free. `partition-score-rule.py` predicted the domain gate to 1%
+   before a node was booked; the row-block and orientation rules were both settled
+   this way and their grids are still committed.
+8. **Finish with an end-to-end A/B in the configuration that ships** (A20). A rule
+   validated with the other levers pinned is validated only there.
+9. **Do not place traffic-changing arms concurrently** (A27). One arm per L3
+   domain is free on the corpus (+0.3%) and **wrong on memory-bound cases**
+   (−3.2%, up to −10%).
+
+Two operational rules with the same standing:
+
+* **An exclusive machine means exclusive.** Pinning is not enough: the pinned
+  core's SMT sibling shares L1d and L2, which is what every cache-blocking
+  measurement here turns on. Two Phase 4 conclusions had to be corrected after
+  re-measuring on a quiet machine.
+* **The submit directory is frozen for the duration of a cluster job.** A job runs
+  in the submit directory and uses its `target/`, so `cargo build` — or
+  `cargo test`, which relinks the same artefacts — replaces the very binary a
+  running arm invokes, and the job will not notice.
 
 ---
 
 ## Standing assumptions
 
-| # | Assumption | Status |
-|---|---|---|
-| A1 | TAPP can express everything needed, including complex and conjugation. | **Confirmed** from the actual headers: `TAPP_C32`/`TAPP_C64`, `TAPP_CONJUGATE` per operand, `int64_t` label arrays, `intptr_t` handles. No kill condition. |
-| A2 | TBLIS `develop` supports TAPP in-tree (per arXiv:2601.07827). | **Refuted.** No TAPP source in `master` or `develop` of `devinamatthews/tblis` v2.0. TBLIS is benchmarked through its native `tblis_tensor_mult` C API instead. |
-| A2b | "TBLIS" is one thing. | **Refuted.** v1.3.0 (latest release) and 2.0-dev differ by ~5x on complex, because 1.x has no complex micro-kernel outside Sandy Bridge. Any statement about TBLIS's complex performance must name a version. Both are now measured. |
-| A3 | Achievable GF/s peak is the same for real and complex on real-SIMD hardware. | Confirmed: `dgemm` 96 GF/s vs `zgemm` 96 GF/s. This validates the efficiency-ratio metric. |
-| A4 | The TCCG corpus exercises the irregular/gather path. | **Refuted in Phase 1, and the refutation expired in Phase 3.** TCCG rounds stride-1 extents to multiples of 24, which divides every register block *that was in use when this was written* — `regA = 1.00` everywhere, and that is still the right reading of the TBLIS comparison. It stopped being true of this engine the moment Phase 3 shipped `f32`/`c32` blocks of `MR` 16, 32 and 48, none of which divides 24: on the arm the orientation rule picks, `reg_a < 1.0` on **42.9%** of 392 case-dtype-methods, `reg_b` on 38.3%, `wb` on 35.7%, at quantised values 0.667 / 0.889 / 0.963. **The corpus does exercise the gather path here.** What it still cannot produce is *aperiodic* irregularity — its straddling is periodic, so a static partition self-averages — which is what `--stress` is for. See part 14. |
-| A5 | Shapes must be held fixed across dtypes for the real-vs-complex ratio to mean anything. | Adopted. Deviates from TCCG's per-precision sizing; documented in `corpus.rs`. |
-| A6 | This host is the reference machine; single-core is the headline. | Adopted. Threading deferred to Phase 4. |
-| A7 | The three complex methods differ mainly in flop count. | **Refuted in Phase 3.** They differ mainly in bytes moved per useful flop. |
-| A8 | One register block per method is enough. | **Refuted in Phase 3.** The best shape depends on method, element type and `kc`. |
-| A9 | Absolute performance figures are meaningful. | Adopted from Phase 3 onward; explicitly *not* true before it. |
-| A10 | The Phase 3 write-back defect is the write-back's own L2 traffic. | **Refuted in Phase 4.** It was the row/column orientation of the matrix view. |
-| A11 | The row/column orientation is a property of the plan. | **Refuted in Phase 4.** It depends on `MR`, hence on element type and method. |
-| A12 | Write-back overhead matters equally in both precisions. | **Refuted in Phase 4.** ~2x more of the budget in `f32`/`c32` than in `f64`/`c64`. |
+One line each, with the chapter holding the full account. **The report row is
+authoritative**; this is an index. Refuted entries with a reopening condition are
+in [`REFUTED.md`](REFUTED.md).
+
+| # | Assumption | Verdict | Full account |
+|---|---|---|---|
+| A1 | TAPP can express everything needed, including complex and conjugation. | **Confirmed** from the actual headers: `TAPP_C32`/`TAPP_C64`, `TAPP_CONJUGATE` per operand, `int64_t` labels, `intptr_t` handles. No kill condition. | Phase 1 |
+| A2 | TBLIS `develop` supports TAPP in-tree (per arXiv:2601.07827). | **Refuted.** No TAPP source in `master` or `develop`. TBLIS is driven through native `tblis_tensor_mult`. | Phase 1 |
+| A2b | "TBLIS" is one thing. | **Refuted.** v1.3.0 and 2.0-dev differ by ~5x on complex and swap two ABI enumerators. Name the version, always. | Phase 1 |
+| A3 | The achievable GF/s ceiling is the same for real and complex on real-SIMD hardware. | **Confirmed**: `dgemm` 96 GF/s vs `zgemm` 96. This is what validates the efficiency-ratio metric. | Phase 1 |
+| A4 | The TCCG corpus exercises the irregular/gather path. | **Refuted in Phase 1, and the refutation expired in Phase 3.** It does exercise it here — `reg_a < 1.0` on 42.9% of 392 at `--size 64`, 45 of them *entirely* — because the shipped `f32`/`c32` blocks do not divide 24. The fraction depends on the size and the ISA, so quote both. What it cannot produce is *aperiodic* irregularity. | threading (part 14); `REFUTED.md` |
+| A5 | Shapes must be held fixed across dtypes for the real-vs-complex ratio to mean anything. | **Adopted.** Deviates from TCCG's per-precision sizing; documented in `corpus.rs`. | Phase 1 |
+| A6 | This host is the reference machine and single-core is the headline. | **Adopted.** | Phase 1 |
+| A7 | The three complex methods differ mainly in flop count. | **Refuted in Phase 3.** They differ mainly in **bytes moved per useful flop**. | Phase 3 |
+| A8 | One register block per method is enough. | **Refuted in Phase 3.** The best shape depends on method, element type and `kc` — and later on microarchitecture (A34). | Phase 3 |
+| A9 | Absolute performance figures are meaningful. | **Adopted from Phase 3 onward**, explicitly not before it. | Phase 3 |
+| A10 | The Phase 3 write-back defect is the write-back's own L2 traffic. | **Refuted in Phase 4.** It was the row/column **orientation** of the matrix view. The vectorised inner loop is real but second-order, and only in single precision. | shape rules (part 1) |
+| A11 | The row/column orientation is a property of the plan. | **Refuted.** It depends on `MR`, hence on element type and complex method. | shape rules (part 1) |
+| A12 | Write-back overhead matters equally in both precisions. | **Refuted.** ~5x more of the budget in `f32`/`c32` (7–15%) than in `f64`/`c64` (2–3%). | shape rules (part 1) |
+| A13 | `MC` is bounded only by keeping the packed `A` block in L2. | **Refuted.** It also bounds the `D` strip a `jr` pass revisits, which binds whenever the output's rows are strided. Useful as a bound, worthless as a rule. | shape rules; cache blocking; `REFUTED.md` |
+| A14 | The orientation rule's `run >= MR` condition is the right discriminant. | **Refuted, and was unresolved** — right 63/72, missing 9 cases by 1.18–1.47x. Resolved by A19. | shape rules (parts 1, 6) |
+| A15 | A sequential build-to-build A/B is good enough for a few-percent effect. | **Refuted.** Reported `c64` 3m at 0.973 where a paired runtime A/B gives 1.020 — a wrong sign. | `REFUTED.md` |
+| A16 | Maximising the fraction of output row blocks off the gather path is the row-block rule. | **Refuted as a rule, confirmed as a mechanism.** Unguarded it scores 0.936 in `f32`. It is a gate, never an objective — and it has pointed the wrong way three times. | shape rules (part 5); `REFUTED.md` |
+| A17 | Shrinking `MR` will fix the orientation rule's nine misses. | **Refuted as a fix, and it prices the problem.** The flip happens and those cases gain 1.17–1.39x *while paying ~30% in kernel shape*: the orientation is worth ~2x and `MR` is the wrong instrument. | shape rules (part 5) |
+| A18 | The register blocks measured at the operating `kc` are right at every depth. | **Refuted.** At `k <= 24`, `c64` 3m prefers `MR` 16–24 over its default 8 (1.088) and `c32` 1m prefers `24x8` over `32x6` (1.099). The table is depth-conditional. | shape rules (part 5) |
+| A19 | The orientation discriminant is a property of `D`'s column direction. | **Refuted.** The corpus families are mirror images, so a correct rule must be **antisymmetric** under exchanging the two directions. Written symmetrically it is 12 better / 0 worse over all 392. | shape rules (part 6) |
+| A20 | A rule validated with the other levers pinned is validated. | **Refuted.** 12/0 with the shape pinned, and still 20% worse on three cases in the shipped configuration. | `REFUTED.md` |
+| A21 | Some compute-bound contractions will need `K`-parallelism. | **Refuted for this corpus, and argued structurally** — needing `K` bounds arithmetic intensity away from compute-bound. Confirmed to 128 threads in both ISAs, and corroborated by TBLIS never parallelising `PC`. | threading (parts 8, 10, 15); `REFUTED.md` |
+| A22 | The blocking model may assume one thread per physical core. | **Assumed, and the project's own rules justify it.** Oversubscribing SMT siblings would halve a thread's L1/L2 and the measurement rules already treat that as invalid. | cache blocking (part 9) |
+| A23 | Under threading, every cache budget must be divided by the thread count. | **Refuted; it is asymmetric.** The packed `B` panel is *shared*, so `nc`'s L3 budget must not be divided; what shrinks `nc` is the per-thread packed `A` blocks. | cache blocking (part 9) |
+| A24 | The AVX-512 method ranking carries over to AVX2. | **Refuted at the kernel level, in the direction predicted.** 3m is first in `f32`/`c32` on AVX2 and planar last or next-to-last in every column. No end-to-end confirmation. | kernels (part 11) |
+| A25 | Smaller register blocks are purely a cost. | **Refuted, at zero CPU cost.** Worse for the kernel, better for the write-back: 81 of 392 case-dtype-methods have no AVX-512 menu shape that clears the gather path, against none on AVX2. | kernels (AVX2 interlude) |
+| A26 | The TAPP layer is thin enough that the engine's own tests cover it. | **Refuted.** Four gaps on first contact, one of which aborted the caller's process. **Test an FFI layer as its caller, not as its callee.** | packaging (part 1) |
+| A27 | Concurrent arms, one per L3 domain, measure what a solo arm measures. | **Confirmed on the corpus (+0.3%), refuted on the memory-bound half (−3.2%, up to −10%).** Pre-registered with its accept/reject rule. | session (part 10); `REFUTED.md` |
+| A28 | The 2-D partition rule and `PACK_WEIGHT` behave at node scale as at 8 threads. | **Refuted, but not where predicted.** `PACK_WEIGHT` is fine; the `panels >= p` early return preceding it is what fails, by up to 4.3x. | threading (part 8b) |
+| A29 | Parallel width is a property of the contraction. | **Refuted at no CPU cost — of the contraction *and the ISA*.** AVX2's smaller blocks give the same corpus 3–6x more row panels. | session (part 10) |
+| A30 | The register-block sweep's `live <= 16` budget is the real one. | **Refuted, by one register.** Every `live == 16` shape collapses to 21–33 GF/s beside a 48–53 GF/s sibling at `live <= 15`. All eight shipped defaults sit at 14–15, so nothing shipped is affected. | kernels (part 11) |
+| A31 | `A, B, A'` bracketing is enough to establish a session's noise floor. | **Refuted on a machine with boost headroom.** Reported ±4.7% where the true repeat precision was 0.02%. **Run and discard a warm-up arm.** | `REFUTED.md` |
+| A32 | A session's drift is a single number. | **Refuted; it is a function of how far apart the arms are** — 0.02% at a minute, 1–2% at an hour, 4.4% across a cold start. Refined: on an exclusive SMT-off node it does not grow with separation at all. | `REFUTED.md` |
+| A33 | An analytically derived blocking is a safe default on an unseen machine, so it solves portability. | **Refuted on the first unseen machine** — worse in 11 of 12 columns, by up to 7.2%. Its `kc` sinks it there and its `mc` on the reference machine. | cache blocking (part 9); `REFUTED.md` |
+| A34 | Register blocks are a property of the instruction set. | **Refuted.** Cascade Lake and Ice Lake disagree by up to 13% on three of eight shapes. Shapes are **per-microarchitecture**; probed L1 geometry separates these two. | kernels (part 11); `REFUTED.md` |
+| A35 | The shipped register blocks are the ones the Phase 3 sweep selected. | **Refuted for one of eight.** `planar` `f32`/`c32` ships `32x6` where the sweep names `32x5`, 7.8% faster. Reachable at `TENSORCONTRACT_ROWBLOCK=idx=3` since D43; unfixed on purpose. | kernels (part 11); shape rules (part 13); `REFUTED.md` |
+| A36 | The 4.3x a 1-D `N` partition wins on the memory-bound family is a property of the partition rule. | **Refuted; it is a property of the topology** — how many L3 domains the shared packed-`B` panel spans. So gate the early return, do not remove it. | threading (parts 8, 12); `REFUTED.md` |
+| A37 | `l3_domains(p)` may assume **compact placement**. | **Assumed, and true of every measurement here.** The error is in the safe direction — it under-counts, so the rule falls back to legacy behaviour. `TENSORCONTRACT_L3_DOMAINS` overrides it. | threading (part 12) |
+| A38 | A cross-domain traffic term in the partition cost model can be calibrated. | **Refuted, four ways.** The separating weights are 1% apart and want opposite answers. Hence a binary gate over the two arms that were measured. | threading (part 12); `REFUTED.md` |
+| A39 | Per-case ratios at 64 threads are readable at ±6%. | **Refuted.** p10 0.885 / p90 1.107 with tails to 1.55 on identical-partition repeats. Only per-family geomeans are quotable. Confirmed on a second machine and width. | threading (part 12); `REFUTED.md` |
+| A40 | A discarded warm-up arm removes the opening-arm artefact. | **Partly.** Three of four brackets inside 0.3%; the exception tracks **position in the session**, so a hotter warm-up would not fix it. Keep it; do not treat it as a floor. | threading (part 12); `REFUTED.md` |
+| A41 | Blocks of a block-scatter contraction are equal-cost. | **False in the premise, true in the consequence.** Blocks differ in cost — 123 of 392 case-dtype-methods are internally mixed — but making it 7.5x more prevalent and aperiodic moves parallel efficiency by less than the floor. | threading (parts 14, 16); `REFUTED.md` |
+| A42 | Block-scatter load imbalance is solved in mature implementations, so a cost-aware partition would be reinvention. | **False.** TBLIS computes the same regularity sentinel and feeds it to no scheduling decision, in either version. | threading (part 15) |
+| A43 | Per-call thread spawn is a second-order cost. | **Refuted at small sizes.** ~20–36 µs per thread; a 0.22 ms contraction takes 2.2 ms on 64 threads. First-order for exactly the workload Phase 1 named as the headroom. | threading (part 16); `REFUTED.md` |
+| A44 | The complex-method ranking, and the memory-bound inversion, are properties of the engine and the shape. | **Refuted for the ranking.** On Ice Lake 3m is last in every column and wins 0 of 49; the inversion is absent. Confounded with A34. **Item 3 is dropped.** | comparison (part 3); `REFUTED.md` |
+| A45 | A baseline built from the right source at the right commit is the right baseline. | **Refuted, on portability.** `BLIS_CONFIG_FAMILY=auto` fits BLIS to the build host: skx-only, SIGILLs without AVX-512. Record a baseline's **configuration**. | comparison (part 3); `REFUTED.md` |
+| A46 | This file's measurement rules (A27, A31, A32) cover the ways a comparison can mislead. | **Refuted: they are all about time, and problem size is a separate axis.** A 1.68x claim measured at 8 MiB vanishes at the sizes actually published, and is withdrawn. | comparison (part 3); `REFUTED.md` |
+| A47 | The shipped header agrees with the library it describes. *(was the second `A31`)* | **Now tested rather than assumed.** `examples/c-consumer` compiles the header with a C compiler, links the built library and checks numbers; CI runs three link modes. | packaging (C-surface interlude) |
+| A48 | A Rust panic reaching the C boundary is acceptable because it is memory-safe. *(was the second `A32`)* | **Rejected as a policy.** Memory-safe but process-fatal, and the engine panics on allocation conditions a caller can hit. D38 converts it to an error code. | packaging (C-surface interlude) |
 
 ---
 
@@ -415,14 +430,17 @@ effectively the same ceiling, as expected.
 | `num-complex` | **Reuse** | `#[repr(C)]`, layout-identical to `TAPP_C32/C64` and C99 `_Complex`; ecosystem standard. Layout pinned by a test. |
 | SIMD abstraction (`pulp`, `macerator`) | **Build** on `core::arch` | `portable_simd` is unstable on 1.97. Register-blocked kernels want explicit register control. The `Ukr` function pointer keeps a `pulp` backend addable later without touching the driver. |
 | GEMM kernels (`gemm`, `matrixmultiply`, `microgemm`, `faer`) | **Build** | All expose *matrix* multiply, not a panel-panel kernel over externally packed buffers, and none has a planar-complex path. `matrixmultiply` (now with AVX-512 `cgemm`/`zgemm`) is a benchmark target, not a foundation. |
-| `rayon` | **Build** on `std::thread::scope` (deferred) | BLIS parallelism wants static partitioning with a shared packed-B panel; work-stealing fights that. |
-| `tblis`/`tblis-ffi` crates | **Build** ~100 lines of FFI | The benchmark must control which TBLIS is measured — crucially which BLIS config its kernels were built for. Those crates vendor their own build. This turned out to be load-bearing: the headline result *is* a version difference, which a crate that vendors one fixed build could not have surfaced. Struct layout pinned by a `sizeof`/`offsetof` test, and the 1.3-vs-2.0 `type_t` swap by a runtime self-check. |
+| `rayon`, for the intra-contraction path | **Build** on `std::thread::scope` | The parallelism is SPMD-with-barriers — `pn` barriers of width `pm`, two rendezvous per `(jc, pc)` — and a rayon task that blocks on a barrier inside a bounded pool deadlocks. Work-stealing also fights static partitioning with a shared packed-`B` panel. `ThreadPool::broadcast` fits the shape but ties the parallel degree to the pool size, and a global pool inside a library fights the host runtime (Julia, C consumers). See `REFUTED.md`. **rayon does fit the batched API**, where the axis is the batch and there are no barriers. |
+| `tblis`/`tblis-ffi` crates | **Build** ~100 lines of FFI | The benchmark must control which TBLIS is measured — crucially which BLIS config its kernels were built for. Those crates vendor their own build. Load-bearing: the headline result *is* a version difference, which a crate vendoring one fixed build could not have surfaced. Struct layout pinned by a `sizeof`/`offsetof` test, and the 1.3-vs-2.0 `type_t` swap by a runtime self-check. |
 | `criterion` | **Build** a small harness | Criterion targets many fast iterations of a cache-resident routine. These are 0.1–5 s measurements on 64–200 MiB working sets; best-of-N after warm-up plus a CSV is the right tool. |
 | `opt-einsum-path` | **Out of scope** | This engine executes one binary contraction; ordering is a caller concern. |
 
 ---
 
 ## Design decisions
+
+D1–D47, complete and in one place. A report names the numbers it introduced and
+does not restate them.
 
 | # | Decision | Rationale |
 |---|---|---|
@@ -438,558 +456,344 @@ effectively the same ceiling, as expected.
 | D10 | Blocking is overridable per plan and via `TENSORCONTRACT_MC/KC/NC`. | Lets the test suite drive every level of the five-loop nest on oracle-sized tensors, and lets Phase 4 sweep parameters. |
 | D11 | Corpus is TCCG's **full 49-case** set, not 48. | See `DESIGN.md` §5.2: the brief's "48" does not correspond to any list in upstream `benchmark.py`. 49 is the full set and a superset of the 25-case reduced set; `_sortedTCs` is a re-labelling, not a sixth group. |
 | D12 | Both TBLIS v1.3.0 and 2.0-dev are benchmarked, behind a `tblis13` cargo feature, with a runtime ABI self-check. | The two releases swap `TYPE_DOUBLE`/`TYPE_SCOMPLEX`, so a mismatch is silent rather than fatal. Given the result hinges on the version difference, guessing was not acceptable. |
-| D17 | Micro-kernels are macro-generated over `(MV, NR)` const generics from one body per method, not hand-written per shape. | A comparison between three methods must not also be a comparison between three hand-tunings. One body per method, one shape parameterisation, and the shape is then chosen by measurement. It also made the shape sweep possible at all. |
-| D18 | `#[target_feature]` kernels are reached through one-line plain-`fn` trampolines. | A `#[target_feature]` function cannot be coerced to a function pointer, which the `Ukr` contract requires. Cost is one `call` per micro-tile against `kc*MR*NR` FMAs — unmeasurable. |
-| D19 | Register blocks were chosen by measured throughput at the `kc` the engine actually uses, per method and per element type. | The uop model gets the *cliffs* right (spills above 32 live vector registers) but the *ranking* wrong: it predicts 3m fastest, and 3m is fastest only when the panels are L1-resident. See the Phase 3 report. |
-| D23 | The cache blocking is computed from **probed cache descriptors** via BLIS's analytical model, not from constants — and ships **off by default** behind `TENSORCONTRACT_BLOCKMODEL=legacy\|model`. | `Blocking::derive` held the only three machine-specific numbers in the engine: `kc = 384/256` by real size, a 512 KiB packed-`A` budget and a 3 MiB packed-`B` budget — half of `ccqlin038`'s L2 and a slice of its L3. Nothing about them transfers. `kernel::cache` probes sysfs (no `unsafe`, no dependency, and the only source that reports cache *sharing*), then x86 `CPUID` leaf 4 / `0x8000001D`, then conservative built-ins; a failed probe degrades to the next source and can never fail a contraction. The model is driven by the **reals per element the kernel packs**, not `size_of::<Element>()`, so 1m still gets half the rows planar does out of one L2 — the invariant the three-way comparison rests on. Off by default because the pending grid defines its arms *relative to the derived defaults*, so changing the derivation would silently change what that measurement means, and because A15 requires the old behaviour stay reachable as a run-time switch rather than a build-to-build diff. Build-vs-reuse: no crate, because `raw-cpuid`/`num_cpus`-style crates do not report per-level sharing and sysfs is ~100 lines of parsing. |
-| D24 | The instruction set is a **parameter of the kernel macro**, not a second set of bodies. `simd_kernels!` takes the lane count, a target-feature list and six intrinsics; AVX-512 and AVX2 are two instantiations of the same four bodies. | D17's argument — a three-method comparison must not also be a comparison between three hand-tunings — applies unchanged to two instruction sets, and would be violated the moment somebody hand-tuned AVX2 planar and not AVX2 3m. It also made the change auditable: because the AVX-512 arm expands from unchanged source text, its instruction stream is *verifiably* untouched (7816 zmm instructions, byte-identical, checked independently at merge). |
-| D25 | Dispatch is `avx512f` → `avx2 + fma` → scalar, and `TENSORCONTRACT_KERNEL` grows to `scalar\|avx2\|avx512\|auto`. A pinned ISA the CPU lacks falls back to scalar rather than faulting. | Without the pin, AVX2 kernels could be compiled on the reference machine and never executed on it, leaving the only coverage on hardware nobody here has. Same rule as `_ORIENT`/`_WRITEBACK`/`_ROWBLOCK`: every new fast path gets a run-time switch, because a build-to-build diff has already produced one wrong sign here (A15). Both `avx2` and `fma` are detected — separate CPUID bits, and the FMAs need the second. |
-| D26 | AVX2 register blocks are **provisional and explicitly unmeasured**, chosen from the register budget and the uop model, with a menu of alternates and `examples/kernel_shapes` extended to an AVX2 grid as the calibration path. | D19 splits this cleanly and the split was honoured: `live <= 16` and `acc >= 10` are load-bearing and were *verified in the disassembly at no CPU cost* (all shipped defaults allocate 15–16 distinct ymm with zero stack traffic; `planar 1x6` at `live=16` spills one register, `planar 2x3` at `live=18` spills seven — the cliff is exactly where the count puts it), while "which of the shapes that fit is fastest" is recorded as a guess. Publishing a modelled shape as measured would corrupt the one thing the register-block table is good for. |
-| D33 | The project is `tensorprimitives`, a facade over per-operation crates (`tensorcontract` now, `tensortranspose` planned), rather than one crate named after the operation it happens to implement first. | Three names were rejected on specific grounds. `tensoroperations` would claim the name of a *frontend* — index notation, contraction ordering — that `DESIGN.md` puts explicitly out of scope. `scattergemm` and `bsmtc` name the algorithm, which stops being true the moment a dedicated transpose kernel lands: a transpose is neither a GEMM nor block-scatter-matrix contraction. And a single crate named `tensorcontract` would have to grow non-contraction operations under a contraction name. "Primitives" is TAPP's own word for this layer — one operation per call, executed as asked — so the name states the scope and aligns with the standard the project implements. The shape is `futures`/`futures-core`: applications depend on the facade, libraries depend on the operation crate directly, since cargo features are additive across a dependency graph and a library enabling a facade feature imposes it on every other consumer — the point `blas-src`'s own documentation leads with. Precedent checked rather than assumed: Rust's BLAS ecosystem always names the implementation for itself (`openblas-src`, `netlib-src`, `blis-src`) and never after the interface, and TAPP has no provider-naming convention at all — its TBLIS and cuTENSOR interfaces live inside the reference repository rather than as published providers. |
-| D34 | **No published facade crate** until there are at least two implemented primitives. `tensorprimitives` is the project and repository name; the published crates are one per operation plus the family-level `-tapp` ABI. | A facade re-exporting a single primitive is indirection, not abstraction: it would be `tensorcontract` plus a version to keep in lockstep, a re-export surface that has to track the engine's API, and a crate republished on every release with nothing in it changed. The argument that justified the *feature* structure also undercuts the facade — libraries are told to depend on the operation crate directly, because cargo features are additive across a dependency graph, which leaves the facade serving only applications, for whom the alternative is one extra line in a manifest. And the asymmetry decides it: adding a facade later is purely additive and breaks no existing dependent, whereas publishing one now is permanent. `futures` and `tracing` earned theirs by having several substantial members on a shared cadence. Accepted cost: crates.io will show `tensorprimitives-tapp` with no `tensorprimitives` stem, and the umbrella name stays unclaimed — cheaper than a maintained no-op, and publishing a shell to hold a name is name-reservation with extra steps. For C callers the family-level surface already exists: the TAPP crate is the umbrella that will expose transposition beside contraction. |
-| D35 | **No Rust TAPP consumer-bindings crate** (a `tapp-abi`) until something links against it. This project ships a TAPP *provider* — it defines the symbols — and does not publish declarations for calling *into* other implementations. | Decisive fact: the upstream reference implementation has **no releases and no tags**, so an ABI crate would have nothing to version against and drift would be silent — the exact failure mode that TBLIS's `type_t` enum swap already cost this project once. The standard is also visibly unsettled: `attributes.h` specifies no keys, `product.h` leaves `TAPP_IN_PLACE` an open `//TODO`, `error.h` fixes only `TAPP_SUCCESS`, and the `status` out-parameter has no defined semantics — all four found by our own conformance suite. One argument previously offered for the split is **withdrawn**: it would *not* "leave something for other Rust providers", because a provider defines these symbols rather than declaring them, and two Rust providers could not coexist in one link. The real consumer is Rust code calling a C or CUDA TAPP implementation, of which there are currently none. Adding it later is purely additive, so it waits for a trigger — most plausibly the benchmark harness driving another TAPP implementation, which supplies a second consumer *and* the only real test of the declarations, since a declarations crate nothing links against is untested by construction. When that happens the name is `tapp-abi`, not `tapp-sys` (a `-sys` crate corresponds 1:1 to a native library; TAPP is a standard with several), and the seed is `abi_layout.rs`, which already maintains an independent transcription of all 23 symbols. |
-| D32 | The TAPP conformance suite drives the **C symbols**, checks against the oracle *plus* hand-computed anchors, and is **falsified by perturbation** before being believed. | Testing the layer through its Rust types would exercise exactly the code that cannot be wrong. Two anchors sit alongside the oracle so a shared engine/oracle bug cannot pass, and both mechanisms were confirmed live by breaking them and checking *which* tests fail: one constant broke one test, a perturbed oracle broke 33 of 34. `abi_layout.rs` re-declares the upstream header so symbol export is a link error here rather than downstream. Where the ABI *cannot* detect an error — any non-zero bogus handle, a data buffer shorter than its extents — that is a comment rather than a test, because a test that invokes undefined behaviour is not evidence of anything. |
-| D30 | The published surface is **three tiers**, stated in the crate docs, not one flat `pub`. Tier 1 is the contraction API (`contract`, `Plan`, `Layout`, `TensorView`/`TensorViewMut`, `Element`/`Real`, `Error`, the `with_*` builders, `kernel::scalar` as the documented extension point) under ordinary semver. Tier 2 is introspection of the engine's own decisions — `PlanStats`, `plan::Scatters`, `Plan::{transposes_gemm, row_block, partition, oriented_scatters, ..}`, `kernel::{selected_config, plan_config, selected_kernel_name}`, `kernel::cache`, the `scatter` builders — where **signatures are semver-stable and values are not**. Tier 3 is `#[doc(hidden)]`. | 158 undocumented public items across seven `pub` modules was the symptom; the disease was that nothing had decided which of them a user may depend on, and publishing settles that whether or not we answer it. Tier 2 is the load-bearing part and exists because of how this project works: every one of those functions returns the output of a measured heuristic, and Phase 4 has already moved three of them (A14 moved `transposes_gemm`, A16–A18 moved `row_block`, item 2 will move `Blocking`). Without saying outright that a tier-2 *value* is not part of the contract, the project must either freeze its own tuning or break semver every phase. The corollary is why they stay public at all: a harness or an alternative execution strategy can ask the engine what it would do instead of guessing, which is exactly what `tcbench orient` and `tcbench shapes` rely on. Only `kernel::x86` (register-block menus *are* per-machine measurements) and `scatter::BlockScatterMatrix` (not correctly constructible from outside) went to tier 3. |
-| D36 | **Ship a header** — `crates/tensorprimitives-tapp/include/tapp.h` — rather than telling C callers to fetch the standard's own. Upstream's headers remain supported and equivalent; this one versions with the implementation. | D35 established that upstream has **no releases and no tags**, and then left C consumers depending on exactly that untagged `main`. A consumer pinning this crate was pinning its declarations to a moving target, with drift as silent as the TBLIS `type_t` swap. The header is not a second source of truth: every prototype was checked against upstream at `main`, `abi_layout.rs` independently pins the same 23 symbols from the Rust side, and `examples/c-consumer` now compiles *this* header and checks numerical results — so the two transcriptions are cross-checked by construction rather than by discipline. Two departures are marked in the file itself, both where upstream is underspecified: `TAPP_IN_PLACE` (an open `//TODO` upstream, so the definition is guarded and yields to any upstream one) and the non-zero `TAPP_error` codes (upstream fixes only `TAPP_SUCCESS`). |
-| D37 | The C consumer is a **CMake project driven by corrosion**, run by CI in *both* the corrosion and prebuilt-library modes. | `abi_layout.rs` verified linkage from Rust, so no C compiler had ever seen the header and a wrong prototype would have reached a downstream user first. The two modes fail differently and both are real: prebuilt is what a site building the Rust half separately does and needs no network; corrosion is what a CMake project actually writes, and a break in cargo-from-CMake is invisible to the prebuilt path. Corrosion earns its place by resolving the platform link line — it derived `gcc_s;util;rt;pthread;m;dl;c` for a static link here, which is the usual first hand-written failure. The example checks *numbers*, not return codes, so a stride convention or complex-layout error fails rather than passing quietly. Linux only for now: macOS would add `.dylib` naming and install-name handling and is the obvious next job, left out rather than added blind. |
-| D38 | A **panic boundary** (`guard`) on the three entry points that allocate or run the engine, mapping a caught unwind to `TAPP_ERROR_INTERNAL`. | A panic reaching an `extern "C"` frame aborts. That is memory-safe and, for a library called from a solver or an MPI rank, still the wrong outcome: `Panel::new` asserts rather than returning when a packing buffer cannot be allocated, and a contraction too large for memory is an ordinary user mistake. The panic hook still runs first, so nothing becomes less diagnosable. Scope is deliberate rather than uniform — the getters return `void` and could only swallow silently, and `TAPP_execute_batched_product` inherits the guard through the inner call — and `AssertUnwindSafe` is justified in the doc comment rather than assumed: an entry point that panics has not yet published its handle, the one exception being a partially written `D`, which the batched path already documents. Allocation *failure* proper still aborts and is not catchable here. Tested at the mechanism (`guard` itself), not end to end, because inducing an engine panic needs a fault-injection point that would have to be maintained — recorded so the limit is not mistaken for coverage. |
-| D31 | MSRV stays **1.89** (D20), and CI pins exactly it. | The floor briefly became 1.94 by accident: the `CPUID` cache probe called `__cpuid_count` outside `unsafe` on the strength of a comment claiming it had been safe since 1.87. It had not — 1.89 through 1.93 fail with `E0133` and 1.94 is the first that compiles. Since that regression arrived with the probe rather than with any requirement, the fix is the `unsafe` block (plus `allow(unused_unsafe)` for toolchains where it is redundant), not five releases of downstream compatibility. The pin had already drifted the other way — it read 1.75, *below* the declared floor, so that job could never have passed. |
-| D27 | Threading partitions the output in **two dimensions**: `pm` row strips of whole `MR` panels by `pn` column groups of whole `NR` blocks, with `pn > 1` only when `ceil(M/MR) < p`. The `N` cut is made *inside* loop 5, per `NC` block, not over the whole range. | D21's 1-D cap costs real throughput on the 16 case-dtype-methods whose row axis cannot fill 8 threads (part 8). Both axes partition the *output*, so D21's invariant survives intact — one owning thread per element, accumulating over the full `K` in the original order, hence bitwise identical to serial at every thread count *and* every `(pm, pn)`. Cutting `N` inside loop 5 is what keeps the packed `B` panel single and L3-sized (a top-level split would want `pn` panels and `pn` times the L3 budget) and keeps loops 5 and 4 identical across threads, which is what makes the barrier counts agree structurally rather than by bookkeeping. Barriers become per column group and `pm`-way; a pure `N` split synchronises nowhere at all. |
-| D28 | The packed `A` block stays per thread, duplicated `pn` times, rather than packed once per row strip behind a barrier. | The duplication costs one packed element per `NR * ceil(blocks/pn)` lane-FMAs and is only ever paid when `M` is narrow; `Plan::partition` prices it and refuses to split `N` when a thread would have too few `NR` blocks to amortise it. The alternative needs a barrier *inside* loop 3 — `M/MC` times more often than the ones above it — and leaves the block in one thread's L2 for the others to pull across L3, when `MC` exists precisely to make it an L2 resident. |
-| D29 | In the narrow-`M` regime `(pm, pn)` minimises `ceil(panels/pm) * (NR*ceil(blocks/pn) + PACK_WEIGHT)` with `PACK_WEIGHT = 8`, and `TENSORCONTRACT_PARTITION=m\|n\|<pm>x<pn>` pins the partition. | Maximising thread count alone either oversubscribes (3 panels, 8 threads → `3x3` = 9) or wastes threads; balancing tiles alone ignores the `A` duplication and takes an 8th thread that costs more than it returns. The weight is the rule's only modelled quantity, so it is one named constant and its insensitivity was checked offline against the committed feature table: **every weight in `[4, 64]` gives an identical partition on all 392 case-dtype-methods at 2/4/8/16/32 threads**. The env switch makes the axis choice a run-time A/B rather than a build diff (A15). |
-| D21 | Threading parallelises the `M` direction only, into contiguous strips of whole `MR` panels, with a per-thread packed `A` and a **shared** packed `B`. | The `pc` loop accumulates into `D` in place, so parallelising it would need a per-thread temporary or atomics; `M` instead gives every output element one owning thread. That makes the result **bitwise identical to serial at every thread count** — a stronger invariant than agreeing with the oracle, and one a test can assert directly. Strips of whole panels keep each thread's row blocks aligned with the block scatter, so the write-back fast path and the orientation rule are unaffected. `B` is shared because `NC` is sized for L3, which is a per-socket resource. |
-| D22 | The default thread count stays **1** until scaling is measured on the reference machine. | Every performance number in this file is a single-core measurement, and the item 2 blocking grid is designed against the serial engine. A default that changed with the machine's core count would make committed numbers irreproducible from a bare checkout. `TENSORCONTRACT_THREADS` and `Plan::with_threads` opt in; flipping the default is one line in `Plan::threads`. |
-| D20 | Workspace MSRV raised `1.75` → `1.89`. | AVX-512 intrinsics and `is_x86_feature_detected!("avx512f")` were stabilised in Rust 1.89. The alternative — feature-gating the AVX-512 path so 1.75 still builds — would make the project's headline measurement an opt-in extra. 1.89 is a year old. |
-| D40 | **The `cdylib`'s SONAME and Mach-O install name are set at link time via `RUSTFLAGS`, not by rewriting the binary afterwards** — and CI asserts three properties of the built library that no Rust test can see: the SONAME, the exported-symbol count, and the presence of a `cpuid` instruction. | rustc emits `-soname` only for the `dylib` crate type and **never for `cdylib`**, so the shared library this project ships has no `DT_SONAME` at all: every consumer records a bare filename and the library cannot be versioned. On Mach-O it is worse than absent — ld64 defaults `LC_ID_DYLIB` to the `-o` path, i.e. an absolute build-tree path, and BinaryBuilder's `ensure_soname` autofix *returns early when an ID is already present without inspecting its value*, so a macOS build ships unrelocatable and the audit says nothing. Link-time flags fix both with one mechanism, and avoid ELF rewriting entirely — `patchelf` needs `--page-size 65536` on every 64 KiB-page architecture (`aarch64`, `ppc64le`, `riscv64`) or it corrupts section alignment. `-C rpath` was rejected as the macOS route: it does produce `-install_name @rpath/…`, but it also bakes build-tree `LC_RPATH` entries in. The third assertion is the load-bearing one and was not obvious: BinaryBuilder's `check_isa` audit **fails** a build whose detected minimum instruction set exceeds the platform's, and this is a generic-x86-64 binary containing AVX-512 kernel bodies. It passes only because `analyze_instruction_set` abandons the analysis when the binary contains a `cpuid`, on the grounds that it may be dispatching at run time — which is precisely what `kernel::x86` does. That exemption is undocumented as a contract and depends on `kernel::cache`'s `__cpuid_count` and `std_detect`'s `__cpuid` staying linked in; if a future sysfs-only cache probe removed both, the consequence would be an unrelated-looking Yggdrasil failure months later reading "Minimum instruction set detected … is avx512". Asserted in the `c-consumer` job so the dependency is visible where it can be acted on. |
-| D39 | **Eleven cross targets are checked in CI, and `musl` gets `-C target-feature=-crt-static`.** `kernel::x86`'s cfg stays `any(target_arch = "x86", target_arch = "x86_64")` — 32-bit x86 is *not* narrowed out. | The repository had never been cross-compiled: CI was x86-64 Linux plus aarch64 macOS, and a binary distribution attempts about a dozen platforms. Checking them turned one expectation over and found one silent failure. The expectation was that `i686` would break, because `kernel::x86` instantiates the AVX-512 intrinsics on 32-bit x86 too and the `core::arch::x86` module genuinely lacks the intrinsics taking 64-bit integer operands; the kernels are f32/f64 FMA-shaped and use none of them, so `i686` compiles as-is and the cfg needs no change. The silent failure is `musl`: with the target's default `crt-static`, cargo prints `dropping unsupported crate type cdylib` and **exits 0**, so a musl build succeeds while producing no shared library — a JLL tarball with a header and no library in it, and nothing downstream to say why. `-C target-feature=-crt-static` fixes it, and because the symptom is a warning rather than an error the `cross-musl` job asserts the warning still appears without the flag, so the day it stops being needed is visible. `cargo check`, not `cargo build`: a linker per target is a cross toolchain CI has no business installing, and the link step is covered by the BinaryBuilder recipe, which brings its own. The nine non-musl targets — `i686`, `aarch64`, `armv7`, `ppc64le`, `riscv64`, `x86_64-windows-gnu`, both Apple targets and FreeBSD — all pass unmodified. |
-
----
-
-## Phase 1 report
-
-**Gate:** self-approved design doc; premise resolved with data; green scaffolded
-repo; working harness with baselines wired in.
-
-**Status: gate met. Kill/pivot condition triggered.**
-
-### Delivered
-
-* `DESIGN.md` — literature review (cited), ecosystem survey with per-layer
-  build-vs-reuse calls, full engine design, benchmark/test framework,
-  self-scrutiny.
-* Cargo workspace: `tensorcontract` (core), `tensorprimitives-tapp` (C ABI),
-  `tensorprimitives-bench` (harness). CI (build/test/clippy/fmt/docs/MSRV +
-  a scalar-fallback job), dual MIT/Apache-2.0, MSRV 1.75.
-* Working engine, correct end-to-end (this is the Phase 2 gate, met early — see
-  the Phase 2 report).
-* Harness `tcbench` with `verify` / `premise` / `sweep` / `info`, TBLIS and
-  OpenBLAS-TTGT baselines wired in, CSV output, GEMM roofline annotation, and
-  stride-stress modes.
-* Raw results in `bench-results/`.
-
-### The premise check
-
-Hypothesis under test, from the brief:
-
-> TBLIS underperforms on complex contractions, worst in memory-bound / awkward-stride
-> cases, because interleaved-complex storage and the scatter/block-scatter packing
-> compound and force more work onto the slow full-scatter (gather) path.
-
-Method: 12 cases sampled evenly across TCCG's bandwidth-bound-to-compute-bound
-ordering, at 64 MiB nominal tensor size, best of 3, single-threaded. For each,
-measure the contraction and a same-shape vendor GEMM, in both a real and the
-matching complex dtype. Report `eff = contraction / GEMM` and
-`eff ratio = complex eff / real eff`.
-
-Because a complex MAC is four real FMAs counted as 8 flops, the achievable GF/s
-peak is the same number in both domains (confirmed: `dgemm` 96, `zgemm` 96).
-So `eff ratio < 1` means a complex-specific penalty; `>= 1` refutes the thesis.
-
-**Results — mean `eff ratio` over 12 cases:**
-
-| engine | dtypes | stress | mean eff ratio |
-|---|---|---|---|
-| **TBLIS v1.3.0** (latest release) | f64 / c64 | none | **0.215** |
-| TBLIS 2.0-dev | f64 / c64 | none | **1.060** |
-| TBLIS 2.0-dev | f64 / c64 | ragged (`regA` 0.80–1.00) | **1.027** |
-| TBLIS 2.0-dev | f64 / c64 | padded strided views | **1.059** |
-| TBLIS 2.0-dev | f32 / c32 | none | **1.150** |
-| TTGT | f64 / c64 | none | **1.170** |
-
-**Ceiling-free cross-check — raw complex/real GF/s ratio for the same shape:**
-
-| run | n | min | median | max | mean | below 1.0 |
-|---|---|---|---|---|---|---|
-| **TBLIS v1.3.0 f64→c64** | 12 | **0.19** | **0.33** | 1.15 | 0.40 | **11** |
-| TBLIS 2.0-dev f64→c64 | 12 | 0.98 | 1.91 | 2.67 | 1.76 | 1 |
-| TBLIS 2.0-dev f64→c64 ragged | 12 | 1.01 | 1.82 | 2.28 | 1.68 | 0 |
-| TBLIS 2.0-dev f64→c64 padded | 12 | 1.03 | 1.90 | 2.53 | 1.76 | 0 |
-| TBLIS 2.0-dev f32→c32 | 12 | 1.07 | 1.95 | 2.07 | 1.70 | 0 |
-| TTGT f64→c64 | 12 | 1.10 | 2.12 | 2.62 | 1.94 | 0 |
-
-### Verdict: the observation is real, the explanation is not, and it is already fixed
-
-The answer depends entirely on which TBLIS you measure, and the two differ by
-almost a factor of five.
-
-**Against v1.3.0, the latest stable release, the complex-weakness claim is
-emphatically true.** Complex efficiency against the GEMM ceiling is 0.09–0.20
-across every case, versus 0.37–1.08 for real: a mean `eff ratio` of **0.215**.
-
-But the *mechanism* is not the one the brief proposes, and the diagnostic is
-unmistakable. TBLIS 1.3.0's complex throughput is essentially **flat across
-shapes** — 4.1 to 9.1 GF/s, a 2.2x spread — while its real throughput spans
-6.2 to 48.4 GF/s, a 7.8x spread. A memory- or scatter-bound effect would track
-shape. A flat ceiling means one fixed-throughput kernel is the bottleneck
-regardless of what it is fed.
-
-Reading `src/configs/*/config.hpp` in v1.3.0 confirms it directly. The
-`TBLIS_CONFIG_GEMM_UKR` macro takes four slots, `(float, double, scomplex,
-dcomplex)`:
-
-```
-skx1:        TBLIS_CONFIG_GEMM_UKR(bli_sgemm_asm_6x16, bli_dgemm_asm_6x8,  _, _)
-skx2:        TBLIS_CONFIG_GEMM_UKR(_,                  bli_dgemm_opt_6x32_l1, _, _)
-haswell:     TBLIS_CONFIG_GEMM_UKR(bli_sgemm_asm_24x4, bli_dgemm_asm_12x4, _, _)
-zen:         TBLIS_CONFIG_GEMM_UKR(bli_sgemm_asm_6x16, bli_dgemm_asm_6x8,  _, _)
-knl:         TBLIS_CONFIG_GEMM_UKR(bli_sgemm_opt_30x16_knc, bli_dgemm_opt_30x8_knc, _, _)
-sandybridge: TBLIS_CONFIG_GEMM_UKR(bli_sgemm_asm_8x8,  bli_dgemm_asm_8x4,
-                                   bli_cgemm_asm_8x4,  bli_zgemm_asm_4x4)
-```
-
-**Sandy Bridge is the only configuration with complex micro-kernels.** On every
-post-2012 x86 target — Haswell, Zen, Skylake-X, KNL — TBLIS 1.x runs complex
-tensor contraction on the generic templated fallback while real gets hand-tuned
-BLIS assembly. That is the entire effect. It has nothing to do with
-interleaved storage, nothing to do with scatter/gather, and nothing to do with
-the block-scatter fast path: `regA = 1.00` on every case measured.
-
-**Against 2.0-dev the claim is refuted.** Rebasing onto BLIS-as-framework
-brings BLIS's 1m induced method, and complex immediately regains full shape
-sensitivity (11.2–82.9 GF/s, a 7.4x spread matching real) and lands at or above
-parity — mean `eff ratio` 1.06 in f64, 1.15 in f32, and still 1.03 when
-irregular block scatter is forced. The upstream release notes for `v2.0-beta2`
-say as much: "a major update … which incorporates BLIS as the core framework"
-with improvements including complex number support.
-
-**Why complex is not intrinsically disadvantaged.** The folklore reasoning ran:
-complex data is 2x the bytes, scatter/gather is the bottleneck, therefore
-complex suffers more. The missing term is arithmetic intensity. A complex MAC
-does 4x the flops of a real MAC on 2x the bytes, so complex contraction has
-**2x the arithmetic intensity** of the same-shape real contraction. Packing,
-indexing and write-back costs are amortised over twice as much arithmetic. Once
-a real complex kernel exists (2.0), the memory-bound shapes where complex was
-predicted to be worst are where it looks *best*: `abcijk-ikmb-mjac` runs at
-8.8 GF/s in f64 and 23.5 GF/s in c64; `abjcd-dkbac-jk` at 5.5 vs 11.2.
-
-BLIS's 1m does inflate the packed A panel 2x (four reals per complex element in
-"1e" format versus two in planar). That cost is real but is not on the critical
-path at these shapes, and the intensity advantage swamps it.
-
-### What this means for the project
-
-The gap the project set out to exploit **exists in the wild today** — anyone
-using the packaged, released TBLIS for complex tensor contraction on modern x86
-is getting roughly a fifth of the achievable throughput. But:
-
-* it is a missing-kernel bug, not an algorithmic opening, so beating it proves
-  nothing about planar packing;
-* it is already closed upstream, and will disappear from the wild the moment
-  2.0 ships;
-* the correct opponent for any new complex method is 2.0/BLIS 1m, and against
-  that opponent there is no complex-specific headroom to take.
-
-So the planar-complex thesis is refuted as a *research* proposition, while the
-practical observation that motivated it is validated as a *packaging* problem.
-Both halves are worth reporting.
-
-### What the data says the real headroom is
-
-Not complex — **low arithmetic intensity**, in either domain:
-
-* TBLIS `eff` against the GEMM ceiling ranges from **0.34 to 1.05**. It is
-  0.85–0.87 on the big compute-bound `ijkl` cases and collapses to 0.34–0.53 on
-  small-`k` / skinny shapes (`abjcd-dkbac-jk`, `ajbc-ckba-jk`,
-  `abcijk-*`, all with `k = 24`).
-* The gap is worse in **f32** (mean `eff` ≈ 0.6) than f64, because the same
-  overhead is amortised over half the bytes of arithmetic.
-* TTGT is 2–4x behind TBLIS on those same low-intensity shapes (`eff` 0.15–0.35),
-  confirming that materialising a transposed copy is what hurts — the original
-  BSMTC insight, still valid.
-
-So the defensible target is **small-`k` and skinny tensor contractions**, where
-the best available transpose-free engine leaves 50–65% of the machine on the
-table, in *both* domains. That is a larger and better-evidenced gap than the
-one the project set out to close.
-
-### Kill/pivot condition
-
-`DESIGN.md` §6 named this as the single most likely failure mode, and the
-Phase 1 gate exists precisely to catch it before implementation is committed
-to. Per the operating rules, this is escalated rather than worked around.
-Options, with the evidence for each:
-
-1. **Re-aim at low arithmetic intensity** (recommended). Keep everything built:
-   the data model, index analysis, block-scatter machinery, TAPP surface,
-   corpus and harness are all domain-agnostic and all still needed. Change the
-   target from "complex vs real" to "small-`k` / skinny shapes", where TBLIS
-   measurably gives up 50–65%. Plausible mechanisms, in order of expected
-   value: fusing the `pc` loop so `C` is touched once instead of `K/KC` times;
-   skipping packing of `A` entirely when the block-scatter is already regular
-   and unit-stride (a "pack-free" fast path); dispatching to a
-   small-`k`-specialised kernel; and the write-back fast path for regular
-   blocks. Planar complex stays in the design because it is *free* and it is
-   what makes `TAPP_CONJUGATE`, mixed real x complex operands and 3m natural —
-   it is simply no longer the headline claim.
-2. **Pursue 3m instead.** Untouched by this result: 3m's advantage is a 25%
-   *flop* reduction, not a bandwidth one, and planar packing makes it cheap to
-   build. Smaller, more speculative, and carries a numerical-stability caveat.
-3. **Wrap TBLIS.** Honest answer if the goal is a usable Rust tensor
-   contraction today, but no research contribution, and it keeps the C++
-   dependency the brief wanted to remove.
-4. **Stop.** The negative result is itself publishable, and the brief says so:
-   there is no public systematic complex tensor-contraction benchmark, this
-   repository now is one, and "complex contraction is not the weak spot; low
-   arithmetic intensity is, and here is why" is a useful correction to
-   circulating folklore.
-
-**Recommendation: option 1**, with the Phase 1 negative result written up as a
-standalone finding.
-
----
-
-## Phase 2 report
-
-**Gate:** numerically correct across the full matrix (shapes, permutations,
-dtypes, traces, degenerate cases) vs oracle, TTGT, TBLIS. Performance measured
-as a baseline, not a goal.
-
-**Status: gate met.** Phase 2 was completed alongside Phase 1 because the
-premise check needed a working engine to sit alongside the baselines.
-
-Implemented: tensor data model; index analysis with folding; scatter and
-block-scatter construction; planar-complex packing with conjugation folded in;
-reference scalar micro-kernel; five-loop driver; scattered write-back with
-`alpha`/`beta`/`op_C`/`op_D`; TAPP C-ABI export.
-
-Correctness evidence:
-
-* 1000 randomised contractions vs the brute-force oracle across
-  `f32`/`f64`/`c32`/`c64`, each run under both tiny `(1,2,1)` blocking and the
-  real blocking, covering free/contracted/Hadamard/isolated indices, repeated
-  labels, random stride permutations, random conjugation masks, and
-  `alpha`/`beta` including zero — all within `1e-11` (f64) / `2e-4` (f32).
-* Targeted degenerate cases: empty contraction extent, zero-sized output,
-  scalar output (full double contraction), negative strides via a reversed
-  axis, all 16 conjugation flag combinations forced through multiple `K` blocks.
-* Large pure-GEMM cases crossing the real `MC`/`KC`/`NC` boundaries with
-  awkward remainders, in all four dtypes.
-* Cross-implementation: all 49 corpus cases x 4 dtypes agree with **both** TBLIS
-  and TTGT to `~2e-16` (f64/c64) and `~1.5e-7` (f32/c32), under `none`,
-  `ragged` and `padded` stride stress.
-* TAPP C ABI exercised end-to-end through the C entry points on a complex case.
-
-Performance baseline: the micro-kernels are the portable scalar fallback
-(Phase 3 was not reached), so the `planar` engine's absolute numbers are not
-meaningful yet and are not reported as a result.
-
----
-
-## Phase 2b report: three interchangeable complex methods
-
-**Direction decision.** After the Phase 1 result, the chosen direction is to
-keep all three induced-complex methods available and switchable, so that the
-comparison can be made properly rather than argued from first principles. This
-supersedes the four options listed at the end of the Phase 1 report.
-
-### What was built
-
-`ComplexMethod::{Planar, OneM, ThreeM}`, selected per plan with
-`Plan::with_complex_method` or globally with `TENSORCONTRACT_COMPLEX`.
-
-The three share the *entire* engine except three things, each named in the
-`Ukr` the method selects:
-
-| | `a_pack` / `b_pack` | kernel | `tile_fmt` |
-|---|---|---|---|
-| planar | `Planar` / `Planar` | fused complex, 4 FMAs per k per output | `Planar` |
-| 1m | `OneE` / `Planar` | plain real, `2*MR x NR` over `2*KC` | `OneM` |
-| 3m | `ThreeM` / `ThreeM` | Karatsuba, 3 FMAs per k per output | `ThreeM` |
-
-`crates/tensorcontract/src/driver.rs` contains no branch on the method at all —
-it reads sliver widths, tile size and formats off the `Ukr`. That is what makes
-the comparison fair: same index analysis, same scatter traversal, same loop
-arithmetic, same write-back scatter.
-
-| # | Decision | Rationale |
-|---|---|---|
 | D13 | `Blocking::derive` takes reals-per-element for A and B rather than `size_of::<Element>()`. | 1m's packed A carries four reals per complex element instead of two, so an element-size-based rule would hand it double the L2 footprint and quietly rig the comparison. Deriving from the actual packed footprint gives every method the same L2 budget and gives 1m a proportionally smaller `MC`. |
 | D14 | B's "1r" packing under 1m is bit-identical to planar packing, and shares the code path. | Not a shortcut: `[re_0..re_{NR-1}, im_0..im_{NR-1}]` per logical k-step *is* both formats. Worth stating because it means 1m's cost over planar is entirely on the A side. |
 | D15 | 3m gets a 100x looser test tolerance than the other two. | Its error bound is relative to `\|Ar\|\|Br\| + \|Ai\|\|Bi\|` rather than the complex magnitudes, so it loses relative accuracy under cancellation. That is the documented price of the 25% flop saving; the tolerance records it rather than hiding it. |
 | D16 | Kernels take the *logical* `kc` and know their own panel layout. | 1m internally runs `2*kc` real steps. Exposing that to the driver would leak the method into the loop nest. |
-
-### Correctness
-
-* The randomised oracle sweep now runs **every complex problem under all three
-  methods** — 300 problems x 3 methods x 2 blockings for `c64`, likewise
-  `c32` — plus the all-16-conjugation-masks test and the large blocking-boundary
-  cases, each across all three.
-* `kernel::tests` checks each method's kernel directly against the definition,
-  including a packing helper that builds panels in each `PackFormat` and a
-  reader for each `TileFormat`, so a mis-specified format is caught at the
-  kernel boundary rather than end to end.
-* All 49 corpus cases agree with **both** TBLIS and TTGT to ~2e-16 under each
-  of the three methods (`TENSORCONTRACT_COMPLEX=planar|1m|3m tcbench verify`).
-
-### Measurement, and why it does not yet mean much
-
-`tcbench premise --size 16 --engines planar,1m,3m --dtype f64,c64`, 12 cases,
-single core. Geometric-mean `c64` throughput relative to planar:
-
-| method | relative c64 GF/s | mean complex/real efficiency ratio |
-|---|---|---|
-| planar | 1.000 | 0.726 |
-| 1m | 1.086 | 0.783 |
-| 3m | 1.129 | 0.817 |
-
-**This ranking is an artifact of the scalar kernels and must not be quoted as
-a result.** All three currently run portable scalar loops, and the numbers
-mostly reflect how well LLVM auto-vectorises three different loop shapes: 1m's
-inner loop is a plain real GEMM kernel, which LLVM handles best, while planar's
-entire argument is *fewer shuffles in a hand-written SIMD kernel* — which does
-not exist yet. 3m's edge is more likely real, since a 25% flop reduction
-survives any kernel quality, but even that needs confirming.
-
-The honest three-way comparison is the Phase 3 gate.
-
-Raw data: `bench-results/methods-f64c64.csv`.
+| D17 | Micro-kernels are macro-generated over `(MV, NR)` const generics from one body per method, not hand-written per shape. | A comparison between three methods must not also be a comparison between three hand-tunings. One body per method, one shape parameterisation, and the shape is then chosen by measurement. It also made the shape sweep possible at all. |
+| D18 | `#[target_feature]` kernels are reached through one-line plain-`fn` trampolines. | A `#[target_feature]` function cannot be coerced to a function pointer, which the `Ukr` contract requires. Cost is one `call` per micro-tile against `kc*MR*NR` FMAs — unmeasurable. |
+| D19 | Register blocks were chosen by measured throughput at the `kc` the engine actually uses, per method and per element type. | The uop model gets the *cliffs* right (spills above 32 live vector registers) but the *ranking* wrong: it predicts 3m fastest, and 3m is fastest only when the panels are L1-resident. See the Phase 3 report. |
+| D20 | Workspace MSRV raised `1.75` → `1.89`. | AVX-512 intrinsics and `is_x86_feature_detected!("avx512f")` were stabilised in Rust 1.89. The alternative — feature-gating the AVX-512 path so 1.75 still builds — would make the project's headline measurement an opt-in extra. 1.89 is a year old. |
+| D21 | Threading parallelises the `M` direction only, into contiguous strips of whole `MR` panels, with a per-thread packed `A` and a **shared** packed `B`. | The `pc` loop accumulates into `D` in place, so parallelising it would need a per-thread temporary or atomics; `M` instead gives every output element one owning thread. That makes the result **bitwise identical to serial at every thread count** — a stronger invariant than agreeing with the oracle, and one a test can assert directly. Strips of whole panels keep each thread's row blocks aligned with the block scatter, so the write-back fast path and the orientation rule are unaffected. `B` is shared because `NC` is sized for L3, which is a per-socket resource. |
+| D22 | The default thread count stays **1** until scaling is measured on the reference machine. | Every performance number in this file is a single-core measurement, and the item 2 blocking grid is designed against the serial engine. A default that changed with the machine's core count would make committed numbers irreproducible from a bare checkout. `TENSORCONTRACT_THREADS` and `Plan::with_threads` opt in; flipping the default is one line in `Plan::threads`. |
+| D23 | The cache blocking is computed from **probed cache descriptors** via BLIS's analytical model, not from constants — and ships **off by default** behind `TENSORCONTRACT_BLOCKMODEL=legacy\|model`. | `Blocking::derive` held the only three machine-specific numbers in the engine: `kc = 384/256` by real size, a 512 KiB packed-`A` budget and a 3 MiB packed-`B` budget — half of `ccqlin038`'s L2 and a slice of its L3. Nothing about them transfers. `kernel::cache` probes sysfs (no `unsafe`, no dependency, and the only source that reports cache *sharing*), then x86 `CPUID` leaf 4 / `0x8000001D`, then conservative built-ins; a failed probe degrades to the next source and can never fail a contraction. The model is driven by the **reals per element the kernel packs**, not `size_of::<Element>()`, so 1m still gets half the rows planar does out of one L2 — the invariant the three-way comparison rests on. Off by default because the pending grid defines its arms *relative to the derived defaults*, so changing the derivation would silently change what that measurement means, and because A15 requires the old behaviour stay reachable as a run-time switch rather than a build-to-build diff. Build-vs-reuse: no crate, because `raw-cpuid`/`num_cpus`-style crates do not report per-level sharing and sysfs is ~100 lines of parsing. |
+| D24 | The instruction set is a **parameter of the kernel macro**, not a second set of bodies. `simd_kernels!` takes the lane count, a target-feature list and six intrinsics; AVX-512 and AVX2 are two instantiations of the same four bodies. | D17's argument — a three-method comparison must not also be a comparison between three hand-tunings — applies unchanged to two instruction sets, and would be violated the moment somebody hand-tuned AVX2 planar and not AVX2 3m. It also made the change auditable: because the AVX-512 arm expands from unchanged source text, its instruction stream is *verifiably* untouched (7816 zmm instructions, byte-identical, checked independently at merge). |
+| D25 | Dispatch is `avx512f` → `avx2 + fma` → scalar, and `TENSORCONTRACT_KERNEL` grows to `scalar\|avx2\|avx512\|auto`. A pinned ISA the CPU lacks falls back to scalar rather than faulting. | Without the pin, AVX2 kernels could be compiled on the reference machine and never executed on it, leaving the only coverage on hardware nobody here has. Same rule as `_ORIENT`/`_WRITEBACK`/`_ROWBLOCK`: every new fast path gets a run-time switch, because a build-to-build diff has already produced one wrong sign here (A15). Both `avx2` and `fma` are detected — separate CPUID bits, and the FMAs need the second. |
+| D26 | AVX2 register blocks are **provisional and explicitly unmeasured**, chosen from the register budget and the uop model, with a menu of alternates and `examples/kernel_shapes` extended to an AVX2 grid as the calibration path. | D19 splits this cleanly and the split was honoured: `live <= 16` and `acc >= 10` are load-bearing and were *verified in the disassembly at no CPU cost* (all shipped defaults allocate 15–16 distinct ymm with zero stack traffic; `planar 1x6` at `live=16` spills one register, `planar 2x3` at `live=18` spills seven — the cliff is exactly where the count puts it), while "which of the shapes that fit is fastest" is recorded as a guess. Publishing a modelled shape as measured would corrupt the one thing the register-block table is good for. |
+| D27 | Threading partitions the output in **two dimensions**: `pm` row strips of whole `MR` panels by `pn` column groups of whole `NR` blocks, with `pn > 1` only when `ceil(M/MR) < p`. The `N` cut is made *inside* loop 5, per `NC` block, not over the whole range. | D21's 1-D cap costs real throughput on the 16 case-dtype-methods whose row axis cannot fill 8 threads (part 8). Both axes partition the *output*, so D21's invariant survives intact — one owning thread per element, accumulating over the full `K` in the original order, hence bitwise identical to serial at every thread count *and* every `(pm, pn)`. Cutting `N` inside loop 5 is what keeps the packed `B` panel single and L3-sized (a top-level split would want `pn` panels and `pn` times the L3 budget) and keeps loops 5 and 4 identical across threads, which is what makes the barrier counts agree structurally rather than by bookkeeping. Barriers become per column group and `pm`-way; a pure `N` split synchronises nowhere at all. |
+| D28 | The packed `A` block stays per thread, duplicated `pn` times, rather than packed once per row strip behind a barrier. | The duplication costs one packed element per `NR * ceil(blocks/pn)` lane-FMAs and is only ever paid when `M` is narrow; `Plan::partition` prices it and refuses to split `N` when a thread would have too few `NR` blocks to amortise it. The alternative needs a barrier *inside* loop 3 — `M/MC` times more often than the ones above it — and leaves the block in one thread's L2 for the others to pull across L3, when `MC` exists precisely to make it an L2 resident. |
+| D29 | In the narrow-`M` regime `(pm, pn)` minimises `ceil(panels/pm) * (NR*ceil(blocks/pn) + PACK_WEIGHT)` with `PACK_WEIGHT = 8`, and `TENSORCONTRACT_PARTITION=m\|n\|<pm>x<pn>` pins the partition. | Maximising thread count alone either oversubscribes (3 panels, 8 threads → `3x3` = 9) or wastes threads; balancing tiles alone ignores the `A` duplication and takes an 8th thread that costs more than it returns. The weight is the rule's only modelled quantity, so it is one named constant and its insensitivity was checked offline against the committed feature table: **every weight in `[4, 64]` gives an identical partition on all 392 case-dtype-methods at 2/4/8/16/32 threads**. The env switch makes the axis choice a run-time A/B rather than a build diff (A15). |
+| D30 | The published surface is **three tiers**, stated in the crate docs, not one flat `pub`. Tier 1 is the contraction API (`contract`, `Plan`, `Layout`, `TensorView`/`TensorViewMut`, `Element`/`Real`, `Error`, the `with_*` builders, `kernel::scalar` as the documented extension point) under ordinary semver. Tier 2 is introspection of the engine's own decisions — `PlanStats`, `plan::Scatters`, `Plan::{transposes_gemm, row_block, partition, oriented_scatters, ..}`, `kernel::{selected_config, plan_config, selected_kernel_name}`, `kernel::cache`, the `scatter` builders — where **signatures are semver-stable and values are not**. Tier 3 is `#[doc(hidden)]`. | 158 undocumented public items across seven `pub` modules was the symptom; the disease was that nothing had decided which of them a user may depend on, and publishing settles that whether or not we answer it. Tier 2 is the load-bearing part and exists because of how this project works: every one of those functions returns the output of a measured heuristic, and Phase 4 has already moved three of them (A14 moved `transposes_gemm`, A16–A18 moved `row_block`, item 2 will move `Blocking`). Without saying outright that a tier-2 *value* is not part of the contract, the project must either freeze its own tuning or break semver every phase. The corollary is why they stay public at all: a harness or an alternative execution strategy can ask the engine what it would do instead of guessing, which is exactly what `tcbench orient` and `tcbench shapes` rely on. Only `kernel::x86` (register-block menus *are* per-machine measurements) and `scatter::BlockScatterMatrix` (not correctly constructible from outside) went to tier 3. |
+| D31 | MSRV stays **1.89** (D20), and CI pins exactly it. | The floor briefly became 1.94 by accident: the `CPUID` cache probe called `__cpuid_count` outside `unsafe` on the strength of a comment claiming it had been safe since 1.87. It had not — 1.89 through 1.93 fail with `E0133` and 1.94 is the first that compiles. Since that regression arrived with the probe rather than with any requirement, the fix is the `unsafe` block (plus `allow(unused_unsafe)` for toolchains where it is redundant), not five releases of downstream compatibility. The pin had already drifted the other way — it read 1.75, *below* the declared floor, so that job could never have passed. |
+| D32 | The TAPP conformance suite drives the **C symbols**, checks against the oracle *plus* hand-computed anchors, and is **falsified by perturbation** before being believed. | Testing the layer through its Rust types would exercise exactly the code that cannot be wrong. Two anchors sit alongside the oracle so a shared engine/oracle bug cannot pass, and both mechanisms were confirmed live by breaking them and checking *which* tests fail: one constant broke one test, a perturbed oracle broke 33 of 34. `abi_layout.rs` re-declares the upstream header so symbol export is a link error here rather than downstream. Where the ABI *cannot* detect an error — any non-zero bogus handle, a data buffer shorter than its extents — that is a comment rather than a test, because a test that invokes undefined behaviour is not evidence of anything. |
+| D33 | The project is `tensorprimitives`, a facade over per-operation crates (`tensorcontract` now, `tensortranspose` planned), rather than one crate named after the operation it happens to implement first. | Three names were rejected on specific grounds. `tensoroperations` would claim the name of a *frontend* — index notation, contraction ordering — that `DESIGN.md` puts explicitly out of scope. `scattergemm` and `bsmtc` name the algorithm, which stops being true the moment a dedicated transpose kernel lands: a transpose is neither a GEMM nor block-scatter-matrix contraction. And a single crate named `tensorcontract` would have to grow non-contraction operations under a contraction name. "Primitives" is TAPP's own word for this layer — one operation per call, executed as asked — so the name states the scope and aligns with the standard the project implements. The shape is `futures`/`futures-core`: applications depend on the facade, libraries depend on the operation crate directly, since cargo features are additive across a dependency graph and a library enabling a facade feature imposes it on every other consumer — the point `blas-src`'s own documentation leads with. Precedent checked rather than assumed: Rust's BLAS ecosystem always names the implementation for itself (`openblas-src`, `netlib-src`, `blis-src`) and never after the interface, and TAPP has no provider-naming convention at all — its TBLIS and cuTENSOR interfaces live inside the reference repository rather than as published providers. |
+| D34 | **No published facade crate** until there are at least two implemented primitives. `tensorprimitives` is the project and repository name; the published crates are one per operation plus the family-level `-tapp` ABI. | A facade re-exporting a single primitive is indirection, not abstraction: it would be `tensorcontract` plus a version to keep in lockstep, a re-export surface that has to track the engine's API, and a crate republished on every release with nothing in it changed. The argument that justified the *feature* structure also undercuts the facade — libraries are told to depend on the operation crate directly, because cargo features are additive across a dependency graph, which leaves the facade serving only applications, for whom the alternative is one extra line in a manifest. And the asymmetry decides it: adding a facade later is purely additive and breaks no existing dependent, whereas publishing one now is permanent. `futures` and `tracing` earned theirs by having several substantial members on a shared cadence. Accepted cost: crates.io will show `tensorprimitives-tapp` with no `tensorprimitives` stem, and the umbrella name stays unclaimed — cheaper than a maintained no-op, and publishing a shell to hold a name is name-reservation with extra steps. For C callers the family-level surface already exists: the TAPP crate is the umbrella that will expose transposition beside contraction. |
+| D35 | **No Rust TAPP consumer-bindings crate** (a `tapp-abi`) until something links against it. This project ships a TAPP *provider* — it defines the symbols — and does not publish declarations for calling *into* other implementations. | Decisive fact: the upstream reference implementation has **no releases and no tags**, so an ABI crate would have nothing to version against and drift would be silent — the exact failure mode that TBLIS's `type_t` enum swap already cost this project once. The standard is also visibly unsettled: `attributes.h` specifies no keys, `product.h` leaves `TAPP_IN_PLACE` an open `//TODO`, `error.h` fixes only `TAPP_SUCCESS`, and the `status` out-parameter has no defined semantics — all four found by our own conformance suite. One argument previously offered for the split is **withdrawn**: it would *not* "leave something for other Rust providers", because a provider defines these symbols rather than declaring them, and two Rust providers could not coexist in one link. The real consumer is Rust code calling a C or CUDA TAPP implementation, of which there are currently none. Adding it later is purely additive, so it waits for a trigger — most plausibly the benchmark harness driving another TAPP implementation, which supplies a second consumer *and* the only real test of the declarations, since a declarations crate nothing links against is untested by construction. When that happens the name is `tapp-abi`, not `tapp-sys` (a `-sys` crate corresponds 1:1 to a native library; TAPP is a standard with several), and the seed is `abi_layout.rs`, which already maintains an independent transcription of all 23 symbols. |
+| D36 | **Ship a header** — `crates/tensorprimitives-tapp/include/tapp.h` — rather than telling C callers to fetch the standard's own. Upstream's headers remain supported and equivalent; this one versions with the implementation. | D35 established that upstream has **no releases and no tags**, and then left C consumers depending on exactly that untagged `main`. A consumer pinning this crate was pinning its declarations to a moving target, with drift as silent as the TBLIS `type_t` swap. The header is not a second source of truth: every prototype was checked against upstream at `main`, `abi_layout.rs` independently pins the same 23 symbols from the Rust side, and `examples/c-consumer` now compiles *this* header and checks numerical results — so the two transcriptions are cross-checked by construction rather than by discipline. Two departures are marked in the file itself, both where upstream is underspecified: `TAPP_IN_PLACE` (an open `//TODO` upstream, so the definition is guarded and yields to any upstream one) and the non-zero `TAPP_error` codes (upstream fixes only `TAPP_SUCCESS`). |
+| D37 | The C consumer is a **CMake project driven by corrosion**, run by CI in *both* the corrosion and prebuilt-library modes. | `abi_layout.rs` verified linkage from Rust, so no C compiler had ever seen the header and a wrong prototype would have reached a downstream user first. The two modes fail differently and both are real: prebuilt is what a site building the Rust half separately does and needs no network; corrosion is what a CMake project actually writes, and a break in cargo-from-CMake is invisible to the prebuilt path. Corrosion earns its place by resolving the platform link line — it derived `gcc_s;util;rt;pthread;m;dl;c` for a static link here, which is the usual first hand-written failure. The example checks *numbers*, not return codes, so a stride convention or complex-layout error fails rather than passing quietly. Linux only for now: macOS would add `.dylib` naming and install-name handling and is the obvious next job, left out rather than added blind. |
+| D38 | A **panic boundary** (`guard`) on the three entry points that allocate or run the engine, mapping a caught unwind to `TAPP_ERROR_INTERNAL`. | A panic reaching an `extern "C"` frame aborts. That is memory-safe and, for a library called from a solver or an MPI rank, still the wrong outcome: `Panel::new` asserts rather than returning when a packing buffer cannot be allocated, and a contraction too large for memory is an ordinary user mistake. The panic hook still runs first, so nothing becomes less diagnosable. Scope is deliberate rather than uniform — the getters return `void` and could only swallow silently, and `TAPP_execute_batched_product` inherits the guard through the inner call — and `AssertUnwindSafe` is justified in the doc comment rather than assumed: an entry point that panics has not yet published its handle, the one exception being a partially written `D`, which the batched path already documents. Allocation *failure* proper still aborts and is not catchable here. Tested at the mechanism (`guard` itself), not end to end, because inducing an engine panic needs a fault-injection point that would have to be maintained — recorded so the limit is not mistaken for coverage. |
+| D39 | **Eleven cross targets are checked in CI, and `musl` gets `-C target-feature=-crt-static`.** `kernel::x86`'s cfg stays `any(target_arch = "x86", target_arch = "x86_64")` — 32-bit x86 is *not* narrowed out. | The repository had never been cross-compiled: CI was x86-64 Linux plus aarch64 macOS, and a binary distribution attempts about a dozen platforms. Checking them turned one expectation over and found one silent failure. The expectation was that `i686` would break, because `kernel::x86` instantiates the AVX-512 intrinsics on 32-bit x86 too and the `core::arch::x86` module genuinely lacks the intrinsics taking 64-bit integer operands; the kernels are f32/f64 FMA-shaped and use none of them, so `i686` compiles as-is and the cfg needs no change. The silent failure is `musl`: with the target's default `crt-static`, cargo prints `dropping unsupported crate type cdylib` and **exits 0**, so a musl build succeeds while producing no shared library — a JLL tarball with a header and no library in it, and nothing downstream to say why. `-C target-feature=-crt-static` fixes it, and because the symptom is a warning rather than an error the `cross-musl` job asserts the warning still appears without the flag, so the day it stops being needed is visible. `cargo check`, not `cargo build`: a linker per target is a cross toolchain CI has no business installing, and the link step is covered by the BinaryBuilder recipe, which brings its own. The nine non-musl targets — `i686`, `aarch64`, `armv7`, `ppc64le`, `riscv64`, `x86_64-windows-gnu`, both Apple targets and FreeBSD — all pass unmodified. |
+| D40 | **The `cdylib`'s SONAME and Mach-O install name are set at link time via `RUSTFLAGS`, not by rewriting the binary afterwards** — and CI asserts three properties of the built library that no Rust test can see: the SONAME, the exported-symbol count, and the presence of a `cpuid` instruction. | rustc emits `-soname` only for the `dylib` crate type and **never for `cdylib`**, so the shared library this project ships has no `DT_SONAME` at all: every consumer records a bare filename and the library cannot be versioned. On Mach-O it is worse than absent — ld64 defaults `LC_ID_DYLIB` to the `-o` path, i.e. an absolute build-tree path, and BinaryBuilder's `ensure_soname` autofix *returns early when an ID is already present without inspecting its value*, so a macOS build ships unrelocatable and the audit says nothing. Link-time flags fix both with one mechanism, and avoid ELF rewriting entirely — `patchelf` needs `--page-size 65536` on every 64 KiB-page architecture (`aarch64`, `ppc64le`, `riscv64`) or it corrupts section alignment. `-C rpath` was rejected as the macOS route: it does produce `-install_name @rpath/…`, but it also bakes build-tree `LC_RPATH` entries in. The third assertion is the load-bearing one and was not obvious: BinaryBuilder's `check_isa` audit **fails** a build whose detected minimum instruction set exceeds the platform's, and this is a generic-x86-64 binary containing AVX-512 kernel bodies. It passes only because `analyze_instruction_set` abandons the analysis when the binary contains a `cpuid`, on the grounds that it may be dispatching at run time — which is precisely what `kernel::x86` does. That exemption is undocumented as a contract and depends on `kernel::cache`'s `__cpuid_count` and `std_detect`'s `__cpuid` staying linked in; if a future sysfs-only cache probe removed both, the consequence would be an unrelated-looking Yggdrasil failure months later reading "Minimum instruction set detected … is avx512". Asserted in the `c-consumer` job so the dependency is visible where it can be acted on. |
+| D41 | `Plan::partition`'s `panels >= p` early return is **gated** on `l3_domains(p) > 1`, `blocks >= p` and `k <= 64`, and then swaps to `1 x min(p, blocks)`. Behind `TENSORCONTRACT_PARTITION=domain`, off by default. | Removing the early return is wrong on a one-L3-per-socket machine, where it is worth nothing and the code is already right; A36 identifies the domain count as the discriminator and the engine already probes it. The other two conditions are the ones that stop the fix from costing 2–5x on the narrow half and 25% on the complex compute-bound half. Binary rather than modelled because a traffic term cannot be calibrated (this part) and because the two arms it chooses between are the two that were measured. |
+| D42 | The choice is made in a pure function, `columns_beat_rows(blocks, k, p, domains)`, with the legacy default expressed as `domains = 1`. | The gate's whole truth table is then pinnable by a unit test on any machine rather than only on a chiplet one, and each of the three conditions gets a case that turns it off alone — the `abcijk` family satisfies all three, so a gate that quietly stopped consulting one of them would still look right on the corpus. |
+| D43 | The row-block menu is addressed by **position**, not by `MR`: `row_blocks` yields `(MR, NR)` and `config_at` takes an index. A repeated `MR` is legal; a repeated shape is not. | An `MR`-keyed menu cannot express an `NR`-only alternate, and the Phase 3 sweep produced one that beats the shipped default (A35). Keying by position makes it reachable at run time (A15's preference for a switch over a rebuild), makes `idx=` honest, and costs the rule nothing because the rule never read `NR`. Appending rather than inserting keeps the committed grid's index numbering valid. |
+| D44 | **The domain-aware rule is the default.** `TENSORCONTRACT_PARTITION` unset means `domain`; `legacy` asks for the ungated rule by name. | Taken by the user on 2026-08-04, after the measurement above and separately from D22. It is a strictly smaller decision than turning threads on: a single-threaded caller cannot reach it (`l3_domains(1) == 1`), it made the identical decision on 392 of 392 cases where one L3 serves the thread set, and it is worth 1.133 corpus geomean where sixteen do. There is no machine on which it is known to cost anything, and every partition gives bitwise identical results, so it is never a numerical decision. `legacy` stays reachable because every threaded number committed before this date was measured with it. |
+| D45 | **Bitwise identity with serial is no longer a design constraint.** | The user's call, 2026-08-04. It remains *true* today and the tests still assert it, so nothing is being given up yet — but future work may trade it. Two things this does not license, recorded so they are not assumed: concurrent read-modify-write on an output block is a data race regardless of what one thinks of float ordering, so exclusive access per block is still required; and A21 (no `K`-parallelism) was argued from *shape* — needing it implies fewer than `p` micro-tiles in the whole output, which bounds arithmetic intensity — so it survives independently. |
+| D46 | Do **not** flip `TENSORCONTRACT_THREADS` to a fixed non-1 default. | Measured: at 64 threads, contractions below ~1 MiB run 1.2–10x *slower* than serial, and the optimal thread count walks 4 → 64 across the size range. A fixed default is wrong at every size but one, and wrong by an order of magnitude at the small end — which is the regime Phase 1 named as this project's real headroom. |
+| D47 | Do not build cost-weighted or dynamic partitioning for the dense path on current evidence. | `--stress ragged` raises heterogeneous cases from 11.7% to 87.2% at aperiodic fractions and parallel efficiency does not move (0.976–1.124). TBLIS reached the same conclusion by inaction (part 15). Revisit for block-sparse, where the imbalance is block *size*, not block *regularity*. |
 
 ---
 
-## Phase 3 report: vectorised micro-kernels
+## Running a measurement session
 
-**Gate:** correctness unchanged; single-core throughput against the baselines
-and a GEMM roofline; **an honest three-way planar/1m/3m comparison with real
-kernels.** All three met. This is the measurement the project exists to
-produce.
+How a cluster session is designed and driven, and the pre-registration parts 7–9 and 11 consume.
 
-### What was built
+### Part 10: taking the two pending measurements to a cluster node
 
-`crates/tensorcontract/src/kernel/x86.rs`, previously four `None`s, now holds
-AVX-512 kernels for all four shapes — `real`, `planar`, `onem`, `threem` —
-macro-generated over `(MV, NR)` const generics for both `f32` and `f64`,
-selected by runtime `avx512f` detection with the scalar path untouched behind
-`TENSORCONTRACT_KERNEL=scalar`. `MV` is the number of vector registers an `A`
-sliver occupies per plane per k-step.
+**Status: designed, tooled and pre-registered. Nothing is measured yet.** This
+section is written *before* the run so that the node choice, the placement
+hypothesis and its accept/reject rule are on the record and cannot be adjusted to
+fit whatever comes back. Results go into parts 7, 8 and 8b, and a new part for
+the AVX2 calibration.
 
-**Nothing outside that file changed.** The `Ukr` contract carried the new
-kernels unmodified, which is the design claim from Phase 2 discharged.
+#### The node choice *is* the experiment design
 
-Also added: `examples/kernel_shapes`, a register-block sweep used to choose the
-shapes (D19), and `scripts/phase3-bench.sh`, which reproduces this entire
-report from a clean checkout given the two TBLIS prefixes.
+The two pending measurements want an exclusive machine, and `ccqlin038` is a
+shared workstation. Rusty has one, but **no Cascade Lake node**, so the choice of
+partition picks which question gets answered:
 
-### Correctness
-
-Unchanged, and checked at three levels:
-
-* `kernel::tests` validates each selected kernel directly against the
-  mathematical definition through its own `PackFormat`/`TileFormat`. Every
-  kernel here passed on first execution.
-* `cargo test --workspace --release` green, and green again under
-  `TENSORCONTRACT_KERNEL=scalar`.
-* `tcbench verify` — all 49 corpus cases x `f32`/`f64`/`c32`/`c64` x all three
-  complex methods, against **both** TBLIS 2.0-dev and TTGT. `f32`/`f64` agree
-  exactly (`0.0e0`); `c32` to ~1.3e-7, `c64` to ~2.5e-16.
-
-### The three-way comparison
-
-Full 49-case TCCG corpus, 64 MiB nominal tensors, single core, geometric mean
-GF/s. `tblis` is 2.0-dev at `555320c`. Unperturbed corpus, so `regA = 1.00`
-throughout and the gather path is not involved.
-
-| engine | c64 | vs planar | c32 | vs planar |
-|---|---|---|---|---|
-| **planar** | **43.6** | 1.000 | **79.9** | 1.000 |
-| 1m | 42.2 | 0.967 | 78.2 | 0.979 |
-| 3m | 41.7 | 0.956 | 73.6 | 0.921 |
-| tblis 2.0-dev | 44.1 | 1.011 | 71.2 | 0.891 |
-| ttgt | 23.2 | 0.532 | 45.3 | 0.567 |
-
-**Planar wins, in both precisions, but by 3–8% rather than by a lot.** The
-scalar-kernel ranking of Phase 2b (planar 1.00, 1m 1.09, 3m 1.13) is now
-reversed, exactly as that report predicted it would be once the ranking stopped
-measuring LLVM's auto-vectoriser.
-
-**But the aggregate hides the actual finding, which is that the ranking is
-shape-dependent and inverts.** Splitting the same corpus by arithmetic
-intensity:
-
-| c64 subset | planar | 1m | 3m | tblis |
-|---|---|---|---|---|
-| `min(n,k) > 64` — compute-bound, 25 cases | **69.0** | 65.4 | 62.2 | 71.3 |
-| `min(n,k) <= 64` — memory-bound, 24 cases | 27.0 | 26.7 | **27.4** | 26.7 |
-
-and the micro-kernel sweep says why. Timing each kernel in isolation while
-sweeping `kc`, which decides whether the `A` sliver is an L1 resident or an L2
-stream (`bench-results/phase3-kernel-shapes.txt`, `f64`):
-
-| method | best shape | GF/s at `kc=64` | GF/s at `kc=256` | bytes / useful flop |
-|---|---|---|---|---|
-| planar | `16x6` | 107.7 | **102.8** | **0.46** |
-| 1m | `12x8` | 93.2 | 91.1 | 0.67 |
-| 3m | `8x10` | **117.1** | 87.8 | 0.68 |
-
-So:
-
-1. **3m's 25% flop saving is real and it is not free.** With both panels
-   L1-resident 3m is the fastest of the three, by roughly the margin the flop
-   count predicts. At the `kc = 256` the engine actually uses, it is the
-   slowest. 3m loads *three* planes of both operands to save one of four
-   products, so per useful flop it moves 1.5x planar's bytes; once the kernel
-   stops being FMA-issue-bound that is what decides it.
-2. **Planar wins on bytes, not on shuffles.** Its advantage over 1m is that
-   "1e" packing carries four reals per complex element of `A` against planar's
-   two. The original argument for planar — fewer in-register shuffles — is not
-   what the data rewards, because at these shapes none of the three methods is
-   shuffle-limited: LLVM emits `vbroadcastsd` as its own uop and every winning
-   shape is FMA-issue-bound (verified in the disassembly).
-3. **When the contraction is memory-bound the kernel's byte traffic stops
-   mattering and its flop count starts to.** That is the inversion above, and
-   it is a direct argument for the shape-dispatch item already listed in
-   Phase 4.
-
-Every candidate needing more than 32 live vector registers loses 30–50%. That
-cliff, not the flop count, is what bounds 3m's usable shapes: it needs three
-accumulator planes, so it cannot be given a block wide enough to amortise its
-loads.
-
-### Against the baselines
-
-Full corpus, 64 MiB, geometric mean GF/s, `planar` for complex:
-
-| dtype | this engine | tblis 2.0-dev | ttgt | best-of-49 count (ours / tblis / ttgt) |
-|---|---|---|---|---|
-| f64 | **30.5** | 27.0 | 13.1 | 22 / 16 / 11 |
-| f32 | **54.6** | 42.7 | 24.4 | 23 / 13 / 13 |
-| c64 | 43.6 | **44.1** | 23.2 | 13 / 12 / 12 |
-| c32 | **79.9** | 71.2 | 45.3 | 10 / 11 / 16 |
-
-Against **TBLIS v1.3.0** (`c4f81e0`, still the latest stable release — no new
-tag has appeared since Phase 1), 12-case premise set at 200 MiB: `c64` planar
-**43.8** vs **7.3** GF/s, a 6.0x gap, and `f64` 29.2 vs 21.5. The Phase 1
-finding that 1.x has no complex micro-kernel outside Sandy Bridge reproduces
-unchanged.
-
-The rebuilt TBLIS 2.0-dev reproduces Phase 1's headline to three digits — mean
-complex-over-real efficiency ratio **1.058** here against 1.06 in Phase 1 —
-which is the check that the rebuilt baseline is the same baseline.
-
-Complex-over-real efficiency ratio against a same-shape GEMM ceiling, 12-case
-premise set at 200 MiB: planar 0.976 / 1m 0.931 / 3m 0.979 (`c64`), and 1.156 /
-1.144 / 1.134 (`c32`). Against the roofline directly, the engine reaches
-**0.81–0.84** of a same-shape `zgemm` on the large compute-bound cases and
-**0.69–0.70** of `dgemm` — complex is the *easier* domain for us too, for the
-arithmetic-intensity reason established in Phase 1.
-
-### Irregular strides
-
-`--stress ragged`, `c64`, 64 MiB. 40 of 49 cases become genuinely irregular
-(mean observed `regA = 0.656`; the remaining 9 stay at 1.00). On those 40:
-
-| engine | GF/s |
-|---|---|
-| planar | **43.7** |
-| 3m | 42.5 |
-| 1m | 42.3 |
-| tblis 2.0-dev | 39.4 |
-
-An 11% lead for the transpose-free path where strides are awkward — the one
-regime where block-scatter is doing work a TTGT-style engine cannot avoid
-paying for. Note these numbers are *not* comparable to the unstressed table
-above: `--stress ragged` changes the extents, so it is a different set of
-shapes, not the same shapes made harder.
-
-### A concrete 2x defect, localised
-
-Nine corpus cases of the form `abcijk-{ij,ik,jk}m{a,b,c}-*` have identical
-`m`, `n`, `k` and `regA = regB = 1.00`, and differ only in which output axis
-leads the `M` group. Throughput is monotone in that axis's stride in `D`,
-9 cases out of 9:
-
-| `M` leading axis | its stride in `D` | planar `c64` GF/s |
-|---|---|---|
-| `a` | 1 | 40.5, 40.5, 40.5 |
-| `b` | `n_a` | 36.2, 36.4, 36.6 |
-| `c` | `n_a * n_b` | 17.7, 17.8, 17.8 |
-
-Packing is identical across the nine (same operand layouts, fully regular block
-scatter), so the cost is in the **scattered write-back**. `perf stat` on three
-of them, same binary, same reps, confirms it and identifies the mechanism:
-
-| `M` leading axis | cycles | instructions | IPC | dTLB store misses | **L2 demand misses** |
-|---|---|---|---|---|---|
-| `a` (stride 1) | 5.19e9 | 6.50e9 | 1.25 | 4.11e6 | 27.5e6 |
-| `b` (stride `n_a`) | 5.48e9 | 6.46e9 | 1.18 | 4.21e6 | 33.0e6 |
-| `c` (stride `n_a*n_b`) | **8.32e9** | 6.49e9 | **0.78** | 4.07e6 | **62.9e6** |
-
-Instruction count and retired stores are flat to within 1%, so this is purely
-stalling, not extra work. **The first-guess mechanism was wrong**: DTLB misses
-are flat, so it is not TLB pressure. It is L2 miss traffic — 2.3x more of it —
-from poor cache-line utilisation and reuse distance on the `C`/`D` update when
-consecutive tile rows are far apart in the output.
-
-A controlled follow-up: rebuilding *planar alone* with 3m's wider `8x10` tile
-instead of its own `16x6`, changing nothing else, moves these cases the way the
-mechanism predicts and moves the others back:
-
-| case | `16x6` | `8x10` | |
+| feature | S:C:T | cores | ISA consequence |
 |---|---|---|---|
-| `abcijk-ijmc-mkab` — `D` contiguous along `N` | 17.8 | **19.8** | +11% |
-| `abcijk-ijmb-mkac` — intermediate | 36.2 | 33.8 | −7% |
-| `abcijk-ijma-mkbc` — `D` contiguous along `M` | 40.5 | 35.9 | −11% |
-| `ijkl-imjn-lnkm` — compute-bound control | 79.4 | 79.4 | 0% |
+| `rome` (Zen2) | 2:64:1 | 128 | **no AVX-512** — runs the AVX2 kernels |
+| `icelake` | 2:32:1 | 64 | AVX-512, Intel, closest to the reference machine |
+| `genoa` (Zen4) | 2:48:1 | 96 | AVX-512 (double-pumped), a third cache topology |
 
-So micro-tile **aspect ratio should follow the output's stride pattern** — a
-real lever, worth about ±11%, and free to apply since the kernels are already
-parameterised over `(MV, NR)`. It also explains why 3m beats planar by 1.36x on
-exactly these three cases while losing everywhere else.
+`T:1` in all three: **SMT is off on Rusty's CPU nodes**, so the hyperthread
+sibling that forced two Phase 4 retractions is absent rather than merely handled.
+That is checked on the node by `scripts/topology.py` rather than believed from
+`sinfo`, and `phase4f-threads.sh` keeps its sibling guard regardless — a guard
+that trivially passes costs nothing and stops being load-bearing only when
+someone proves it is.
 
-But ±11% does not explain a 2x. Aspect ratio is a tuning knob; the 2x is the
-write-back's L2 traffic itself, and closing it needs the "vectorised write-back
-for regular blocks" item on the Phase 4 list — or blocking the `jr`/`ir` loops
-against the output's layout rather than only against the packed panels.
+**Chosen: `rome`.** Three reasons, in order of weight:
 
-### Assumptions added
+1. **It converts a documented guess into a measurement.** The AVX2 register
+   blocks are provisional and explicitly unmeasured (D26): chosen from a register
+   budget and a uop model on a machine that cannot execute them competitively.
+   `rome` is the largest partition on the cluster and AVX2 is what most users
+   get, so this is the widest remaining gap between what this file measures and
+   what a user experiences.
+2. **Its topology is the one where concurrent placement can work.** Zen2 shares
+   one L3 between four cores, so one arm per L3 domain gets a *private* L3 —
+   better isolation than `ccqlin038` ever had, where eight cores share 25 MiB. On
+   `icelake` the L3 is a whole 32-core socket, which leaves about two usable
+   domains and no way to run the 40-job grid concurrently at all.
+3. **It tests the analytical model harder than `icelake` would.** The point of
+   D23 was that the legacy constants are `ccqlin038`'s cache sizes written down
+   by hand. Zen2's are further away than Ice Lake's in the direction that
+   matters: a 512 KiB L2 against a legacy `A`-block budget of 512 KiB, i.e. the
+   constants ask for the entire L2 where the model would reserve ways for the
+   streaming operand. If the model is going to win anywhere, it should win here,
+   and if it does not, that is a finding about the model rather than about the
+   node.
+
+What this deliberately gives up, stated so it is not discovered later as a
+surprise: `rome` cannot say anything about AVX-512 blocking on a second Intel
+hierarchy, which is the `icelake` question and remains open. And the blocking
+grid measured on `rome` sits on top of register blocks that are themselves
+unmeasured until the `shapes` stage runs — so the calibration must be read
+before the grid, and the grid's conclusions are conditional on the shapes the
+engine actually shipped that day, not on the calibrated ones. Recalibrating and
+re-running the grid is a second session, not this one.
+
+#### Nothing measured there is comparable to anything above this line
+
+Different machine, different cache hierarchy, different instruction set. Every
+ratio must be computed *within* the session, and **the ±1.3% geomean / ±6%
+per-case noise floor is `ccqlin038`'s and does not transfer.** The floor is
+re-derived on the node from bracketing repeats the scripts already run:
+`phase4f-threads.sh` now compares `t1` against its bracketing `t1b` and prints
+that first, `validate-placement.sh` runs the same arm solo twice for the same
+purpose, and the grid keeps its three `base` repeats. No effect gets quoted
+before the floor it is measured against.
+
+#### The placement problem, and the hypothesis
+
+An exclusive 128-core node makes both obvious answers wrong. One arm at a time
+leaves 127 cores idle, and 40 grid jobs at ~22 min each (on the *reference*
+machine; AVX2 will be slower per core) is a day's work. Forty arms at once
+corrupts the quantity being measured, because arms sharing an L3 or a memory
+controller perturb each other and `NC` is *sized for L3*.
+
+So the placement is treated as a hypothesis: **one measurement thread per L3
+domain, every other core in that domain idle, SMT siblings idle, and concurrency
+held below the domain count** — 24 of 32 by default on `rome` — because memory
+bandwidth and the interconnect stay shared however threads are placed.
+
+The accept/reject rule, fixed now:
+
+* **Accept** if placed-vs-solo lies inside the solo-vs-solo floor on the
+  geometric mean, and no case moves by more than the per-case floor.
+* **Reject** otherwise, run the grid sequentially, and record the rejection.
+
+Both arms are measured on the full corpus *and* on the `abcijk` family, which is
+exactly the 18 cases that contract over `k = 24` — the memory-bound half, i.e.
+where bandwidth contention should show up first, bandwidth being the one resource
+no placement can privatise. A rejected placement is a result worth writing down:
+it tells the next person on a different machine what to expect, and the mechanism
+(a private L3 per CCX against a socket-wide L3 on Intel) predicts that the answer
+differs by machine.
+
+#### What was built for it, all of it zero-CPU
+
+* `scripts/topology.py` — L3 domains, SMT siblings, NUMA and cache descriptors
+  from the *allocation's* affinity mask, so it describes the job and not the
+  node, plus the placement plan. Emitted as JSON so the runner and this file read
+  the same facts.
+* `scripts/run-arms.py` — runs independent arms one per L3 domain, and records
+  `/proc/stat` occupancy for **every core in each arm's own L3 domain** across
+  exactly that arm's window, plus the observed overlap with other arms. The
+  reference scripts sample the pinned core and its sibling; this widens that to
+  the domain, because on this placement the domain is the unit that has to be
+  clean. That recording is what made the earlier retractions detectable.
+* `scripts/validate-placement.sh` + `scripts/placement-spread.py` — the
+  hypothesis test above, including the spread *between* slots, which prices
+  position within the node. A uniform slowdown cancels in the ratios the grid is
+  scored on; a position-dependent one does not, and would turn slot assignment
+  into a per-arm bias.
+* `phase4e-blocking.sh` now runs both regimes through one code path
+  (`<cpu>` sequential, `auto` placed) from a single arm list, so the two cannot
+  drift apart. `phase4f-threads.sh` derives its cpuset from the allocation
+  instead of a hardcoded `0-7`, scales its thread counts to the core count, gives
+  each arm exactly as many cores as it has threads (so L3 sharing is a known
+  function of `nt` rather than the scheduler's choice), records occupancy over the
+  whole allocation as an exclusivity check, and labels the cross-socket arm as the
+  separate question it is.
+* `scripts/node-session.sh` — stages the session so the ordering constraints are
+  enforced rather than remembered: one stage at a time, only `prep` compiles, and
+  a guard refuses to start a measurement while any `cargo`/`rustc`/`tcbench` of
+  the user's is alive.
+* `scripts/placement-verdict.py` — the accept/reject rule **as code**, so an
+  unattended run can act on it and, more to the point, so the threshold cannot
+  drift once the numbers are visible. Strict reading of the pre-registered rule:
+  the per-case bound is the solo pair's *worst* case, not a percentile, because a
+  percentile is a knob and a knob chosen after seeing the data is how a
+  pre-registered rule stops being one. Every placed replicate must pass, not just
+  the one on the reference core, since the grid assigns arms to slots arbitrarily.
+* `scripts/rusty-phase4.sbatch` — the whole session unattended. Stage order is
+  `prep, shapes, threads, validate, grid`: `shapes` moves ahead of the
+  higher-priority `threads` because on an AVX2 node it is the highest-value single
+  deliverable and costs twenty minutes, so putting it behind a four-hour stage
+  risks the cheap irreplaceable thing for nothing. Stages are independent and a
+  failure does not abort the rest.
+
+**The rejection path returns data rather than nothing.** A rejected placement
+means the full grid cannot run — sequential is ~23 h on this node and does not fit
+a 12 h allocation — so the batch script runs a *scoped* grid sequentially inside
+the wall time that is left, in the order `base model base2` then the `kc` family:
+the model arm is a whole different derivation rather than a point in the grid and
+needs its brackets to mean anything, and `kc` is the first-order parameter. Arms
+that do not fit are named in `skipped-arms.txt` and in the log, because a bounded
+run that does not say what it dropped reads as complete coverage. A scoped grid is
+reported as scoped — offline rule scoring against a partial grid is not the asset
+that scoring against a whole one is.
+
+#### The prediction, made first
+
+`scripts/thread-width.py` no longer hardcodes `P = 8` — it takes a list, and it
+now replays `Plan::partition` (`PACK_WEIGHT` included) instead of only reporting
+raw widths, so it predicts what the *rule* will ask for rather than what the shape
+allows. Replayed over all 392 case-dtype-methods:
+
+| P | no fill from `M` | rule goes 2-D | leaves threads idle | of which int-div waste | of which a genuine limit | needs `K` |
+|---|---|---|---|---|---|---|
+| **AVX-512 blocks (the reference machine's)** ||||||
+| 8 | 16 | 12 | 4 | 0 | 4 | 0 |
+| 16 | 26 | 22 | 12 | 4 | 8 | 0 |
+| 32 | 32 | 30 | 16 | 4 | 12 | 0 |
+| 64 | 33 | 32 | 18 | 12 | 6 | 0 |
+| 128 | 72 | 68 | 49 | 46 | 3 | 0 |
+| **AVX2 blocks (what `rome` will run)** ||||||
+| 8 | 1 | 1 | 0 | 0 | 0 | 0 |
+| 16 | 8 | 6 | 2 | 0 | 2 | 0 |
+| 32 | 23 | 15 | 10 | 0 | 10 | 0 |
+| 64 | 32 | 26 | 16 | 0 | 16 | 0 |
+| 128 | 32 | 32 | 20 | 6 | 14 | 0 |
+
+Four things fall out of it, none of which needed the machine:
+
+1. **`K`-parallelism is never needed, at any thread count up to a whole 128-core
+   node, in either ISA.** A21 was argued at 8 threads and the structural argument
+   was claimed to generalise; this is that claim checked to 16x the width. A21 is
+   now confirmed far outside the regime it was made in.
+2. **The 2-D rule will be exercised 5x harder than it was designed against.** It
+   fires on 12 of 392 at 8 threads and 32–68 at 128. `PACK_WEIGHT` was priced by
+   replay at 2–32 threads and every weight in `[4, 64]` gave the same partition;
+   that replay does not cover 64 or 128, so the `=m` / `=n` arms at the top thread
+   count are the load-bearing part of the threading run, not the scaling curve.
+3. **Most of the apparent shortfall at large `P` is arithmetic, not judgement.**
+   `pn = min(p / pm, blocks)` is integer division, so a rule that wants `9 x 14`
+   out of 128 threads gets 126 and idles two. Separating that from a genuine
+   refusal matters, because only the second kind can show up as a visibly flat
+   scaling curve: at `P = 128` on AVX-512 blocks, 46 of the 49 are integer-division
+   waste of ≤2%, and just **three** are real.
+4. **AVX2's smaller register blocks buy parallel width**, and by a lot: at 8
+   threads 16 of 392 case-dtype-methods cannot fill the threads from `M` on
+   AVX-512 blocks against **1** on AVX2, because `MR` is 3–6x smaller and the row
+   panel count rises accordingly. This is a fresh instance of A25 — smaller
+   register blocks are not purely a cost — in a dimension A25 did not consider,
+   and it means the `rome` scaling curve should look *better* than the reference
+   machine's would, for a reason that has nothing to do with the cores.
+
+The genuinely partition-limited population on AVX2 is one family: `ij-ikl-ljk`
+and `ij-kil-lkj`, which cap at `27x1` of 32 threads and `54x2` of 128 (84%).
+Those are the curves that must flatten. If any *other* case flattens, that is
+contention or a bug, not the partition — which is what makes this prediction
+worth having.
+
+Caveat on the table: the `frac of best` column in the full output ranks cases by
+throughput measured on `ccqlin038`, used only as a compute-bound proxy for
+sorting. It is not a cross-machine performance claim and is regenerated from the
+node's own `t1` arm once that exists.
+
+#### Result: the placement is clean on the corpus and *not* clean on the memory-bound half
+
+Measured on `worker5040`, 24 concurrent arms one per L3 domain against a solo arm.
+The honest comparison is against the **hot** solo arm (`t1b`, same core), because
+the reused solo pair straddles the cold-start transient A31 describes:
+
+| | geomean vs hot solo | range over slots |
+|---|---|---|
+| full corpus, socket 0 slots (12) | **1.0029** | 1.0017–1.0050 |
+| full corpus, socket 1 slots (12) | 1.0215 | 1.0181–1.0255 |
+| **memory-bound `abcijk` half, all 24** | **0.9684** | 0.9616–0.9769 |
+
+Read in order:
+
+1. **On the corpus as a whole the placement costs 0.3% — nothing.** Twenty-four
+   arms running at once, each with a private 16 MiB L3 and three idle cores in its
+   domain, measure what a solo arm measures. A27 is confirmed, and it bought a
+   **23.7x** speedup: 533 minutes of arm-time in 22.5 minutes of wall clock, which
+   is the difference between the grid being affordable and not.
+2. **The 2.2% socket split is thermal, not spatial.** The `threads` stage had run
+   for two hours entirely on socket 0, so socket 1 was cold when the placed round
+   started; its slots read 2.2% *faster*. `placement-spread.py` was built expecting
+   memory-system position to be the variable, and on this node it is temperature
+   history instead. Confirmed by the memory-bound round twenty minutes later, when
+   both sockets had been loaded and the split had shrunk to 0.6%.
+3. **On the memory-bound half the placement is rejected, decisively.** 3.2%
+   geomean and up to 10% per case, against a solo-pair floor of **0.02%** — the
+   cleanest floor in this whole project, from two arms 69 seconds apart. Every one
+   of the 24 slots fails. Bandwidth is the resource no placement can privatise, the
+   `abcijk` family at `k = 24` is where that bites first, and it does.
+
+**A gap between the rule as written and the rule as coded, which is mine.** Part 10
+pre-registered that both the full corpus *and* the `abcijk` family would be
+measured, but `rusty-phase4.sbatch` called `placement-verdict.py` with its default
+prefix, so only the full-corpus arms were scored and the grid launched placed on an
+ACCEPT that had not consulted the memory-bound arms. Scored after the fact with
+`--prefix mbp --solo mbsolo`, they REJECT. The verdict script now takes `--solo` so
+the rule can be applied to the arm set it was written for; the sequencing error had
+already happened.
+
+**What that does to the grid, and what it does not.** The grid is scored on
+*ratios between arms*, and every arm ran under the identical 24-way placement, so a
+uniform 3.2% penalty on memory-bound cases cancels in `arm / base`. The exposure is
+not uniformity but **interaction**: an arm that changes memory traffic suffers
+different contention, and that is exactly what the `nc` arms and the `model` arm do
+— `model` raises `nc` about 4.7x here. So:
+
+* `kc` and `mc` arms: the penalty is close to uniform and the ratios stand.
+* `nc25`, `nc400`, `model`: **confounded at the same order as the effect**, and
+  `model` is the single most interesting arm in the grid.
+
+The fix is cheap and does not need the whole grid re-run: measure `base`, `nc25`,
+`nc400`, `model`, `base2` sequentially on one core — 10 jobs, ~3.7 h — and compare
+those against each other in the clean regime, using `base`/`base2` to tie them back
+to the placed run. `scripts/rusty-phase4-seq.sbatch` does exactly that and nothing
+else. **Until it has run, do not quote the `nc` or `model` arms from the placed
+grid.**
 
 | # | Assumption | Status |
 |---|---|---|
-| A7 | The three complex methods differ mainly in flop count. | **Refuted.** They differ mainly in bytes moved per useful flop, and that is what decides the ranking at realistic `kc`. Flop count decides it only when the panels are L1-resident or the contraction is memory-bound. |
-| A8 | One register block per method is enough. | **Refuted, and it matters.** The best shape depends on the method, the element type and `kc`, and neighbouring shapes differ by 30–50% across the 32-register cliff. |
-| A9 | Absolute performance is meaningful now that kernels are vectorised. | Adopted. It was explicitly not meaningful before this phase. |
+| A27 | Concurrent arms placed one per L3 domain measure the same thing as a solo arm. | **Confirmed on the corpus (+0.3%), refuted on the memory-bound half (−3.2%, up to −10%).** Private per-CCX L3 is enough for compute-bound work and irrelevant to bandwidth: `abcijk` at `k = 24` is bandwidth-bound and 24 arms contend. Use the placement for arms that do not change memory traffic; measure the `nc` and `model` arms sequentially. |
+| A32 | A session's drift is a single number. | **Refuted; it is a function of how far apart the two arms are.** Same node, same core, same corpus: 0.02% at 69 s apart, 1.1–1.9% at ~1 h, 4.4% across the cold-start transient. Quoting one floor for a whole session is what let a 4.4% cold-start artifact be mistaken for the precision of a repeat. |
 
-### What is *not* done
+#### What would invalidate the run
 
-* **No AVX2 path.** Dispatch is AVX-512 or the scalar fallback. The macro takes
-  it without restructuring; deferred to Phase 5's multi-arch work, since the
-  reference machine is AVX-512 and the gate is a comparison on it.
-* **Blocking is still the Phase 2 heuristic.** `MC`/`KC`/`NC` come from a fixed
-  cache-budget rule, never swept. Given that the whole Phase 3 result turns on
-  where the `A` sliver lives, `KC` in particular is now known to be a
-  first-order parameter rather than a detail. Phase 4.
-* **Still single-threaded.**
+Checked before anything is believed, and each one recorded rather than assumed:
+the allocation is genuinely exclusive (`scontrol show job`, once, plus the
+per-core occupancy every arm now records for the whole allocation); no compile
+overlapped a measurement (`node-session.sh` refuses); the bracketing repeats
+agree within the floor derived in the same session; and no number is compared
+across machines.
 
-Raw data: `bench-results/phase3-*.csv`, transcript in
-`bench-results/phase3-log.txt`, kernel sweep in
-`bench-results/phase3-kernel-shapes.txt`. Reproduce with
-`scripts/phase3-bench.sh`.
+| # | Assumption | Status |
+|---|---|---|
+| A27 | Concurrent arms placed one per L3 domain measure the same thing as a solo arm. | **Hypothesis, with the test and the accept/reject rule pre-registered above.** Zen2's private-per-CCX L3 is what makes it plausible; shared memory bandwidth is what makes it doubtful, which is why the memory-bound `abcijk` half is measured separately. |
+| A28 | The 2-D partition rule and `PACK_WEIGHT` behave at node scale as they do at 8 threads. | **Open, and the reason the threading run is worth more than a scaling curve.** The rule fires on 12 of 392 at 8 threads and 32–68 at 128; `PACK_WEIGHT`'s indifference was only ever replayed to 32. |
+| A29 | Parallel width is a property of the contraction. | **Refuted at no CPU cost — it is a property of the contraction *and the ISA*.** Row panels scale as `M / MR`, so AVX2's smaller register blocks give the same corpus 3–6x more of them: 1 of 392 case-dtype-methods short of 8 threads against 16 on AVX-512. |
 
-## Phase 4 report, part 1: the write-back
+## The write-back and the two shape rules
+
+Phase 4 item 1 and its three follow-ons. The 2x defect, its real cause, and the two rules that buy it back — plus the menu re-keying that made a known-better shape reachable.
+
+### Parts 1–5: the write-back, the orientation rule, and the micro-tile row block
 
 Phase 3 left a profiled 2x defect on nine corpus cases and named two candidate
 fixes. Both were built. The first one is not the one Phase 3 predicted.
 
-### What was built
+#### What was built
 
 1. **Row/column orientation** (`Plan::transposes_gemm`, applied in `driver`).
    The engine is symmetric under exchanging `(A, M)` with `(B, N)`; doing so
@@ -1009,7 +813,7 @@ fixes. Both were built. The first one is not the one Phase 3 predicted.
 
 `TENSORCONTRACT_ORIENT=none|swap` pins the orientation for A/B measurement.
 
-### The orientation rule, and the condition that is not obvious
+#### The orientation rule, and the condition that is not obvious
 
 Swap when, and only when:
 
@@ -1046,7 +850,7 @@ and L1 load misses *down* 27% under the swap, yet 4% more cycles at IPC 1.05 →
 written lines against 48 half-written ones), as does the packing pattern. So
 the rule's condition 2 is an empirical guard rail, not a derived one.
 
-### Result: the 2x defect is closed, with no case left slower
+#### Result: the 2x defect is closed, with no case left slower
 
 Full 49-case corpus, `--size 64 --reps 3`, single core, against the *recorded*
 Phase 3 sweep (`bench-results/phase3-sweep-*.csv`) — same basis, same machine.
@@ -1077,7 +881,7 @@ scored 1.07–1.19 geomean *with* a −15% worst case; the guarded rule swaps 6�
 depending on element type, scores slightly lower on paper, and has no
 regression beyond noise. Raw data for both: `bench-results/phase4/orient-*.csv`.
 
-### Part 2: the regular-block write-back, on top of the orientation fix
+#### Part 2: the regular-block write-back, on top of the orientation fix
 
 First measured as a diff between two builds half an hour apart, which gave
 `c64` 3m = 0.973 and the conclusion "a wash in double". Both were wrong. With
@@ -1101,7 +905,7 @@ sequential. A build-to-build diff cannot distinguish a 3% effect from drift;
 put the switch behind an environment variable and the same question answers
 itself in one run.
 
-### Cumulative Phase 4.1 result
+#### Cumulative Phase 4.1 result
 
 Full corpus, against the recorded Phase 3 sweep, exclusive machine
 (`rm-A-*.csv`), against a ±1.3% geomean noise floor:
@@ -1129,7 +933,7 @@ before the machine was quiet does **not** survive re-measurement; those rows
 are flat to within noise, and the paragraph explaining them as a write-back
 side effect was explaining contention.
 
-### Part 3: a negative result on depth-adaptive `MC` — do not redo this
+#### Part 3: a negative result on depth-adaptive `MC` — do not redo this
 
 The obvious first move on item 2 looked free and is not. `Blocking::derive`
 sizes `MC` and `NC` so a `KC`-deep packed block fits its cache budget, but a
@@ -1170,7 +974,7 @@ a two-sided constraint — packed-`A` residency below, output-strip residency
 above — and the sweep has to be designed to separate them rather than to find a
 single best `MC`.
 
-### Part 4: what an exclusive machine changed, and the rule's 9 known misses
+#### Part 4: what an exclusive machine changed, and the rule's 9 known misses
 
 Everything above was first measured while other work shared the workstation.
 The harness pins to one logical CPU, but nothing stopped a co-tenant landing on
@@ -1229,7 +1033,7 @@ orientation is one cheap binary choice per plan and plans are reusable, which
 makes empirical selection — run both once, keep the faster — the honest
 fallback.
 
-### Where the next lever is, and why it is now sharper
+#### Where the next lever is, and why it is now sharper
 
 The `f32` `a`/`b` rows above gained least — and they are the ones still on the
 write-back's **gather** path, for a structural reason rather than a measured
@@ -1259,14 +1063,14 @@ may dissolve the problem rather than require solving it.
 > `run / MR`: the rule has to be **antisymmetric** under exchanging the two
 > directions. Read part 6 before acting on anything in this section.
 
-### Part 5: item 1c, the micro-tile row block — and what it prices
+#### Part 5: item 1c, the micro-tile row block — and what it prices
 
 Part 4 predicted that choosing `MR` to divide the output's contiguous run would
 "dissolve" the orientation problem. It does not. It **prices** it, which is more
 useful, and the write-back gain it was aimed at is real but small and needs
 three guards to be positive at all.
 
-#### What was built
+##### What was built
 
 `kernel::x86` now builds each method from a **menu** of register blocks rather
 than one, default first, using the same const-generic kernels Phase 3 wrote.
@@ -1280,7 +1084,7 @@ would stay off the gather path at a given `MR` — evaluated in the orientation
 run time. `tcbench shapes` scores every shape against every corpus case without
 running anything, which is how the measurements below were chosen.
 
-#### The grid, and why it was worth 2 h
+##### The grid, and why it was worth 2 h
 
 `scripts/phase4c-rowblock.sh` pins *every* shape on *every* menu across the
 whole corpus (`bench-results/phase4c/rb-*`, sibling CPU 0.6–1.3% throughout).
@@ -1316,7 +1120,7 @@ measured, not argued:
    guard `c32` 3m moves the three `abcijk-e*bc-*` cases from the good arm to
    the bad one and loses **19%**.
 
-#### Result
+##### Result
 
 Validation A/B (`bench-results/phase4c/v-*`, `base, auto, base'`, exclusive
 machine, sibling CPU 0.7–0.9%). Session noise floor from the bracketing repeat:
@@ -1341,7 +1145,7 @@ inside the noise floor in every dtype and method.
 already tiles them. The `f32` gather-path cases part 4 pointed at are therefore
 **not** reachable this way — see below.
 
-#### What this prices: the orientation is worth ~2x, and `MR` is a bad way to buy it
+##### What this prices: the orientation is worth ~2x, and `MR` is a bad way to buy it
 
 Part 4's hope was that shrinking `MR` to 16 would satisfy the orientation rule's
 condition 2 on the nine misses and make it pick BA "without any new
@@ -1364,7 +1168,7 @@ The oracle row above is the other half of the picture: picking the best shape
 per case with hindsight scores only 1.03–1.07 anywhere. The shape lever is close
 to exhausted. The orientation lever is not.
 
-#### Two effects seen, deliberately not shipped
+##### Two effects seen, deliberately not shipped
 
 The grid also shows, at `k <= 24` and with no write-back change at all:
 
@@ -1377,7 +1181,7 @@ item 2's `MC`/`KC`/`NC` sweep. Neither has a mechanism yet and neither has been
 validated on anything but this grid, so neither ships. Note the second one means
 the Phase 3 register-block table is depth-conditional, not wrong.
 
-## Phase 4 report, part 6 (item 1d): the orientation rule, and its discriminant
+### Part 6 (item 1d): the orientation rule, and its discriminant
 
 Part 5 named this the biggest measured lever and priced it at ~2x on the nine
 known misses. A14 recorded the discriminant as unknown. **It is now found**, and
@@ -1385,7 +1189,7 @@ the answer is that the old rule was not wrong so much as *incomplete*: it had a
 veto with no fallback, and every one of its misses lived in the case the veto
 sent to the default.
 
-### The grid, again
+#### The grid, again
 
 `scripts/phase4d-orient.sh` forces both arms — `TENSORCONTRACT_ORIENT=none|swap`
 — over the whole corpus in every dtype and method, with
@@ -1396,7 +1200,7 @@ that were the entire basis before. `tcbench orient` then dumps the structural
 features of each arm, and `scripts/orient-score-rules.py` scores candidates
 against ground truth, free and unlimited.
 
-### The discriminant: the rule has to be antisymmetric, and the old one was not
+#### The discriminant: the rule has to be antisymmetric, and the old one was not
 
 The `abcijk` families are **exact mirror images** of one another — the same
 output structure with the roles of the two directions exchanged. Any correct
@@ -1432,7 +1236,7 @@ scores 1.132 — that dtype's orientation question is essentially closed.
 | **fits, else shorter run** | **1.128** | **1.082** | 1.067 | 1.102 |
 | oracle (hindsight) | 1.132 | 1.093 | 1.088 | 1.118 |
 
-### Two part-4 hypotheses, tested and refuted
+#### Two part-4 hypotheses, tested and refuted
 
 Part 4 offered two structural differences as possible discriminants and warned
 against adopting either without measuring. Both are now measured, and both are
@@ -1445,7 +1249,7 @@ wrong:
   that quantity has pointed the wrong way (see A16); it explains the write-back
   path and nothing else.
 
-### The two rules are coupled, and tuning them separately is wrong
+#### The two rules are coupled, and tuning them separately is wrong
 
 The end-to-end A/B of the new rule in the shipped configuration exposed
 something the grid could not, because the grid pinned the shape: three `c32` 1m
@@ -1479,7 +1283,7 @@ design and is exactly why neither could see this. A rule validated at a pinned
 operating point has only been validated *there*. The end-to-end A/B in the
 shipped configuration is not a formality.
 
-### Result, end to end, in the configuration that ships
+#### Result, end to end, in the configuration that ships
 
 `bench-results/phase4d/vf-*`: `legacy, new, legacy'` on one build with
 `TENSORCONTRACT_ORIENT=legacy|rule`, everything else at its shipped setting, so
@@ -1508,7 +1312,7 @@ repeat at 1.013, so it is real); the fourth is `ijkl-mink-jnlm` in `c64` 1m at
 0.937 against a repeat of 0.960, i.e. mostly drift. **One genuine per-case
 regression**, at 7%, against six cases gained at 1.3–1.5x.
 
-### What is left
+#### What is left
 
 21 of 392 case-dtype-methods still take the slower arm by more than the noise
 floor, worth up to 1.36x. They are a different population from the `abcijk`
@@ -1519,7 +1323,7 @@ oracle gap outside `f32` is 1.088 against 1.067 (`c32` 1m) and 1.118 against
 table per dtype. `bench-results/phase4d/or-*` holds both arms for all of them,
 so the next candidate costs nothing to score.
 
-### Assumptions added
+#### Assumptions added
 
 | # | Assumption | Status |
 |---|---|---|
@@ -1538,7 +1342,86 @@ so the next candidate costs nothing to score.
 | A14 | The orientation rule's `run >= MR` condition is the right discriminant. | **Refuted, and unresolved.** It is right 63/72 but misses 9 cases by 1.18–1.47x, all 32-bit, including shapes with the same post-swap row structure as the ones it correctly rejects. The true discriminant is unknown; `rm-orient-{none,swap}.csv` hold both arms for all 72 case-dtypes to score candidates against. |
 | A15 | A sequential build-to-build A/B is good enough for a few-percent effect. | **Refuted.** It reported `c64` 3m at 0.973 where a paired runtime A/B gives 1.020. Put the switch behind an environment variable and interleave the arms. |
 
-## Phase 4 report, part 7 (item 2): the `MC`/`KC`/`NC` grid
+### Part 13: the row-block menu is keyed by position (A35)
+
+Part 11 left A35 in the worst available state: a **measured** 7.8% shape that the
+engine could not run, could not A/B, and could not put on a menu, because
+`config_at` dispatched on `MR` alone and `32x5` shares its height with the
+shipped `32x6`. "Documented and untestable" is worse than "unfixed", and this
+closes that half without touching the default.
+
+**The change is a re-keying, not a retune.** `row_blocks` now returns
+`(MR, NR)` pairs and `config_at` takes a **menu position**; `Plan::row_block` and
+`preferred_row_block` return an index. The rule itself is untouched — it reads
+only `MR`, so entries of equal height tie and the earlier one wins, which keeps
+the measured default in front by construction. `TENSORCONTRACT_ROWBLOCK=idx=<i>`
+now means what its name always implied, and `mr=<n>` resolves to the first entry
+of that height, which is the documented limitation rather than a silent surprise.
+
+`(2, 5)` is **appended** to the `f32`/`c32` planar menu, not inserted after the
+default: entries 0–2 keep the positions `bench-results/phase4c` swept, so that
+grid's `idx=` numbering still means what it meant. Verified end to end —
+`idx=0` runs `avx512-planar 32x6`, `idx=3` runs `avx512-planar 32x5`.
+
+The well-formedness test changed with it, and the change is the interesting part:
+a repeated `MR` is now **allowed** and a repeated *shape* is not. The old
+invariant existed because a duplicate height made the later entry unreachable;
+under positional keying it is reachable, and what is unreachable instead is a
+duplicate `(MR, NR)`. The test says so, and says why, so the next person does not
+restore the stronger version and delete the entry this part added.
+
+**Not fixed, and deliberately.** The default is still `32x6`. A 7.8% *kernel*
+margin is not a corpus margin — `NR` moves the `jr` loop count and the packed-`B`
+sliver geometry as well as the register block — and this project has been wrong
+about exactly that kind of extrapolation before. What changed is that settling it
+now costs one sweep arm instead of a rebuild.
+
+#### A provenance defect in the confirmation run, since it is mine
+
+The two confirmation jobs (6753208 `worker5479` rome, 6753209 `worker6150` Ice
+Lake) were submitted at commit `d62b9e2` and **run in place** —
+`rusty-phase4.sbatch` does `cd "$SLURM_SUBMIT_DIR"` and every arm invokes
+`./target/release/tcbench` from the shared checkout. I then wrote the D43 change
+in the same working tree and rebuilt that binary at 14:44:49, **while 6753208's
+threads stage was running**. Timeline:
+
+| time | event |
+|---|---|
+| 14:36:49 | 6753208 prep builds at `d62b9e2`; threads stage starts |
+| 14:38:58 | its discarded warm-up arm completes |
+| **14:44:49** | **`target/release/tcbench` relinked from the D43 tree** |
+| 14:45:26 | 6753209 prep finds the binary current, does *not* relink, starts its threads stage on the D43 binary |
+
+So on `worker5479` the arms launched before 14:44:49 ran one binary and those
+after ran another, and `worker6150` ran the second one throughout while its
+`PROVENANCE` says `d62b9e2`. The project's rule is "do not compile while a
+benchmark is in flight"; it is written about CPU contention on a shared
+workstation, and it turns out to protect something else as well on a cluster —
+the *binary*, through a shared `target/`.
+
+**Checked rather than assumed, and the delta is inert.** D43 is a re-keying plus
+one appended menu entry in `cfg_avx512_f32`, which an AVX2 node never consults at
+all. On the machine where the menu did grow, the selected shape is unchanged on
+**392 of 392 case-dtype-methods**: `worker6016`'s `features.csv` (Ice Lake, built
+before any of this) and `worker6150`'s (Ice Lake, built from the D43 tree) agree
+on `(mr, nr, arm)` everywhere, and on all 49 `f32`/`c32` planar entries in
+particular. The runs therefore stand, and the partition arms — which is what they
+were booked for — touch none of this code.
+
+**What to do differently**, and it is cheaper than the rule it replaces: a
+cluster job should build into its own `CARGO_TARGET_DIR` under
+`bench-results/<node>-<arch>/`, so a submit-directory edit cannot reach a running
+arm and the binary is archived beside the numbers it produced. Until that exists,
+treat the submit directory as frozen for the duration of a job — including
+`cargo test`, which relinks the same artefacts.
+
+*Decisions introduced here: D43 — stated in [Design decisions](#design-decisions).*
+
+## Cache blocking
+
+Phase 4 item 2, closed with a negative result, and the analytical model that was supposed to make it portable.
+
+### Part 7 (item 2): the `MC`/`KC`/`NC` grid
 
 **Status: measured on `worker5040` (Zen2, AVX2), 40 arms in 34.6 min wall against
 707 min of arm-time — a 20.4x return on the concurrent placement.** Results
@@ -1547,7 +1430,7 @@ written for never happened; it was stopped after two arms (see "Resume here") an
 the grid moved to a cluster node, which changed the machine and the instruction
 set. **Nothing here is comparable to a single-core number elsewhere in this file.**
 
-### The floor, and why this grid supports global conclusions only
+#### The floor, and why this grid supports global conclusions only
 
 Three independent estimates from inside the run:
 
@@ -1574,7 +1457,7 @@ corpus is in that position. So: `193 of 588 case-dtype-methods gain more than th
 per-case floor` is substantially noise, no per-case blocking rule is supportable
 from this run, and every conclusion below is a *global* one.
 
-### `KC` is first-order, and the direction is deeper — the opposite of what part 9 predicts
+#### `KC` is first-order, and the direction is deeper — the opposite of what part 9 predicts
 
 Geomean against `base`, per dtype and method (identical across methods in the real
 dtypes because the real path is method-independent):
@@ -1604,7 +1487,7 @@ dtypes because the real path is method-independent):
    `base`, and crossing reads ~1.1% *low*, so the 1.050 is if anything an
    underestimate.
 
-### Coupling adds nothing, and `MC` is a plateau
+#### Coupling adds nothing, and `MC` is a plateau
 
 | arm | `f32` | `f64` | `c64` planar |
 |---|---|---|---|
@@ -1630,7 +1513,7 @@ Two answers to questions part 7 was built to separate:
   1.018–1.025 in `f64` — *worse* than simply setting `kc = 512` globally. Combined
   with the 6.2% per-case floor, there is no case for a per-case blocking rule here.
 
-### The `nc` and `model` arms, re-measured sequentially
+#### The `nc` and `model` arms, re-measured sequentially
 
 `nc25`, `nc400` and `model` change how much memory traffic an arm generates, and
 the concurrent placement is **not** neutral for such arms — it was rejected at
@@ -1662,7 +1545,7 @@ same absence of information.
 `nc` is confirmed to have nothing in it: shrinking it costs 2–6% (worst in 3m),
 enlarging it does nothing, and the `nc`-only oracle is 1.008–1.016.
 
-### The analytical model loses on the first machine it was supposed to help, and its `kc` is why
+#### The analytical model loses on the first machine it was supposed to help, and its `kc` is why
 
 `model` is **below `base` in 11 of 12 columns**, and its one gain — `f64` at 1.011 —
 is barely twice the 0.4% floor. In the complex methods it costs **1.6% to 7.2%**.
@@ -1686,7 +1569,7 @@ complex method; the pinned-`kc` arms price that depth directly, and the two agre
 since `mc` is a plateau and `nc` has nothing in it. So the model's `mc`/`nc`
 reconstruction is harmless and its `kc` equation is the whole problem.
 
-### Why deeper `kc` wins, from the grid and no extra machine time
+#### Why deeper `kc` wins, from the grid and no extra machine time
 
 The hypothesis first recorded here — that eq. (4)–(6) fails to carry the
 per-element real counts through — **was wrong, and is retracted.** `model_kc` takes
@@ -1733,7 +1616,7 @@ Two consequences worth acting on rather than admiring:
   this account is wrong and something about buffer size, not pass count, is doing
   the work.
 
-### The reference machine reverses it: `kc = 512` was a Zen2 result
+#### The reference machine reverses it: `kc = 512` was a Zen2 result
 
 **Run on `ccqlin038` overnight** (19 arms, `kc768`/`kc1024` added because Zen2 never
 bracketed its own optimum, discarded warm-up arm, `basem`/`base2` both reading
@@ -1763,7 +1646,7 @@ bracketed its own optimum, discarded warm-up arm, `basem`/`base2` both reading
 3. **"Coupling adds nothing" was Zen2-only.** `ck512` is the *best* `f64` arm here at
    1.029.
 
-### The mechanism, and why the sign flips between machines
+#### The mechanism, and why the sign flips between machines
 
 My C-traffic account (deeper panels cut how many times `C` is re-touched) predicted
 that deeper `kc` would keep helping the `k > 256` population. **It is falsified**, and
@@ -1795,7 +1678,7 @@ footprint (`mc * kc * a_reals * bytes`) in proportion:
 
 One account, opposite signs, both machines — and it explains the `mc` arms too.
 
-### What should actually change: the coupled arm, which is stable across machines
+#### What should actually change: the coupled arm, which is stable across machines
 
 Coupling re-derives `mc` at the new depth, holding the `A` footprint constant. That is
 exactly the degree of freedom the pinned arms confound, and it is the only arm that
@@ -1837,7 +1720,7 @@ worst, then `c64` 3m) and suggests the general form of the rule: couple only whi
 `mc` stays above some small multiple of `MR`. That form is scorable against these two
 grids offline, for free, and has not been done.
 
-### The A/B, and it fails: there is no ~3% blocking win on the reference machine
+#### The A/B, and it fails: there is no ~3% blocking win on the reference machine
 
 `scripts/ab.sh bench-results/ab-deepen "TENSORCONTRACT_DEEPEN=on"` on `ccqlin038`,
 warm-up arm discarded, `A, B, A'`. **Pre-registered rule: `f64` must beat the floor's
@@ -1898,7 +1781,7 @@ repeat on a genuinely idle machine would tighten it. Given the corrected estimat
 have to be wrong by 5 points to reverse the decision, that repeat is confirmatory
 rather than necessary.
 
-### The model is worse here, and fails through its other half
+#### The model is worse here, and fails through its other half
 
 `model` costs **14% (`f64`) to 34% (`c32` 1m)** on this machine, against 2–7% on
 Zen2. The reason is the mirror image of Zen2's: the model raises `mc` 4–6x, and
@@ -1906,7 +1789,7 @@ Zen2. The reason is the mirror image of Zen2's: the model raises `mc` 4–6x, an
 sinks it on Cascade Lake — **both halves of the derivation are wrong, on different
 machines.** A33 stands and is strengthened; `legacy` remains the recommendation.
 
-### A contamination note, since it is mine
+#### A contamination note, since it is mine
 
 `basem` and `base2` read **1.010–1.020** against `base`, i.e. the first `base` arm is
 1–2% slow. That is my own doing: for roughly the first minute of the grid's opening
@@ -1921,7 +1804,7 @@ conclusions all turn on effects of 3–26%, so none of them moves.
 Per-case floor on this machine, from the `k <= 64` identical-arm spread: **~4%**
 (against Zen2's 6.2%).
 
-### Why this shape of experiment
+#### Why this shape of experiment
 
 The blocking is the last untouched Phase 2 heuristic: `kc` is 384 for 4-byte
 reals and 256 otherwise, and `mc`/`nc` follow from a 512 KiB L2 budget for the
@@ -1973,7 +1856,7 @@ Two properties of the design worth knowing when reading the output:
   actually ran with, so an arm is self-describing and a mislabelled one is
   detectable after the fact. Same reason `MR x NR` went in there in 4.1c.
 
-### What the grid cannot answer
+#### What the grid cannot answer
 
 The truly depth-adaptive rule — `kc = min(k, KC)`, re-derived — is not an arm,
 because `Blocking::derive` is per element type and does not know the
@@ -1994,13 +1877,474 @@ to settle `kc` first and then re-run the row-block grid at the chosen `kc`,
 because that is the direction the coupling runs — `kc` decides the regime, and
 the shape is chosen inside it.
 
-## Phase 4 report, part 8 (item 4): threading, implemented and unmeasured
+### Part 9: blocking that transfers
 
-**Status: built, correct, and not yet measured.** It ships **off** (D22): the
-default thread count is 1, so nothing in this file changes and the item 2 grid
-still measures the engine it was designed against.
+Item 2's grid measures *this* machine, and nothing in it makes the result
+transfer, because three constants in `Blocking::derive` are `ccqlin038`'s cache
+sizes written down by hand. This removes them (D23): descriptors are probed at
+run time — sysfs, then `CPUID`, then built-ins, with the source reported by
+`tcbench info` so a number is traceable to a probe rather than to a guess — and
+fed to BLIS's analytical model, whose thesis is precisely that this layer needs
+no empirical search.
 
-### Why this got done before item 2 finished
+Source: Low, Igual, Smith & Quintana-Ortí, "Analytical Modeling Is Enough for
+High-Performance BLIS", ACM TOMS 43(2):12, 2016 (DOI 10.1145/2925987), read as
+the actual PDF plus FLAME Working Note #74, not from memory.
+
+**What is the paper's and what is not** — worth stating precisely, because the
+two halves have different standing:
+
+* **As written:** `kc` from eq. (4)–(6) — whole L1 ways for the `A` micro-panel
+  so the next one evicts the last, one way reserved for the unpacked `C`
+  micro-tile, and the 2-way fallback. Equations (1)–(3), which choose `mr`/`nr`,
+  are deliberately *not* used: this project measures register blocks (D19).
+* **Reconstructed:** §4.3.1 says only that `mc` and `nc` follow "in a similar
+  manner" and never writes the inequalities. The reconstruction — reserve the
+  ways the streaming operand needs plus one for `C`, give the rest to the
+  resident block — is not a guess: it reproduces the paper's own Table III `mc`
+  **exactly** for SandyBridge (96), Kaveri (1792) and the TI C6678 (128), two of
+  which are asserted as unit tests. The SandyBridge row is BLIS's real shipped
+  configuration (`mr=8, nr=4, kc=256, mc=96`) recovered from cache geometry
+  alone, which is better evidence than matching a table would be.
+* **Does not reproduce:** the Intel Dunnington row (model 1280 against the
+  paper's 384). Its `kc` does not follow eq. (4) either — the paper uses 2 ways
+  of `A_r` where the formula asks for 3 — so that row appears to carry a
+  constraint the paper never states. Recorded rather than fudged.
+* **Unvalidated inference:** `nc`, by the same symmetry one level out. The paper
+  declines to validate `nc` because three of its four machines have no L3.
+
+#### What it predicts here, which is a computation and not a measurement
+
+`cargo run --release --example blocking_model` prints it; safe to run while a
+benchmark is in flight. Post-rounding, i.e. what execution would use:
+
+| dtype | method | legacy `mc/kc/nc` | model `mc/kc/nc` |
+|---|---|---|---|
+| `f64` | – | 264 / 256 / 1536 | 1104 / **106** / 25040 |
+| `f32` | – | 384 / 384 / 2048 | 1824 / **128** / 41472 |
+| `c64` | planar | 128 / 256 / 768 | 720 / **80** / 16590 |
+| `c64` | 1m | 72 / 256 / 768 | 540 / **53** / 25040 |
+| `c32` | 1m | 96 / 384 / 1026 | 1216 / **48** / 55296 |
+
+One prediction dominates: **`kc` falls everywhere**, 2.4x in `f64` and 8x in
+`c32` 1m, whose fat "1e" panel is what forces it. That converts the `A` sliver
+from an L2 stream into an **L1 resident** — exactly the quantity Phase 3 found
+the entire method ranking to turn on, and in the direction that favours 3m. `mc`
+rises 4–6x (the model gives `A_c` 14 of 16 L2 ways) and `nc` about 20x, which
+for most corpus cases means one `jc` block. The packed-`A` footprint stays
+equalised across methods (894–914 KiB against legacy's 512–576), so the
+1m-versus-planar fairness invariant holds and 1m's `mc` is still the smaller.
+
+#### Status — superseded by measurement; read the next subsection
+
+The claim as written in this section was: the **portability** problem is solved —
+uniformly decent with no hand tuning on any machine whose cache hierarchy it can
+see — while the **optimality** question on `ccqlin038` was untouched and
+deliberately so. `A13`'s upper bound on `mc` was noted as absent from the model and
+`mc` rising 4–6x flagged as the arm that bound would punish. The model was left as
+a *second arm of the pending grid* rather than a change, to be judged end to end in
+the shipping configuration (A20).
+
+That judgement has now happened, and it went against the model.
+
+#### Measured on the first foreign machine, and it loses
+
+**`worker5040`/`worker5175` (Zen2, AVX2) is exactly the test this model was built
+for** — a machine whose cache hierarchy is nothing like the one the legacy
+constants were hand-fitted to (512 KiB private L2 against those constants' 512 KiB
+`A`-block budget, i.e. they ask for the entire L2; 16 MiB L3 per four cores against
+25 MiB per eight). If the model were going to win anywhere it should have won here.
+
+It does not. Measured in the clean single-core regime (part 7), `model` against
+`base`:
+
+| | `f32` | `f64` | `c32` planar / 1m / 3m | `c64` planar / 1m / 3m |
+|---|---|---|---|---|
+| `model` | 0.975 | **1.011** | 0.984 / 0.929 / 0.928 | 0.972 / 0.967 / 0.956 |
+
+**Below `base` in 11 of 12 columns**, by 1.6–7.2% in the complex methods, against a
+0.4% floor. Its single gain is `f64` at +1.1%.
+
+**Two things this does and does not mean.** It does *not* refute the paper: BLIS's
+own configuration is recovered exactly for SandyBridge, Kaveri and the TI C6678 by
+the reconstruction, and those unit tests still pass. What it refutes is the
+inference this project drew from it — that an analytically derived blocking is
+*therefore* a safe default for **this** engine. The failure is localised: part 7
+attributes the whole loss to the model's `kc`, which it predicts shallower for every
+complex method (`c64` 1m 256→128, `c32` 1m 384→160), while the grid's pinned-`kc`
+arms independently show shallower is worse and deeper is better. The model's `mc`
+(up 4–6x) and `nc` (up ~20x) cost nothing measurable, so A13's missing upper bound —
+the thing this section flagged as the risk — **was not the problem**. The problem
+was the half of the derivation taken straight from the paper.
+
+**The reason is now known, and it is not a bug in the equation** — see part 7,
+"Why deeper `kc` wins". The hypothesis first recorded here, that eq. (4)–(6) fails
+to carry the per-element real and plane counts through, is **retracted**:
+`model_kc` derives its ways ratio from `a_step`/`b_step`, which already include
+`a_reals`/`b_reals`, and reproduces its own published prediction exactly when worked
+by hand. The equation is correct.
+
+Its *objective* is what does not fit this engine. At the measured optimum,
+`kc >= 512`, the `A` micro-panel is 65 KB against a 32 KiB L1 — twice the whole
+cache — so the premise that a micro-panel occupies whole L1 ways is simply not where
+this engine wants to operate, and **no repair of eq. (4)–(6) can reach that depth.**
+What deeper panels actually buy is fewer `pc` passes, hence fewer times `C` is
+re-touched: scored against the `kc512` arm's own identical-computation control, the
+gain is +8.2% where the pass count halves against +2.4% where it cannot change. The
+model has no term for `C` traffic at all.
+
+So the useful repair is not to the model but to the driver: **fuse the `pc` loop**,
+which is already a Phase 4 item, and `kc` stops being first-order. That reorders the
+"re-derive the model's `kc`" item in "Resume here" — it is no longer the promising
+one.
+
+**Recommendation: leave `TENSORCONTRACT_BLOCKMODEL` defaulting to `legacy`.** D23
+is unchanged as a decision — the probing, the descriptors and `tcbench info` are
+all worth having and are not in question — but the model must not become the
+default on this evidence. Flipping it is the user's call and is deliberately not
+done in the same commit as this measurement.
+
+| # | Assumption | Status |
+|---|---|---|
+| A33 | An analytically derived blocking is a safe default on an unseen machine, so it solves portability. | **Refuted on the first unseen machine.** The model loses in 11 of 12 columns on Zen2, by up to 7.2% in the complex methods, against hand-fitted constants belonging to a completely different hierarchy. Localised to its `kc`; its `mc`/`nc` are harmless. "Analytical" bought traceability and cost throughput, and the two were assumed to come together. |
+
+| # | Assumption | Status |
+|---|---|---|
+| A22 | The model may assume one thread per physical core. | **Assumed, and the project's own rules justify it.** `cores_sharing` divides a level's logical-CPU sharing by the logical CPUs per core, so here a `shared_by = 2` L2 is one core's and a `shared_by = 16` L3 is eight cores'. Oversubscribing hyperthread siblings really would halve a thread's L1/L2, and is not modelled — the measurement rules already treat that configuration as invalid. |
+| A23 | Under threading, every cache budget must be divided by the thread count. | **Refuted; it is asymmetric.** The packed `B` panel is *shared*, so `nc`'s L3 budget is a per-socket resource used cooperatively and must **not** be divided. What shrinks `nc` is the per-thread packed `A` blocks, all of which sit in the same L3: the model charges `min(t, cores sharing that L3)` of them. This corrects the limit part 8 recorded as "`NC`'s L3 budget is still charged per core" — in the model arm only. |
+
+## Micro-kernels across instruction sets
+
+One macro body per method across two instruction sets, and what measuring the second one taught about the first.
+
+### Interlude: AVX2 kernels, and where the model can be trusted
+
+Dispatch was a single `is_x86_feature_detected!("avx512f")`, so Zen2/Zen3, most
+laptops and the *largest partition of the cluster* ran this engine at **scalar**
+speed. That is the widest gap between what this document measures and what a
+user would experience, and it blocks any prerelease. It is now closed for
+`f32`/`f64` and all three complex methods.
+
+`avx512_kernels!` became `simd_kernels!` with the instruction set as a further
+macro parameter (D24); the four bodies are not duplicated, and 1m is still
+literally `real::<MV,NR>(2*kc, ..)` on both ISAs. Dispatch resolves through a
+`OnceLock`-cached `selected_isa()`, and `TENSORCONTRACT_KERNEL` now takes
+`scalar|avx2|avx512|auto` (D25).
+
+**The AVX-512 path is unchanged, and that is checked rather than argued:** its
+7816 zmm instructions in `examples/kernel_shapes` are byte-identical to the
+pre-merge tree, verified independently at merge time by disassembling both. So
+every AVX-512 number in this file stands, and tonight's grid still measures the
+engine it was designed against.
+
+#### The register blocks, and the line between model and guess
+
+16 ymm instead of 32 zmm with the same accumulator-plane counts, so the register
+bound binds much harder. Defaults, as `MV x NR` and logical `MR x NR`:
+
+| method | `MV x NR` | f64/c64 | f32/c32 | acc | live |
+|---|---|---|---|---|---|
+| real | `2 x 6` | `8 x 6` | `16 x 6` | 12 | 15 |
+| planar | `1 x 5` | `4 x 5` | `8 x 5` | 10 | 14 |
+| 1m | `2 x 6` | `4 x 6` | `8 x 6` | 12 | 15 |
+| 3m | `1 x 4` | `4 x 4` | `8 x 4` | 12 | 14 |
+
+`real`/`1m` at `2 x 6` is BLIS's `haswell` `dgemm 6x8` / `sgemm 6x16` with the
+operand roles swapped. **These are not measured and must not be quoted as if they
+were** (D26). The modelled half — register budget and accumulator count — was
+confirmed in the disassembly at zero CPU cost, which is the fourth time the uop
+model has been right about *cliffs*. The guessed half is which of the fitting
+shapes is fastest; notably `planar 1x6` is better on both accumulator count and
+bytes/flop and is rejected only on a single spill, and 3m's `1x4` is chosen by
+analogy with the measured AVX-512 winner `1x10` (also load-bound, also lowest
+bytes/flop). Alternates are on the menu, so the whole-grid pattern applies
+unchanged once AVX2 hardware is available.
+
+#### One real result that needed no machine time
+
+`tcbench shapes` under both ISAs, which is exactly what the zero-cost analyses
+were built for:
+
+| | AVX-512 | AVX2 |
+|---|---|---|
+| case-dtype-methods where `Plan::row_block` changes shape | 26 / 392 | 12 / 392 (all `f32`) |
+| case-dtype-methods with **no** menu shape that clears the gather path | 81 | **0** |
+
+Every `f64` AVX2 row block on every menu (2, 4, 6, 8, 12) divides 24, and the
+corpus rounds every stride-1 extent to a multiple of 24. So Phase 4.1c's
+row-block rule is **inert** in `f64` and in all three complex methods on AVX2,
+and still has work to do only in `f32`.
+
+#### Correctness, and what is not done
+
+Every kernel family the CPU can execute — default shape plus every menu entry,
+real plus three complex methods, both precisions — is checked against the
+mathematical definition under a plain `cargo test`, so the AVX2 kernels are
+*executed* on this AVX-512 machine rather than merely compiled. A second test
+pins what must not drift between ISAs: shapes may differ, pack formats, tile
+formats and sliver arithmetic may not, because the driver, packing traversal and
+write-back are shared and know nothing about the ISA. The `Ukr` contract carried
+a second instruction set unmodified, which discharges the Phase 2 design claim
+again.
+
+Not done: **no AVX2 performance number of any kind.** Register blocks, the method
+ranking, and the cache budgets on an AVX2 machine's hierarchy are all unmeasured
+— run `examples/kernel_shapes` then `scripts/phase3-bench.sh` on a Haswell or Zen
+box. The `avx2`-without-`avx512` auto-selection branch has also never run on real
+hardware, only its forced equivalent.
+
+| # | Assumption | Status |
+|---|---|---|
+| A24 | The AVX-512 method ranking (planar > 1m > 3m at the operating `kc`) carries over to AVX2. | **Open, and probably not.** 16 ymm forces `MR` down to 4 complex rows in `f64`, which is the L1-resident regime where Phase 3 measured 3m *fastest*. AVX2's ranking is a separate experiment, not a re-run — and note the analytical model (part 9) pushes in the same direction on AVX-512. |
+| A25 | Smaller register blocks are purely a cost. | **Refuted, at zero CPU cost.** They are worse for the kernel and better for the write-back, and on AVX2 the write-back side of the trade is simply won: 81 of 392 case-dtype-methods have no AVX-512 menu shape that clears the gather path, against none on AVX2. |
+
+### Part 11: the AVX2 register blocks, measured
+
+**First result of the `rome` session (job 6745376, `worker5040`).** The AVX2
+register blocks were shipped as an explicit guess (D26) — the register budget and
+the accumulator count were modelled, but *which of the fitting shapes is fastest*
+was not, because the reference machine cannot execute AVX2 competitively. It can
+now be answered.
+
+The machine, from the engine's own probes rather than from `sinfo`:
+
+| | |
+|---|---|
+| host | `worker5040` (Rusty, `gen` partition, `rome`) |
+| CPU | AMD EPYC Zen2, 2 x 64 cores, **SMT off** (`sinfo` `2:64:1`, confirmed on the node) |
+| ISA | `avx2 fma`, **no AVX-512** |
+| cache | 32 KiB L1d 8-way **private**; 512 KiB L2 8-way **private**; 16 MiB L3 16-way **per 4 cores** |
+| domains | 32 L3 domains of 4 cores each |
+
+Two consequences before any number: the **`avx2`-without-`avx512` auto-selection
+branch has now executed on real hardware** for the first time (it had only ever
+been forced on an AVX-512 machine), and the whole 128-core node has **no
+hyperthread sibling**, so the contention that forced two Phase 4 retractions is
+structurally absent here rather than merely avoided.
+
+#### All four shipped shapes are the measured winners
+
+`examples/kernel_shapes`, packed panels hot, useful GF/s. At the `kc` the driver
+actually uses:
+
+| method | shipped `MV x NR` | logical `MR x NR` | GF/s | runner-up | GF/s |
+|---|---|---|---|---|---|
+| **f64 / c64, `kc = 256`** ||||||
+| real | `2 x 6` | 8 x 6 | **53.2** | 8 x 5 | 52.8 |
+| planar | `1 x 5` | 4 x 5 | **50.0** | 4 x 4 | 41.9 |
+| 1m | `2 x 6` | 4 x 6 | **53.5** | 4 x 5 | 52.9 |
+| 3m | `1 x 4` | 4 x 4 | **48.9** | 8 x 2 | 48.1 |
+| **f32 / c32, `kc = 384`** ||||||
+| real | `2 x 6` | 16 x 6 | **106.6** | 16 x 5 | 105.4 |
+| planar | `1 x 5` | 8 x 5 | **104.6** | 8 x 4 | 84.2 |
+| 1m | `2 x 6` | 8 x 6 | **107.0** | 8 x 5 | 106.5 |
+| 3m | `1 x 4` | 8 x 4 | **112.6** | 16 x 2 | 97.8 |
+
+**Eight for eight.** No change to `cfg_avx2_f64` / `cfg_avx2_f32` is indicated, so
+D26's guessed half turns out to have been right — and the *reason* is worth more
+than the confirmation: three of the four margins over the runner-up are 0.8–1.6%,
+i.e. inside anything this sweep can resolve, while the margin over the *rejected*
+shapes is 20–35%. The choice was never between close alternatives; it was between
+shapes that fit the register file and shapes that do not.
+
+**The spill has a price and it is now measured.** The interlude recorded that
+`planar 1x6` is better on both accumulator count and bytes per flop and was
+rejected "only on a single spill". That single spill costs **35% in `f64`** (32.5
+against 50.0) and **38% in `f32`** (64.5 against 104.6). Rejecting it was correct
+and the margin is not subtle.
+
+#### A correction: the register budget is 15 ymm, not 16
+
+The sweep's `!` marker flags `live > 16` — and the data says that threshold is one
+register optimistic. Every shape with `live == 16` collapses just as the flagged
+ones do:
+
+| shape | `live` | flagged? | GF/s at operating `kc` | fast sibling |
+|---|---|---|---|---|
+| `real 12x4` f64 | 16 | no | 21.3 | `real 8x6` (15) 53.2 |
+| `1m 6x4` f64 | 16 | no | 20.9 | `1m 4x6` (15) 53.5 |
+| `planar 4x6` f64 | 16 | no | 32.5 | `planar 4x5` (14) 50.0 |
+| `real 16x3` f64 | 17 | yes | 21.5 | — |
+| `3m 8x5` f32 | 17 | yes | 45.9 | `3m 8x4` (14) 112.6 |
+
+So the boundary between "fast" and "collapsed" sits at `live <= 15`, not
+`live <= 16`: one ymm is not available to the shape, and every shipped default
+happens to sit at 14 or 15. **The uop model was right about the existence and
+location of a cliff for the fifth time, and wrong about its threshold by exactly
+one register** — which is the kind of error a whole-grid sweep is for, and which
+would have been invisible from a sweep of the menu alone. The `!` predicate in
+`examples/kernel_shapes` should flag `live > 15`; it is an analysis annotation and
+not a code path, so it is deliberately **not** changed while this job holds the
+node and shares a `target/` directory with it.
+
+#### A24: the AVX-512 ranking does not carry over, and 3m leads in single precision
+
+A24 guessed "open, and probably not". At the kernel level it is now measurably
+*not*:
+
+| | AVX-512 (Phase 3, end to end) | AVX2 kernel, operating `kc` | AVX2 kernel, `kc = 16` |
+|---|---|---|---|
+| `f64`/`c64` | planar > 1m > 3m | 1m 53.5 ≈ real 53.2 > planar 50.0 > 3m 48.9 | **3m 54.8** > 1m 53.6 > real 51.6 > planar 44.3 |
+| `f32`/`c32` | planar > 1m > 3m | **3m 112.6** > 1m 107.0 ≈ real 106.6 > planar 104.6 | 3m 110.7 > 1m 107.2 > real 105.6 > planar 88.5 |
+
+3m is **first in single precision at the depth the driver uses**, where on
+AVX-512 it was last by 8% over the corpus. The mechanism is the one Phase 3
+identified and needs no revision: 16 ymm forces `MR` down to 4 complex rows in
+`f64`, which is the L1-resident regime where 3m's 25% flop saving is not consumed
+by extra plane traffic. Note also that 3m is fastest of all four at `kc = 16` in
+*both* precisions, which is Phase 3's finding reproduced on a different ISA.
+
+**What this does not settle.** These are *kernel* numbers: packed panels hot, no
+packing, no write-back, no cache blocking, which is exactly what the rest of the
+engine is. The corpus-level AVX2 ranking is a separate measurement and is not in
+this session. Do not quote the table above as a method ranking — it is the
+kernel's contribution to one, and Phase 3's whole lesson was that the ranking is
+decided by bytes moved per useful flop across the *driver*, not inside the kernel.
+
+| # | Assumption | Status |
+|---|---|---|
+| A24 | The AVX-512 method ranking (planar > 1m > 3m at the operating `kc`) carries over to AVX2. | **Refuted at the kernel level, in the direction predicted.** 3m is first in `f32`/`c32` at the operating `kc` and first in both precisions at `kc = 16`; planar is last or next-to-last in every AVX2 column. End-to-end confirmation is not in this session. |
+| A30 | The register-block sweep's `live <= 16` budget is the real one. | **Refuted, by one register.** Every `live == 16` shape collapses to 21–33 GF/s beside a 48–53 GF/s sibling at `live <= 15`. All eight shipped defaults sit at 14 or 15, so nothing shipped is affected — but the annotation is wrong and would mislead the next person choosing a shape. |
+
+#### The register block is per-microarchitecture, not per-ISA
+
+An Ice Lake session (job 6746817, `worker6016`, `STAGES="shapes threads"`) ran the
+same sweep on a *second AVX-512 Intel core*, which had never been done — every
+AVX-512 shape in `kernel::x86` was measured on Cascade Lake. Three of the four
+`f64`/`c64` defaults are still the winners there. `real` is not, and the reversal is
+symmetric:
+
+| shape (`MV x NR`) | acc | live | Cascade Lake @ `kc = 256` | Ice Lake @ `kc = 256` |
+|---|---|---|---|---|
+| `real 3 x 8` — **shipped** | 24 | 28 | **88.4** | 68.3 |
+| `real 3 x 9` | 27 | 31 | 81.3 | **74.6** |
+
+Each machine prefers the other's loser by about 9%: `3x8` wins by 8.7% on Cascade
+Lake and loses by 9.2% on Ice Lake. Both machines were swept over the same candidate
+set — `3x9` was on Cascade Lake's list and was correctly rejected there — so this is
+not a coverage gap, it is a genuine disagreement between two microarchitectures with
+the *same ISA and the same 32 registers*.
+
+The mechanism is visible in the depth columns: at `kc = 64` both machines prefer
+`3x9` (109.7 against 107.6 on Cascade Lake, 97.7 against 90.9 on Ice Lake), and the
+flip happens only at the operating depth. `3x9` carries 27 accumulator registers to
+`3x8`'s 24 and `live = 31` against 28 — the A30 budget exactly — so it puts more
+pressure on the L1 that also holds the `A` micro-panel. **Ice Lake's L1d is 48 KiB
+12-way against Cascade Lake's 32 KiB 8-way**, which is precisely the room `3x9`
+needs and does not get on the older core.
+
+**Dispatch selects shapes by ISA only**, so on every Ice Lake machine this engine
+currently runs a `real` kernel 9.2% off its own optimum — and Ice Lake is the second
+largest CPU partition on this cluster.
+
+Worth noting what makes the fix cheap: the engine *already* probes cache descriptors
+for D23, and L1 geometry alone separates these two cores (48 KiB/12-way against
+32 KiB/8-way) with no CPUID model table and no new machinery. That is a better
+discriminator than a vendor/family list because it names the thing that actually
+causes the difference.
+
+Not done, and it should be: `c64`/`c32` were only checked against the shipped
+default here, `f32`/`c32` on Ice Lake are unanalysed, and whether a single compromise
+shape exists that is within noise of both optima is unknown. None of that needs a new
+allocation — `bench-results/worker6016-*/kernel-shapes.txt` and
+`bench-results/phase3-kernel-shapes.txt` are both committed and the comparison is
+arithmetic.
+
+The full comparison, shipped shape against each machine's own best at the operating
+`kc`, from the two committed sweeps:
+
+| section | method | shipped | CL @ shipped | CL best | IL @ shipped | IL best | IL / best |
+|---|---|---|---|---|---|---|---|
+| f64/c64 | real | `24x8` | **88.4** | `24x8` 88.4 | 68.3 | `24x9` 74.6 | **0.916** |
+| f64/c64 | planar | `16x6` | 102.8 | `16x6` 102.8 | 108.4 | `16x6` 108.4 | 1.000 |
+| f64/c64 | 1m | `12x8` | 91.1 | `12x8` 91.1 | 69.7 | `12x8` 69.7 | 1.000 |
+| f64/c64 | 3m | `8x10` | 87.8 | `8x10` 87.8 | 63.8 | `8x10` 63.8 | 1.000 |
+| f32/c32 | real | `48x8` | 179.9 | `48x8` 179.9 | 150.3 | `48x9` 172.6 | **0.871** |
+| f32/c32 | planar | `32x6` | 195.7 | **`32x5` 210.9** | 221.8 | `32x6` 221.8 | 1.000 |
+| f32/c32 | 1m | `32x6` | 175.4 | `32x6` 175.4 | 136.4 | `24x8` 151.3 | **0.902** |
+| f32/c32 | 3m | `16x10` | 194.9 | `16x10` 194.9 | 134.5 | `16x10` 134.5 | 1.000 |
+
+Three of eight shipped shapes are **9–13% off on Ice Lake**, and `real` wants `NR+1`
+in *both* precisions — a coherent signature, not scatter.
+
+#### A Phase 3 defect this turned up, on the reference machine
+
+The `CL best` column has an entry that is not the shipped shape: **`planar` `f32`/`c32`
+should be `32x5` (210.9) and ships as `32x6` (195.7) — 7.8% off, on `ccqlin038`,
+in the default complex method.** This is not an Ice Lake finding; it has been true
+since Phase 3.
+
+Phase 3's own sweep output says so in as many words —
+`bench-results/phase3-kernel-shapes.txt` contains
+
+```
+best per method at kc = 384:
+  planar   MV=2 NR=5     210.9 GF/s
+```
+
+— while `cfg_avx512_f32` ships `planar = [(2, 6), (3, 4), (1, 12)]`, in which `(2, 5)`
+does not appear at all, not even as an alternate. `32x5` also wins at `kc = 64`
+(210.3 against 205.4) and loses only at `kc = 16`, so it is not a single-depth fluke.
+
+**Why it was probably chosen wrong is the interesting part.** The doc comment on
+`cfg_avx512_f32` bolds `32x6`'s bytes-per-flop (**0.20**, against `32x5`'s 0.231) and
+records 195.7 beside it. So the shape appears to have been selected on the
+bytes-moved-per-useful-flop model — the project's own central mechanism from Phase 3
+— *over* the measured throughput sitting in the same output file. That is the
+failure mode this document has now recorded four times in other guises (A16 and part
+6: write-back regularity "has now pointed the wrong way three times... it is a *gate*
+on a change, never an objective"). D19 says this project measures register blocks;
+here it modelled one and the sweep disagreed.
+
+**Not a fix, a finding.** `NR` changes the `jr` loop count and the packed-`B` sliver
+geometry, so a 7.8% kernel margin is not a 7.8% corpus margin, and `32x5` is absent
+from the menu so no runtime switch can A/B it.
+
+**And it cannot be added to the menu — a structural finding, not an oversight.** The
+row-block menu is keyed by `MR`: `cplx_config_at` dispatches on `mr` alone, and
+`row_block_menus_are_well_formed` asserts no `MR` appears twice, precisely because a
+duplicate would make the later entry unreachable. `(2, 5)` shares `MV = 2` with the
+shipped `(2, 6)`, hence the same `MR`, so **the menu has no way to express an
+`NR`-only alternate** and `TENSORCONTRACT_ROWBLOCK=idx=` can never reach it.
+
+Two routes out, and choosing is a design decision rather than a fix:
+
+* **Swap the default and measure build-to-build.** Two lines, but it gives up A15's
+  preference for runtime switches, and a build-to-build diff already produced one
+  wrong sign in Phase 4.
+* **Key the menu by position rather than by `MR`**, so entries carry `(MV, NR)` and
+  `idx=` selects an index — which is what `idx=` already implies. Touches `configs!`,
+  `cplx_config_at`, `row_blocks`, `Plan::row_block` and the well-formedness test. Not
+  large, but it changes hot-path config selection and should not ride along with a
+  measurement.
+
+So A35 is **documented and untestable end-to-end**, which is a worse state than
+merely unfixed and is recorded as such. Worth noting how it was found: entirely inside
+committed Phase 3 raw output, months later, at no machine cost. That is the return on
+keeping the sweeps.
+
+| # | Assumption | Status |
+|---|---|---|
+| A34 | Register blocks are a property of the instruction set, so one measurement per ISA is enough (the premise of D19 and of `cfg_avx512_*` / `cfg_avx2_*`). | **Refuted.** Cascade Lake and Ice Lake, same ISA and same 32 registers, disagree by up to 13% on three of eight shapes, and `real` wants `NR+1` in both precisions — Ice Lake's 48 KiB 12-way L1 accommodates an accumulator footprint Cascade Lake's 32 KiB 8-way does not. Shapes are per-microarchitecture; probed L1 geometry separates these two with no CPUID table. |
+| A35 | The shipped register blocks are the ones the Phase 3 sweep selected. | **Refuted for one of eight, and now testable.** `planar` `f32`/`c32` ships `32x6` where the sweep's own output names `32x5`, 7.8% faster at the operating `kc`. The bolded bytes-per-flop in the config's doc comment suggests it was chosen by model over measurement, which is the same error A16 records for write-back regularity. It was unreachable until the menu was re-keyed by position (D43); `32x5` is now the last planar `f32` entry and `TENSORCONTRACT_ROWBLOCK=idx=3` selects it end to end. Still unfixed on purpose: verify before changing, because kernel margin ≠ corpus margin. |
+
+## Threading
+
+Phase 4 item 4, end to end: the scheme, the 2-D partition, the domain-aware gate that is now the default, load imbalance, what TBLIS does, and the two experiments that decide the default.
+
+### Part 8 (item 4): threading, implemented and measured
+
+**Status when written: built, correct, and not yet measured.** It shipped **off**
+(D22) so nothing else in this file changed and the item 2 grid still measured the
+engine it was designed against.
+
+> **Overtaken, 2026-08-04.** It is now measured on seven nodes (five Zen2, two Ice Lake). The measured
+> subsections below are the ones to read; the forward-looking parts of this
+> report were written before any of them. Threads are **still off by default**,
+> now for a measured reason (D46) rather than for want of data, and the partition
+> gate *is* on by default (D44).
+
+#### Why this got done before item 2 finished
 
 The workstation was needed for other work, which made a seven-hour
 noise-sensitive measurement the wrong thing to be holding the machine for and a
@@ -2017,7 +2361,7 @@ per-socket question the moment threading is on. **Tonight's `nc` arms are
 therefore single-core results and must be labelled as such**; the `kc` and `mc`
 arms are not affected.
 
-### The scheme
+#### The scheme
 
 `M` is cut once into `p` contiguous strips of whole `MR` panels. Each thread
 runs loops 3, 2 and 1 over its own strip with its own packed `A` block; the
@@ -2045,7 +2389,7 @@ Consequences, all deliberate (D21):
   pre-threading driver is two `Option` checks per `(jc, pc)`, nowhere near the
   hot loops.
 
-### Correctness
+#### Correctness
 
 `cargo test --workspace --release` green, and green again under
 `TENSORCONTRACT_KERNEL=scalar`, at `TENSORCONTRACT_THREADS` of 1, 2, 4 and 8 —
@@ -2064,18 +2408,17 @@ the **oriented** row direction, so a `1 x 33` output parallelises into two
 strips along 33. Skinny-`M` is therefore not automatically serial; skinny in
 *both* directions is.
 
-### What is not known yet
+#### What was not known yet, and the three structural limits
 
-Everything quantitative. `scripts/phase4f-threads.sh` is written and
-smoke-tested and measures 1/2/4/8 threads on physical cores of one socket
-(it refuses a cpuset containing hyperthread siblings, since that measures a
-different question). The only number in hand is from that smoke test — one case,
-8 MiB, one rep, on a shared machine, so an indication and nothing more:
-`ijkl-imjn-lnkm` at **3.63–3.73x on 4 threads** in `f64`/`c64` and 2.69x in
-`c32` planar. Treat as evidence that the parallelism is real, not as a result.
+*Everything quantitative, at the time.* `scripts/phase4f-threads.sh` measures
+1/2/4/8 threads on physical cores of one socket and refuses a cpuset containing
+hyperthread siblings, since that measures a different question. **The smoke-test
+figure this section originally quoted is removed rather than kept** — one case,
+one rep, on a shared machine, superseded by the measured subsections below, and
+the kind of number that gets quoted later as though it were a result.
 
-Three limits are structural and known in advance, listed in the order they will
-bite:
+Three limits are structural and were known in advance, listed in the order they
+will bite:
 
 1. **Parallelism is capped at `ceil(M / MR)` strips.** A contraction whose
    oriented row direction is short cannot use the cores however much work it
@@ -2093,7 +2436,7 @@ bite:
    population Phase 1 identified as the real headroom.
 3. **`NC`'s L3 budget is still per-core**, as above.
 
-### `K`-parallelism is not needed, and the reason is structural
+#### `K`-parallelism is not needed, and the reason is structural
 
 Worth recording so it is not re-opened: parallelising the `pc` loop — the one
 axis that would require per-thread accumulators and a reduction — is **not
@@ -2113,7 +2456,7 @@ shape, the feature is *cheap* precisely where it is needed — the output being
 tiny is what makes per-thread accumulator tiles L1-resident and the final
 reduction negligible. So this is a demand-driven feature, not a Phase 4 item.
 
-### Measured, on `worker5040` (Zen2, 64 cores of one socket, AVX2)
+#### Measured, on `worker5040` (Zen2, 64 cores of one socket, AVX2)
 
 **Everything in this subsection is within-session.** Nothing in it is comparable
 to the single-core numbers elsewhere in this file. Each arm ran on exactly as many
@@ -2122,7 +2465,7 @@ cores as it had threads, taken in order so that `t4` is one 4-core L3 domain and
 cores outside the cpuset were idle at **0.0% mean, 1.1% max** throughout, so the
 node was genuinely exclusive rather than nominally so.
 
-#### The noise floor, and a defect in the A/B/A' pattern itself
+##### The noise floor, and a defect in the A/B/A' pattern itself
 
 | pair | `t1` vs `t1b` | when both ran |
 |---|---|---|
@@ -2158,7 +2501,7 @@ single-core figure — but the **tail explodes to ±26–31%**. Per-case claims 
 thread counts are close to worthless here; geomeans over the corpus are good to
 about ±2%.
 
-#### Scaling saturates at 16–32 threads and then declines
+##### Scaling saturates at 16–32 threads and then declines
 
 Per-case geometric mean against the same session's `t1`:
 
@@ -2189,7 +2532,7 @@ Four things follow, and the occupancy column is doing most of the work:
    8x.** The best case reaches 17.8x. Nothing in this corpus scales well at 64
    threads.
 
-#### The prediction, scored
+##### The prediction, scored
 
 Part 10 predicted, before the run, that the genuinely partition-limited family at
 64 threads would be `ij-ikl-ljk` and `ij-kil-lkj`, and that if anything else
@@ -2203,7 +2546,7 @@ flattened it would be contention or a bug rather than the partition. Scored:
   partition limit at all. They are the memory-bound `k = 24` cases, and the reason
   they flatten turns out not to be contention either. See part 8b.
 
-#### Ice Lake: the same code scales twice as well, and it identifies the mechanism
+##### Ice Lake: the same code scales twice as well, and it identifies the mechanism
 
 A second session (job 6746817, `worker6016`, Ice Lake-SP, `STAGES="shapes threads"`,
 one 48 MiB L3 per 32-core socket) ran the same arms. Its `t1`/`t1b` floor is
@@ -2294,7 +2637,7 @@ packs by construction (`cpuset_for` takes the first `nt` cores in domain order),
 that arm does not exist yet; it wants a `--spread` cpuset mode, which is a few lines.
 The cross-machine control above makes it confirmatory rather than load-bearing.
 
-#### The default: revised by the second machine
+##### The default: revised by the second machine
 
 Threading is off by default (D22) purely because it was unmeasured. It is now
 measured on two machines, and **the first machine alone would have given the wrong
@@ -2324,9 +2667,11 @@ measurement.
 | A21 | Some compute-bound contractions will need `K`-parallelism, hence per-thread accumulators and a reduction. | **Refuted for this corpus, and argued structurally.** 20 of 392 case-dtype-methods cannot fill 8 threads from `M`, all 20 can from `M x N`, and needing `K` requires fewer than `p` micro-tiles in the whole output — which bounds arithmetic intensity at `~2MN/((M+N)*bytes)` and so bounds the case away from compute-bound. Build the 2-D partition; leave `K` unbuilt until a real shape demands it. *Confirmed again in part 10 at every thread count to 128 in both instruction sets, i.e. 16x the width it was argued at.* |
 | A31 | `A, B, A'` bracketing is enough to establish a session's noise floor. | **Refuted on a machine with boost headroom.** The session's opening arm ran at single-core boost on a cold package and nothing else did, so its repeat came back 3.4–4.7% slower *uniformly* — reported by the bracket as a ±4.7% floor, while every ratio measured against that opening arm was inflated by the same amount. The second dtype pair, measured entirely hot, drifts 1.1–1.9%. Invisible on `ccqlin038` because a shared workstation is never cold. **Run and discard a warm-up arm.** |
 
-## Phase 4 report, part 8b (item 4): the partition becomes 2-D
+### Part 8b (item 4): the partition becomes 2-D
 
-**Status: built, correct, unmeasured.** Still off by default (D22).
+**Status when written: built, correct, unmeasured.** Measured in part 12; the
+partition rule it introduced is now the default (D44), while the *thread count*
+still is not (D46).
 
 Part 8 named the 1-D partition's first limit and sized it before the fix was
 built: 16 of 392 case-dtype-methods cannot fill 8 threads from `M` alone, over
@@ -2374,7 +2719,7 @@ scaling curve. Verified behaviourally at merge: `aqrs-pa-pqrs` runs `2x4` in
 `f64` and `1x8` in `c64`, a wide case stays `8x1`, and the sweep CSV records
 `t<threads>/<pm>x<pn>` so the partition is recoverable from the data.
 
-### Measured, on `worker5040` at 64 threads: the 2-D split is right and the rule's first line is wrong
+#### Measured, on `worker5040` at 64 threads: the 2-D split is right and the rule's first line is wrong
 
 Two arms, both against the rule at the same thread count, on the cases where they
 actually change the partition (everything else is a control group and is what the
@@ -2457,1138 +2802,7 @@ clamped to serial — written in units of `MR`/`NR`, since a shape two row panel
 deep in `f32` is fourteen with the portable kernels. Green in release and debug,
 and across all ten combinations of the three features merged today.
 
-## Phase 4 report, part 9: blocking that transfers
-
-Item 2's grid measures *this* machine, and nothing in it makes the result
-transfer, because three constants in `Blocking::derive` are `ccqlin038`'s cache
-sizes written down by hand. This removes them (D23): descriptors are probed at
-run time — sysfs, then `CPUID`, then built-ins, with the source reported by
-`tcbench info` so a number is traceable to a probe rather than to a guess — and
-fed to BLIS's analytical model, whose thesis is precisely that this layer needs
-no empirical search.
-
-Source: Low, Igual, Smith & Quintana-Ortí, "Analytical Modeling Is Enough for
-High-Performance BLIS", ACM TOMS 43(2):12, 2016 (DOI 10.1145/2925987), read as
-the actual PDF plus FLAME Working Note #74, not from memory.
-
-**What is the paper's and what is not** — worth stating precisely, because the
-two halves have different standing:
-
-* **As written:** `kc` from eq. (4)–(6) — whole L1 ways for the `A` micro-panel
-  so the next one evicts the last, one way reserved for the unpacked `C`
-  micro-tile, and the 2-way fallback. Equations (1)–(3), which choose `mr`/`nr`,
-  are deliberately *not* used: this project measures register blocks (D19).
-* **Reconstructed:** §4.3.1 says only that `mc` and `nc` follow "in a similar
-  manner" and never writes the inequalities. The reconstruction — reserve the
-  ways the streaming operand needs plus one for `C`, give the rest to the
-  resident block — is not a guess: it reproduces the paper's own Table III `mc`
-  **exactly** for SandyBridge (96), Kaveri (1792) and the TI C6678 (128), two of
-  which are asserted as unit tests. The SandyBridge row is BLIS's real shipped
-  configuration (`mr=8, nr=4, kc=256, mc=96`) recovered from cache geometry
-  alone, which is better evidence than matching a table would be.
-* **Does not reproduce:** the Intel Dunnington row (model 1280 against the
-  paper's 384). Its `kc` does not follow eq. (4) either — the paper uses 2 ways
-  of `A_r` where the formula asks for 3 — so that row appears to carry a
-  constraint the paper never states. Recorded rather than fudged.
-* **Unvalidated inference:** `nc`, by the same symmetry one level out. The paper
-  declines to validate `nc` because three of its four machines have no L3.
-
-### What it predicts here, which is a computation and not a measurement
-
-`cargo run --release --example blocking_model` prints it; safe to run while a
-benchmark is in flight. Post-rounding, i.e. what execution would use:
-
-| dtype | method | legacy `mc/kc/nc` | model `mc/kc/nc` |
-|---|---|---|---|
-| `f64` | – | 264 / 256 / 1536 | 1104 / **106** / 25040 |
-| `f32` | – | 384 / 384 / 2048 | 1824 / **128** / 41472 |
-| `c64` | planar | 128 / 256 / 768 | 720 / **80** / 16590 |
-| `c64` | 1m | 72 / 256 / 768 | 540 / **53** / 25040 |
-| `c32` | 1m | 96 / 384 / 1026 | 1216 / **48** / 55296 |
-
-One prediction dominates: **`kc` falls everywhere**, 2.4x in `f64` and 8x in
-`c32` 1m, whose fat "1e" panel is what forces it. That converts the `A` sliver
-from an L2 stream into an **L1 resident** — exactly the quantity Phase 3 found
-the entire method ranking to turn on, and in the direction that favours 3m. `mc`
-rises 4–6x (the model gives `A_c` 14 of 16 L2 ways) and `nc` about 20x, which
-for most corpus cases means one `jc` block. The packed-`A` footprint stays
-equalised across methods (894–914 KiB against legacy's 512–576), so the
-1m-versus-planar fairness invariant holds and 1m's `mc` is still the smaller.
-
-### Status — superseded by measurement; read the next subsection
-
-The claim as written in this section was: the **portability** problem is solved —
-uniformly decent with no hand tuning on any machine whose cache hierarchy it can
-see — while the **optimality** question on `ccqlin038` was untouched and
-deliberately so. `A13`'s upper bound on `mc` was noted as absent from the model and
-`mc` rising 4–6x flagged as the arm that bound would punish. The model was left as
-a *second arm of the pending grid* rather than a change, to be judged end to end in
-the shipping configuration (A20).
-
-That judgement has now happened, and it went against the model.
-
-### Measured on the first foreign machine, and it loses
-
-**`worker5040`/`worker5175` (Zen2, AVX2) is exactly the test this model was built
-for** — a machine whose cache hierarchy is nothing like the one the legacy
-constants were hand-fitted to (512 KiB private L2 against those constants' 512 KiB
-`A`-block budget, i.e. they ask for the entire L2; 16 MiB L3 per four cores against
-25 MiB per eight). If the model were going to win anywhere it should have won here.
-
-It does not. Measured in the clean single-core regime (part 7), `model` against
-`base`:
-
-| | `f32` | `f64` | `c32` planar / 1m / 3m | `c64` planar / 1m / 3m |
-|---|---|---|---|---|
-| `model` | 0.975 | **1.011** | 0.984 / 0.929 / 0.928 | 0.972 / 0.967 / 0.956 |
-
-**Below `base` in 11 of 12 columns**, by 1.6–7.2% in the complex methods, against a
-0.4% floor. Its single gain is `f64` at +1.1%.
-
-**Two things this does and does not mean.** It does *not* refute the paper: BLIS's
-own configuration is recovered exactly for SandyBridge, Kaveri and the TI C6678 by
-the reconstruction, and those unit tests still pass. What it refutes is the
-inference this project drew from it — that an analytically derived blocking is
-*therefore* a safe default for **this** engine. The failure is localised: part 7
-attributes the whole loss to the model's `kc`, which it predicts shallower for every
-complex method (`c64` 1m 256→128, `c32` 1m 384→160), while the grid's pinned-`kc`
-arms independently show shallower is worse and deeper is better. The model's `mc`
-(up 4–6x) and `nc` (up ~20x) cost nothing measurable, so A13's missing upper bound —
-the thing this section flagged as the risk — **was not the problem**. The problem
-was the half of the derivation taken straight from the paper.
-
-**The reason is now known, and it is not a bug in the equation** — see part 7,
-"Why deeper `kc` wins". The hypothesis first recorded here, that eq. (4)–(6) fails
-to carry the per-element real and plane counts through, is **retracted**:
-`model_kc` derives its ways ratio from `a_step`/`b_step`, which already include
-`a_reals`/`b_reals`, and reproduces its own published prediction exactly when worked
-by hand. The equation is correct.
-
-Its *objective* is what does not fit this engine. At the measured optimum,
-`kc >= 512`, the `A` micro-panel is 65 KB against a 32 KiB L1 — twice the whole
-cache — so the premise that a micro-panel occupies whole L1 ways is simply not where
-this engine wants to operate, and **no repair of eq. (4)–(6) can reach that depth.**
-What deeper panels actually buy is fewer `pc` passes, hence fewer times `C` is
-re-touched: scored against the `kc512` arm's own identical-computation control, the
-gain is +8.2% where the pass count halves against +2.4% where it cannot change. The
-model has no term for `C` traffic at all.
-
-So the useful repair is not to the model but to the driver: **fuse the `pc` loop**,
-which is already a Phase 4 item, and `kc` stops being first-order. That reorders the
-"re-derive the model's `kc`" item in "Resume here" — it is no longer the promising
-one.
-
-**Recommendation: leave `TENSORCONTRACT_BLOCKMODEL` defaulting to `legacy`.** D23
-is unchanged as a decision — the probing, the descriptors and `tcbench info` are
-all worth having and are not in question — but the model must not become the
-default on this evidence. Flipping it is the user's call and is deliberately not
-done in the same commit as this measurement.
-
-| # | Assumption | Status |
-|---|---|---|
-| A33 | An analytically derived blocking is a safe default on an unseen machine, so it solves portability. | **Refuted on the first unseen machine.** The model loses in 11 of 12 columns on Zen2, by up to 7.2% in the complex methods, against hand-fitted constants belonging to a completely different hierarchy. Localised to its `kc`; its `mc`/`nc` are harmless. "Analytical" bought traceability and cost throughput, and the two were assumed to come together. |
-
-| # | Assumption | Status |
-|---|---|---|
-| A22 | The model may assume one thread per physical core. | **Assumed, and the project's own rules justify it.** `cores_sharing` divides a level's logical-CPU sharing by the logical CPUs per core, so here a `shared_by = 2` L2 is one core's and a `shared_by = 16` L3 is eight cores'. Oversubscribing hyperthread siblings really would halve a thread's L1/L2, and is not modelled — the measurement rules already treat that configuration as invalid. |
-| A23 | Under threading, every cache budget must be divided by the thread count. | **Refuted; it is asymmetric.** The packed `B` panel is *shared*, so `nc`'s L3 budget is a per-socket resource used cooperatively and must **not** be divided. What shrinks `nc` is the per-thread packed `A` blocks, all of which sit in the same L3: the model charges `min(t, cores sharing that L3)` of them. This corrects the limit part 8 recorded as "`NC`'s L3 budget is still charged per core" — in the model arm only. |
-
-## Phase 4/5 interlude: AVX2 kernels, and where the model can be trusted
-
-Dispatch was a single `is_x86_feature_detected!("avx512f")`, so Zen2/Zen3, most
-laptops and the *largest partition of the cluster* ran this engine at **scalar**
-speed. That is the widest gap between what this document measures and what a
-user would experience, and it blocks any prerelease. It is now closed for
-`f32`/`f64` and all three complex methods.
-
-`avx512_kernels!` became `simd_kernels!` with the instruction set as a further
-macro parameter (D24); the four bodies are not duplicated, and 1m is still
-literally `real::<MV,NR>(2*kc, ..)` on both ISAs. Dispatch resolves through a
-`OnceLock`-cached `selected_isa()`, and `TENSORCONTRACT_KERNEL` now takes
-`scalar|avx2|avx512|auto` (D25).
-
-**The AVX-512 path is unchanged, and that is checked rather than argued:** its
-7816 zmm instructions in `examples/kernel_shapes` are byte-identical to the
-pre-merge tree, verified independently at merge time by disassembling both. So
-every AVX-512 number in this file stands, and tonight's grid still measures the
-engine it was designed against.
-
-### The register blocks, and the line between model and guess
-
-16 ymm instead of 32 zmm with the same accumulator-plane counts, so the register
-bound binds much harder. Defaults, as `MV x NR` and logical `MR x NR`:
-
-| method | `MV x NR` | f64/c64 | f32/c32 | acc | live |
-|---|---|---|---|---|---|
-| real | `2 x 6` | `8 x 6` | `16 x 6` | 12 | 15 |
-| planar | `1 x 5` | `4 x 5` | `8 x 5` | 10 | 14 |
-| 1m | `2 x 6` | `4 x 6` | `8 x 6` | 12 | 15 |
-| 3m | `1 x 4` | `4 x 4` | `8 x 4` | 12 | 14 |
-
-`real`/`1m` at `2 x 6` is BLIS's `haswell` `dgemm 6x8` / `sgemm 6x16` with the
-operand roles swapped. **These are not measured and must not be quoted as if they
-were** (D26). The modelled half — register budget and accumulator count — was
-confirmed in the disassembly at zero CPU cost, which is the fourth time the uop
-model has been right about *cliffs*. The guessed half is which of the fitting
-shapes is fastest; notably `planar 1x6` is better on both accumulator count and
-bytes/flop and is rejected only on a single spill, and 3m's `1x4` is chosen by
-analogy with the measured AVX-512 winner `1x10` (also load-bound, also lowest
-bytes/flop). Alternates are on the menu, so the whole-grid pattern applies
-unchanged once AVX2 hardware is available.
-
-### One real result that needed no machine time
-
-`tcbench shapes` under both ISAs, which is exactly what the zero-cost analyses
-were built for:
-
-| | AVX-512 | AVX2 |
-|---|---|---|
-| case-dtype-methods where `Plan::row_block` changes shape | 26 / 392 | 12 / 392 (all `f32`) |
-| case-dtype-methods with **no** menu shape that clears the gather path | 81 | **0** |
-
-Every `f64` AVX2 row block on every menu (2, 4, 6, 8, 12) divides 24, and the
-corpus rounds every stride-1 extent to a multiple of 24. So Phase 4.1c's
-row-block rule is **inert** in `f64` and in all three complex methods on AVX2,
-and still has work to do only in `f32`.
-
-### Correctness, and what is not done
-
-Every kernel family the CPU can execute — default shape plus every menu entry,
-real plus three complex methods, both precisions — is checked against the
-mathematical definition under a plain `cargo test`, so the AVX2 kernels are
-*executed* on this AVX-512 machine rather than merely compiled. A second test
-pins what must not drift between ISAs: shapes may differ, pack formats, tile
-formats and sliver arithmetic may not, because the driver, packing traversal and
-write-back are shared and know nothing about the ISA. The `Ukr` contract carried
-a second instruction set unmodified, which discharges the Phase 2 design claim
-again.
-
-Not done: **no AVX2 performance number of any kind.** Register blocks, the method
-ranking, and the cache budgets on an AVX2 machine's hierarchy are all unmeasured
-— run `examples/kernel_shapes` then `scripts/phase3-bench.sh` on a Haswell or Zen
-box. The `avx2`-without-`avx512` auto-selection branch has also never run on real
-hardware, only its forced equivalent.
-
-| # | Assumption | Status |
-|---|---|---|
-| A24 | The AVX-512 method ranking (planar > 1m > 3m at the operating `kc`) carries over to AVX2. | **Open, and probably not.** 16 ymm forces `MR` down to 4 complex rows in `f64`, which is the L1-resident regime where Phase 3 measured 3m *fastest*. AVX2's ranking is a separate experiment, not a re-run — and note the analytical model (part 9) pushes in the same direction on AVX-512. |
-| A25 | Smaller register blocks are purely a cost. | **Refuted, at zero CPU cost.** They are worse for the kernel and better for the write-back, and on AVX2 the write-back side of the trade is simply won: 81 of 392 case-dtype-methods have no AVX-512 menu shape that clears the gather path, against none on AVX2. |
-
-## Phase 5 report, part 1: what preparing v0.1 found
-
-Packaging was expected to be tidying. It was mostly **discovering that the
-project's own quality gates had never run**, which is a more useful result and
-worth recording in full so the lesson survives.
-
-### CI was not gating anything it claimed to gate
-
-Three of five jobs could not have been passing, each for an independent reason,
-and none had ever been noticed because nobody had run the commands locally with
-the flags the workflow uses:
-
-| job | why it could not pass |
-|---|---|
-| `msrv` | pinned toolchain **1.75** against a declared `rust-version` of 1.89, so cargo refuses before compiling anything |
-| `lint` | `cargo fmt --all -- --check` against a tree with drift in five files, mostly macro-adjacent code in `kernel/x86.rs` and `plan.rs` |
-| `docs` | `cargo doc` under `-D warnings` against **17 rustdoc errors**, nine of them public documentation linking into private modules |
-
-The general lesson, which is the same one A15 and A20 taught in the measurement
-domain: **a gate nobody has watched fail is not a gate.** Every command in the
-workflow was re-verified locally before being trusted, and the new job set is
-smaller and states what each job proves.
-
-Two of the new jobs cover code paths that had **never been exercised in CI at
-all**: the threaded driver (threading is off by default, so no test ran it) and
-the analytical blocking model. The x86 runners have AVX2 but not AVX-512, so
-CI's default path is now the AVX2 kernels — the ones whose register blocks are
-provisional (D26) — which makes the untuned path the *automatically* tested one.
-
-### Defects that would have shipped
-
-* **`examples/kernel_shapes` did not compile off x86**, and `cargo test` builds
-  examples, so the suite failed for every aarch64 user. Now a cfg-gated module.
-* **The declared MSRV was wrong** in the other direction too — see D31.
-* **The `trace` feature was declared, described, and implemented nowhere.**
-  Removed rather than advertised.
-* **The TAPP crate cannot be packaged before the engine is published.** It
-  depends on the engine by path *and* version, and packaging rewrites that
-  into a registry dependency which must then resolve — so
-  `cargo package -p tensorprimitives-tapp` fails at "failed to prepare local
-  package for uploading" until `tensorcontract 0.1.0` is in the index.
-  `cargo package --workspace` appears to work, and does set up a temporary
-  registry to satisfy the dependency, but it is **not a reliable gate**: it was
-  observed verifying the dependent crate against a *stale* extraction of the
-  engine as soon as the dependent used an engine API added since the previous
-  packaging run — which is precisely the case such a job exists to catch. It
-  passed earlier in this session and then failed on exactly that change, which is
-  how the behaviour was found. CI therefore gates `cargo package -p
-  tensorcontract` only, and the ordering stands as the documented publish
-  procedure: `tensorcontract`, wait for the index, then `tensorprimitives-tapp`.
-* **The `std` feature promised something it does not deliver.** Disabling it
-  compiles, but the crate has no `#![no_std]` and uses `Vec`, so it is not a
-  no-std build. The feature is now documented as the seam a future port would
-  widen rather than as a claim.
-* **The README described the Phase 2 engine** — scalar kernels, "performance not
-  yet meaningful" — two phases and two instruction sets out of date.
-
-### What the API decision cost and bought
-
-D30's three tiers. The part worth carrying forward is that this project *needs*
-a tier whose values are explicitly unstable: it ships measured heuristics, and it
-re-measures them every phase. Publishing without saying so would have forced a
-choice between freezing the tuning and breaking semver at each phase boundary.
-
-Two side effects of the documentation pass are worth keeping. `kernel::scalar`
-had been *documented* as the route by which a foreign scalar type gets a correct
-engine for free and never demonstrated; it now carries a worked example that
-compiles and runs as a doctest for 0.11 s. And both blanket
-`allow(clippy::missing_safety_doc)` attributes are gone — the x86 one had been
-hiding that the four generated kernels have *different* panel and tile bounds
-(1x, 2x, 3x the real kernel's, by packing format) and that the plain-`fn`
-trampolines drop the `#[target_feature]` attribute but not the obligation.
-
-### The TAPP conformance suite, and the four gaps it found
-
-`crates/tensorprimitives-tapp` had **one test** — a happy-path `c64` contraction —
-behind a coverage table claiming four datatypes, TAPP cases 1–4, conjugation on
-any operand, two documented rejections and mixed precision. For the crate whose
-entire purpose is that a C caller can swap this engine for TBLIS behind one
-header, that was the thinnest-tested part of the workspace, and every claim in
-the table was unverified. It is now **84 tests**, all through the `extern "C"`
-entry points rather than the Rust `Plan` behind them, because the bugs this layer
-can have are exactly the ones invisible from there.
-
-Two design points worth copying. Numerics go against the brute-force oracle
-*plus* two hand-computed anchors, so a shared engine/oracle bug cannot pass. And
-the suite was **falsified before it was trusted**: perturbing one hand-computed
-constant failed exactly the hand-checked test, while perturbing the oracle call's
-`alpha` failed 33 of 34, leaving only the anchor — which is the correct pattern
-and confirms the two mechanisms are independent. A conformance suite nobody has
-watched fail is not evidence, which is A15's lesson in a third domain.
-`abi_layout.rs` additionally re-declares the whole upstream header in an
-`extern "C"` block and drives a contraction through it, so a renamed `#[no_mangle]`
-is a link error in our own tests rather than a downstream C build's discovery.
-
-**Four gaps, all fixed rather than filed** (none was a wrong number):
-
-1. **An extent product could abort the caller's process.** Nothing between
-   `TAPP_create_tensor_info` and `build_scatter` checked that a tensor's extents
-   multiply to something representable. The product wrapped: in release the plan
-   built, reported success and computed *nothing*; in debug the multiply panicked
-   inside an `extern "C"` function, which the compiler turns into a process abort.
-   `reduce_tensor` now folds with `checked_mul` and reports
-   `Error::ExtentProductOverflow` → `TAPP_ERROR_SHAPE`. Checking per tensor bounds
-   every scatter vector, since each is as long as the product of some *subset* of
-   one tensor's axes.
-2. **A null `C` silently discarded `D`.** Upstream defines `TAPP_IN_PLACE` as
-   `NULL` and leaves its meaning an open `//TODO`; this crate read it as
-   `beta = 0`, so `beta = 1, C = TAPP_IN_PLACE` — precisely what a caller writes
-   for `D += alpha*A*B` — overwrote `D` and reported success. The ambiguous
-   combination is now refused; in-place accumulation is expressible by passing
-   `D`'s own pointer as `C`.
-3. **Every library handle was the value `1`.** `HandleState` was zero-sized, so
-   `Box::into_raw` returned `NonNull::dangling()`: two live handles were
-   indistinguishable and a C program creating two and destroying both was
-   double-freeing — harmlessly, for exactly as long as the state stayed empty.
-   It has a reserved field now, and the comment claiming this made handle
-   validity *checkable* is gone: it never did, and nothing can.
-4. **Three declared symbols did not exist.** `TAPP_attr_set`/`_get`/`_clear` were
-   absent, so a C program including `<tapp.h>` and calling one failed to **link**
-   — the least diagnosable failure available. Now exported as refusals, which is
-   conformant (upstream specifies no keys) and diagnosable. Prototypes fetched
-   from the upstream header, not reconstructed.
-
-Also corrected: `execute` now writes `0` through a non-null `status`, so the
-idiomatic create/execute/destroy sequence stops handing an uninitialised value to
-the destructor; and the coverage table now admits that mixed *storage* types are
-rejected (§1.6 of `DESIGN.md` lists them as in TAPP's scope, and they are — just
-not here), and that `TAPP_ERROR_*` beyond zero are this crate's own numbering,
-since upstream `error.h` fixes only `TAPP_SUCCESS`.
-
-| # | Assumption | Status |
-|---|---|---|
-| A26 | The TAPP layer is thin enough that the engine's own correctness tests cover it. | **Refuted.** Everything the layer can get wrong — datatype-tag dispatch, `intptr_t` handle casts, label arrays read at a rank the info supplies, `beta` on a null `C`, the `status` and `prec` arguments — is invisible from the Rust API and had no test. Four gaps on first contact, one of which aborted the caller's process. **Test an FFI layer as its caller, not as its callee.** |
-
-### Still open before publishing
-
-* **Defaults.** Threading and the blocking model are both off, which is honest
-  but means a 64-core machine gets one thread and a foreign cache hierarchy gets
-  constants fitted to `ccqlin038`. Flipping either needs the two pending
-  measurements, not a decision.
-
-  **Superseded, and not in the direction this expected.** Both measurements have
-  since been taken (parts 11–13). The blocking model **loses** on the first unseen
-  machine and stays off on evidence rather than for want of it (A33); threading's
-  scaling turned out to be topology-dependent in a way `Plan::partition` does not
-  model, and the one machine measured first would have produced the wrong rule
-  (A36). So "flipping either needs a measurement" was right about the process and
-  wrong about the outcome: the measurements argued for leaving both alone.
-* Publication itself, which is a human step and deliberately not automated.
-
-## Phase 5 report, part 2: the distribution surface, and a Julia consumer
-
-**Status: complete except for the irreversible steps, which are deliberately not
-taken.** No tag, nothing published to crates.io, no Yggdrasil PR. Prompted by the
-question "could I try this from Julia", which turns out to be the same question as
-"can this be distributed as a binary at all" — and the answer was no, for four
-reasons that had nothing to do with the engine.
-
-Part 1 ended with a list of two open items. This is the list that was actually
-open, and every item on it was found by *doing* the thing rather than by reading
-the code. That is the theme, and it is the same theme as part 1's "a gate nobody
-has watched fail is not a gate".
-
-### Four gaps between "the ABI is correct" and "a distribution can ship it"
-
-1. **Nothing reported a version.** `TAPP_implementation_name()` returns a
-   free-form string with no number in it, and the crate version was visible only
-   to cargo. A distribution that ships `include/` and `lib/` as separate packages —
-   which is what a JLL, a system package, or a stale `-I` all produce — could have
-   them from different versions with nothing anywhere to notice. There are now
-   `TAPP_VERSION_*` macros describing the header and
-   `TAPP_implementation_version()` describing the linked library, and **both halves
-   are tested**: `abi_layout.rs` reads the header as *text* and compares to
-   `CARGO_PKG_VERSION`, so the check holds on a machine with no C toolchain, and
-   `examples/c-consumer` compares the macro its own compiler saw against the string
-   its own link returned.
-2. **The `cdylib` had no SONAME, and on macOS something worse than none.** rustc
-   emits `-soname` only for the `dylib` crate type, never for `cdylib`, so every
-   consumer recorded a bare filename. On Mach-O, ld64 defaults `LC_ID_DYLIB` to the
-   `-o` path — an absolute build-tree path — and BinaryBuilder's `ensure_soname`
-   autofix *returns early whenever an ID is present without inspecting its value*.
-   So a macOS build would have shipped unrelocatable with a clean audit. See D40.
-3. **Eight of the 23 prototypes in `tapp.h` had never been seen by a C compiler
-   or a linker.** `main.c` called the ones that do work; the setters,
-   `TAPP_get_strides`, the batched product, `TAPP_destroy_status` and two attribute
-   functions were checked only by `abi_layout.rs`'s Rust transcription, which is a
-   second hand-maintained copy rather than an oracle. The header's `TAPP_ERROR_NULL`
-   prose bug — fixed in this pass — was exactly that failure class one level
-   further out: prose, which nothing tests at all.
-4. **There were no install rules.** The library was consumable only by knowing
-   cargo's directory layout. `install.sh` plus a pkg-config template fixes that, and
-   the example gained a third link mode (`-DTAPP_PREFIX=`) that consumes an
-   installed prefix — the only mode in which the header comes from outside the
-   source tree, and therefore the only one that would catch an install that forgot
-   to copy it. The recipe calls the same script, so there is one definition of the
-   layout rather than two that drift.
-
-### Cross-compilation: one prediction inverted, one silent failure (D39)
-
-The repository had never been cross-compiled. Eleven targets now are, in CI, and
-the two findings are both worth more than the eleven passes.
-
-The prediction was that **`i686` would fail**, because `kernel::x86` is gated on
-`any(target_arch = "x86", target_arch = "x86_64")` — so the AVX-512 intrinsics are
-instantiated on 32-bit x86 too — and `core::arch::x86` genuinely lacks the
-intrinsics taking 64-bit integer operands. It compiles: the kernels are f32/f64
-FMA-shaped and use none of them. The cfg was left alone rather than narrowed to
-`x86_64` on suspicion. Note what this does *not* say: in 32-bit mode only
-`zmm0`–`zmm7` are encodable, so the register blocks — chosen against a 32-register
-file — will spill on `i686`. That is a performance property, it is unmeasured, and
-it is recorded here rather than acted on.
-
-**musl fails silently.** With the target default (`crt-static` on) cargo prints
-`dropping unsupported crate type cdylib` and **exits 0**. A musl JLL would have
-been a tarball containing a header, a pkg-config file, two licences and no library
-— green, and inexplicable downstream. `-C target-feature=-crt-static` fixes it, and
-because the symptom is a warning rather than an error the `cross-musl` job asserts
-the warning *still appears* without the flag, so the day it stops being needed is
-visible instead of assumed.
-
-### What running the recipe found that reading it did not
-
-The BinaryBuilder recipe was dry-run locally, on this workstation, before being
-considered done. Four corrections, none of which a careful reading produced:
-
-* **The available Rust shards stop at 1.94.0, not 1.97.0.** Master's
-  `Artifacts.toml` advertises 1.97.0; the BinaryBuilderBase that the *released*
-  BinaryBuilder resolves to offers 1.57.0 through 1.94.0. `choose_shards` **errors**
-  on a version with no shard, so an optimistic pin is a hard build failure rather
-  than a graceful fallback. This is [[prefers-verified-releases]] again, in a new
-  place: check what is released, not what the development head says.
-* **`riscv64-linux-gnu` and `aarch64-unknown-freebsd` have no Rust toolchain at
-  any available version.** Enumerated rather than guessed, by calling
-  `choose_shards` on all 18 supported platforms. Both would take the scalar path
-  anyway. Filtered, with the query that establishes it recorded in `RELEASING.md`
-  so it can be re-run rather than re-derived.
-* **The licence directory name.** The auditor looks under
-  `share/licenses/tensorprimitives_tapp` — the *package* name, underscore — while
-  `install.sh` uses the crate name with a hyphen. The recipe's first draft argued
-  itself out of calling `install_license` on the grounds that install.sh already
-  did the job, and the audit answered "Unable to find valid license file", which is
-  one of the two things a Yggdrasil reviewer greps the log for. install.sh gained
-  `--no-licenses`.
-* **`CompilerSupportLibraries_jll` makes the `libgcc_s.so.1` warning worse.** It
-  adds a missing-artifact-mapping warning of its own — CSL's artifacts are keyed by
-  libgfortran version — and does not silence the original. Julia ships libgcc_s in
-  its own libdir, so the library loads and runs; that was settled by the Julia test
-  suite loading it, not by argument. Reverted to an empty dependency list with the
-  reasoning attached in the recipe, since a reviewer will ask.
-
-**Thirteen of the fifteen platforms were then built and audited locally**, and all
-thirteen produced a tarball with a real shared library in it and an identical
-layout: `lib/` (or `bin/` on Windows), `include/tapp.h`, `lib/pkgconfig/`,
-`share/licenses/`. `x86_64-w64-mingw32` behaves as predicted — the artifact is
-`tensorprimitives_tapp.dll` with no `lib` prefix, it lands in `bin/` because that is
-what `${libdir}` is there, the import library goes to `lib/`, and the two-name
-`LibraryProduct` finds it without renaming anything. `i686` linked, which `cargo
-check` could not establish. The two not built are the Apple targets, and only
-because accepting the Xcode SDK licence is not a decision to take on someone's
-behalf.
-
-Exactly **three** distinct audit warnings across all thirteen, all understood:
-the `cpuid` one below, `libgcc_s.so.1` on ELF, and `bcryptprimitives.dll` on
-Windows — the last a Windows 10+ system DLL that Rust's standard library imports
-for randomness and that the auditor's system-library list does not know. A fourth
-would be a real finding, and the recipe says so.
-
-And one **prediction confirmed verbatim**, which is why D40 exists. The audit log
-reads: *"contains a `cpuid` instruction; refusing to analyze for minimum instruction
-set, as it may dynamically select the proper instruction set internally. Would have
-chosen avx512, instead choosing x86_64."* `check_isa` fails a build whose minimum
-instruction set exceeds the platform's, and this is a generic x86-64 binary full of
-AVX-512 kernel bodies. It ships only because the auditor abandons the analysis on
-finding a `cpuid`, which `kernel::cache` and `std_detect` happen to supply. Nobody
-promised that, so CI asserts it.
-
-### The Julia side, and why the backend shape is the right one
-
-`julia/TensorPrimitives` is two layers: `LibTAPP`, a complete `ccall` wrapper with
-handles as distinct Julia types and finalizers; and `TAPPBackend`, a
-`TensorOperations.jl` backend. The second is the one that matters, for a reason
-that is about this engine specifically rather than about convenience.
-
-`TensorOperations.tensorcontract!(C, A, pA, conjA, B, pB, conjB, pAB, α, β, ...)`
-hands over exactly what TAPP takes: arbitrary extents, element strides, and
-per-operand conjugation. So `pA`/`pB`/`pAB` become a **relabelling** —
-`_labels` is twenty lines of index bookkeeping — and nothing permutes, copies, or
-allocates a temporary. A backend over a GEMM would have to. This makes the
-transpose-free claim something a Julia user can observe rather than read, and it
-puts this engine on the same footing as `TensorOperationsTBLIS.jl` for comparison,
-which is the shape the eventual three-way benchmark wants.
-
-The backend is opt-in and deliberately **not** registered with `select_backend`:
-loading the package changes nothing for code that does not ask. `tensoradd!` and
-`tensortrace!` fall through to TensorOperations' own backends. TAPP can express
-both — a trace is a repeated label, an add is a contraction against a rank-0
-operand — but each is a correctness surface, and acquiring one for free is how a
-wrong answer gets shipped.
-
-64 tests, every one checked against TensorOperations' own backend on the same
-inputs rather than against a rewritten expectation. The two that were worth
-writing: non-contiguous strided views, where a strides-in-elements or base-pointer
-error would show and nothing else would; and `β == 0` against an all-`NaN` output,
-because "overwrite" and "multiply by zero" differ exactly there, and TAPP spells the
-former as a null `C` operand.
-
-### Two things a reader should not take from this section
-
-* **No performance was measured *here*.** Nothing in this section is a throughput
-  claim and no code in it can change one: the engine was not touched. The two Phase
-  4 measurements this branch was written alongside have since landed on `main`
-  (parts 11–13), and the CHANGELOG's confidence table has been updated from *those*
-  — five rows, none of them because of anything in this section. If a reader arrives
-  at a new Julia backend and infers that something got faster, the answer is that a
-  binary distribution was built, not a kernel.
-* **Threading is still not reachable from Julia**, because
-  `TAPP_execute_product` ignores its executor argument and `TENSORCONTRACT_THREADS`
-  is read once per process. The Julia wrapper documents that rather than papering
-  over it, and deliberately wires nothing to `TAPP_create_executor` — plumbing a
-  knob through an inert object would be worse than the absence.
-
-### Still open before publishing
-
-Unchanged from part 1 on defaults — and see the note added there: both measurements
-have landed and both argued for leaving the defaults alone, so the honest v0.1
-position is "off on evidence" rather than "off pending evidence". Plus:
-
-* The **tag, the crates.io publish and the Yggdrasil PR**, in that order, for the
-  reasons in `RELEASING.md`. All three are human steps.
-* **One known unfixed defect is now release-facing.** A35 found, in committed data
-  and at no machine cost, that `planar` `f32`/`c32` ships the register block `32x6`
-  where the Phase 3 sweep's own output names `32x5`, 7.8% faster at the operating
-  `kc`. It is recorded in the CHANGELOG's confidence table rather than quietly
-  carried, because shipping a known register-block defect under a table that says
-  "measured" is exactly the kind of claim this project has spent two phases learning
-  not to make. Fixing it needs a corpus A/B — kernel margin is not corpus margin —
-  so it is a decision for whoever cuts the tag, not something to slip in.
-* **The repository is private.** Yggdrasil builds only from publicly downloadable
-  sources, so the recipe's `ArchiveSource` cannot resolve until it is public and
-  tagged. Making it public also publishes this file and 9 MB of benchmark CSVs,
-  which is a decision rather than a side effect.
-* **The Apple targets are unverified.** They need the Xcode SDK licence accepted
-  (`BINARYBUILDER_AUTOMATIC_APPLE=true`), which is a legal agreement and therefore
-  not something to accept on someone's behalf. They are also the two targets where
-  the install-name work in D40 actually matters, so they should be the first thing
-  built after that acceptance.
-
-## Phase 4 report, part 10: taking the two pending measurements to a cluster node
-
-**Status: designed, tooled and pre-registered. Nothing is measured yet.** This
-section is written *before* the run so that the node choice, the placement
-hypothesis and its accept/reject rule are on the record and cannot be adjusted to
-fit whatever comes back. Results go into parts 7, 8 and 8b, and a new part for
-the AVX2 calibration.
-
-### The node choice *is* the experiment design
-
-The two pending measurements want an exclusive machine, and `ccqlin038` is a
-shared workstation. Rusty has one, but **no Cascade Lake node**, so the choice of
-partition picks which question gets answered:
-
-| feature | S:C:T | cores | ISA consequence |
-|---|---|---|---|
-| `rome` (Zen2) | 2:64:1 | 128 | **no AVX-512** — runs the AVX2 kernels |
-| `icelake` | 2:32:1 | 64 | AVX-512, Intel, closest to the reference machine |
-| `genoa` (Zen4) | 2:48:1 | 96 | AVX-512 (double-pumped), a third cache topology |
-
-`T:1` in all three: **SMT is off on Rusty's CPU nodes**, so the hyperthread
-sibling that forced two Phase 4 retractions is absent rather than merely handled.
-That is checked on the node by `scripts/topology.py` rather than believed from
-`sinfo`, and `phase4f-threads.sh` keeps its sibling guard regardless — a guard
-that trivially passes costs nothing and stops being load-bearing only when
-someone proves it is.
-
-**Chosen: `rome`.** Three reasons, in order of weight:
-
-1. **It converts a documented guess into a measurement.** The AVX2 register
-   blocks are provisional and explicitly unmeasured (D26): chosen from a register
-   budget and a uop model on a machine that cannot execute them competitively.
-   `rome` is the largest partition on the cluster and AVX2 is what most users
-   get, so this is the widest remaining gap between what this file measures and
-   what a user experiences.
-2. **Its topology is the one where concurrent placement can work.** Zen2 shares
-   one L3 between four cores, so one arm per L3 domain gets a *private* L3 —
-   better isolation than `ccqlin038` ever had, where eight cores share 25 MiB. On
-   `icelake` the L3 is a whole 32-core socket, which leaves about two usable
-   domains and no way to run the 40-job grid concurrently at all.
-3. **It tests the analytical model harder than `icelake` would.** The point of
-   D23 was that the legacy constants are `ccqlin038`'s cache sizes written down
-   by hand. Zen2's are further away than Ice Lake's in the direction that
-   matters: a 512 KiB L2 against a legacy `A`-block budget of 512 KiB, i.e. the
-   constants ask for the entire L2 where the model would reserve ways for the
-   streaming operand. If the model is going to win anywhere, it should win here,
-   and if it does not, that is a finding about the model rather than about the
-   node.
-
-What this deliberately gives up, stated so it is not discovered later as a
-surprise: `rome` cannot say anything about AVX-512 blocking on a second Intel
-hierarchy, which is the `icelake` question and remains open. And the blocking
-grid measured on `rome` sits on top of register blocks that are themselves
-unmeasured until the `shapes` stage runs — so the calibration must be read
-before the grid, and the grid's conclusions are conditional on the shapes the
-engine actually shipped that day, not on the calibrated ones. Recalibrating and
-re-running the grid is a second session, not this one.
-
-### Nothing measured there is comparable to anything above this line
-
-Different machine, different cache hierarchy, different instruction set. Every
-ratio must be computed *within* the session, and **the ±1.3% geomean / ±6%
-per-case noise floor is `ccqlin038`'s and does not transfer.** The floor is
-re-derived on the node from bracketing repeats the scripts already run:
-`phase4f-threads.sh` now compares `t1` against its bracketing `t1b` and prints
-that first, `validate-placement.sh` runs the same arm solo twice for the same
-purpose, and the grid keeps its three `base` repeats. No effect gets quoted
-before the floor it is measured against.
-
-### The placement problem, and the hypothesis
-
-An exclusive 128-core node makes both obvious answers wrong. One arm at a time
-leaves 127 cores idle, and 40 grid jobs at ~22 min each (on the *reference*
-machine; AVX2 will be slower per core) is a day's work. Forty arms at once
-corrupts the quantity being measured, because arms sharing an L3 or a memory
-controller perturb each other and `NC` is *sized for L3*.
-
-So the placement is treated as a hypothesis: **one measurement thread per L3
-domain, every other core in that domain idle, SMT siblings idle, and concurrency
-held below the domain count** — 24 of 32 by default on `rome` — because memory
-bandwidth and the interconnect stay shared however threads are placed.
-
-The accept/reject rule, fixed now:
-
-* **Accept** if placed-vs-solo lies inside the solo-vs-solo floor on the
-  geometric mean, and no case moves by more than the per-case floor.
-* **Reject** otherwise, run the grid sequentially, and record the rejection.
-
-Both arms are measured on the full corpus *and* on the `abcijk` family, which is
-exactly the 18 cases that contract over `k = 24` — the memory-bound half, i.e.
-where bandwidth contention should show up first, bandwidth being the one resource
-no placement can privatise. A rejected placement is a result worth writing down:
-it tells the next person on a different machine what to expect, and the mechanism
-(a private L3 per CCX against a socket-wide L3 on Intel) predicts that the answer
-differs by machine.
-
-### What was built for it, all of it zero-CPU
-
-* `scripts/topology.py` — L3 domains, SMT siblings, NUMA and cache descriptors
-  from the *allocation's* affinity mask, so it describes the job and not the
-  node, plus the placement plan. Emitted as JSON so the runner and this file read
-  the same facts.
-* `scripts/run-arms.py` — runs independent arms one per L3 domain, and records
-  `/proc/stat` occupancy for **every core in each arm's own L3 domain** across
-  exactly that arm's window, plus the observed overlap with other arms. The
-  reference scripts sample the pinned core and its sibling; this widens that to
-  the domain, because on this placement the domain is the unit that has to be
-  clean. That recording is what made the earlier retractions detectable.
-* `scripts/validate-placement.sh` + `scripts/placement-spread.py` — the
-  hypothesis test above, including the spread *between* slots, which prices
-  position within the node. A uniform slowdown cancels in the ratios the grid is
-  scored on; a position-dependent one does not, and would turn slot assignment
-  into a per-arm bias.
-* `phase4e-blocking.sh` now runs both regimes through one code path
-  (`<cpu>` sequential, `auto` placed) from a single arm list, so the two cannot
-  drift apart. `phase4f-threads.sh` derives its cpuset from the allocation
-  instead of a hardcoded `0-7`, scales its thread counts to the core count, gives
-  each arm exactly as many cores as it has threads (so L3 sharing is a known
-  function of `nt` rather than the scheduler's choice), records occupancy over the
-  whole allocation as an exclusivity check, and labels the cross-socket arm as the
-  separate question it is.
-* `scripts/node-session.sh` — stages the session so the ordering constraints are
-  enforced rather than remembered: one stage at a time, only `prep` compiles, and
-  a guard refuses to start a measurement while any `cargo`/`rustc`/`tcbench` of
-  the user's is alive.
-* `scripts/placement-verdict.py` — the accept/reject rule **as code**, so an
-  unattended run can act on it and, more to the point, so the threshold cannot
-  drift once the numbers are visible. Strict reading of the pre-registered rule:
-  the per-case bound is the solo pair's *worst* case, not a percentile, because a
-  percentile is a knob and a knob chosen after seeing the data is how a
-  pre-registered rule stops being one. Every placed replicate must pass, not just
-  the one on the reference core, since the grid assigns arms to slots arbitrarily.
-* `scripts/rusty-phase4.sbatch` — the whole session unattended. Stage order is
-  `prep, shapes, threads, validate, grid`: `shapes` moves ahead of the
-  higher-priority `threads` because on an AVX2 node it is the highest-value single
-  deliverable and costs twenty minutes, so putting it behind a four-hour stage
-  risks the cheap irreplaceable thing for nothing. Stages are independent and a
-  failure does not abort the rest.
-
-**The rejection path returns data rather than nothing.** A rejected placement
-means the full grid cannot run — sequential is ~23 h on this node and does not fit
-a 12 h allocation — so the batch script runs a *scoped* grid sequentially inside
-the wall time that is left, in the order `base model base2` then the `kc` family:
-the model arm is a whole different derivation rather than a point in the grid and
-needs its brackets to mean anything, and `kc` is the first-order parameter. Arms
-that do not fit are named in `skipped-arms.txt` and in the log, because a bounded
-run that does not say what it dropped reads as complete coverage. A scoped grid is
-reported as scoped — offline rule scoring against a partial grid is not the asset
-that scoring against a whole one is.
-
-### The prediction, made first
-
-`scripts/thread-width.py` no longer hardcodes `P = 8` — it takes a list, and it
-now replays `Plan::partition` (`PACK_WEIGHT` included) instead of only reporting
-raw widths, so it predicts what the *rule* will ask for rather than what the shape
-allows. Replayed over all 392 case-dtype-methods:
-
-| P | no fill from `M` | rule goes 2-D | leaves threads idle | of which int-div waste | of which a genuine limit | needs `K` |
-|---|---|---|---|---|---|---|
-| **AVX-512 blocks (the reference machine's)** ||||||
-| 8 | 16 | 12 | 4 | 0 | 4 | 0 |
-| 16 | 26 | 22 | 12 | 4 | 8 | 0 |
-| 32 | 32 | 30 | 16 | 4 | 12 | 0 |
-| 64 | 33 | 32 | 18 | 12 | 6 | 0 |
-| 128 | 72 | 68 | 49 | 46 | 3 | 0 |
-| **AVX2 blocks (what `rome` will run)** ||||||
-| 8 | 1 | 1 | 0 | 0 | 0 | 0 |
-| 16 | 8 | 6 | 2 | 0 | 2 | 0 |
-| 32 | 23 | 15 | 10 | 0 | 10 | 0 |
-| 64 | 32 | 26 | 16 | 0 | 16 | 0 |
-| 128 | 32 | 32 | 20 | 6 | 14 | 0 |
-
-Four things fall out of it, none of which needed the machine:
-
-1. **`K`-parallelism is never needed, at any thread count up to a whole 128-core
-   node, in either ISA.** A21 was argued at 8 threads and the structural argument
-   was claimed to generalise; this is that claim checked to 16x the width. A21 is
-   now confirmed far outside the regime it was made in.
-2. **The 2-D rule will be exercised 5x harder than it was designed against.** It
-   fires on 12 of 392 at 8 threads and 32–68 at 128. `PACK_WEIGHT` was priced by
-   replay at 2–32 threads and every weight in `[4, 64]` gave the same partition;
-   that replay does not cover 64 or 128, so the `=m` / `=n` arms at the top thread
-   count are the load-bearing part of the threading run, not the scaling curve.
-3. **Most of the apparent shortfall at large `P` is arithmetic, not judgement.**
-   `pn = min(p / pm, blocks)` is integer division, so a rule that wants `9 x 14`
-   out of 128 threads gets 126 and idles two. Separating that from a genuine
-   refusal matters, because only the second kind can show up as a visibly flat
-   scaling curve: at `P = 128` on AVX-512 blocks, 46 of the 49 are integer-division
-   waste of ≤2%, and just **three** are real.
-4. **AVX2's smaller register blocks buy parallel width**, and by a lot: at 8
-   threads 16 of 392 case-dtype-methods cannot fill the threads from `M` on
-   AVX-512 blocks against **1** on AVX2, because `MR` is 3–6x smaller and the row
-   panel count rises accordingly. This is a fresh instance of A25 — smaller
-   register blocks are not purely a cost — in a dimension A25 did not consider,
-   and it means the `rome` scaling curve should look *better* than the reference
-   machine's would, for a reason that has nothing to do with the cores.
-
-The genuinely partition-limited population on AVX2 is one family: `ij-ikl-ljk`
-and `ij-kil-lkj`, which cap at `27x1` of 32 threads and `54x2` of 128 (84%).
-Those are the curves that must flatten. If any *other* case flattens, that is
-contention or a bug, not the partition — which is what makes this prediction
-worth having.
-
-Caveat on the table: the `frac of best` column in the full output ranks cases by
-throughput measured on `ccqlin038`, used only as a compute-bound proxy for
-sorting. It is not a cross-machine performance claim and is regenerated from the
-node's own `t1` arm once that exists.
-
-### Result: the placement is clean on the corpus and *not* clean on the memory-bound half
-
-Measured on `worker5040`, 24 concurrent arms one per L3 domain against a solo arm.
-The honest comparison is against the **hot** solo arm (`t1b`, same core), because
-the reused solo pair straddles the cold-start transient A31 describes:
-
-| | geomean vs hot solo | range over slots |
-|---|---|---|
-| full corpus, socket 0 slots (12) | **1.0029** | 1.0017–1.0050 |
-| full corpus, socket 1 slots (12) | 1.0215 | 1.0181–1.0255 |
-| **memory-bound `abcijk` half, all 24** | **0.9684** | 0.9616–0.9769 |
-
-Read in order:
-
-1. **On the corpus as a whole the placement costs 0.3% — nothing.** Twenty-four
-   arms running at once, each with a private 16 MiB L3 and three idle cores in its
-   domain, measure what a solo arm measures. A27 is confirmed, and it bought a
-   **23.7x** speedup: 533 minutes of arm-time in 22.5 minutes of wall clock, which
-   is the difference between the grid being affordable and not.
-2. **The 2.2% socket split is thermal, not spatial.** The `threads` stage had run
-   for two hours entirely on socket 0, so socket 1 was cold when the placed round
-   started; its slots read 2.2% *faster*. `placement-spread.py` was built expecting
-   memory-system position to be the variable, and on this node it is temperature
-   history instead. Confirmed by the memory-bound round twenty minutes later, when
-   both sockets had been loaded and the split had shrunk to 0.6%.
-3. **On the memory-bound half the placement is rejected, decisively.** 3.2%
-   geomean and up to 10% per case, against a solo-pair floor of **0.02%** — the
-   cleanest floor in this whole project, from two arms 69 seconds apart. Every one
-   of the 24 slots fails. Bandwidth is the resource no placement can privatise, the
-   `abcijk` family at `k = 24` is where that bites first, and it does.
-
-**A gap between the rule as written and the rule as coded, which is mine.** Part 10
-pre-registered that both the full corpus *and* the `abcijk` family would be
-measured, but `rusty-phase4.sbatch` called `placement-verdict.py` with its default
-prefix, so only the full-corpus arms were scored and the grid launched placed on an
-ACCEPT that had not consulted the memory-bound arms. Scored after the fact with
-`--prefix mbp --solo mbsolo`, they REJECT. The verdict script now takes `--solo` so
-the rule can be applied to the arm set it was written for; the sequencing error had
-already happened.
-
-**What that does to the grid, and what it does not.** The grid is scored on
-*ratios between arms*, and every arm ran under the identical 24-way placement, so a
-uniform 3.2% penalty on memory-bound cases cancels in `arm / base`. The exposure is
-not uniformity but **interaction**: an arm that changes memory traffic suffers
-different contention, and that is exactly what the `nc` arms and the `model` arm do
-— `model` raises `nc` about 4.7x here. So:
-
-* `kc` and `mc` arms: the penalty is close to uniform and the ratios stand.
-* `nc25`, `nc400`, `model`: **confounded at the same order as the effect**, and
-  `model` is the single most interesting arm in the grid.
-
-The fix is cheap and does not need the whole grid re-run: measure `base`, `nc25`,
-`nc400`, `model`, `base2` sequentially on one core — 10 jobs, ~3.7 h — and compare
-those against each other in the clean regime, using `base`/`base2` to tie them back
-to the placed run. `scripts/rusty-phase4-seq.sbatch` does exactly that and nothing
-else. **Until it has run, do not quote the `nc` or `model` arms from the placed
-grid.**
-
-| # | Assumption | Status |
-|---|---|---|
-| A27 | Concurrent arms placed one per L3 domain measure the same thing as a solo arm. | **Confirmed on the corpus (+0.3%), refuted on the memory-bound half (−3.2%, up to −10%).** Private per-CCX L3 is enough for compute-bound work and irrelevant to bandwidth: `abcijk` at `k = 24` is bandwidth-bound and 24 arms contend. Use the placement for arms that do not change memory traffic; measure the `nc` and `model` arms sequentially. |
-| A32 | A session's drift is a single number. | **Refuted; it is a function of how far apart the two arms are.** Same node, same core, same corpus: 0.02% at 69 s apart, 1.1–1.9% at ~1 h, 4.4% across the cold-start transient. Quoting one floor for a whole session is what let a 4.4% cold-start artifact be mistaken for the precision of a repeat. |
-
-### What would invalidate the run
-
-Checked before anything is believed, and each one recorded rather than assumed:
-the allocation is genuinely exclusive (`scontrol show job`, once, plus the
-per-core occupancy every arm now records for the whole allocation); no compile
-overlapped a measurement (`node-session.sh` refuses); the bracketing repeats
-agree within the floor derived in the same session; and no number is compared
-across machines.
-
-| # | Assumption | Status |
-|---|---|---|
-| A27 | Concurrent arms placed one per L3 domain measure the same thing as a solo arm. | **Hypothesis, with the test and the accept/reject rule pre-registered above.** Zen2's private-per-CCX L3 is what makes it plausible; shared memory bandwidth is what makes it doubtful, which is why the memory-bound `abcijk` half is measured separately. |
-| A28 | The 2-D partition rule and `PACK_WEIGHT` behave at node scale as they do at 8 threads. | **Open, and the reason the threading run is worth more than a scaling curve.** The rule fires on 12 of 392 at 8 threads and 32–68 at 128; `PACK_WEIGHT`'s indifference was only ever replayed to 32. |
-| A29 | Parallel width is a property of the contraction. | **Refuted at no CPU cost — it is a property of the contraction *and the ISA*.** Row panels scale as `M / MR`, so AVX2's smaller register blocks give the same corpus 3–6x more of them: 1 of 392 case-dtype-methods short of 8 threads against 16 on AVX-512. |
-
-## Phase 4 report, part 11: the AVX2 register blocks, measured
-
-**First result of the `rome` session (job 6745376, `worker5040`).** The AVX2
-register blocks were shipped as an explicit guess (D26) — the register budget and
-the accumulator count were modelled, but *which of the fitting shapes is fastest*
-was not, because the reference machine cannot execute AVX2 competitively. It can
-now be answered.
-
-The machine, from the engine's own probes rather than from `sinfo`:
-
-| | |
-|---|---|
-| host | `worker5040` (Rusty, `gen` partition, `rome`) |
-| CPU | AMD EPYC Zen2, 2 x 64 cores, **SMT off** (`sinfo` `2:64:1`, confirmed on the node) |
-| ISA | `avx2 fma`, **no AVX-512** |
-| cache | 32 KiB L1d 8-way **private**; 512 KiB L2 8-way **private**; 16 MiB L3 16-way **per 4 cores** |
-| domains | 32 L3 domains of 4 cores each |
-
-Two consequences before any number: the **`avx2`-without-`avx512` auto-selection
-branch has now executed on real hardware** for the first time (it had only ever
-been forced on an AVX-512 machine), and the whole 128-core node has **no
-hyperthread sibling**, so the contention that forced two Phase 4 retractions is
-structurally absent here rather than merely avoided.
-
-### All four shipped shapes are the measured winners
-
-`examples/kernel_shapes`, packed panels hot, useful GF/s. At the `kc` the driver
-actually uses:
-
-| method | shipped `MV x NR` | logical `MR x NR` | GF/s | runner-up | GF/s |
-|---|---|---|---|---|---|
-| **f64 / c64, `kc = 256`** ||||||
-| real | `2 x 6` | 8 x 6 | **53.2** | 8 x 5 | 52.8 |
-| planar | `1 x 5` | 4 x 5 | **50.0** | 4 x 4 | 41.9 |
-| 1m | `2 x 6` | 4 x 6 | **53.5** | 4 x 5 | 52.9 |
-| 3m | `1 x 4` | 4 x 4 | **48.9** | 8 x 2 | 48.1 |
-| **f32 / c32, `kc = 384`** ||||||
-| real | `2 x 6` | 16 x 6 | **106.6** | 16 x 5 | 105.4 |
-| planar | `1 x 5` | 8 x 5 | **104.6** | 8 x 4 | 84.2 |
-| 1m | `2 x 6` | 8 x 6 | **107.0** | 8 x 5 | 106.5 |
-| 3m | `1 x 4` | 8 x 4 | **112.6** | 16 x 2 | 97.8 |
-
-**Eight for eight.** No change to `cfg_avx2_f64` / `cfg_avx2_f32` is indicated, so
-D26's guessed half turns out to have been right — and the *reason* is worth more
-than the confirmation: three of the four margins over the runner-up are 0.8–1.6%,
-i.e. inside anything this sweep can resolve, while the margin over the *rejected*
-shapes is 20–35%. The choice was never between close alternatives; it was between
-shapes that fit the register file and shapes that do not.
-
-**The spill has a price and it is now measured.** The interlude recorded that
-`planar 1x6` is better on both accumulator count and bytes per flop and was
-rejected "only on a single spill". That single spill costs **35% in `f64`** (32.5
-against 50.0) and **38% in `f32`** (64.5 against 104.6). Rejecting it was correct
-and the margin is not subtle.
-
-### A correction: the register budget is 15 ymm, not 16
-
-The sweep's `!` marker flags `live > 16` — and the data says that threshold is one
-register optimistic. Every shape with `live == 16` collapses just as the flagged
-ones do:
-
-| shape | `live` | flagged? | GF/s at operating `kc` | fast sibling |
-|---|---|---|---|---|
-| `real 12x4` f64 | 16 | no | 21.3 | `real 8x6` (15) 53.2 |
-| `1m 6x4` f64 | 16 | no | 20.9 | `1m 4x6` (15) 53.5 |
-| `planar 4x6` f64 | 16 | no | 32.5 | `planar 4x5` (14) 50.0 |
-| `real 16x3` f64 | 17 | yes | 21.5 | — |
-| `3m 8x5` f32 | 17 | yes | 45.9 | `3m 8x4` (14) 112.6 |
-
-So the boundary between "fast" and "collapsed" sits at `live <= 15`, not
-`live <= 16`: one ymm is not available to the shape, and every shipped default
-happens to sit at 14 or 15. **The uop model was right about the existence and
-location of a cliff for the fifth time, and wrong about its threshold by exactly
-one register** — which is the kind of error a whole-grid sweep is for, and which
-would have been invisible from a sweep of the menu alone. The `!` predicate in
-`examples/kernel_shapes` should flag `live > 15`; it is an analysis annotation and
-not a code path, so it is deliberately **not** changed while this job holds the
-node and shares a `target/` directory with it.
-
-### A24: the AVX-512 ranking does not carry over, and 3m leads in single precision
-
-A24 guessed "open, and probably not". At the kernel level it is now measurably
-*not*:
-
-| | AVX-512 (Phase 3, end to end) | AVX2 kernel, operating `kc` | AVX2 kernel, `kc = 16` |
-|---|---|---|---|
-| `f64`/`c64` | planar > 1m > 3m | 1m 53.5 ≈ real 53.2 > planar 50.0 > 3m 48.9 | **3m 54.8** > 1m 53.6 > real 51.6 > planar 44.3 |
-| `f32`/`c32` | planar > 1m > 3m | **3m 112.6** > 1m 107.0 ≈ real 106.6 > planar 104.6 | 3m 110.7 > 1m 107.2 > real 105.6 > planar 88.5 |
-
-3m is **first in single precision at the depth the driver uses**, where on
-AVX-512 it was last by 8% over the corpus. The mechanism is the one Phase 3
-identified and needs no revision: 16 ymm forces `MR` down to 4 complex rows in
-`f64`, which is the L1-resident regime where 3m's 25% flop saving is not consumed
-by extra plane traffic. Note also that 3m is fastest of all four at `kc = 16` in
-*both* precisions, which is Phase 3's finding reproduced on a different ISA.
-
-**What this does not settle.** These are *kernel* numbers: packed panels hot, no
-packing, no write-back, no cache blocking, which is exactly what the rest of the
-engine is. The corpus-level AVX2 ranking is a separate measurement and is not in
-this session. Do not quote the table above as a method ranking — it is the
-kernel's contribution to one, and Phase 3's whole lesson was that the ranking is
-decided by bytes moved per useful flop across the *driver*, not inside the kernel.
-
-| # | Assumption | Status |
-|---|---|---|
-| A24 | The AVX-512 method ranking (planar > 1m > 3m at the operating `kc`) carries over to AVX2. | **Refuted at the kernel level, in the direction predicted.** 3m is first in `f32`/`c32` at the operating `kc` and first in both precisions at `kc = 16`; planar is last or next-to-last in every AVX2 column. End-to-end confirmation is not in this session. |
-| A30 | The register-block sweep's `live <= 16` budget is the real one. | **Refuted, by one register.** Every `live == 16` shape collapses to 21–33 GF/s beside a 48–53 GF/s sibling at `live <= 15`. All eight shipped defaults sit at 14 or 15, so nothing shipped is affected — but the annotation is wrong and would mislead the next person choosing a shape. |
-
-### The register block is per-microarchitecture, not per-ISA
-
-An Ice Lake session (job 6746817, `worker6016`, `STAGES="shapes threads"`) ran the
-same sweep on a *second AVX-512 Intel core*, which had never been done — every
-AVX-512 shape in `kernel::x86` was measured on Cascade Lake. Three of the four
-`f64`/`c64` defaults are still the winners there. `real` is not, and the reversal is
-symmetric:
-
-| shape (`MV x NR`) | acc | live | Cascade Lake @ `kc = 256` | Ice Lake @ `kc = 256` |
-|---|---|---|---|---|
-| `real 3 x 8` — **shipped** | 24 | 28 | **88.4** | 68.3 |
-| `real 3 x 9` | 27 | 31 | 81.3 | **74.6** |
-
-Each machine prefers the other's loser by about 9%: `3x8` wins by 8.7% on Cascade
-Lake and loses by 9.2% on Ice Lake. Both machines were swept over the same candidate
-set — `3x9` was on Cascade Lake's list and was correctly rejected there — so this is
-not a coverage gap, it is a genuine disagreement between two microarchitectures with
-the *same ISA and the same 32 registers*.
-
-The mechanism is visible in the depth columns: at `kc = 64` both machines prefer
-`3x9` (109.7 against 107.6 on Cascade Lake, 97.7 against 90.9 on Ice Lake), and the
-flip happens only at the operating depth. `3x9` carries 27 accumulator registers to
-`3x8`'s 24 and `live = 31` against 28 — the A30 budget exactly — so it puts more
-pressure on the L1 that also holds the `A` micro-panel. **Ice Lake's L1d is 48 KiB
-12-way against Cascade Lake's 32 KiB 8-way**, which is precisely the room `3x9`
-needs and does not get on the older core.
-
-**Dispatch selects shapes by ISA only**, so on every Ice Lake machine this engine
-currently runs a `real` kernel 9.2% off its own optimum — and Ice Lake is the second
-largest CPU partition on this cluster.
-
-Worth noting what makes the fix cheap: the engine *already* probes cache descriptors
-for D23, and L1 geometry alone separates these two cores (48 KiB/12-way against
-32 KiB/8-way) with no CPUID model table and no new machinery. That is a better
-discriminator than a vendor/family list because it names the thing that actually
-causes the difference.
-
-Not done, and it should be: `c64`/`c32` were only checked against the shipped
-default here, `f32`/`c32` on Ice Lake are unanalysed, and whether a single compromise
-shape exists that is within noise of both optima is unknown. None of that needs a new
-allocation — `bench-results/worker6016-*/kernel-shapes.txt` and
-`bench-results/phase3-kernel-shapes.txt` are both committed and the comparison is
-arithmetic.
-
-The full comparison, shipped shape against each machine's own best at the operating
-`kc`, from the two committed sweeps:
-
-| section | method | shipped | CL @ shipped | CL best | IL @ shipped | IL best | IL / best |
-|---|---|---|---|---|---|---|---|
-| f64/c64 | real | `24x8` | **88.4** | `24x8` 88.4 | 68.3 | `24x9` 74.6 | **0.916** |
-| f64/c64 | planar | `16x6` | 102.8 | `16x6` 102.8 | 108.4 | `16x6` 108.4 | 1.000 |
-| f64/c64 | 1m | `12x8` | 91.1 | `12x8` 91.1 | 69.7 | `12x8` 69.7 | 1.000 |
-| f64/c64 | 3m | `8x10` | 87.8 | `8x10` 87.8 | 63.8 | `8x10` 63.8 | 1.000 |
-| f32/c32 | real | `48x8` | 179.9 | `48x8` 179.9 | 150.3 | `48x9` 172.6 | **0.871** |
-| f32/c32 | planar | `32x6` | 195.7 | **`32x5` 210.9** | 221.8 | `32x6` 221.8 | 1.000 |
-| f32/c32 | 1m | `32x6` | 175.4 | `32x6` 175.4 | 136.4 | `24x8` 151.3 | **0.902** |
-| f32/c32 | 3m | `16x10` | 194.9 | `16x10` 194.9 | 134.5 | `16x10` 134.5 | 1.000 |
-
-Three of eight shipped shapes are **9–13% off on Ice Lake**, and `real` wants `NR+1`
-in *both* precisions — a coherent signature, not scatter.
-
-### A Phase 3 defect this turned up, on the reference machine
-
-The `CL best` column has an entry that is not the shipped shape: **`planar` `f32`/`c32`
-should be `32x5` (210.9) and ships as `32x6` (195.7) — 7.8% off, on `ccqlin038`,
-in the default complex method.** This is not an Ice Lake finding; it has been true
-since Phase 3.
-
-Phase 3's own sweep output says so in as many words —
-`bench-results/phase3-kernel-shapes.txt` contains
-
-```
-best per method at kc = 384:
-  planar   MV=2 NR=5     210.9 GF/s
-```
-
-— while `cfg_avx512_f32` ships `planar = [(2, 6), (3, 4), (1, 12)]`, in which `(2, 5)`
-does not appear at all, not even as an alternate. `32x5` also wins at `kc = 64`
-(210.3 against 205.4) and loses only at `kc = 16`, so it is not a single-depth fluke.
-
-**Why it was probably chosen wrong is the interesting part.** The doc comment on
-`cfg_avx512_f32` bolds `32x6`'s bytes-per-flop (**0.20**, against `32x5`'s 0.231) and
-records 195.7 beside it. So the shape appears to have been selected on the
-bytes-moved-per-useful-flop model — the project's own central mechanism from Phase 3
-— *over* the measured throughput sitting in the same output file. That is the
-failure mode this document has now recorded four times in other guises (A16 and part
-6: write-back regularity "has now pointed the wrong way three times... it is a *gate*
-on a change, never an objective"). D19 says this project measures register blocks;
-here it modelled one and the sweep disagreed.
-
-**Not a fix, a finding.** `NR` changes the `jr` loop count and the packed-`B` sliver
-geometry, so a 7.8% kernel margin is not a 7.8% corpus margin, and `32x5` is absent
-from the menu so no runtime switch can A/B it.
-
-**And it cannot be added to the menu — a structural finding, not an oversight.** The
-row-block menu is keyed by `MR`: `cplx_config_at` dispatches on `mr` alone, and
-`row_block_menus_are_well_formed` asserts no `MR` appears twice, precisely because a
-duplicate would make the later entry unreachable. `(2, 5)` shares `MV = 2` with the
-shipped `(2, 6)`, hence the same `MR`, so **the menu has no way to express an
-`NR`-only alternate** and `TENSORCONTRACT_ROWBLOCK=idx=` can never reach it.
-
-Two routes out, and choosing is a design decision rather than a fix:
-
-* **Swap the default and measure build-to-build.** Two lines, but it gives up A15's
-  preference for runtime switches, and a build-to-build diff already produced one
-  wrong sign in Phase 4.
-* **Key the menu by position rather than by `MR`**, so entries carry `(MV, NR)` and
-  `idx=` selects an index — which is what `idx=` already implies. Touches `configs!`,
-  `cplx_config_at`, `row_blocks`, `Plan::row_block` and the well-formedness test. Not
-  large, but it changes hot-path config selection and should not ride along with a
-  measurement.
-
-So A35 is **documented and untestable end-to-end**, which is a worse state than
-merely unfixed and is recorded as such. Worth noting how it was found: entirely inside
-committed Phase 3 raw output, months later, at no machine cost. That is the return on
-keeping the sweeps.
-
-| # | Assumption | Status |
-|---|---|---|
-| A34 | Register blocks are a property of the instruction set, so one measurement per ISA is enough (the premise of D19 and of `cfg_avx512_*` / `cfg_avx2_*`). | **Refuted.** Cascade Lake and Ice Lake, same ISA and same 32 registers, disagree by up to 13% on three of eight shapes, and `real` wants `NR+1` in both precisions — Ice Lake's 48 KiB 12-way L1 accommodates an accumulator footprint Cascade Lake's 32 KiB 8-way does not. Shapes are per-microarchitecture; probed L1 geometry separates these two with no CPUID table. |
-| A35 | The shipped register blocks are the ones the Phase 3 sweep selected. | **Refuted for one of eight, and now testable.** `planar` `f32`/`c32` ships `32x6` where the sweep's own output names `32x5`, 7.8% faster at the operating `kc`. The bolded bytes-per-flop in the config's doc comment suggests it was chosen by model over measurement, which is the same error A16 records for write-back regularity. It was unreachable until the menu was re-keyed by position (D43); `32x5` is now the last planar `f32` entry and `TENSORCONTRACT_ROWBLOCK=idx=3` selects it end to end. Still unfixed on purpose: verify before changing, because kernel margin ≠ corpus margin. |
-
-## Phase 5 interlude: making the C surface consumable
-
-Prompted by a concrete external ask — a colleague evaluating this for the
-**NDA** C++ array library (TRIQS, Flatiron) — the question was whether a C++
-project can use this without shipping a Rust compiler. Answering it honestly
-turned up four gaps between "the ABI is correct" and "a C++ project can link
-it", all of which were on the Phase 5 packaging list and none of which touched
-the engine. See D36–D38.
-
-### The gap that mattered
-
-The TAPP layer had 23 verified `extern "C"` symbols, a conformance suite driving
-those symbols, and `abi_layout.rs` re-declaring the whole upstream header so a
-dropped export is a link error. What it did not have was **a header**, and
-nothing anywhere invoked a C compiler. The correctness of the ABI was thoroughly
-established *from Rust*; whether a C caller could actually use it was inference.
-
-That inference held — the C consumer passed on its first real run, including the
-complex path and `TAPP_CONJUGATE` — but it held by luck as much as design, and
-it would not have survived the first wrong prototype.
-
-### What the toolchain objection was actually worth
-
-Little, once examined, and the examination is the useful part. NDA already
-requires CMake ≥ 3.22, a concepts-capable C++ compiler, and HDF5 + MPI + OpenMP
-on by default. Against that, `rustc` is marginal — and **a C++20 compiler is the
-harder constraint on cluster environments**: the stock compiler on this very
-workstation is gcc 8.5, which cannot compile nda at all, while `rustup` installs
-a pinned toolchain into `~/.cargo` with no root and no system integration. The
-MSRV, 1.89, was released 2025-08-04, one year ago to the day.
-
-So the real blockers are maturity and measurement coverage, not the build.
-Recorded so the toolchain argument is not re-litigated.
-
-### A claim corrected in the making
-
-The vendoring story was initially stated as "three crates", from the runtime
-dependency tree (`num-complex` → `num-traits`, plus `autocfg` at build time).
-Running it showed **~17**: `cargo vendor` is workspace-wide and includes
-dev-dependencies, so `rand` and its tree (`getrandom`, `libc`, `zerocopy`,
-`syn`, …) come along. Both numbers are true of different things — a library-only
-vendor from the published crate is three; vendoring this repo so the *tests* run
-offline is seventeen — and the CI job now states both and exercises the second,
-since a test step is the only thing that keeps the dev-dependency half honest.
-
-| # | Assumption | Status |
-|---|---|---|
-| A31 | The shipped header agrees with the library it describes. | **Now tested rather than assumed.** `examples/c-consumer` compiles the header with a C compiler, links the built library and checks numerical results in `f64` and `c64`; CI runs it in both the corrosion and prebuilt modes. Previously no C compiler saw the header at any point. |
-| A32 | A Rust panic reaching the C boundary is acceptable because it is memory-safe. | **Rejected as a policy.** Memory-safe but process-fatal, and the engine panics on allocation conditions a caller can hit. D38 converts it to an error code on the three entry points that can raise it. |
-
-## Phase 4 report, part 12: the partition becomes L3-domain-aware
+### Part 12: the partition becomes L3-domain-aware
 
 **Status: built, measured, and it met its pre-registered prediction. Still off by
 default — that is D22 and it is the user's call.** The prediction was made from
@@ -3602,7 +2816,7 @@ wrong, because on a machine with one L3 per socket the early return is *correct*
 nodes and in all four dtypes — the driver is the number of L3 domains the thread
 set spans, not the thread count. This part turns that into code.
 
-### The change
+#### The change
 
 `CacheHierarchy::l3_domains(threads)` is new and is three lines: `threads`
 divided by the cores that share an L3, which the probe already reports for D23.
@@ -3632,7 +2846,7 @@ as well. The correctness suite exercises the swapped branch on 60-odd shapes and
 is green in every combination of `{default, domain} x {avx512, scalar} x
 {1, 4, forced-16 domains}`.
 
-### The prediction, made before the node is booked
+#### The prediction, made before the node is booked
 
 `scripts/partition-score-rule.py` replays the gate over a committed grid and
 scores it against the arms that grid already measured. Both arms exist for every
@@ -3665,7 +2879,7 @@ Put beside part 8's scaling curve, that is the difference between 5.97x and
 parallel efficiency and Ice Lake's on identical code — which is what the
 mechanism predicted it should do.
 
-### The negative result: a traffic term cannot be calibrated, and here is why not
+#### The negative result: a traffic term cannot be calibrated, and here is why not
 
 The first design was the principled one — add a cross-domain `B`-replication term
 to the cost model and let it decide — and it does not work. Four attempts, each
@@ -3703,7 +2917,7 @@ times the real ones — so leaving them alone is the right call on this evidence
 even before the one-machine, one-session caveat. The `n` arm already prices that
 variant in every future run; nothing new is needed to revisit it.
 
-### A methodological result: per-case ratios at 64 threads are not readable
+#### A methodological result: per-case ratios at 64 threads are not readable
 
 The `m` arm at 64 threads produces the **same partition as the rule** on 366 of
 392 case-dtype-methods, so those ratios are pure repeats and measure this
@@ -3718,7 +2932,7 @@ first and labels the per-case column as spread rather than as a result. This is
 the same lesson as A31 and A32 in a third form: the floor is a property of the
 measurement's shape, and it has to be re-derived in-session every time.
 
-### The threading default: recommended on, and not flipped here
+#### The threading default: recommended on, and not flipped here
 
 D22 is the user's call and this commit does not take it. **The recommendation is
 no longer conditional on topology, because the gate removed the condition** — the
@@ -3752,7 +2966,7 @@ Shipping the gate on by default is a separate decision from shipping *threads* o
 by default, and it should be taken first, because it is a no-op on every
 single-domain machine and a large win on the others.
 
-### The confirmation run, and what would falsify it
+#### The confirmation run, and what would falsify it
 
 ```bash
 PARTITION_SWEEP=1 STAGES=threads sbatch -C rome scripts/rusty-phase4.sbatch
@@ -3777,7 +2991,7 @@ result. Pre-registered, so it cannot be reinterpreted afterwards:
 A run on `-C icelake` is a stronger null than a repeat here: the gate must be
 bit-identical to the rule at every thread count up to the socket.
 
-### A36's residual gap, now closable in the same run
+#### A36's residual gap, now closable in the same run
 
 Every separation of domain count from thread count so far has been
 *cross-machine*: Zen2 at 4 threads on one domain and Ice Lake at 32 threads on
@@ -3805,7 +3019,7 @@ thread count after all and D41 is wrong in a way three machines have not shown.
 SPREAD=1 PARTITION_SWEEP=1 STAGES=threads sbatch -C rome scripts/rusty-phase4.sbatch
 ```
 
-### Result: all four checks pass, and the prediction was right to 1%
+#### Result: all four checks pass, and the prediction was right to 1%
 
 Run 2026-08-04, jobs 6753208 (`worker5479`, rome, 64 cores of one socket, 4 per
 16 MiB L3) and 6753209 (`worker6150`, Ice Lake-SP, 2x32 cores, **one 48 MiB L3
@@ -3892,11 +3106,7 @@ session**, not package temperature, which makes it A32 rather than A31 and means
 a hotter warm-up would not fix it. Derive the floor from a bracket adjacent to the
 arms being compared, which is exactly what check 2 does above.
 
-| # | Decision | Rationale |
-|---|---|---|
-| D44 | **The domain-aware rule is the default.** `TENSORCONTRACT_PARTITION` unset means `domain`; `legacy` asks for the ungated rule by name. | Taken by the user on 2026-08-04, after the measurement above and separately from D22. It is a strictly smaller decision than turning threads on: a single-threaded caller cannot reach it (`l3_domains(1) == 1`), it made the identical decision on 392 of 392 cases where one L3 serves the thread set, and it is worth 1.133 corpus geomean where sixteen do. There is no machine on which it is known to cost anything, and every partition gives bitwise identical results, so it is never a numerical decision. `legacy` stays reachable because every threaded number committed before this date was measured with it. |
-| D41 | `Plan::partition`'s `panels >= p` early return is **gated** on `l3_domains(p) > 1`, `blocks >= p` and `k <= 64`, and then swaps to `1 x min(p, blocks)`. Behind `TENSORCONTRACT_PARTITION=domain`, off by default. | Removing the early return is wrong on a one-L3-per-socket machine, where it is worth nothing and the code is already right; A36 identifies the domain count as the discriminator and the engine already probes it. The other two conditions are the ones that stop the fix from costing 2–5x on the narrow half and 25% on the complex compute-bound half. Binary rather than modelled because a traffic term cannot be calibrated (this part) and because the two arms it chooses between are the two that were measured. |
-| D42 | The choice is made in a pure function, `columns_beat_rows(blocks, k, p, domains)`, with the legacy default expressed as `domains = 1`. | The gate's whole truth table is then pinnable by a unit test on any machine rather than only on a chiplet one, and each of the three conditions gets a case that turns it off alone — the `abcijk` family satisfies all three, so a gate that quietly stopped consulting one of them would still look right on the corpus. |
+*Decisions introduced here: D41, D42, D44 — stated in [Design decisions](#design-decisions).*
 
 | # | Assumption | Status |
 |---|---|---|
@@ -3906,91 +3116,14 @@ arms being compared, which is exactly what check 2 does above.
 | A39 | Per-case ratios at 64 threads are readable at the ±6% the reference machine reports. | **Refuted on this corpus and this width.** Repeats of an identical partition run p10 0.885 / p90 1.107 with tails to 0.80–1.55. Only per-family geomeans (1–2%) are quotable at this thread count, and the control that shows it comes out of the same data at no cost. *Confirmed on two further nodes: Ice Lake at 32 threads reads p10 0.915 / p90 1.108 over 392 identical-partition repeats, so this is a property of threaded measurement here and not of one machine.* |
 | A40 | A discarded warm-up arm at the top thread count removes the opening-arm artefact (the fix A31 asked for). | **Partly.** Three of four `t1`/`t1b` brackets came back inside 0.3%, against 0.954–0.973 on three nodes without one. The exception is the first dtype pair of the longer session, at 0.972–0.977, whose *second* pair is clean — so the residual tracks position in the session rather than package temperature, and a hotter or longer warm-up would not remove it. Keep the warm-up; do not treat it as a floor. Derive the floor from a bracket adjacent to the arms being compared, which is what the "columns the change cannot touch" control does for free. |
 
-## Phase 4 report, part 13: the row-block menu is keyed by position (A35)
-
-Part 11 left A35 in the worst available state: a **measured** 7.8% shape that the
-engine could not run, could not A/B, and could not put on a menu, because
-`config_at` dispatched on `MR` alone and `32x5` shares its height with the
-shipped `32x6`. "Documented and untestable" is worse than "unfixed", and this
-closes that half without touching the default.
-
-**The change is a re-keying, not a retune.** `row_blocks` now returns
-`(MR, NR)` pairs and `config_at` takes a **menu position**; `Plan::row_block` and
-`preferred_row_block` return an index. The rule itself is untouched — it reads
-only `MR`, so entries of equal height tie and the earlier one wins, which keeps
-the measured default in front by construction. `TENSORCONTRACT_ROWBLOCK=idx=<i>`
-now means what its name always implied, and `mr=<n>` resolves to the first entry
-of that height, which is the documented limitation rather than a silent surprise.
-
-`(2, 5)` is **appended** to the `f32`/`c32` planar menu, not inserted after the
-default: entries 0–2 keep the positions `bench-results/phase4c` swept, so that
-grid's `idx=` numbering still means what it meant. Verified end to end —
-`idx=0` runs `avx512-planar 32x6`, `idx=3` runs `avx512-planar 32x5`.
-
-The well-formedness test changed with it, and the change is the interesting part:
-a repeated `MR` is now **allowed** and a repeated *shape* is not. The old
-invariant existed because a duplicate height made the later entry unreachable;
-under positional keying it is reachable, and what is unreachable instead is a
-duplicate `(MR, NR)`. The test says so, and says why, so the next person does not
-restore the stronger version and delete the entry this part added.
-
-**Not fixed, and deliberately.** The default is still `32x6`. A 7.8% *kernel*
-margin is not a corpus margin — `NR` moves the `jr` loop count and the packed-`B`
-sliver geometry as well as the register block — and this project has been wrong
-about exactly that kind of extrapolation before. What changed is that settling it
-now costs one sweep arm instead of a rebuild.
-
-### A provenance defect in the confirmation run, since it is mine
-
-The two confirmation jobs (6753208 `worker5479` rome, 6753209 `worker6150` Ice
-Lake) were submitted at commit `d62b9e2` and **run in place** —
-`rusty-phase4.sbatch` does `cd "$SLURM_SUBMIT_DIR"` and every arm invokes
-`./target/release/tcbench` from the shared checkout. I then wrote the D43 change
-in the same working tree and rebuilt that binary at 14:44:49, **while 6753208's
-threads stage was running**. Timeline:
-
-| time | event |
-|---|---|
-| 14:36:49 | 6753208 prep builds at `d62b9e2`; threads stage starts |
-| 14:38:58 | its discarded warm-up arm completes |
-| **14:44:49** | **`target/release/tcbench` relinked from the D43 tree** |
-| 14:45:26 | 6753209 prep finds the binary current, does *not* relink, starts its threads stage on the D43 binary |
-
-So on `worker5479` the arms launched before 14:44:49 ran one binary and those
-after ran another, and `worker6150` ran the second one throughout while its
-`PROVENANCE` says `d62b9e2`. The project's rule is "do not compile while a
-benchmark is in flight"; it is written about CPU contention on a shared
-workstation, and it turns out to protect something else as well on a cluster —
-the *binary*, through a shared `target/`.
-
-**Checked rather than assumed, and the delta is inert.** D43 is a re-keying plus
-one appended menu entry in `cfg_avx512_f32`, which an AVX2 node never consults at
-all. On the machine where the menu did grow, the selected shape is unchanged on
-**392 of 392 case-dtype-methods**: `worker6016`'s `features.csv` (Ice Lake, built
-before any of this) and `worker6150`'s (Ice Lake, built from the D43 tree) agree
-on `(mr, nr, arm)` everywhere, and on all 49 `f32`/`c32` planar entries in
-particular. The runs therefore stand, and the partition arms — which is what they
-were booked for — touch none of this code.
-
-**What to do differently**, and it is cheaper than the rule it replaces: a
-cluster job should build into its own `CARGO_TARGET_DIR` under
-`bench-results/<node>-<arch>/`, so a submit-directory edit cannot reach a running
-arm and the binary is archived beside the numbers it produced. Until that exists,
-treat the submit directory as frozen for the duration of a job — including
-`cargo test`, which relinks the same artefacts.
-
-| # | Decision | Rationale |
-|---|---|---|
-| D43 | The row-block menu is addressed by **position**, not by `MR`: `row_blocks` yields `(MR, NR)` and `config_at` takes an index. A repeated `MR` is legal; a repeated shape is not. | An `MR`-keyed menu cannot express an `NR`-only alternate, and the Phase 3 sweep produced one that beats the shipped default (A35). Keying by position makes it reachable at run time (A15's preference for a switch over a rebuild), makes `idx=` honest, and costs the rule nothing because the rule never read `NR`. Appending rather than inserting keeps the committed grid's index numbering valid. |
-
-## Phase 4 report, part 14: load imbalance, and a claim of ours that expired
+### Part 14: load imbalance, and a claim of ours that expired
 
 Not a measurement — a correction, an argument, and the experiment that settles
 it. Prompted by the observation that a block-scatter contraction has a load
 imbalance a dense GEMM does not: some blocks sit on the regular fast path and
 some on the gather path, so **equal block counts are not equal work**.
 
-### The correction: "the corpus is fully regular" is false, and it steered things
+#### The correction: "the corpus is fully regular" is false, and it steered things
 
 A4 recorded, in Phase 1, that TCCG rounds stride-1 extents to multiples of 24
 "which divides every register block in use", so `regA = 1.00` everywhere. That
@@ -4001,7 +3134,15 @@ Phase 3**, when `f32`/`c32` shipped `MR` of 16, 32 and 48 — none of which divi
 `README.md` and a memory ever since.
 
 Measured, on the arm the orientation rule actually picks, over all 392 corpus
-case-dtype-methods (`bench-results/worker6150-icelake/features.csv`):
+case-dtype-methods (`bench-results/worker6150-icelake/features.csv`).
+
+**These fractions are `--size 64` figures and the size is part of the claim** — the
+extents scale with it, so which runs straddle an `MR` boundary does too. At
+`tcbench orient`'s default size the same AVX-512 engine reads 40.6 / 26.0 / 34.9,
+and `bench-results/phase4d/features.csv` (generated at that default) reads
+36.7 / 26.0 / 33.2. Reproduce the row below with
+`./target/release/tcbench orient --size 64 --csv -` on any AVX-512 machine; it
+costs no CPU and touches no data.
 
 | quantity | fraction below 1.0 | values it takes |
 |---|---|---|
@@ -4019,7 +3160,7 @@ the tensors. A 24-run straddles a 16-wide block. That is the same effect the
 row-block and orientation rules were built for; we simply never connected it to
 *threading*.
 
-### What the corpus still cannot show, and the experiment for it
+#### What the corpus still cannot show, and the experiment for it
 
 Its straddling is **periodic** — every third block — so a static strip of many
 blocks self-averages, and at 12 panels per strip (768 panels over 64 threads) the
@@ -4035,7 +3176,7 @@ against the scaling curve unperturbed, **each against its own `t1`**, because
 ragged changes the shapes and only within-mode ratios mean anything. If ragged
 scales visibly worse, static partitioning is losing to imbalance.
 
-### The design ladder, if it is
+#### The design ladder, if it is
 
 1. **Cost-weighted static cut.** Strips are currently cut by panel *count*. The
    per-block cost is already known before any thread starts — `a_m_bs` and
@@ -4061,7 +3202,7 @@ makes the packed `A` block `mc x K`; at `K = 3744` and `mc = 256` that is 7.7 MB
 in `f64`, far past L2. It is viable only for small `K` — the memory-bound family,
 where it is most wanted — but the road to a general task graph is 3, not fusion.
 
-### What is *not* a reason to do any of this
+#### What is *not* a reason to do any of this
 
 Barriers. They cost skew per iteration; imbalance costs *total*, because a
 systematically unlucky strip does more work every iteration and the barrier
@@ -4070,15 +3211,13 @@ already has a barrier-free configuration — `pm == 1`, which the domain-aware g
 now selects on chiplet machines for exactly the memory-bound family. Earlier
 drafts of this argument had that emphasis backwards.
 
-| # | Decision | Rationale |
-|---|---|---|
-| D45 | **Bitwise identity with serial is no longer a design constraint.** | The user's call, 2026-08-04. It remains *true* today and the tests still assert it, so nothing is being given up yet — but future work may trade it. Two things this does not license, recorded so they are not assumed: concurrent read-modify-write on an output block is a data race regardless of what one thinks of float ordering, so exclusive access per block is still required; and A21 (no `K`-parallelism) was argued from *shape* — needing it implies fewer than `p` micro-tiles in the whole output, which bounds arithmetic intensity — so it survives independently. |
+*Decisions introduced here: D45 — stated in [Design decisions](#design-decisions).*
 
 | # | Assumption | Status |
 |---|---|---|
 | A41 | Blocks of a block-scatter contraction are equal-cost, so partitioning by block count balances the load. | **False, and measured false on the corpus we call regular** — 123 of 392 case-dtype-methods have mixed regularity within one contraction, at ratios of 1/3, 1/9 or 1/27 of blocks on the gather path, which the orientation work priced at roughly 2x. Whether it *costs* at thread scale is what `RAGGED=1` answers; on the unperturbed corpus the straddling is periodic and a static cut partly self-averages. |
 
-## Phase 4 report, part 15: what TBLIS actually does about threading
+### Part 15: what TBLIS actually does about threading
 
 Prior art for part 14, read from source rather than assumed. Both trees are on
 disk — `baselines/tblis-1.3.0` (git `c4f81e0`) and `baselines/tblis-2.0` (git
@@ -4086,7 +3225,7 @@ disk — `baselines/tblis-1.3.0` (git `c4f81e0`) and `baselines/tblis-2.0` (git
 load-bearing claims below were spot-checked directly against the source after the
 survey, and all four hold.
 
-### The three findings that matter to us
+#### The three findings that matter to us
 
 **1. `PC` is never parallelised, in either version, and for our reason.** 1.3.0
 gives the `kc` level exactly one gang — `communicator comm_kc = comm_nc.gang(
@@ -4147,7 +3286,7 @@ the split part 14 proposes and the user's instinct predicted: **static
 partitioning for one dense contraction, dynamic fork-join for block-sparse.** The
 most experienced implementation of this algorithm made the same division.
 
-### The structural divergence, which is a real trade
+#### The structural divergence, which is a real trade
 
 | | this engine | TBLIS |
 |---|---|---|
@@ -4177,12 +3316,12 @@ region. Both baselines here are configured `TCI_USE_OPENMP_THREADS 1` with
 |---|---|---|
 | A42 | Block-scatter load imbalance is a solved problem in mature implementations, so a cost-aware partition would be reinventing something. | **False.** TBLIS computes the same per-block regularity sentinel and feeds it to no scheduling decision in either version, and its author published the diagnosis without a fix. Its mitigation is upstream — reorder dimensions to manufacture regular blocks — and we already do the equivalent. |
 
-## Phase 4 report, part 16: the two experiments that decide the threading default
+### Part 16: the two experiments that decide the threading default
 
 Jobs 6754849 (`worker5139`) and 6755009 (`worker5178`), both rome, both rc=0,
 2026-08-04. One settles the default; the other kills a design direction.
 
-### Small contractions: the default cannot be a fixed thread count
+#### Small contractions: the default cannot be a fixed thread count
 
 Speedup against `t1` **at the same size**, so the fixed cost is inside the
 measurement — `timed()` takes the best of `reps` with one `execute` per rep, and
@@ -4230,7 +3369,7 @@ And it sharpens the batched-API argument: for many small contractions the right
 parallel axis is *the batch*, giving one spawn per batch instead of one per
 contraction, which is exactly the cost measured here.
 
-### Load imbalance from block-scatter irregularity: refuted, and cleanly
+#### Load imbalance from block-scatter irregularity: refuted, and cleanly
 
 `--stress ragged` subtracts 1 from every extent, destroying TCCG's multiple-of-24
 property. It did what it was meant to, and the perturbation is characterised
@@ -4272,16 +3411,420 @@ with wildly varying block sizes**, which is a far larger imbalance of a differen
 kind, and it was measured where the machine is bandwidth-bound. If a future kernel
 or a smaller working set makes the engine compute-bound at scale, re-run it.
 
-| # | Decision | Rationale |
-|---|---|---|
-| D46 | Do **not** flip `TENSORCONTRACT_THREADS` to a fixed non-1 default. | Measured: at 64 threads, contractions below ~1 MiB run 1.2–10x *slower* than serial, and the optimal thread count walks 4 → 64 across the size range. A fixed default is wrong at every size but one, and wrong by an order of magnitude at the small end — which is the regime Phase 1 named as this project's real headroom. |
-| D47 | Do not build cost-weighted or dynamic partitioning for the dense path on current evidence. | `--stress ragged` raises heterogeneous cases from 11.7% to 87.2% at aperiodic fractions and parallel efficiency does not move (0.976–1.124). TBLIS reached the same conclusion by inaction (part 15). Revisit for block-sparse, where the imbalance is block *size*, not block *regularity*. |
+*Decisions introduced here: D46, D47 — stated in [Design decisions](#design-decisions).*
 
 | # | Assumption | Status |
 |---|---|---|
 | A41 | Blocks of a block-scatter contraction are equal-cost, so partitioning by block count balances the load. | **False in the premise, true in the consequence.** Blocks genuinely differ in cost — part 14 measured the heterogeneity and it is large. But making it 7.5x more prevalent and aperiodic changes parallel efficiency by less than the noise floor, so the imbalance does not *cost* at these thread counts on this machine class. Stated this way because the premise may matter again where the consequence does not follow — a compute-bound machine, or block-sparse. |
 | A43 | Per-call thread spawn is a second-order cost, worth fixing after the partition. | **Refuted at small sizes.** ~20–36 µs per thread, which is the entire story below 1 MiB: a 0.22 ms `f32` contraction takes 2.2 ms on 64 threads. It is first-order for exactly the workload Phase 1 identified as the headroom. |
-## Phase 5 report, part 3: the comparison re-measured, and the method ranking does not travel
+
+## Packaging and distribution
+
+Phase 5: the quality gates that had never run, the API tiers, the TAPP conformance suite, the shipped C header and its consumer, cross-compilation, the JLL and the Julia package.
+
+### Phase 5 part 1: what preparing v0.1 found
+
+Packaging was expected to be tidying. It was mostly **discovering that the
+project's own quality gates had never run**, which is a more useful result and
+worth recording in full so the lesson survives.
+
+#### CI was not gating anything it claimed to gate
+
+Three of five jobs could not have been passing, each for an independent reason,
+and none had ever been noticed because nobody had run the commands locally with
+the flags the workflow uses:
+
+| job | why it could not pass |
+|---|---|
+| `msrv` | pinned toolchain **1.75** against a declared `rust-version` of 1.89, so cargo refuses before compiling anything |
+| `lint` | `cargo fmt --all -- --check` against a tree with drift in five files, mostly macro-adjacent code in `kernel/x86.rs` and `plan.rs` |
+| `docs` | `cargo doc` under `-D warnings` against **17 rustdoc errors**, nine of them public documentation linking into private modules |
+
+The general lesson, which is the same one A15 and A20 taught in the measurement
+domain: **a gate nobody has watched fail is not a gate.** Every command in the
+workflow was re-verified locally before being trusted, and the new job set is
+smaller and states what each job proves.
+
+Two of the new jobs cover code paths that had **never been exercised in CI at
+all**: the threaded driver (threading is off by default, so no test ran it) and
+the analytical blocking model. The x86 runners have AVX2 but not AVX-512, so
+CI's default path is now the AVX2 kernels — the ones whose register blocks are
+provisional (D26) — which makes the untuned path the *automatically* tested one.
+
+#### Defects that would have shipped
+
+* **`examples/kernel_shapes` did not compile off x86**, and `cargo test` builds
+  examples, so the suite failed for every aarch64 user. Now a cfg-gated module.
+* **The declared MSRV was wrong** in the other direction too — see D31.
+* **The `trace` feature was declared, described, and implemented nowhere.**
+  Removed rather than advertised.
+* **The TAPP crate cannot be packaged before the engine is published.** It
+  depends on the engine by path *and* version, and packaging rewrites that
+  into a registry dependency which must then resolve — so
+  `cargo package -p tensorprimitives-tapp` fails at "failed to prepare local
+  package for uploading" until `tensorcontract 0.1.0` is in the index.
+  `cargo package --workspace` appears to work, and does set up a temporary
+  registry to satisfy the dependency, but it is **not a reliable gate**: it was
+  observed verifying the dependent crate against a *stale* extraction of the
+  engine as soon as the dependent used an engine API added since the previous
+  packaging run — which is precisely the case such a job exists to catch. It
+  passed earlier in this session and then failed on exactly that change, which is
+  how the behaviour was found. CI therefore gates `cargo package -p
+  tensorcontract` only, and the ordering stands as the documented publish
+  procedure: `tensorcontract`, wait for the index, then `tensorprimitives-tapp`.
+* **The `std` feature promised something it does not deliver.** Disabling it
+  compiles, but the crate has no `#![no_std]` and uses `Vec`, so it is not a
+  no-std build. The feature is now documented as the seam a future port would
+  widen rather than as a claim.
+* **The README described the Phase 2 engine** — scalar kernels, "performance not
+  yet meaningful" — two phases and two instruction sets out of date.
+
+#### What the API decision cost and bought
+
+D30's three tiers. The part worth carrying forward is that this project *needs*
+a tier whose values are explicitly unstable: it ships measured heuristics, and it
+re-measures them every phase. Publishing without saying so would have forced a
+choice between freezing the tuning and breaking semver at each phase boundary.
+
+Two side effects of the documentation pass are worth keeping. `kernel::scalar`
+had been *documented* as the route by which a foreign scalar type gets a correct
+engine for free and never demonstrated; it now carries a worked example that
+compiles and runs as a doctest for 0.11 s. And both blanket
+`allow(clippy::missing_safety_doc)` attributes are gone — the x86 one had been
+hiding that the four generated kernels have *different* panel and tile bounds
+(1x, 2x, 3x the real kernel's, by packing format) and that the plain-`fn`
+trampolines drop the `#[target_feature]` attribute but not the obligation.
+
+#### The TAPP conformance suite, and the four gaps it found
+
+`crates/tensorprimitives-tapp` had **one test** — a happy-path `c64` contraction —
+behind a coverage table claiming four datatypes, TAPP cases 1–4, conjugation on
+any operand, two documented rejections and mixed precision. For the crate whose
+entire purpose is that a C caller can swap this engine for TBLIS behind one
+header, that was the thinnest-tested part of the workspace, and every claim in
+the table was unverified. It is now **84 tests**, all through the `extern "C"`
+entry points rather than the Rust `Plan` behind them, because the bugs this layer
+can have are exactly the ones invisible from there.
+
+Two design points worth copying. Numerics go against the brute-force oracle
+*plus* two hand-computed anchors, so a shared engine/oracle bug cannot pass. And
+the suite was **falsified before it was trusted**: perturbing one hand-computed
+constant failed exactly the hand-checked test, while perturbing the oracle call's
+`alpha` failed 33 of 34, leaving only the anchor — which is the correct pattern
+and confirms the two mechanisms are independent. A conformance suite nobody has
+watched fail is not evidence, which is A15's lesson in a third domain.
+`abi_layout.rs` additionally re-declares the whole upstream header in an
+`extern "C"` block and drives a contraction through it, so a renamed `#[no_mangle]`
+is a link error in our own tests rather than a downstream C build's discovery.
+
+**Four gaps, all fixed rather than filed** (none was a wrong number):
+
+1. **An extent product could abort the caller's process.** Nothing between
+   `TAPP_create_tensor_info` and `build_scatter` checked that a tensor's extents
+   multiply to something representable. The product wrapped: in release the plan
+   built, reported success and computed *nothing*; in debug the multiply panicked
+   inside an `extern "C"` function, which the compiler turns into a process abort.
+   `reduce_tensor` now folds with `checked_mul` and reports
+   `Error::ExtentProductOverflow` → `TAPP_ERROR_SHAPE`. Checking per tensor bounds
+   every scatter vector, since each is as long as the product of some *subset* of
+   one tensor's axes.
+2. **A null `C` silently discarded `D`.** Upstream defines `TAPP_IN_PLACE` as
+   `NULL` and leaves its meaning an open `//TODO`; this crate read it as
+   `beta = 0`, so `beta = 1, C = TAPP_IN_PLACE` — precisely what a caller writes
+   for `D += alpha*A*B` — overwrote `D` and reported success. The ambiguous
+   combination is now refused; in-place accumulation is expressible by passing
+   `D`'s own pointer as `C`.
+3. **Every library handle was the value `1`.** `HandleState` was zero-sized, so
+   `Box::into_raw` returned `NonNull::dangling()`: two live handles were
+   indistinguishable and a C program creating two and destroying both was
+   double-freeing — harmlessly, for exactly as long as the state stayed empty.
+   It has a reserved field now, and the comment claiming this made handle
+   validity *checkable* is gone: it never did, and nothing can.
+4. **Three declared symbols did not exist.** `TAPP_attr_set`/`_get`/`_clear` were
+   absent, so a C program including `<tapp.h>` and calling one failed to **link**
+   — the least diagnosable failure available. Now exported as refusals, which is
+   conformant (upstream specifies no keys) and diagnosable. Prototypes fetched
+   from the upstream header, not reconstructed.
+
+Also corrected: `execute` now writes `0` through a non-null `status`, so the
+idiomatic create/execute/destroy sequence stops handing an uninitialised value to
+the destructor; and the coverage table now admits that mixed *storage* types are
+rejected (§1.6 of `DESIGN.md` lists them as in TAPP's scope, and they are — just
+not here), and that `TAPP_ERROR_*` beyond zero are this crate's own numbering,
+since upstream `error.h` fixes only `TAPP_SUCCESS`.
+
+| # | Assumption | Status |
+|---|---|---|
+| A26 | The TAPP layer is thin enough that the engine's own correctness tests cover it. | **Refuted.** Everything the layer can get wrong — datatype-tag dispatch, `intptr_t` handle casts, label arrays read at a rank the info supplies, `beta` on a null `C`, the `status` and `prec` arguments — is invisible from the Rust API and had no test. Four gaps on first contact, one of which aborted the caller's process. **Test an FFI layer as its caller, not as its callee.** |
+
+#### Still open before publishing
+
+* **Defaults.** Threading and the blocking model are both off, which is honest
+  but means a 64-core machine gets one thread and a foreign cache hierarchy gets
+  constants fitted to `ccqlin038`. Flipping either needs the two pending
+  measurements, not a decision.
+
+  **Superseded, and not in the direction this expected.** Both measurements have
+  since been taken (parts 10 and 11). The blocking model **loses** on the first unseen
+  machine and stays off on evidence rather than for want of it (A33); threading's
+  scaling turned out to be topology-dependent in a way `Plan::partition` does not
+  model, and the one machine measured first would have produced the wrong rule
+  (A36). So "flipping either needs a measurement" was right about the process and
+  wrong about the outcome: the measurements argued for leaving both alone.
+* Publication itself, which is a human step and deliberately not automated.
+
+### Phase 5 part 2: the distribution surface, and a Julia consumer
+
+**Status: complete except for the irreversible steps, which are deliberately not
+taken.** No tag, nothing published to crates.io, no Yggdrasil PR. Prompted by the
+question "could I try this from Julia", which turns out to be the same question as
+"can this be distributed as a binary at all" — and the answer was no, for four
+reasons that had nothing to do with the engine.
+
+Part 1 ended with a list of two open items. This is the list that was actually
+open, and every item on it was found by *doing* the thing rather than by reading
+the code. That is the theme, and it is the same theme as part 1's "a gate nobody
+has watched fail is not a gate".
+
+#### Four gaps between "the ABI is correct" and "a distribution can ship it"
+
+1. **Nothing reported a version.** `TAPP_implementation_name()` returns a
+   free-form string with no number in it, and the crate version was visible only
+   to cargo. A distribution that ships `include/` and `lib/` as separate packages —
+   which is what a JLL, a system package, or a stale `-I` all produce — could have
+   them from different versions with nothing anywhere to notice. There are now
+   `TAPP_VERSION_*` macros describing the header and
+   `TAPP_implementation_version()` describing the linked library, and **both halves
+   are tested**: `abi_layout.rs` reads the header as *text* and compares to
+   `CARGO_PKG_VERSION`, so the check holds on a machine with no C toolchain, and
+   `examples/c-consumer` compares the macro its own compiler saw against the string
+   its own link returned.
+2. **The `cdylib` had no SONAME, and on macOS something worse than none.** rustc
+   emits `-soname` only for the `dylib` crate type, never for `cdylib`, so every
+   consumer recorded a bare filename. On Mach-O, ld64 defaults `LC_ID_DYLIB` to the
+   `-o` path — an absolute build-tree path — and BinaryBuilder's `ensure_soname`
+   autofix *returns early whenever an ID is present without inspecting its value*.
+   So a macOS build would have shipped unrelocatable with a clean audit. See D40.
+3. **Eight of the 23 prototypes in `tapp.h` had never been seen by a C compiler
+   or a linker.** `main.c` called the ones that do work; the setters,
+   `TAPP_get_strides`, the batched product, `TAPP_destroy_status` and two attribute
+   functions were checked only by `abi_layout.rs`'s Rust transcription, which is a
+   second hand-maintained copy rather than an oracle. The header's `TAPP_ERROR_NULL`
+   prose bug — fixed in this pass — was exactly that failure class one level
+   further out: prose, which nothing tests at all.
+4. **There were no install rules.** The library was consumable only by knowing
+   cargo's directory layout. `install.sh` plus a pkg-config template fixes that, and
+   the example gained a third link mode (`-DTAPP_PREFIX=`) that consumes an
+   installed prefix — the only mode in which the header comes from outside the
+   source tree, and therefore the only one that would catch an install that forgot
+   to copy it. The recipe calls the same script, so there is one definition of the
+   layout rather than two that drift.
+
+#### Cross-compilation: one prediction inverted, one silent failure (D39)
+
+The repository had never been cross-compiled. Eleven targets now are, in CI, and
+the two findings are both worth more than the eleven passes.
+
+The prediction was that **`i686` would fail**, because `kernel::x86` is gated on
+`any(target_arch = "x86", target_arch = "x86_64")` — so the AVX-512 intrinsics are
+instantiated on 32-bit x86 too — and `core::arch::x86` genuinely lacks the
+intrinsics taking 64-bit integer operands. It compiles: the kernels are f32/f64
+FMA-shaped and use none of them. The cfg was left alone rather than narrowed to
+`x86_64` on suspicion. Note what this does *not* say: in 32-bit mode only
+`zmm0`–`zmm7` are encodable, so the register blocks — chosen against a 32-register
+file — will spill on `i686`. That is a performance property, it is unmeasured, and
+it is recorded here rather than acted on.
+
+**musl fails silently.** With the target default (`crt-static` on) cargo prints
+`dropping unsupported crate type cdylib` and **exits 0**. A musl JLL would have
+been a tarball containing a header, a pkg-config file, two licences and no library
+— green, and inexplicable downstream. `-C target-feature=-crt-static` fixes it, and
+because the symptom is a warning rather than an error the `cross-musl` job asserts
+the warning *still appears* without the flag, so the day it stops being needed is
+visible instead of assumed.
+
+#### What running the recipe found that reading it did not
+
+The BinaryBuilder recipe was dry-run locally, on this workstation, before being
+considered done. Four corrections, none of which a careful reading produced:
+
+* **The available Rust shards stop at 1.94.0, not 1.97.0.** Master's
+  `Artifacts.toml` advertises 1.97.0; the BinaryBuilderBase that the *released*
+  BinaryBuilder resolves to offers 1.57.0 through 1.94.0. `choose_shards` **errors**
+  on a version with no shard, so an optimistic pin is a hard build failure rather
+  than a graceful fallback. This is [[prefers-verified-releases]] again, in a new
+  place: check what is released, not what the development head says.
+* **`riscv64-linux-gnu` and `aarch64-unknown-freebsd` have no Rust toolchain at
+  any available version.** Enumerated rather than guessed, by calling
+  `choose_shards` on all 18 supported platforms. Both would take the scalar path
+  anyway. Filtered, with the query that establishes it recorded in `RELEASING.md`
+  so it can be re-run rather than re-derived.
+* **The licence directory name.** The auditor looks under
+  `share/licenses/tensorprimitives_tapp` — the *package* name, underscore — while
+  `install.sh` uses the crate name with a hyphen. The recipe's first draft argued
+  itself out of calling `install_license` on the grounds that install.sh already
+  did the job, and the audit answered "Unable to find valid license file", which is
+  one of the two things a Yggdrasil reviewer greps the log for. install.sh gained
+  `--no-licenses`.
+* **`CompilerSupportLibraries_jll` makes the `libgcc_s.so.1` warning worse.** It
+  adds a missing-artifact-mapping warning of its own — CSL's artifacts are keyed by
+  libgfortran version — and does not silence the original. Julia ships libgcc_s in
+  its own libdir, so the library loads and runs; that was settled by the Julia test
+  suite loading it, not by argument. Reverted to an empty dependency list with the
+  reasoning attached in the recipe, since a reviewer will ask.
+
+**Thirteen of the fifteen platforms were then built and audited locally**, and all
+thirteen produced a tarball with a real shared library in it and an identical
+layout: `lib/` (or `bin/` on Windows), `include/tapp.h`, `lib/pkgconfig/`,
+`share/licenses/`. `x86_64-w64-mingw32` behaves as predicted — the artifact is
+`tensorprimitives_tapp.dll` with no `lib` prefix, it lands in `bin/` because that is
+what `${libdir}` is there, the import library goes to `lib/`, and the two-name
+`LibraryProduct` finds it without renaming anything. `i686` linked, which `cargo
+check` could not establish. The two not built are the Apple targets, and only
+because accepting the Xcode SDK licence is not a decision to take on someone's
+behalf.
+
+Exactly **three** distinct audit warnings across all thirteen, all understood:
+the `cpuid` one below, `libgcc_s.so.1` on ELF, and `bcryptprimitives.dll` on
+Windows — the last a Windows 10+ system DLL that Rust's standard library imports
+for randomness and that the auditor's system-library list does not know. A fourth
+would be a real finding, and the recipe says so.
+
+And one **prediction confirmed verbatim**, which is why D40 exists. The audit log
+reads: *"contains a `cpuid` instruction; refusing to analyze for minimum instruction
+set, as it may dynamically select the proper instruction set internally. Would have
+chosen avx512, instead choosing x86_64."* `check_isa` fails a build whose minimum
+instruction set exceeds the platform's, and this is a generic x86-64 binary full of
+AVX-512 kernel bodies. It ships only because the auditor abandons the analysis on
+finding a `cpuid`, which `kernel::cache` and `std_detect` happen to supply. Nobody
+promised that, so CI asserts it.
+
+#### The Julia side, and why the backend shape is the right one
+
+`julia/TensorPrimitives` is two layers: `LibTAPP`, a complete `ccall` wrapper with
+handles as distinct Julia types and finalizers; and `TAPPBackend`, a
+`TensorOperations.jl` backend. The second is the one that matters, for a reason
+that is about this engine specifically rather than about convenience.
+
+`TensorOperations.tensorcontract!(C, A, pA, conjA, B, pB, conjB, pAB, α, β, ...)`
+hands over exactly what TAPP takes: arbitrary extents, element strides, and
+per-operand conjugation. So `pA`/`pB`/`pAB` become a **relabelling** —
+`_labels` is twenty lines of index bookkeeping — and nothing permutes, copies, or
+allocates a temporary. A backend over a GEMM would have to. This makes the
+transpose-free claim something a Julia user can observe rather than read, and it
+puts this engine on the same footing as `TensorOperationsTBLIS.jl` for comparison,
+which is the shape the eventual three-way benchmark wants.
+
+The backend is opt-in and deliberately **not** registered with `select_backend`:
+loading the package changes nothing for code that does not ask. `tensoradd!` and
+`tensortrace!` fall through to TensorOperations' own backends. TAPP can express
+both — a trace is a repeated label, an add is a contraction against a rank-0
+operand — but each is a correctness surface, and acquiring one for free is how a
+wrong answer gets shipped.
+
+64 tests, every one checked against TensorOperations' own backend on the same
+inputs rather than against a rewritten expectation. The two that were worth
+writing: non-contiguous strided views, where a strides-in-elements or base-pointer
+error would show and nothing else would; and `β == 0` against an all-`NaN` output,
+because "overwrite" and "multiply by zero" differ exactly there, and TAPP spells the
+former as a null `C` operand.
+
+#### Two things a reader should not take from this section
+
+* **No performance was measured *here*.** Nothing in this section is a throughput
+  claim and no code in it can change one: the engine was not touched. The two Phase
+  4 measurements this branch was written alongside have since landed on `main`
+  (parts 10 and 11), and the CHANGELOG's confidence table has been updated from *those*
+  — five rows, none of them because of anything in this section. If a reader arrives
+  at a new Julia backend and infers that something got faster, the answer is that a
+  binary distribution was built, not a kernel.
+* **Threading is still not reachable from Julia**, because
+  `TAPP_execute_product` ignores its executor argument and `TENSORCONTRACT_THREADS`
+  is read once per process. The Julia wrapper documents that rather than papering
+  over it, and deliberately wires nothing to `TAPP_create_executor` — plumbing a
+  knob through an inert object would be worse than the absence.
+
+#### Still open before publishing
+
+Unchanged from part 1 on defaults — and see the note added there: both measurements
+have landed and both argued for leaving the defaults alone, so the honest v0.1
+position is "off on evidence" rather than "off pending evidence". Plus:
+
+* The **tag, the crates.io publish and the Yggdrasil PR**, in that order, for the
+  reasons in `RELEASING.md`. All three are human steps.
+* **One known unfixed defect is now release-facing.** A35 found, in committed data
+  and at no machine cost, that `planar` `f32`/`c32` ships the register block `32x6`
+  where the Phase 3 sweep's own output names `32x5`, 7.8% faster at the operating
+  `kc`. It is recorded in the CHANGELOG's confidence table rather than quietly
+  carried, because shipping a known register-block defect under a table that says
+  "measured" is exactly the kind of claim this project has spent two phases learning
+  not to make. Fixing it needs a corpus A/B — kernel margin is not corpus margin —
+  so it is a decision for whoever cuts the tag, not something to slip in.
+* **The repository is private.** Yggdrasil builds only from publicly downloadable
+  sources, so the recipe's `ArchiveSource` cannot resolve until it is public and
+  tagged. Making it public also publishes this file and 9 MB of benchmark CSVs,
+  which is a decision rather than a side effect.
+* **The Apple targets are unverified.** They need the Xcode SDK licence accepted
+  (`BINARYBUILDER_AUTOMATIC_APPLE=true`), which is a legal agreement and therefore
+  not something to accept on someone's behalf. They are also the two targets where
+  the install-name work in D40 actually matters, so they should be the first thing
+  built after that acceptance.
+
+### Interlude: making the C surface consumable
+
+Prompted by a concrete external ask — a colleague evaluating this for the
+**NDA** C++ array library (TRIQS, Flatiron) — the question was whether a C++
+project can use this without shipping a Rust compiler. Answering it honestly
+turned up four gaps between "the ABI is correct" and "a C++ project can link
+it", all of which were on the Phase 5 packaging list and none of which touched
+the engine. See D36–D38.
+
+#### The gap that mattered
+
+The TAPP layer had 23 verified `extern "C"` symbols, a conformance suite driving
+those symbols, and `abi_layout.rs` re-declaring the whole upstream header so a
+dropped export is a link error. What it did not have was **a header**, and
+nothing anywhere invoked a C compiler. The correctness of the ABI was thoroughly
+established *from Rust*; whether a C caller could actually use it was inference.
+
+That inference held — the C consumer passed on its first real run, including the
+complex path and `TAPP_CONJUGATE` — but it held by luck as much as design, and
+it would not have survived the first wrong prototype.
+
+#### What the toolchain objection was actually worth
+
+Little, once examined, and the examination is the useful part. NDA already
+requires CMake ≥ 3.22, a concepts-capable C++ compiler, and HDF5 + MPI + OpenMP
+on by default. Against that, `rustc` is marginal — and **a C++20 compiler is the
+harder constraint on cluster environments**: the stock compiler on this very
+workstation is gcc 8.5, which cannot compile nda at all, while `rustup` installs
+a pinned toolchain into `~/.cargo` with no root and no system integration. The
+MSRV, 1.89, was released 2025-08-04, one year ago to the day.
+
+So the real blockers are maturity and measurement coverage, not the build.
+Recorded so the toolchain argument is not re-litigated.
+
+#### A claim corrected in the making
+
+The vendoring story was initially stated as "three crates", from the runtime
+dependency tree (`num-complex` → `num-traits`, plus `autocfg` at build time).
+Running it showed **~17**: `cargo vendor` is workspace-wide and includes
+dev-dependencies, so `rand` and its tree (`getrandom`, `libc`, `zerocopy`,
+`syn`, …) come along. Both numbers are true of different things — a library-only
+vendor from the published crate is three; vendoring this repo so the *tests* run
+offline is seventeen — and the CI job now states both and exercises the second,
+since a test step is the only thing that keeps the dev-dependency half honest.
+
+| # | Assumption | Status |
+|---|---|---|
+| A47 | The shipped header agrees with the library it describes. | **Now tested rather than assumed.** `examples/c-consumer` compiles the header with a C compiler, links the built library and checks numerical results in `f64` and `c64`; CI runs it in both the corrosion and prebuilt modes. Previously no C compiler saw the header at any point. |
+| A48 | A Rust panic reaching the C boundary is acceptable because it is memory-safe. | **Rejected as a policy.** Memory-safe but process-fatal, and the engine panics on allocation conditions a caller can hit. D38 converts it to an error code on the three entry points that can raise it. |
+
+## The baseline comparison
+
+The engine against TBLIS 2.0-dev, TBLIS v1.3.0 and TTGT, re-measured on the tightest floor in this file — and the finding that the method ranking does not travel.
+
+### Phase 5 part 3: the comparison re-measured, and the method ranking does not travel
 
 Job **6753260**, `worker6156` (Ice Lake-SP, AVX-512, 2 x 32 cores, SMT off),
 2026-08-04, 231 min, `--constraint=icelake --exclusive`,
@@ -4298,7 +3841,7 @@ differenced against the Phase 3 table.** Different microarchitecture, different
 cache hierarchy. The improvement attributable to Phase 4 remains unmeasured; only
 a `ccqlin038` run can supply it.
 
-### The measurement is the tightest in this file
+#### The measurement is the tightest in this file
 
 | floor | arms | geomean spread | outside ±6% |
 |---|---|---|---|
@@ -4319,7 +3862,7 @@ headroom and co-tenancy, not of measurement in general — keep the warm-up arm
 (it is cheap and it is how you learn which case you are in), but do not expect it
 to move anything on an exclusive SMT-off node.
 
-### The engine, this build, this machine
+#### The engine, this build, this machine
 
 49-case corpus at 64 MiB, single core, planar, GF/s. **These columns are
 independent of the TBLIS question below**, which cannot touch them.
@@ -4342,7 +3885,7 @@ the project's central technical result replicating on new hardware to within
 about two points. Twice the arithmetic intensity amortises overhead better; the
 weak spot is low arithmetic intensity in either domain, not complex.
 
-### The method ranking does not transfer, and item 3's premise fails here
+#### The method ranking does not transfer, and item 3's premise fails here
 
 This is the result worth carrying forward, and it contradicts something the
 Resume-here block lists as settled.
@@ -4381,7 +3924,7 @@ Lake 3m was the *fastest* of the three on the memory-bound subset. So:
   Lake results.** The README must say so rather than stating them as properties of
   the engine.
 
-### The TBLIS 2.0 columns are under review, and why
+#### The TBLIS 2.0 columns are under review, and why
 
 This run used `../baselines/tblis-2.0-install` — the build every previously
 committed TBLIS 2.0 number used. Its BLIS was configured with
@@ -4415,7 +3958,7 @@ sound after all.** The A/B found the two builds identical at both measured sizes
 so the skx build understated nothing here, and the 1.68x was an artifact of the
 8 MiB size it was taken at. Read this paragraph together with that retraction.
 
-### The TBLIS A/B lands, and it retracts the alarm — the 1.68x was a size artifact
+#### The TBLIS A/B lands, and it retracts the alarm — the 1.68x was a size artifact
 
 Job **6754877**, `worker6156` (the same node, which is the best case for
 comparability), 2026-08-04, stage 1 = 90 min. Data in
@@ -4472,7 +4015,7 @@ And a genuine positive result, cheaply held: the TBLIS 2.0 baseline is **measure
 to be build-insensitive at publication sizes**, where before it was an
 assumption nobody had tested.
 
-### Replicated, and the baselines placed
+#### Replicated, and the baselines placed
 
 Job 6754877 stage 2 ran the **whole comparison set a second time** on the same
 node, against the multi-config TBLIS 2.0 (231 min, rc=0). Data in
@@ -4527,7 +4070,7 @@ bought — that remains unmeasured and needs a `ccqlin038` run. And the engine i
 off on Ice Lake, and A44 says the method ranking does not transfer. It wins these
 columns while running shapes chosen for a different microarchitecture.
 
-### Assumptions added
+#### Assumptions added
 
 | # | Assumption | Status |
 |---|---|---|
@@ -4537,6 +4080,526 @@ columns while running shapes chosen for a different microarchitecture.
 
 ---
 
-## Phases 4 (rest) – 5
+## Archive: phases 1–3
 
-In progress. See "Resume here" at the top of this file.
+Closed and unlikely to be reopened. Kept in full because the Phase 3 tables are still the Cascade Lake reference data and the Phase 1 premise check is the project's founding result.
+
+### Phase 1 report: the premise check
+
+**Gate:** self-approved design doc; premise resolved with data; green scaffolded
+repo; working harness with baselines wired in.
+
+**Status: gate met. Kill/pivot condition triggered.**
+
+#### Delivered
+
+* `DESIGN.md` — literature review (cited), ecosystem survey with per-layer
+  build-vs-reuse calls, full engine design, benchmark/test framework,
+  self-scrutiny.
+* Cargo workspace: `tensorcontract` (core), `tensorprimitives-tapp` (C ABI),
+  `tensorprimitives-bench` (harness). CI (build/test/clippy/fmt/docs/MSRV +
+  a scalar-fallback job), dual MIT/Apache-2.0, MSRV 1.75.
+* Working engine, correct end-to-end (this is the Phase 2 gate, met early — see
+  the Phase 2 report).
+* Harness `tcbench` with `verify` / `premise` / `sweep` / `info`, TBLIS and
+  OpenBLAS-TTGT baselines wired in, CSV output, GEMM roofline annotation, and
+  stride-stress modes.
+* Raw results in `bench-results/`.
+
+#### The premise check
+
+Hypothesis under test, from the brief:
+
+> TBLIS underperforms on complex contractions, worst in memory-bound / awkward-stride
+> cases, because interleaved-complex storage and the scatter/block-scatter packing
+> compound and force more work onto the slow full-scatter (gather) path.
+
+Method: 12 cases sampled evenly across TCCG's bandwidth-bound-to-compute-bound
+ordering, at 64 MiB nominal tensor size, best of 3, single-threaded. For each,
+measure the contraction and a same-shape vendor GEMM, in both a real and the
+matching complex dtype. Report `eff = contraction / GEMM` and
+`eff ratio = complex eff / real eff`.
+
+Because a complex MAC is four real FMAs counted as 8 flops, the achievable GF/s
+peak is the same number in both domains (confirmed: `dgemm` 96, `zgemm` 96).
+So `eff ratio < 1` means a complex-specific penalty; `>= 1` refutes the thesis.
+
+**Results — mean `eff ratio` over 12 cases:**
+
+| engine | dtypes | stress | mean eff ratio |
+|---|---|---|---|
+| **TBLIS v1.3.0** (latest release) | f64 / c64 | none | **0.215** |
+| TBLIS 2.0-dev | f64 / c64 | none | **1.060** |
+| TBLIS 2.0-dev | f64 / c64 | ragged (`regA` 0.80–1.00) | **1.027** |
+| TBLIS 2.0-dev | f64 / c64 | padded strided views | **1.059** |
+| TBLIS 2.0-dev | f32 / c32 | none | **1.150** |
+| TTGT | f64 / c64 | none | **1.170** |
+
+**Ceiling-free cross-check — raw complex/real GF/s ratio for the same shape:**
+
+| run | n | min | median | max | mean | below 1.0 |
+|---|---|---|---|---|---|---|
+| **TBLIS v1.3.0 f64→c64** | 12 | **0.19** | **0.33** | 1.15 | 0.40 | **11** |
+| TBLIS 2.0-dev f64→c64 | 12 | 0.98 | 1.91 | 2.67 | 1.76 | 1 |
+| TBLIS 2.0-dev f64→c64 ragged | 12 | 1.01 | 1.82 | 2.28 | 1.68 | 0 |
+| TBLIS 2.0-dev f64→c64 padded | 12 | 1.03 | 1.90 | 2.53 | 1.76 | 0 |
+| TBLIS 2.0-dev f32→c32 | 12 | 1.07 | 1.95 | 2.07 | 1.70 | 0 |
+| TTGT f64→c64 | 12 | 1.10 | 2.12 | 2.62 | 1.94 | 0 |
+
+#### Verdict: the observation is real, the explanation is not, and it is already fixed
+
+The answer depends entirely on which TBLIS you measure, and the two differ by
+almost a factor of five.
+
+**Against v1.3.0, the latest stable release, the complex-weakness claim is
+emphatically true.** Complex efficiency against the GEMM ceiling is 0.09–0.20
+across every case, versus 0.37–1.08 for real: a mean `eff ratio` of **0.215**.
+
+But the *mechanism* is not the one the brief proposes, and the diagnostic is
+unmistakable. TBLIS 1.3.0's complex throughput is essentially **flat across
+shapes** — 4.1 to 9.1 GF/s, a 2.2x spread — while its real throughput spans
+6.2 to 48.4 GF/s, a 7.8x spread. A memory- or scatter-bound effect would track
+shape. A flat ceiling means one fixed-throughput kernel is the bottleneck
+regardless of what it is fed.
+
+Reading `src/configs/*/config.hpp` in v1.3.0 confirms it directly. The
+`TBLIS_CONFIG_GEMM_UKR` macro takes four slots, `(float, double, scomplex,
+dcomplex)`:
+
+```
+skx1:        TBLIS_CONFIG_GEMM_UKR(bli_sgemm_asm_6x16, bli_dgemm_asm_6x8,  _, _)
+skx2:        TBLIS_CONFIG_GEMM_UKR(_,                  bli_dgemm_opt_6x32_l1, _, _)
+haswell:     TBLIS_CONFIG_GEMM_UKR(bli_sgemm_asm_24x4, bli_dgemm_asm_12x4, _, _)
+zen:         TBLIS_CONFIG_GEMM_UKR(bli_sgemm_asm_6x16, bli_dgemm_asm_6x8,  _, _)
+knl:         TBLIS_CONFIG_GEMM_UKR(bli_sgemm_opt_30x16_knc, bli_dgemm_opt_30x8_knc, _, _)
+sandybridge: TBLIS_CONFIG_GEMM_UKR(bli_sgemm_asm_8x8,  bli_dgemm_asm_8x4,
+                                   bli_cgemm_asm_8x4,  bli_zgemm_asm_4x4)
+```
+
+**Sandy Bridge is the only configuration with complex micro-kernels.** On every
+post-2012 x86 target — Haswell, Zen, Skylake-X, KNL — TBLIS 1.x runs complex
+tensor contraction on the generic templated fallback while real gets hand-tuned
+BLIS assembly. That is the entire effect. It has nothing to do with
+interleaved storage, nothing to do with scatter/gather, and nothing to do with
+the block-scatter fast path: `regA = 1.00` on every case measured.
+
+**Against 2.0-dev the claim is refuted.** Rebasing onto BLIS-as-framework
+brings BLIS's 1m induced method, and complex immediately regains full shape
+sensitivity (11.2–82.9 GF/s, a 7.4x spread matching real) and lands at or above
+parity — mean `eff ratio` 1.06 in f64, 1.15 in f32, and still 1.03 when
+irregular block scatter is forced. The upstream release notes for `v2.0-beta2`
+say as much: "a major update … which incorporates BLIS as the core framework"
+with improvements including complex number support.
+
+**Why complex is not intrinsically disadvantaged.** The folklore reasoning ran:
+complex data is 2x the bytes, scatter/gather is the bottleneck, therefore
+complex suffers more. The missing term is arithmetic intensity. A complex MAC
+does 4x the flops of a real MAC on 2x the bytes, so complex contraction has
+**2x the arithmetic intensity** of the same-shape real contraction. Packing,
+indexing and write-back costs are amortised over twice as much arithmetic. Once
+a real complex kernel exists (2.0), the memory-bound shapes where complex was
+predicted to be worst are where it looks *best*: `abcijk-ikmb-mjac` runs at
+8.8 GF/s in f64 and 23.5 GF/s in c64; `abjcd-dkbac-jk` at 5.5 vs 11.2.
+
+BLIS's 1m does inflate the packed A panel 2x (four reals per complex element in
+"1e" format versus two in planar). That cost is real but is not on the critical
+path at these shapes, and the intensity advantage swamps it.
+
+#### What this means for the project
+
+The gap the project set out to exploit **exists in the wild today** — anyone
+using the packaged, released TBLIS for complex tensor contraction on modern x86
+is getting roughly a fifth of the achievable throughput. But:
+
+* it is a missing-kernel bug, not an algorithmic opening, so beating it proves
+  nothing about planar packing;
+* it is already closed upstream, and will disappear from the wild the moment
+  2.0 ships;
+* the correct opponent for any new complex method is 2.0/BLIS 1m, and against
+  that opponent there is no complex-specific headroom to take.
+
+So the planar-complex thesis is refuted as a *research* proposition, while the
+practical observation that motivated it is validated as a *packaging* problem.
+Both halves are worth reporting.
+
+#### What the data says the real headroom is
+
+Not complex — **low arithmetic intensity**, in either domain:
+
+* TBLIS `eff` against the GEMM ceiling ranges from **0.34 to 1.05**. It is
+  0.85–0.87 on the big compute-bound `ijkl` cases and collapses to 0.34–0.53 on
+  small-`k` / skinny shapes (`abjcd-dkbac-jk`, `ajbc-ckba-jk`,
+  `abcijk-*`, all with `k = 24`).
+* The gap is worse in **f32** (mean `eff` ≈ 0.6) than f64, because the same
+  overhead is amortised over half the bytes of arithmetic.
+* TTGT is 2–4x behind TBLIS on those same low-intensity shapes (`eff` 0.15–0.35),
+  confirming that materialising a transposed copy is what hurts — the original
+  BSMTC insight, still valid.
+
+So the defensible target is **small-`k` and skinny tensor contractions**, where
+the best available transpose-free engine leaves 50–65% of the machine on the
+table, in *both* domains. That is a larger and better-evidenced gap than the
+one the project set out to close.
+
+#### Kill/pivot condition
+
+`DESIGN.md` §6 named this as the single most likely failure mode, and the
+Phase 1 gate exists precisely to catch it before implementation is committed
+to. Per the operating rules, this is escalated rather than worked around.
+Options, with the evidence for each:
+
+1. **Re-aim at low arithmetic intensity** (recommended). Keep everything built:
+   the data model, index analysis, block-scatter machinery, TAPP surface,
+   corpus and harness are all domain-agnostic and all still needed. Change the
+   target from "complex vs real" to "small-`k` / skinny shapes", where TBLIS
+   measurably gives up 50–65%. Plausible mechanisms, in order of expected
+   value: fusing the `pc` loop so `C` is touched once instead of `K/KC` times;
+   skipping packing of `A` entirely when the block-scatter is already regular
+   and unit-stride (a "pack-free" fast path); dispatching to a
+   small-`k`-specialised kernel; and the write-back fast path for regular
+   blocks. Planar complex stays in the design because it is *free* and it is
+   what makes `TAPP_CONJUGATE`, mixed real x complex operands and 3m natural —
+   it is simply no longer the headline claim.
+2. **Pursue 3m instead.** Untouched by this result: 3m's advantage is a 25%
+   *flop* reduction, not a bandwidth one, and planar packing makes it cheap to
+   build. Smaller, more speculative, and carries a numerical-stability caveat.
+3. **Wrap TBLIS.** Honest answer if the goal is a usable Rust tensor
+   contraction today, but no research contribution, and it keeps the C++
+   dependency the brief wanted to remove.
+4. **Stop.** The negative result is itself publishable, and the brief says so:
+   there is no public systematic complex tensor-contraction benchmark, this
+   repository now is one, and "complex contraction is not the weak spot; low
+   arithmetic intensity is, and here is why" is a useful correction to
+   circulating folklore.
+
+**Recommendation: option 1**, with the Phase 1 negative result written up as a
+standalone finding.
+
+---
+
+### Phase 2 report: a correct, framework-complete engine
+
+**Gate:** numerically correct across the full matrix (shapes, permutations,
+dtypes, traces, degenerate cases) vs oracle, TTGT, TBLIS. Performance measured
+as a baseline, not a goal.
+
+**Status: gate met.** Phase 2 was completed alongside Phase 1 because the
+premise check needed a working engine to sit alongside the baselines.
+
+Implemented: tensor data model; index analysis with folding; scatter and
+block-scatter construction; planar-complex packing with conjugation folded in;
+reference scalar micro-kernel; five-loop driver; scattered write-back with
+`alpha`/`beta`/`op_C`/`op_D`; TAPP C-ABI export.
+
+Correctness evidence:
+
+* 1000 randomised contractions vs the brute-force oracle across
+  `f32`/`f64`/`c32`/`c64`, each run under both tiny `(1,2,1)` blocking and the
+  real blocking, covering free/contracted/Hadamard/isolated indices, repeated
+  labels, random stride permutations, random conjugation masks, and
+  `alpha`/`beta` including zero — all within `1e-11` (f64) / `2e-4` (f32).
+* Targeted degenerate cases: empty contraction extent, zero-sized output,
+  scalar output (full double contraction), negative strides via a reversed
+  axis, all 16 conjugation flag combinations forced through multiple `K` blocks.
+* Large pure-GEMM cases crossing the real `MC`/`KC`/`NC` boundaries with
+  awkward remainders, in all four dtypes.
+* Cross-implementation: all 49 corpus cases x 4 dtypes agree with **both** TBLIS
+  and TTGT to `~2e-16` (f64/c64) and `~1.5e-7` (f32/c32), under `none`,
+  `ragged` and `padded` stride stress.
+* TAPP C ABI exercised end-to-end through the C entry points on a complex case.
+
+Performance baseline: the micro-kernels are the portable scalar fallback
+(Phase 3 was not reached), so the `planar` engine's absolute numbers are not
+meaningful yet and are not reported as a result.
+
+---
+
+### Phase 2b report: three interchangeable complex methods
+
+**Direction decision.** After the Phase 1 result, the chosen direction is to
+keep all three induced-complex methods available and switchable, so that the
+comparison can be made properly rather than argued from first principles. This
+supersedes the four options listed at the end of the Phase 1 report.
+
+#### What was built
+
+`ComplexMethod::{Planar, OneM, ThreeM}`, selected per plan with
+`Plan::with_complex_method` or globally with `TENSORCONTRACT_COMPLEX`.
+
+The three share the *entire* engine except three things, each named in the
+`Ukr` the method selects:
+
+| | `a_pack` / `b_pack` | kernel | `tile_fmt` |
+|---|---|---|---|
+| planar | `Planar` / `Planar` | fused complex, 4 FMAs per k per output | `Planar` |
+| 1m | `OneE` / `Planar` | plain real, `2*MR x NR` over `2*KC` | `OneM` |
+| 3m | `ThreeM` / `ThreeM` | Karatsuba, 3 FMAs per k per output | `ThreeM` |
+
+`crates/tensorcontract/src/driver.rs` contains no branch on the method at all —
+it reads sliver widths, tile size and formats off the `Ukr`. That is what makes
+the comparison fair: same index analysis, same scatter traversal, same loop
+arithmetic, same write-back scatter.
+
+*Decisions introduced here: D13, D14, D15, D16 — stated in [Design decisions](#design-decisions).*
+
+#### Correctness
+
+* The randomised oracle sweep now runs **every complex problem under all three
+  methods** — 300 problems x 3 methods x 2 blockings for `c64`, likewise
+  `c32` — plus the all-16-conjugation-masks test and the large blocking-boundary
+  cases, each across all three.
+* `kernel::tests` checks each method's kernel directly against the definition,
+  including a packing helper that builds panels in each `PackFormat` and a
+  reader for each `TileFormat`, so a mis-specified format is caught at the
+  kernel boundary rather than end to end.
+* All 49 corpus cases agree with **both** TBLIS and TTGT to ~2e-16 under each
+  of the three methods (`TENSORCONTRACT_COMPLEX=planar|1m|3m tcbench verify`).
+
+#### Measurement, and why it does not yet mean much
+
+`tcbench premise --size 16 --engines planar,1m,3m --dtype f64,c64`, 12 cases,
+single core. Geometric-mean `c64` throughput relative to planar:
+
+| method | relative c64 GF/s | mean complex/real efficiency ratio |
+|---|---|---|
+| planar | 1.000 | 0.726 |
+| 1m | 1.086 | 0.783 |
+| 3m | 1.129 | 0.817 |
+
+**This ranking is an artifact of the scalar kernels and must not be quoted as
+a result.** All three currently run portable scalar loops, and the numbers
+mostly reflect how well LLVM auto-vectorises three different loop shapes: 1m's
+inner loop is a plain real GEMM kernel, which LLVM handles best, while planar's
+entire argument is *fewer shuffles in a hand-written SIMD kernel* — which does
+not exist yet. 3m's edge is more likely real, since a 25% flop reduction
+survives any kernel quality, but even that needs confirming.
+
+The honest three-way comparison is the Phase 3 gate.
+
+Raw data: `bench-results/methods-f64c64.csv`.
+
+---
+
+### Phase 3 report: vectorised micro-kernels
+
+**Gate:** correctness unchanged; single-core throughput against the baselines
+and a GEMM roofline; **an honest three-way planar/1m/3m comparison with real
+kernels.** All three met. This is the measurement the project exists to
+produce.
+
+#### What was built
+
+`crates/tensorcontract/src/kernel/x86.rs`, previously four `None`s, now holds
+AVX-512 kernels for all four shapes — `real`, `planar`, `onem`, `threem` —
+macro-generated over `(MV, NR)` const generics for both `f32` and `f64`,
+selected by runtime `avx512f` detection with the scalar path untouched behind
+`TENSORCONTRACT_KERNEL=scalar`. `MV` is the number of vector registers an `A`
+sliver occupies per plane per k-step.
+
+**Nothing outside that file changed.** The `Ukr` contract carried the new
+kernels unmodified, which is the design claim from Phase 2 discharged.
+
+Also added: `examples/kernel_shapes`, a register-block sweep used to choose the
+shapes (D19), and `scripts/phase3-bench.sh`, which reproduces this entire
+report from a clean checkout given the two TBLIS prefixes.
+
+#### Correctness
+
+Unchanged, and checked at three levels:
+
+* `kernel::tests` validates each selected kernel directly against the
+  mathematical definition through its own `PackFormat`/`TileFormat`. Every
+  kernel here passed on first execution.
+* `cargo test --workspace --release` green, and green again under
+  `TENSORCONTRACT_KERNEL=scalar`.
+* `tcbench verify` — all 49 corpus cases x `f32`/`f64`/`c32`/`c64` x all three
+  complex methods, against **both** TBLIS 2.0-dev and TTGT. `f32`/`f64` agree
+  exactly (`0.0e0`); `c32` to ~1.3e-7, `c64` to ~2.5e-16.
+
+#### The three-way comparison
+
+Full 49-case TCCG corpus, 64 MiB nominal tensors, single core, geometric mean
+GF/s. `tblis` is 2.0-dev at `555320c`. Unperturbed corpus, so `regA = 1.00`
+throughout and the gather path is not involved.
+
+| engine | c64 | vs planar | c32 | vs planar |
+|---|---|---|---|---|
+| **planar** | **43.6** | 1.000 | **79.9** | 1.000 |
+| 1m | 42.2 | 0.967 | 78.2 | 0.979 |
+| 3m | 41.7 | 0.956 | 73.6 | 0.921 |
+| tblis 2.0-dev | 44.1 | 1.011 | 71.2 | 0.891 |
+| ttgt | 23.2 | 0.532 | 45.3 | 0.567 |
+
+**Planar wins, in both precisions, but by 3–8% rather than by a lot.** The
+scalar-kernel ranking of Phase 2b (planar 1.00, 1m 1.09, 3m 1.13) is now
+reversed, exactly as that report predicted it would be once the ranking stopped
+measuring LLVM's auto-vectoriser.
+
+**But the aggregate hides the actual finding, which is that the ranking is
+shape-dependent and inverts.** Splitting the same corpus by arithmetic
+intensity:
+
+| c64 subset | planar | 1m | 3m | tblis |
+|---|---|---|---|---|
+| `min(n,k) > 64` — compute-bound, 25 cases | **69.0** | 65.4 | 62.2 | 71.3 |
+| `min(n,k) <= 64` — memory-bound, 24 cases | 27.0 | 26.7 | **27.4** | 26.7 |
+
+and the micro-kernel sweep says why. Timing each kernel in isolation while
+sweeping `kc`, which decides whether the `A` sliver is an L1 resident or an L2
+stream (`bench-results/phase3-kernel-shapes.txt`, `f64`):
+
+| method | best shape | GF/s at `kc=64` | GF/s at `kc=256` | bytes / useful flop |
+|---|---|---|---|---|
+| planar | `16x6` | 107.7 | **102.8** | **0.46** |
+| 1m | `12x8` | 93.2 | 91.1 | 0.67 |
+| 3m | `8x10` | **117.1** | 87.8 | 0.68 |
+
+So:
+
+1. **3m's 25% flop saving is real and it is not free.** With both panels
+   L1-resident 3m is the fastest of the three, by roughly the margin the flop
+   count predicts. At the `kc = 256` the engine actually uses, it is the
+   slowest. 3m loads *three* planes of both operands to save one of four
+   products, so per useful flop it moves 1.5x planar's bytes; once the kernel
+   stops being FMA-issue-bound that is what decides it.
+2. **Planar wins on bytes, not on shuffles.** Its advantage over 1m is that
+   "1e" packing carries four reals per complex element of `A` against planar's
+   two. The original argument for planar — fewer in-register shuffles — is not
+   what the data rewards, because at these shapes none of the three methods is
+   shuffle-limited: LLVM emits `vbroadcastsd` as its own uop and every winning
+   shape is FMA-issue-bound (verified in the disassembly).
+3. **When the contraction is memory-bound the kernel's byte traffic stops
+   mattering and its flop count starts to.** That is the inversion above, and
+   it is a direct argument for the shape-dispatch item already listed in
+   Phase 4.
+
+Every candidate needing more than 32 live vector registers loses 30–50%. That
+cliff, not the flop count, is what bounds 3m's usable shapes: it needs three
+accumulator planes, so it cannot be given a block wide enough to amortise its
+loads.
+
+#### Against the baselines
+
+Full corpus, 64 MiB, geometric mean GF/s, `planar` for complex:
+
+| dtype | this engine | tblis 2.0-dev | ttgt | best-of-49 count (ours / tblis / ttgt) |
+|---|---|---|---|---|
+| f64 | **30.5** | 27.0 | 13.1 | 22 / 16 / 11 |
+| f32 | **54.6** | 42.7 | 24.4 | 23 / 13 / 13 |
+| c64 | 43.6 | **44.1** | 23.2 | 13 / 12 / 12 |
+| c32 | **79.9** | 71.2 | 45.3 | 10 / 11 / 16 |
+
+Against **TBLIS v1.3.0** (`c4f81e0`, still the latest stable release — no new
+tag has appeared since Phase 1), 12-case premise set at 200 MiB: `c64` planar
+**43.8** vs **7.3** GF/s, a 6.0x gap, and `f64` 29.2 vs 21.5. The Phase 1
+finding that 1.x has no complex micro-kernel outside Sandy Bridge reproduces
+unchanged.
+
+The rebuilt TBLIS 2.0-dev reproduces Phase 1's headline to three digits — mean
+complex-over-real efficiency ratio **1.058** here against 1.06 in Phase 1 —
+which is the check that the rebuilt baseline is the same baseline.
+
+Complex-over-real efficiency ratio against a same-shape GEMM ceiling, 12-case
+premise set at 200 MiB: planar 0.976 / 1m 0.931 / 3m 0.979 (`c64`), and 1.156 /
+1.144 / 1.134 (`c32`). Against the roofline directly, the engine reaches
+**0.81–0.84** of a same-shape `zgemm` on the large compute-bound cases and
+**0.69–0.70** of `dgemm` — complex is the *easier* domain for us too, for the
+arithmetic-intensity reason established in Phase 1.
+
+#### Irregular strides
+
+`--stress ragged`, `c64`, 64 MiB. 40 of 49 cases become genuinely irregular
+(mean observed `regA = 0.656`; the remaining 9 stay at 1.00). On those 40:
+
+| engine | GF/s |
+|---|---|
+| planar | **43.7** |
+| 3m | 42.5 |
+| 1m | 42.3 |
+| tblis 2.0-dev | 39.4 |
+
+An 11% lead for the transpose-free path where strides are awkward — the one
+regime where block-scatter is doing work a TTGT-style engine cannot avoid
+paying for. Note these numbers are *not* comparable to the unstressed table
+above: `--stress ragged` changes the extents, so it is a different set of
+shapes, not the same shapes made harder.
+
+#### A concrete 2x defect, localised
+
+Nine corpus cases of the form `abcijk-{ij,ik,jk}m{a,b,c}-*` have identical
+`m`, `n`, `k` and `regA = regB = 1.00`, and differ only in which output axis
+leads the `M` group. Throughput is monotone in that axis's stride in `D`,
+9 cases out of 9:
+
+| `M` leading axis | its stride in `D` | planar `c64` GF/s |
+|---|---|---|
+| `a` | 1 | 40.5, 40.5, 40.5 |
+| `b` | `n_a` | 36.2, 36.4, 36.6 |
+| `c` | `n_a * n_b` | 17.7, 17.8, 17.8 |
+
+Packing is identical across the nine (same operand layouts, fully regular block
+scatter), so the cost is in the **scattered write-back**. `perf stat` on three
+of them, same binary, same reps, confirms it and identifies the mechanism:
+
+| `M` leading axis | cycles | instructions | IPC | dTLB store misses | **L2 demand misses** |
+|---|---|---|---|---|---|
+| `a` (stride 1) | 5.19e9 | 6.50e9 | 1.25 | 4.11e6 | 27.5e6 |
+| `b` (stride `n_a`) | 5.48e9 | 6.46e9 | 1.18 | 4.21e6 | 33.0e6 |
+| `c` (stride `n_a*n_b`) | **8.32e9** | 6.49e9 | **0.78** | 4.07e6 | **62.9e6** |
+
+Instruction count and retired stores are flat to within 1%, so this is purely
+stalling, not extra work. **The first-guess mechanism was wrong**: DTLB misses
+are flat, so it is not TLB pressure. It is L2 miss traffic — 2.3x more of it —
+from poor cache-line utilisation and reuse distance on the `C`/`D` update when
+consecutive tile rows are far apart in the output.
+
+A controlled follow-up: rebuilding *planar alone* with 3m's wider `8x10` tile
+instead of its own `16x6`, changing nothing else, moves these cases the way the
+mechanism predicts and moves the others back:
+
+| case | `16x6` | `8x10` | |
+|---|---|---|---|
+| `abcijk-ijmc-mkab` — `D` contiguous along `N` | 17.8 | **19.8** | +11% |
+| `abcijk-ijmb-mkac` — intermediate | 36.2 | 33.8 | −7% |
+| `abcijk-ijma-mkbc` — `D` contiguous along `M` | 40.5 | 35.9 | −11% |
+| `ijkl-imjn-lnkm` — compute-bound control | 79.4 | 79.4 | 0% |
+
+So micro-tile **aspect ratio should follow the output's stride pattern** — a
+real lever, worth about ±11%, and free to apply since the kernels are already
+parameterised over `(MV, NR)`. It also explains why 3m beats planar by 1.36x on
+exactly these three cases while losing everywhere else.
+
+But ±11% does not explain a 2x. Aspect ratio is a tuning knob; the 2x is the
+write-back's L2 traffic itself, and closing it needs the "vectorised write-back
+for regular blocks" item on the Phase 4 list — or blocking the `jr`/`ir` loops
+against the output's layout rather than only against the packed panels.
+
+#### Assumptions added
+
+| # | Assumption | Status |
+|---|---|---|
+| A7 | The three complex methods differ mainly in flop count. | **Refuted.** They differ mainly in bytes moved per useful flop, and that is what decides the ranking at realistic `kc`. Flop count decides it only when the panels are L1-resident or the contraction is memory-bound. |
+| A8 | One register block per method is enough. | **Refuted, and it matters.** The best shape depends on the method, the element type and `kc`, and neighbouring shapes differ by 30–50% across the 32-register cliff. |
+| A9 | Absolute performance is meaningful now that kernels are vectorised. | Adopted. It was explicitly not meaningful before this phase. |
+
+#### What is *not* done
+
+* **No AVX2 path.** Dispatch is AVX-512 or the scalar fallback. The macro takes
+  it without restructuring; deferred to Phase 5's multi-arch work, since the
+  reference machine is AVX-512 and the gate is a comparison on it.
+* **Blocking is still the Phase 2 heuristic.** `MC`/`KC`/`NC` come from a fixed
+  cache-budget rule, never swept. Given that the whole Phase 3 result turns on
+  where the `A` sliver lives, `KC` in particular is now known to be a
+  first-order parameter rather than a detail. Phase 4.
+* **Still single-threaded.**
+
+> **All three have since been addressed** and this list is historical: AVX2
+> kernels landed in the Phase 4/5 interlude and their register blocks are
+> measured (part 11); `MC`/`KC`/`NC` were swept on two machines and item 2 is
+> closed with a negative result (part 7); threading is built and measured on seven
+> nodes (parts 8, 8b, 12, 16), though the thread count is still 1 by default.
+
+Raw data: `bench-results/phase3-*.csv`, transcript in
+`bench-results/phase3-log.txt`, kernel sweep in
+`bench-results/phase3-kernel-shapes.txt`. Reproduce with
+`scripts/phase3-bench.sh`.

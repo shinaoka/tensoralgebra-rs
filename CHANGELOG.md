@@ -87,13 +87,18 @@ stated. **Every entry names its machine, because none of them may be compared
 with another**: the optimisation results below are Xeon Gold 6244 (Cascade Lake),
 the baseline comparison is Ice Lake-SP, and the AVX2 results are Zen2.
 
-Noise floors are derived in session, never imported. The Cascade Lake sessions
+Noise floors are derived in session, never imported, and **a floor names its
+thread count as well as its session.** Single core: the Cascade Lake sessions
 measured **±1.3% on a corpus geomean and ±6% per case**; the exclusive Ice Lake
 node measured **0.998–1.001 with 0 of 980 case points outside ±6%**, roughly 5x
 tighter. Drift is a function of how far apart two arms are and of the machine —
 0.02% at a minute to 4.4% across a cold start on a boost-happy node (A32), and
-undetectable over four hours on an exclusive SMT-off one. Take the floor from the
-session, and be aware that problem size is a separate confound from time (A46).
+undetectable over four hours on an exclusive SMT-off one. **Threaded numbers are
+coarser by an order of magnitude**: at 64 threads, repeats of an *identical*
+partition run p10 0.885 / p90 1.107 with tails to 1.55, so only per-family
+geometric means (1–2%) are quotable at that width (A39, confirmed at 32 threads on
+a second machine). Take the floor from the session, and be aware that problem size
+is a separate confound from time (A46).
 
 * Write-back **orientation** fix (compute `D^T = B^T A^T` when `D`'s column
   direction is the contiguous one): **+12–17%** in all four dtypes, closing a
@@ -134,7 +139,7 @@ The distinction matters more than the numbers, so it is stated per item.
 | **AVX2 register blocks** | **Measured, and all eight shipped shapes are the winners** — on Zen2 (`worker5040`), where the `avx2`-without-`avx512` dispatch branch also executed on real hardware for the first time. They stopped being a guess with no code change. Read with A34 above: this is one AVX2 microarchitecture, not AVX2 in general |
 | **Default cache blocking (`MC`/`KC`/`NC`)** | **Swept on two machines, and closed with a negative result: there is no few-percent win here.** `KC` is first-order — it decides whether the `A` sliver is an L1 resident or an L2 stream — but on the reference machine `kc = 384` is the optimum and the shipped 256 is close to it, while `MC` is a wide plateau a sixteenfold range moves by at most 3%. Pinned `kc = 512` is a *machine-specific* result and must not ship: 1.050 on Zen2, **0.961** on Cascade Lake. Coupled deepening looked like +3% on both machines and **failed its end-to-end A/B** — both grids' `base` arm was 1–2% slow, inflating every `arm/base` ratio identically, so the two-machine agreement was a shared artefact rather than a replication; control-corrected the treatment is ≈0.977. `TENSORCONTRACT_DEEPEN=on` survives as an off-by-default record of that experiment, not as a pending improvement. Shipped defaults remain `kc = 384/256` by real size, fitted to one Cascade Lake workstation. Three candidate changes and a mechanism all died on measurement; do not reopen without a new machine or a new mechanism |
 | **The analytical blocking model** | **Measured, and it loses. Off by default and staying there.** On the first unseen machine it is worse in **11 of 12 columns**, by up to 7.2% in the complex methods, and the whole loss is attributable to its `kc` (A33). It was built to solve portability and does not; the hypothesis is refuted rather than pending |
-| **Threading** | **Scaling measured on six machines, off by default and now off for a measured reason.** Below ~1 MiB at 64 threads it is 1.2–10x *slower* than serial — per-call thread spawn is ~20–36 µs per thread — and the optimal thread count walks 4 → 64 across the size range, so a fixed default is wrong at every size but one (D46). Bitwise-identical results are asserted at every thread count *and every partition*. Scaling is strongly topology-dependent: Zen2 saturates by 16–32 and declines at 64, Ice Lake reaches 48% of linear at 32 in `c64` 3m. A 4.3x partition win on Zen2 is **absent on Ice Lake** (A36), so the first machine alone would have produced the wrong rule. Threads are still spawned per call rather than pooled |
+| **Threading** | **Scaling measured on seven nodes (five Zen2, two Ice Lake), off by default and now off for a measured reason.** Below ~1 MiB at 64 threads it is 1.2–10x *slower* than serial — per-call thread spawn is ~20–36 µs per thread — and the optimal thread count walks 4 → 64 across the size range, so a fixed default is wrong at every size but one (D46). Bitwise-identical results are asserted at every thread count *and every partition*. Scaling is strongly topology-dependent: Zen2 saturates by 16–32 and declines at 64, Ice Lake reaches 48% of linear at 32 in `c64` 3m. A 4.3x partition win on Zen2 is **absent on Ice Lake** (A36), so the first machine alone would have produced the wrong rule. Threads are still spawned per call rather than pooled |
 | **The domain-aware partition** (`TENSORCONTRACT_PARTITION=domain`) | **Measured on two topologies, it met its pre-registered prediction, and it is now the default (D44).** It supplies the input `Plan::partition` was missing (how many L3 domains the thread set spans) and *gates* the `panels >= p` early return on it rather than removing it, which would be wrong where one L3 serves the socket. Predicted from another node's grid before the run: 1.423 on the 144 case-dtype-methods it moves, 1.138 corpus. Measured: **1.433 and 1.133** drift-corrected, on exactly 144 of 392, and **0 of 392 moved on a one-L3-per-socket machine**. The effect is monotone in domain count and flat in thread count, including a fixed-16-thread arm that varies only the packing (1.19x packed over 4 domains, **2.74x spread over 16**). Corpus scaling at 64 Zen2 cores goes 5.81 → 7.54 (`f64`) and 5.51 → 7.88 (`f32`). `TENSORCONTRACT_PARTITION=legacy` restores the ungated rule, which is what every threaded number committed before 2026-08-04 was measured with. Reproduce the prediction with `scripts/partition-score-rule.py`; raw arms in `bench-results/worker5479-zen2` and `worker6150-icelake` |
 | Absolute throughput off the reference machine | **Measured on Ice Lake, twice, and it is the best-known set here — but still not comparable with the reference machine.** Two full engine-vs-baseline runs in separate allocations agree to 0.997–1.003 on all twenty dtype × engine columns, each internally bracketed by a repeat arm 2.5 h away reading 0.998–1.001 with 0 of 980 case points outside ±6%. The Zen2 sessions remain within-session only. **No number from any of them may be differenced against a `ccqlin038` number** — which is why the improvement the Phase 4 work bought is still unmeasured end to end |
 | **The complex-method ranking, off Cascade Lake** | **Measured and it does not transfer (A44).** Planar still wins the corpus, but 3m falls from 0.956/0.921 against planar to 0.694/0.744 on Ice Lake, is last in every column, and wins 0 of 49 cases — and the memory-bound inversion that Phase 4 item 3 was to exploit is absent. Confounded with A34's wrong register blocks and not separable without an Ice Lake shape sweep. Item 3 must not ship as an unconditional rule |
@@ -211,8 +216,10 @@ see `DECISIONS.md` A21.
 
 * No AArch64/NEON, RISC-V or GPU kernels. Off x86 the engine runs the portable
   scalar path, which is correct but not competitive.
-* No dispatch of the complex method by shape, though the inversion that would
-  justify it is measured.
+* No dispatch of the complex method by shape, and it is **not planned**. The
+  inversion that would have justified it is a Cascade Lake result and is absent on
+  Ice Lake, where the same rule would be a pessimisation (A44). See
+  [`REFUTED.md`](REFUTED.md) for the reopening condition.
 * No thread pool, no `pc`-loop fusion, no pack-free fast path for already
   unit-stride block scatter, no software prefetch.
 * `tensorprimitives-bench` (the TCCG harness, the TBLIS and OpenBLAS-TTGT

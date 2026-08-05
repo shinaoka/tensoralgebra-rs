@@ -1,0 +1,38 @@
+Small contractions: why a threading default cannot be a fixed thread count.
+
+  machine : worker5139 (Rusty, `gen` partition, `rome`)
+            AMD EPYC Zen2, 2 x 64 cores, SMT off, avx2 + fma, no AVX-512
+            16 MiB L3 per 4 cores
+  date    : 2026-08-04, started 18:53:40
+  slurm   : job 6754849, --constraint=rome --exclusive, 128 CPUs allocated
+  script  : STAGES="threads small" sbatch scripts/rusty-phase4.sbatch
+  stages  : prep rc=0, threads rc=0 (124 min), small rc=0 (30 min), grid skipped
+  host    : session.log, slurm-job.txt, topology.json
+
+phase4g/ is the experiment this run exists for (scripts/phase4g-small.sh):
+speedups against `t1` **at the same size**, so the per-call fixed cost is inside
+the measurement. `timed()` takes the best of `reps` with one `execute` per rep,
+and threads are spawned per call.
+
+The finding: at 64 threads, contractions below ~1 MiB run 1.2-10x SLOWER than
+serial. `f32` at 0.25 MiB reads 0.10 -- a 0.22 ms contraction takes 2.2 ms. And
+the optimal thread count walks monotonically with size: 4, 8, 16, 32, 64 at 0.25,
+1, 4, 16, 64 MiB. A fixed default is wrong at every size but one, and wrong by an
+order of magnitude at the small end (D46).
+
+The fixed cost reads straight off the smallest rung, where parallel work is
+negligible: t64 on a 0.32 ms job takes 2.29 ms, so ~2.3 ms of overhead, or ~36 us
+per thread; at t8 the same arithmetic gives ~21 us. That is per-call
+std::thread spawn (A43).
+
+Two regimes, and only the first is dangerous: below ~1 MiB spawn dominates and
+threading is a loss; above it the curve saturates early (best at t8-t32) because
+of a bandwidth ceiling, which is benign. A guard fitted to the first must not be
+fitted to the second.
+
+phase4f/ is an ordinary thread-scaling stage on this node and is a replication,
+not a new result.
+
+Not comparable to anything measured on ccqlin038.
+
+Read with: DECISIONS.md -> Threading -> "Part 16", and D46, A43.

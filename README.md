@@ -29,10 +29,12 @@ algorithm is Matthews' block-scatter-matrix tensor contraction
 >
 > Threading and an analytical cache-blocking model are implemented and **off by
 > default**, and both have now been measured — see [Switches](#switches).
-> Threading reaches 10.5x (`f64`) and 14.2x (`c64` 3m) on 32 Ice Lake cores and
-> 7.5–7.9x on 64 Zen2 cores; it is off because it has only been measured on
-> *large* contractions, and threads are spawned per call rather than pooled. The
-> blocking model is off because it was measured and **lost**, on the first
+> Threading reaches 10.6x (`f64`) and 15.3x (`c64` 3m) on 32 Ice Lake cores and
+> 7.5–7.9x on 64 Zen2 cores. It is off for a *measured* reason: below about a
+> megabyte, 64 threads run **1.2–10x slower than serial**, because threads are
+> spawned per call rather than pooled, and the optimal thread count walks 4 → 64
+> across the size range — so a fixed default would be wrong at every size but one.
+> The blocking model is off because it was measured and **lost**, on the first
 > machine it was meant to help. Turning either on is one call or one environment
 > variable, and results are bitwise identical either way.
 >
@@ -114,10 +116,14 @@ A methodological note worth carrying forward: the standard TCCG corpus rounds
 every stride-1 extent up to a multiple of 24. That is regular only at a register
 block which *divides* 24 — true of the blocks TBLIS uses in the comparison above,
 and **not** true of this engine's `f32`/`c32` blocks (`MR` 16, 32, 48), where
-`reg_a` falls below 1.0 on 43% of case-dtype-methods. So the corpus does exercise
-the gather path here, periodically; what it cannot produce is *aperiodic*
-irregularity, which is what the `--stress ragged` / `--stress padded` modes added
-here are for. Any claim about awkward strides needs one of them named.
+`reg_a` falls below 1.0 on **43%** of case-dtype-methods at the 64 MiB size used
+here — a ninth of them *entirely*, the rest at one block in three, nine or
+twenty-seven. So the corpus does exercise the gather path here, periodically. Two
+qualifiers travel with that number: the fraction moves with the tensor size,
+because the extents do, and it is 11.7% on an AVX2 machine, where `MR = 8` for
+`f64` does divide 24. What the corpus cannot produce is *aperiodic* irregularity,
+which is what the `--stress ragged` / `--stress padded` modes added here are for.
+Any claim about awkward strides needs one of them named.
 
 ## Performance, and what is actually measured
 
@@ -230,20 +236,52 @@ its `mc` on the other, so both halves of the derivation are wrong — in differe
 places. The probing and the cache descriptors it introduced are worth having and
 are still used; the default is not changing.
 
-**Threading is off by default, and not for lack of data.** Scaling is measured
-on two topologies and is strongly topology-dependent: Zen2 saturates by 16–32
-threads and declines at 64, while Ice Lake reaches 10.6x (`f64`) and 15.3x
-(`c64` 3m) on 32 cores and is still climbing. One thing is still missing and one has been fixed: threads are spawned per call rather than pooled, which is the whole story below ~1 MiB where 64 threads run 1.2–10x *slower* than serial; but `Plan::partition` now knows how many L3 domains the thread set spans, and gating its early return on that — rather than removing it — is the default (`TENSORCONTRACT_PARTITION=domain`). That is worth 1.13 corpus geometric mean at 64 Zen2 threads and provably changes nothing on a machine with one L3 per socket. Results are bitwise identical at every thread count and every partition, so none of this is ever a correctness or accuracy decision.
+**Threading is off by default, and not for lack of data.** Scaling is measured on
+two topologies and is strongly topology-dependent: Zen2 saturates by 16–32 threads
+and declines at 64, while Ice Lake reaches 10.6x (`f64`) and 15.3x (`c64` 3m) on
+32 cores and is still climbing.
+
+One thing has been fixed and one is still missing. Fixed: `Plan::partition` now
+knows how many L3 domains the thread set spans, and gating its early return on
+that — rather than removing it — is the default
+(`TENSORCONTRACT_PARTITION=domain`). That is worth **1.13 corpus geometric mean
+at 64 Zen2 threads** and provably changes nothing on a machine with one L3 per
+socket. Still missing: **threads are spawned per call rather than pooled**, at
+~20–36 µs per thread, which is the whole story below ~1 MiB — there 64 threads run
+**1.2–10x slower than serial**, and the optimal thread count walks 4 → 8 → 16 → 32
+→ 64 across 0.25 → 64 MiB. That is why the default is 1 rather than a fixed
+non-1 number: a fixed default is wrong at every size but one. Above ~1 MiB the
+curve saturates on a bandwidth ceiling instead, which is benign.
+
+Results are bitwise identical at every thread count and every partition, so none
+of this is ever a correctness or accuracy decision.
 
 **One known defect, stated because it ships.** In `planar` `f32`/`c32` the
 register block is `32x6`, where the Phase 3 sweep's own output names `32x5` as
 **7.8% faster** at the operating `kc`. The shipped shape appears to have been
-picked by a bytes-per-flop model over the measurement sitting next to it. It is
-not fixed here — but it *is* now testable, which it was not when it was found. The row-block menu was keyed by `MR`, and `32x5` shares its `MR` with the shipped `32x6`, so the menu could not express an `NR`-only alternate and no runtime switch could reach it. Re-keying the menu by position fixed that: `TENSORCONTRACT_ROWBLOCK=idx=3` selects `32x5` end to end. It stays unfixed on purpose, because a kernel margin is not a corpus margin — `NR` changes the loop count and the packed sliver geometry — so the corpus effect has to be measured before the default moves. It was found inside committed raw output months after the fact, at no machine cost, which is the argument for committing raw output.
+picked by a bytes-per-flop model over the measurement sitting next to it.
 
-**Not measured, and so not claimed:** absolute throughput on any machine other
-than the Cascade Lake reference; the corpus-level method ranking on AVX2;
+It is not fixed here — but it *is* now testable, which it was not when it was
+found. The row-block menu was keyed by `MR`, and `32x5` shares its `MR` with the
+shipped `32x6`, so the menu could not express an `NR`-only alternate and no
+runtime switch could reach it. Re-keying the menu by position fixed that:
+`TENSORCONTRACT_ROWBLOCK=idx=3` selects `32x5` end to end. It stays unfixed on
+purpose, because a kernel margin is not a corpus margin — `NR` also changes the
+`jr` loop count and the packed sliver geometry — so the corpus effect has to be
+measured before the default moves. It was found inside committed raw output months
+after the fact, at no machine cost, which is the argument for committing raw
+output.
+
+**Not measured, and so not claimed:** absolute throughput on the Cascade Lake
+reference machine *since the Phase 4 work landed* — the table above is Ice Lake,
+and the newest Cascade Lake sweep predates every Phase 4 gain, so **what that work
+bought end to end is unmeasured**; the corpus-level method ranking on AVX2;
 anything on non-x86 hardware.
+
+**Ideas already measured and refuted** are catalogued in
+[`REFUTED.md`](REFUTED.md), one entry each with its evidence and what would reopen
+it. It is the fastest way to find out whether an obvious-looking optimisation here
+has already lost.
 
 ## Switches
 
@@ -256,7 +294,7 @@ process restart rather than a rebuild. None of them changes results.
 | `TENSORCONTRACT_THREADS` | thread count, default **1**. Results are bitwise identical at any count, so this is never a correctness or accuracy decision. Off by default for the two reasons under [what is tuned](#what-is-tuned-and-what-is-not), and because it keeps every committed single-core number reproducible |
 | `TENSORCONTRACT_KERNEL` | `auto` (default) \| `scalar` \| `avx2` \| `avx512` — pin the instruction set. A pinned ISA the CPU lacks falls back to scalar, so `avx2` is how the AVX2 kernels get exercised on an AVX-512 machine |
 | `TENSORCONTRACT_BLOCKMODEL` | `legacy` (default) \| `model` — derive cache blocking from probed cache descriptors instead of hardcoded constants. Measured on a foreign machine and **worse in 11 of 12 columns**, so `legacy` is the default on evidence |
-| `TENSORCONTRACT_PARTITION` | `domain` (default) \| `legacy` — which rule apportions the threads over the output. `domain` gates the "row axis fills the threads, so use it" shortcut on how many L3 domains the thread set spans. Measured: it changes **nothing at all** on a machine with one L3 per socket (the identical partition on 392 of 392 corpus cases) and is worth **1.13 geometric mean over the corpus at 64 threads** on a chiplet machine, up to 3.0x on individual memory-bound cases. Single-threaded callers never reach it. `legacy` is the ungated rule; `m`, `n` and `<pm>x<pn>` pin the partition outright, for A/B measurement |
+| `TENSORCONTRACT_PARTITION` | `domain` (default) \| `legacy` — which rule apportions the threads over the output. `domain` gates the "row axis fills the threads, so use it" shortcut on how many L3 domains the thread set spans. Measured: it changes **nothing at all** on a machine with one L3 per socket (the identical partition on 392 of 392 corpus cases) and is worth **1.13 geometric mean over the corpus at 64 threads** on a chiplet machine — 1.43 over the 144 cases it actually moves, and 2.1–2.4 on the memory-bound `abcijk` family in the real dtypes. Those are per-family geometric means, which is the only granularity a 64-thread measurement supports. Single-threaded callers never reach it. `legacy` is the ungated rule; `m`, `n` and `<pm>x<pn>` pin the partition outright, for A/B measurement |
 | `TENSORCONTRACT_DEEPEN` | `on` — coupled deepening: `kc = 512` for `f64` real geometry with `mc`/`nc` re-derived at that depth. **Off by default because it failed its end-to-end A/B**, and kept only as a record of the experiment. It looked like +3% on two machines; both grids' `base` arm was 1–2% slow, so every `arm/base` ratio was inflated identically and the agreement was a shared artefact rather than a replication. Corrected, the treatment is ≈0.977 |
 
 Plus the levers that exist so a fast path can be A/B-tested at run time rather

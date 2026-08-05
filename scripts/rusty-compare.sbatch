@@ -140,9 +140,7 @@ fi
 echo "measurement core: cpu$CPU"
 
 # The binaries must already exist and must actually run. This job never builds.
-BIN2=./target/tblis2/release/tcbench
-BIN13=./target/tblis13/release/tcbench
-for b in "$BIN2" "$BIN13"; do
+for b in target/tblis2/release/tcbench target/tblis13/release/tcbench; do
     if [ ! -s "$b" ] || [ ! -x "$b" ]; then
         echo "FATAL: $b is missing or empty. Before submitting, on the login or" >&2
         echo "submitting host, run:" >&2
@@ -151,7 +149,22 @@ for b in "$BIN2" "$BIN13"; do
         exit 1
     fi
 done
-echo "binaries present; this job will not compile"
+
+# A build tree private to this job -- here a *snapshot*, because this job never
+# compiles and `prep` ran on the submit host. Without it the arms would keep
+# executing `target/tblis{2,13}/release/tcbench` in the submit directory, which a
+# later `prep` or an editing session can relink or truncate underneath them. That
+# is not hypothetical: job 6753197 died because a concurrent copy left a 0-byte
+# executable that every arm then ran happily for 0.0 seconds. Copying costs a few
+# seconds once and removes the whole class.
+export TC_TARGET=${TC_TARGET:-$PWD/target-job-${SLURM_JOB_ID:-manual}}
+mkdir -p "$TC_TARGET/tblis2/release" "$TC_TARGET/tblis13/release"
+cp -f target/tblis2/release/tcbench  "$TC_TARGET/tblis2/release/tcbench"
+cp -f target/tblis13/release/tcbench "$TC_TARGET/tblis13/release/tcbench"
+
+BIN2=$TC_TARGET/tblis2/release/tcbench
+BIN13=$TC_TARGET/tblis13/release/tcbench
+echo "binaries snapshotted into $TC_TARGET; this job will not compile"
 
 start=$SECONDS
 if scripts/compare-bench.sh "$OUT" "$CPU"; then rc=0; else rc=$?; fi

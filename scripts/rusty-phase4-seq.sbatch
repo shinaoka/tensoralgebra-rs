@@ -52,6 +52,12 @@ fi
 command -v cargo >/dev/null || export PATH="$HOME/.cargo/bin:$PATH"
 command -v cargo >/dev/null || { echo "FATAL: no cargo on PATH" >&2; exit 1; }
 
+# A build tree private to this job, so an editing session on the submit host
+# cannot relink the binary a running arm invokes. See `rusty-phase4.sbatch` for
+# the incident this prevents.
+export TC_TARGET=${TC_TARGET:-$PWD/target-job-${SLURM_JOB_ID:-manual}}
+echo "build tree: $TC_TARGET  (private to this job)"
+
 OUT=${OUT:-bench-results/$(hostname -s)-zen2}
 SEQ="$OUT/phase4e-seq"
 SIZE=${SIZE:-64}

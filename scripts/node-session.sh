@@ -42,6 +42,18 @@ OUT=${2:-}
 SIZE=${SIZE:-64}
 REPS=${REPS:-3}
 
+# A cluster job runs in the submit directory and uses its `target/`, so a
+# `cargo build` on the submit host -- or `cargo test`, which relinks the same
+# artefacts -- replaces the very binary a running arm invokes, and the job does
+# not notice. It happened once (DECISIONS.md part 13) and was inert only by luck.
+#
+# `TC_TARGET` is this session's build tree. The sbatch wrappers set it per job;
+# unset it is the ordinary `target/`, so a hand run behaves as before. It is
+# exported so `cargo build` in `prep` writes where every stage then reads, and so
+# `run-arms.py` and the stage scripts resolve the same binary.
+export TC_TARGET=${TC_TARGET:-target}
+export CARGO_TARGET_DIR=$TC_TARGET
+
 if [ -z "$OUT" ]; then
     LABEL=$(python3 -c "
 import re
@@ -84,7 +96,7 @@ stage_prep() {
     cargo build --release -p tensorcontract --examples 2>&1 | tail -3 | tee -a "$LOG"
 
     say "machine description (the engine's own probes, not sinfo)"
-    ./target/release/tcbench info 2>&1 | tee "$OUT/tcbench-info.txt" | tee -a "$LOG"
+    ${TC_TARGET:-target}/release/tcbench info 2>&1 | tee "$OUT/tcbench-info.txt" | tee -a "$LOG"
     scripts/topology.py --json "$OUT/topology.json" | tee "$OUT/topology.txt"
 
     # Exclusivity, recorded once from Slurm's own view. Read-only and scoped to
@@ -103,9 +115,9 @@ stage_prep() {
     # reproducible. Generated *here* because the register blocks are per-ISA, so
     # the reference machine's copies describe a different engine.
     say "structural features for this ISA (free: touches no data)"
-    ./target/release/tcbench orient --size "$SIZE" --csv "$OUT/features.csv" \
+    ${TC_TARGET:-target}/release/tcbench orient --size "$SIZE" --csv "$OUT/features.csv" \
         > "$OUT/orient.txt" 2>&1
-    ./target/release/tcbench shapes --size "$SIZE" --csv "$OUT/shapes.csv" \
+    ${TC_TARGET:-target}/release/tcbench shapes --size "$SIZE" --csv "$OUT/shapes.csv" \
         > "$OUT/shapes-analysis.txt" 2>&1
     cargo run --release -q -p tensorcontract --example blocking_model \
         > "$OUT/blocking-model.txt" 2>&1 || true
@@ -151,7 +163,7 @@ stage_shapes() {
     local cpu
     cpu=$(python3 -c "import json;print(json.load(open('$OUT/topology.json'))['placement']['slots'][0]['cpu'])")
     say "pinned to cpu$cpu"
-    taskset -c "$cpu" ./target/release/examples/kernel_shapes \
+    taskset -c "$cpu" ${TC_TARGET:-target}/release/examples/kernel_shapes \
         > "$OUT/kernel-shapes.txt" 2>&1
     say "best per method (this is what belongs in cfg_avx2_f64 / cfg_avx2_f32):"
     grep -A20 -i 'best per method' "$OUT/kernel-shapes.txt" | tee -a "$LOG" || \

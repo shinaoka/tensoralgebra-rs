@@ -34,7 +34,7 @@ SIZE=${3:-64}
 REPS=${4:-3}
 FILTER=${5:-}
 SIB=$(cat /sys/devices/system/cpu/cpu$CPU/topology/thread_siblings_list)
-BIN=./target/release/tcbench
+BIN=${TC_TARGET:-target}/release/tcbench
 [ -x "$BIN" ] || { echo "no $BIN in $PWD -- cargo build --release -p tensorprimitives-bench" >&2; exit 1; }
 B="taskset -c $CPU $BIN"
 FILT=()

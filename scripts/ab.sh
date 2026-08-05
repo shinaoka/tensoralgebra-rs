@@ -38,7 +38,7 @@ CPU=${3:-4}
 SIZE=${4:-64}
 REPS=${5:-3}
 FILTER=${6:-}
-BIN=./target/release/tcbench
+BIN=${TC_TARGET:-target}/release/tcbench
 [ -x "$BIN" ] || { echo "no $BIN -- cargo build --release -p tensorprimitives-bench" >&2; exit 1; }
 mkdir -p "$OUT"
 

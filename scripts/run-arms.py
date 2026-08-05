@@ -90,7 +90,13 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("jobfile")
     ap.add_argument("--outdir", required=True)
-    ap.add_argument("--bin", default="./target/release/tcbench")
+    # `TC_TARGET` gives a cluster job its own build tree, so an editing session
+    # on the submit host cannot relink the binary a running arm invokes. See
+    # `scripts/README.md`. Unset means the ordinary `target/`.
+    ap.add_argument(
+        "--bin",
+        default=os.path.join(os.environ.get("TC_TARGET", "target"), "release", "tcbench"),
+    )
     ap.add_argument("--size", default="64")
     ap.add_argument("--reps", default="3")
     ap.add_argument("--case", default="")

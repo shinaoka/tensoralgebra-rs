@@ -55,14 +55,22 @@ for r in "$TBLIS_ROOT_2X_A" "$TBLIS_ROOT_2X_B" "$TBLIS_ROOT_13"; do
     [ -s "$r/lib/libtblis.so" ] || { echo "FATAL: no TBLIS install at $r" >&2; exit 1; }
 done
 
-BIN=./target/tblis2/release/tcbench
-if [ ! -s "$BIN" ] || [ ! -s ./target/tblis13/release/tcbench ]; then
+if [ ! -s target/tblis2/release/tcbench ] || [ ! -s target/tblis13/release/tcbench ]; then
     echo "FATAL: binaries missing. Before submitting, run:" >&2
     echo "  TBLIS_ROOT_2X=$TBLIS_ROOT_2X_A TBLIS_ROOT_13=$TBLIS_ROOT_13 \\" >&2
     echo "    scripts/compare-bench.sh prep" >&2
     exit 1
 fi
-echo "binaries present; this job will not compile"
+
+# Snapshot into a build tree private to this job, so a `prep` or an editing
+# session on the submit host cannot relink or truncate the binary a running arm
+# invokes. See `rusty-compare.sbatch` for the job this killed.
+export TC_TARGET=${TC_TARGET:-$PWD/target-job-${SLURM_JOB_ID:-manual}}
+mkdir -p "$TC_TARGET/tblis2/release" "$TC_TARGET/tblis13/release"
+cp -f target/tblis2/release/tcbench  "$TC_TARGET/tblis2/release/tcbench"
+cp -f target/tblis13/release/tcbench "$TC_TARGET/tblis13/release/tcbench"
+BIN=$TC_TARGET/tblis2/release/tcbench
+echo "binaries snapshotted into $TC_TARGET; this job will not compile"
 
 OUT=${OUT:-bench-results/$(hostname -s)-$(scripts/arch-label.sh)}
 mkdir -p "$OUT"

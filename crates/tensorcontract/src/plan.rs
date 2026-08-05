@@ -499,11 +499,19 @@ impl Plan {
     /// The thread count this plan will execute with.
     ///
     /// Defaults to `TENSORCONTRACT_THREADS`, and to **1** if that is unset.
-    /// Single-threaded-by-default is deliberate for now rather than permanent:
-    /// every performance number committed in `DECISIONS.md` is a single-core
-    /// measurement, and the default should not change until threading has been
-    /// measured on this machine (Phase 4 item 4). It is a one-line change here
-    /// when it does.
+    ///
+    /// Single-threaded-by-default is now a **measured** decision rather than a
+    /// placeholder (D46). Threads are spawned per `execute` call at ~20–36 µs
+    /// each, which below about a megabyte makes 64 threads **1.2–10x slower than
+    /// serial**; and the optimal thread count walks 4 → 8 → 16 → 32 → 64 across
+    /// 0.25 → 64 MiB, so any *fixed* non-1 default is wrong at every size but one.
+    /// Keeping it at 1 also keeps every single-core number in `DECISIONS.md`
+    /// reproducible from a bare checkout.
+    ///
+    /// What would change it: an amortisation guard that caps the count so spawn
+    /// cost stays a bounded fraction of estimated serial work, or a thread pool
+    /// that removes the spawn cost outright. Either makes a non-1 default safe;
+    /// neither exists yet.
     pub fn threads(&self) -> usize {
         self.threads.unwrap_or_else(env_threads)
     }

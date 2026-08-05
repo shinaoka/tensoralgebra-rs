@@ -762,9 +762,13 @@ pub mod cfg_avx512_f32 {
 ///   does not quite (one spill/reload pair per k-step, against `1 x 5`'s none),
 ///   which settles the choice without a measurement. What stays guessed is the
 ///   *price*: one spill of a broadcast is nothing like the 30–50% a spilled
-///   accumulator costs, so `1 x 6` might still win. It cannot go on the menu as
-///   an alternate either way, because the menu is keyed by `MR` and both shapes
-///   have `MR = 4`; changing it is a one-line edit here.
+///   accumulator costs, so `1 x 6` might still win. **It could now go on the menu
+///   as an alternate** — that was impossible when this was written, because the
+///   menu was keyed by `MR` and both shapes have `MR = 4`, but D43 re-keyed it by
+///   *position* precisely so an `NR`-only alternate is expressible (that is what
+///   made A35's `32x5` reachable in `f32` planar). Appending `(1, 6)` here would
+///   make it an `idx=` arm; it has not been done because nothing has asked to
+///   measure it and an unmeasured menu entry is a liability.
 /// * 3m's default. `1 x 4` is load-port-bound (`f/l = 0.80`) and `2 x 2`
 ///   (`MR = 8`, on the menu) is exactly balanced at `f/l = 1.00` but moves 25%
 ///   more bytes per flop. `1 x 4` follows the AVX-512 precedent, where the

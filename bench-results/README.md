@@ -55,6 +55,10 @@ turn every one of those citations into a dead reference to buy tidiness.
 | `worker5137-zen2/` | worker5137 (Zen2) | 2026-08-04 | 6751550 | `rusty-phase4.sbatch`, threads only | Third node. Confirms the partition effect follows **L3 domains spanned**, not thread count |
 | `worker6156-icelake/` | worker6156 (Ice Lake-SP, AVX-512) | 2026-08-04 | 6753260 | `rusty-compare.sbatch` | **The engine against its baselines**, first such run since Phase 3. Tightest floor in the repo (0.998-1.001 session-span). Source of **A44** (the method ranking does not travel). Holds three experiments: `compare-tblis-skx/` and `compare-tblis-x86_64/` (two independent full runs agreeing to 0.997-1.003) and `ab-tblis/` (the TBLIS-build A/B, A45/A46). **The README's numbers come from here** |
 | `worker6016-icelake/` | worker6016 (Ice Lake-SP, AVX-512) | 2026-08-03 | 6746817 | `rusty-phase4.sbatch`, `STAGES="shapes threads"` | The second Intel hierarchy. Source of **A34** (register blocks are per-microarchitecture) and **A36** (the partition win is absent here) |
+| `worker5479-zen2/` | worker5479 (Zen2) | 2026-08-04 | 6753208 | `PARTITION_SWEEP=1 STAGES=threads` | The domain-gate confirmation run, **Zen2 arm**: 144 of 392 moved at 1.433 corrected, corpus 1.133, against a prediction of 1.423 / 1.138 made before the node existed. Also the spread arms (A36's residual gap), A38 and A39. Contains `failed-6753261-sigill/`, a separate job with its own provenance |
+| `worker6150-icelake/` | worker6150 (Ice Lake-SP, AVX-512) | 2026-08-04 | 6753209 | the same submission | The domain-gate confirmation run, **Ice Lake arm — the control**: the gate moved **0 of 392** at every width up to the socket. Confirms A39 at 32 threads on a second machine |
+| `worker5139-zen2/` | worker5139 (Zen2) | 2026-08-04 | 6754849 | `STAGES="threads small"` | **Small contractions** (`phase4g/`): threading is 1.2–10x *slower* than serial below ~1 MiB and the optimal thread count walks 4 → 64 across the size range. Source of **D46** and **A43** |
+| `worker5178-zen2/` | worker5178 (Zen2) | 2026-08-04 | 6755009 | `RAGGED=1 STAGES=threads` | **`--stress ragged`**: heterogeneous cases from 11.7% to 87.2% at aperiodic fractions, and parallel efficiency moves 0.976–1.124, i.e. not at all. Source of **D47** and A41's final form |
 
 ### Loose files at the top level
 
@@ -64,7 +68,7 @@ The Phase 3 measurement set, all on `ccqlin038`, all 2026-08-02, all from
 | file | what |
 |---|---|
 | `phase3-sweep-{f64c64,f32c32}.csv` | The 49-case corpus against TBLIS 2.0-dev and TTGT. **These are the newest engine-vs-baseline numbers in the repo and they predate every Phase 4 gain**, so they understate the engine |
-| `phase3-sweep-ragged-c64.csv` | The same under `--stress ragged` — the only committed data in which the block-scatter gather path actually runs (`regA` down to 0.0031). Note the unperturbed corpus is **not** fully regular either, contrary to a shorthand this project repeated for a while: at the shipped `f32`/`c32` register blocks `reg_a < 1.0` on 42.9% of the 392 case-dtype-methods (Phase 4 part 14). `--stress` is how you get *severe* irregularity, not the only way to leave 1.00 |
+| `phase3-sweep-ragged-c64.csv` | The same under `--stress ragged` — the only committed data in which the block-scatter gather path actually runs (`regA` down to 0.0031). Note the unperturbed corpus is **not** fully regular either, contrary to a shorthand this project repeated for a while: at the shipped `f32`/`c32` register blocks `reg_a < 1.0` on 42.9% of the 392 case-dtype-methods at `--size 64`, 45 of them entirely (Phase 4 part 14 — and note the fraction moves with the size and the ISA; this very file's `phase4d/features.csv` reads 36.7% because it was generated at a different size). `--stress` is how you get *severe* irregularity, not the only way to leave 1.00 |
 | `phase3-premise-{f64c64,f32c32}.csv` | Efficiency against a same-shape GEMM ceiling, 200 MiB, 12 cases — the metric the Phase 1 headline is stated in |
 | `phase3-premise-tblis130-f64c64.csv` | The same against **TBLIS v1.3.0**, the latest stable release. This is the half of the headline that shows the 5x |
 | `phase3-kernel-shapes.txt` | The AVX-512 register-block sweep. Cited from `kernel/x86.rs`, and the file **A35** was found in — months later, at no machine cost, which is the return on keeping raw output |
@@ -113,7 +117,12 @@ retractions detectable.
 ## What to read next
 
 [`../scripts/README.md`](../scripts/README.md) for what produced any of this, and
-[`../DECISIONS.md`](../DECISIONS.md) for what it means. The measurement
-methodology these directories were accumulated under is recorded as assumptions
-A27, A31 and A32: run and discard a warm-up arm, derive the noise floor in
-session, and do not place traffic-changing arms concurrently.
+[`../DECISIONS.md`](../DECISIONS.md) for what it means — its "Measurement rules"
+section holds the noise floors, **each with its own session and thread count**,
+and the nine rules these directories were accumulated under. The short form: run
+and discard a warm-up arm (A31) and do not treat it as sufficient (A40); derive
+the floor in session, from repeats adjacent to the arms compared (A32); do not
+place traffic-changing arms concurrently (A27); include columns the change cannot
+touch and check they do not move; measure at the size you publish at (A46); and
+**a per-case ratio at 64 threads is not readable at all** (A39). The full account
+of each, with what would reopen it, is in [`../REFUTED.md`](../REFUTED.md).

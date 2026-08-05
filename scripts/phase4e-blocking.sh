@@ -81,7 +81,7 @@ OUT=${2:-bench-results/phase4e}
 SIZE=${3:-64}
 REPS=${4:-3}
 FILTER=${5:-}
-BIN=./target/release/tcbench
+BIN=${TC_TARGET:-target}/release/tcbench
 [ -x "$BIN" ] || { echo "no $BIN in $PWD -- cargo build --release -p tensorprimitives-bench" >&2; exit 1; }
 mkdir -p "$OUT"
 

@@ -1,0 +1,32 @@
+The domain-aware partition gate's confirmation run, Ice Lake arm -- the control.
+
+  machine : worker6150 (Rusty, `gen` partition, `icelake`)
+            Intel Ice Lake-SP, 2 x 32 cores, avx512, ONE 48 MiB L3 per socket,
+            so a 32-core cpuset is a single L3 domain
+  date    : 2026-08-04, started 14:45:19
+  slurm   : job 6753209, --constraint=icelake --exclusive, 64 CPUs allocated
+  script  : PARTITION_SWEEP=1 STAGES=threads sbatch scripts/rusty-phase4.sbatch
+  stages  : prep rc=0 (0 min), threads rc=0 (70 min), grid skipped
+  host    : session.log, slurm-job.txt, topology.json, phase4f/*.cpu
+
+Submitted together with ../worker5479-zen2/ and running the identical arms. This
+is the half of the experiment that could have killed the change.
+
+The result is a clean null: **the gate moved 0 of 392 case-dtype-methods**, at
+every thread count up to the socket. Not approximately a no-op -- the identical
+partition on every case. That is exactly what gating the `panels >= p` early
+return on the L3 domain count was supposed to give, and it is why the early return
+was gated rather than deleted (A36: deleting it is wrong here).
+
+Its t1/t1b brackets are the clean ones: 0.997-0.999 and 0.998, against Zen2's
+0.972-0.977 on the first dtype pair of a longer session (A40).
+
+It also confirms A39 on a second machine and a second width: per-case ratios over
+392 identical-partition repeats at 32 threads read p10 0.915 / p90 1.108. So the
+unreadability of per-case threaded ratios is a property of threaded measurement
+here, not of one machine.
+
+Not comparable to anything measured on ccqlin038, and not comparable to
+worker5479 either.
+
+Read with: DECISIONS.md -> Threading -> "Part 12", and D41, D44, A36, A39, A40.

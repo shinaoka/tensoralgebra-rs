@@ -60,8 +60,8 @@ cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # 6753197 died: cargo's fingerprint still said "fresh", so the deleted file was
 # never relinked, and a concurrent job's copy left a 0-byte executable behind
 # that every arm then ran happily for 0.0 seconds.
-BIN2=./target/tblis2/release/tcbench
-BIN13=./target/tblis13/release/tcbench
+BIN2=${TC_TARGET:-target}/tblis2/release/tcbench
+BIN13=${TC_TARGET:-target}/tblis13/release/tcbench
 
 # `runs BIN` -- is this a working binary, not merely a present one?
 runs() { [ -x "$1" ] && [ -s "$1" ] && "$1" info >/dev/null 2>&1; }
@@ -75,11 +75,11 @@ if [ "${1:-}" = "prep" ]; then
     module load gcc/13.3.0 openblas >/dev/null 2>&1 || true
 
     echo "building the TBLIS 2.0-dev binary"
-    CARGO_TARGET_DIR=target/tblis2 TBLIS_ROOT=$TBLIS_ROOT_2X \
+    CARGO_TARGET_DIR=${TC_TARGET:-target}/tblis2 TBLIS_ROOT=$TBLIS_ROOT_2X \
         cargo build --release -p tensorprimitives-bench --features tblis,blas
 
     echo "building the TBLIS v1.3.0 binary (note the tblis13 feature and ABI)"
-    CARGO_TARGET_DIR=target/tblis13 TBLIS_ROOT=$TBLIS_ROOT_13 \
+    CARGO_TARGET_DIR=${TC_TARGET:-target}/tblis13 TBLIS_ROOT=$TBLIS_ROOT_13 \
         cargo build --release -p tensorprimitives-bench --features tblis13,blas
 
     ls -l "$BIN2" "$BIN13"

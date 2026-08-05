@@ -351,8 +351,21 @@ Two things the prediction did not say, both of which turned out to matter:
 argues the shapes needing it are bounded away from being compute-bound and
 measures that none in the benchmark corpus needs it.
 
-Threading is **off by default** while its scaling is unmeasured, so every
-performance number in `DECISIONS.md` remains a single-core measurement.
+Threading is **off by default**, and since 2026-08-04 that is a *measured*
+position rather than a placeholder: per-call thread spawn costs ~20–36 µs per
+thread, which makes 64 threads 1.2–10x slower than serial below about a megabyte,
+and the optimal thread count walks 4 → 64 across the size range — so a fixed
+non-1 default is wrong at every size but one (`DECISIONS.md` D46). Keeping it at 1
+also keeps every performance number in `DECISIONS.md` a reproducible single-core
+measurement.
+
+One thing this section's prediction did not anticipate at all: the *partition
+rule* has to know the machine's L3 topology. `NC` sizes the shared packed-`B`
+panel for "an L3", and on a chiplet machine a 64-thread set spans sixteen of them,
+so a panel every thread reads whole is effectively replicated sixteen times.
+Gating the row-axis shortcut on the L3 domain count is worth 1.13 corpus geometric
+mean at 64 Zen2 threads and is a measured no-op where one L3 serves the socket; it
+is the default (`DECISIONS.md` D41, D44).
 
 ---
 
@@ -399,17 +412,36 @@ the element size used for sizing is fixed at 8 bytes for *every* dtype. TCCG
 re-sizes per precision, which would hand complex runs smaller tensors and make
 the real-vs-complex ratio meaningless.
 
-### 5.3 The corpus does not exercise the gather path
+### 5.3 The corpus and the gather path — a Phase 1 claim that later expired
 
-TCCG rounds every stride-1 extent **up to a multiple of 24**. Since 24 is
-divisible by every plausible register block (4, 8, 12, 24; and the others in
-use divide the extents too), a run of `MR` consecutive rows never straddles an
-index boundary, and the block-scatter vectors come out **fully regular** — the
-harness measures `regA = 1.00` on every case.
+> **Correction, and it is the most consequential stale claim this project has
+> had.** This section was titled "the corpus does not exercise the gather path",
+> and that was true when written and false from Phase 3 onward. Read the paragraph
+> below as being about *the register blocks in use in Phase 1*, which is also the
+> right reading of the TBLIS comparison — TBLIS's blocks do divide 24. It is
+> **not** true of this engine today. The shipped `f32`/`c32` blocks are `MR` 16,
+> 32 and 48, none of which divides 24, so on the arm the orientation rule picks
+> `reg_a < 1.0` on **42.9%** of the 392 corpus case-dtype-methods, `reg_b` on
+> 38.3% and the write-back fraction on 35.7%, with 45 of the 392 at `reg_a = 0.0`
+> — entirely on the gather path — and the rest quantised at 0.667 / 0.889 / 0.963.
+> Two qualifiers are part of the claim: those are `--size 64` figures, because the
+> extents scale with the size, and on an AVX2 node the fraction is 11.7% because
+> `MR = 8` for `f64` *does* divide 24. **The corpus does exercise the
+> gather path here**, and the irregularity is produced by the interaction of the
+> layout with `MR` rather than by the tensors, which is why the row-block and
+> orientation rules exist at all. What the corpus still cannot produce is
+> *aperiodic* irregularity: its straddling is periodic, so a static partition
+> self-averages. See `DECISIONS.md` → Threading → part 14, and A4.
 
-This matters a great deal for the thesis, which is specifically about awkward
-strides forcing work onto the slow gather path: **the standard corpus cannot
-test that claim at all.** Two perturbation modes were added:
+TCCG rounds every stride-1 extent **up to a multiple of 24**. With the register
+blocks in use when this was written (4, 8, 12, 24 — all of which divide 24), a run
+of `MR` consecutive rows never straddles an index boundary, and the block-scatter
+vectors come out fully regular: the harness measured `regA = 1.00` on every case.
+
+This mattered a great deal for the thesis, which is specifically about awkward
+strides forcing work onto the slow gather path: **the standard corpus could not
+test that claim at all**, and still cannot test the *aperiodic* form of it. Two
+perturbation modes were added:
 
 * `--stress ragged` — subtract one from every extent, so nothing divides the
   register block and every index-boundary crossing produces an irregular block

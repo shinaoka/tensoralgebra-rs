@@ -49,7 +49,7 @@ cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CPUS=${1:-auto}
 OUT=${2:-bench-results/phase4g}
 FILTER=${3:-}
-BIN=./target/release/tcbench
+BIN=${TC_TARGET:-target}/release/tcbench
 [ -x "$BIN" ] || { echo "no $BIN in $PWD -- cargo build --release -p tensorprimitives-bench" >&2; exit 1; }
 FILT=()
 [ -n "$FILTER" ] && FILT=(--case "$FILTER")

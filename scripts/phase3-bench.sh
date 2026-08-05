@@ -39,7 +39,7 @@ run() { echo -e "\n\n########## $* ##########\n" | tee -a $LOG; "$@" 2>&1 | tee 
 export TBLIS_ROOT=$TBLIS_ROOT_2X
 export LD_LIBRARY_PATH="$TBLIS_ROOT/lib:${OPENBLAS_ROOT:+$OPENBLAS_ROOT/lib:}${LD_LIBRARY_PATH:-}"
 cargo build --release -p tensorprimitives-bench --features tblis,blas
-B=./target/release/tcbench
+B=${TC_TARGET:-target}/release/tcbench
 
 # 1. Correctness of the new kernels against both baselines, all methods.
 for m in planar 1m 3m; do

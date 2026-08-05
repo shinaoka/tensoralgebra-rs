@@ -72,12 +72,12 @@ if [ -n "$others" ]; then
     exit 1
 fi
 
-[ -x ./target/release/tcbench ] || { echo "build first: cargo build --release -p tensorprimitives-bench" >&2; exit 1; }
+[ -x ${TC_TARGET:-target}/release/tcbench ] || { echo "build first: cargo build --release -p tensorprimitives-bench" >&2; exit 1; }
 
 say "reference-machine blocking grid; cpu$CPU; out $OUT"
-./target/release/tcbench info 2>&1 | tee "$OUT/tcbench-info.txt" | tee -a "$LOG"
+${TC_TARGET:-target}/release/tcbench info 2>&1 | tee "$OUT/tcbench-info.txt" | tee -a "$LOG"
 scripts/topology.py --json "$OUT/topology.json" | tee "$OUT/topology.txt"
-./target/release/tcbench orient --size "$SIZE" --csv "$OUT/features.csv" > /dev/null
+${TC_TARGET:-target}/release/tcbench orient --size "$SIZE" --csv "$OUT/features.csv" > /dev/null
 
 # Discarded warm-up (A31). One `base` arm, into a directory nothing analyses.
 say "warm-up arm, discarded"

@@ -78,6 +78,25 @@ command -v cargo >/dev/null || {
     echo "FATAL: no cargo on PATH. Submit from a shell that can build the workspace." >&2
     exit 1
 }
+
+# ---------------------------------------------------------------------------
+# A per-job build tree, so the submit host cannot pull the binary out from under
+# a running arm
+# ---------------------------------------------------------------------------
+#
+# This job runs in the submit directory and, until this existed, used its
+# `target/`. So a `cargo build` on the workstation while the job was in flight --
+# or a `cargo test`, which relinks the same artefacts -- replaced the very
+# executable each arm invokes, mid-session, and nothing reported it. That happened
+# on 2026-08-04 (part 13) and was inert only by luck; the fix is five lines and
+# removes the whole class rather than relying on remembering.
+#
+# `node-session.sh` exports this as `CARGO_TARGET_DIR` and every stage script and
+# `run-arms.py` resolves its binary from it, so the build and the arms agree by
+# construction. Unset, they all fall back to `target/` and a hand run is unchanged.
+export TC_TARGET=${TC_TARGET:-$PWD/target-job-${SLURM_JOB_ID:-manual}}
+echo "build tree: $TC_TARGET  (private to this job)"
+echo
 cargo --version
 echo
 

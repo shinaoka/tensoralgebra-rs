@@ -44,7 +44,7 @@ REPS=${4:-3}
 # The premise stage keeps Phase 1's 200 MiB so its shapes are the ones the
 # efficiency-against-a-GEMM-ceiling metric was defined on.
 PREMISE_SIZE=${PREMISE_SIZE:-200}
-BIN=./target/tblis2/release/tcbench
+BIN=${TC_TARGET:-target}/tblis2/release/tcbench
 
 A_ROOT=${TBLIS_ROOT_2X_A:-$PWD/../baselines/tblis-2.0-install}
 B_ROOT=${TBLIS_ROOT_2X_B:-$PWD/../baselines/tblis-2.0-x86_64-install}

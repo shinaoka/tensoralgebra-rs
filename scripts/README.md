@@ -1,6 +1,6 @@
 # `scripts/` — what each one is for
 
-Twenty-nine files, and the overlaps are real but mostly not accidental. This
+Thirty-one files, and the overlaps are real but mostly not accidental. This
 index exists so that "which script do I use" is answered here rather than by
 reading five headers, and so that a script kept only because it produced
 committed data is visibly that.
@@ -13,6 +13,18 @@ Shared conventions: the shell scripts refuse to be sourced, `cd` to the repo
 root, and take positional `[cpu] [outdir] [size_mib] [reps] [filter]` with
 defaults `4 / <their own dir> / 64 / 3 / none`. Every measurement here is
 single-core and pinned unless it says otherwise.
+
+**`TC_TARGET` is the build tree**, and every script resolves its binary from it
+(`${TC_TARGET:-target}/release/tcbench`, or the `tblis2`/`tblis13` subtrees for
+the two-ABI scripts). Unset, it is the ordinary `target/` and a hand run behaves
+as it always did. The `.sbatch` wrappers set it to `target-job-$SLURM_JOB_ID` per
+job, and this is not cosmetic: a cluster job runs in the submit directory, so
+until this existed a `cargo build` on the workstation — or a `cargo test`, which
+relinks the same artefacts — replaced the very executable each arm invokes,
+mid-session, with nothing reporting it. `node-session.sh` exports it as
+`CARGO_TARGET_DIR` so the build and the arms agree by construction; the two
+prebuilt-binary jobs (`rusty-compare.sbatch`, `rusty-tblis-ab.sbatch`) *snapshot*
+into it instead, because they never compile.
 
 ---
 
@@ -102,10 +114,23 @@ the way they do:
   transient from a noise floor: an exclusive machine's opening arm runs at
   single-core boost on a cold package and nothing else does, which came back once
   as a uniform 4.4% "floor" while inflating every ratio measured against A.
+  A warm-up arm is a **partial** fix, not a floor (A40): the residual tracks
+  position in the session, so a hotter or longer warm-up would not remove it.
 * **Derive the floor in session, and know which floor** (A32). Drift is a
   function of how far apart two arms are — 0.02% at a minute, 1–2% at an hour,
   4.4% across a cold start. Do not import ±1.3%/±6% from `DECISIONS.md`; those
-  belong to one session on one machine.
+  belong to one session, on one machine, **at one thread count**. At 64 threads a
+  per-case ratio is not readable at all — p10 0.885 / p90 1.107 with tails to 1.55
+  on repeats of an *identical* partition — so only per-family geomeans mean
+  anything at that width (A39).
+* **Include columns the change cannot touch, and check they do not move.** That
+  is what drift-corrected the domain gate's headline from 1.449 to 1.433, and it
+  caught a contaminated A/B before that. Identical-configuration arms already in a
+  grid are free repeats; find them before booking machine time.
+* **Measure at the size you publish at** (A46). Problem size is a confound
+  separate from time, and none of the timing rules above catches it: a claim
+  measured at 8 MiB that vanishes at 64 and 200 MiB has already been published
+  here once and withdrawn.
 * **Prefer a runtime switch to a rebuild** (A15), so both arms interleave in one
   session. `TENSORCONTRACT_ORIENT`, `_ROWBLOCK`, `_WRITEBACK`, `_DEEPEN`,
   `_PARTITION` exist for exactly this. A build-to-build diff already produced one
