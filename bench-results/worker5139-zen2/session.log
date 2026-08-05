@@ -72,3 +72,5 @@ from the 8 threads it was argued at to a whole 128-core node.
 [2026-08-04T20:58:04-04:00] threads done
 [2026-08-04T20:58:04-04:00] outdir: bench-results/worker5139-zen2
 [2026-08-04T20:58:04-04:00] small: does threading still pay on small contractions? (~20-30 min)
+[2026-08-04T21:28:23-04:00] small done
+[2026-08-04T21:28:23-04:00] outdir: bench-results/worker5139-zen2

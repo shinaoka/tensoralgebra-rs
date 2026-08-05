@@ -4081,6 +4081,111 @@ region. Both baselines here are configured `TCI_USE_OPENMP_THREADS 1` with
 |---|---|---|
 | A42 | Block-scatter load imbalance is a solved problem in mature implementations, so a cost-aware partition would be reinventing something. | **False.** TBLIS computes the same per-block regularity sentinel and feeds it to no scheduling decision in either version, and its author published the diagnosis without a fix. Its mitigation is upstream — reorder dimensions to manufacture regular blocks — and we already do the equivalent. |
 
+## Phase 4 report, part 16: the two experiments that decide the threading default
+
+Jobs 6754849 (`worker5139`) and 6755009 (`worker5178`), both rome, both rc=0,
+2026-08-04. One settles the default; the other kills a design direction.
+
+### Small contractions: the default cannot be a fixed thread count
+
+Speedup against `t1` **at the same size**, so the fixed cost is inside the
+measurement — `timed()` takes the best of `reps` with one `execute` per rep, and
+threads are spawned per call.
+
+| MiB | dtype | t2 | t4 | t8 | t16 | t32 | t64 | serial ms |
+|---|---|---|---|---|---|---|---|---|
+| 0.25 | `f64` | 1.56 | **2.12** | 1.50 | 0.85 | 0.41 | **0.14** | 0.32 |
+| 0.25 | `f32` | 1.40 | **1.73** | 1.10 | 0.56 | 0.26 | **0.10** | 0.22 |
+| 1 | `f64` | 1.81 | 3.24 | **4.16** | 3.60 | 2.25 | 1.10 | 4.55 |
+| 1 | `f32` | 1.76 | 2.91 | **3.14** | 2.43 | 1.42 | 0.66 | 2.37 |
+| 4 | `f64` | 1.86 | 3.68 | 5.38 | **5.70** | 4.18 | 2.61 | 6.31 |
+| 16 | `f64` | 1.85 | 3.20 | 4.44 | 4.99 | **6.19** | 5.03 | 26.07 |
+| 64 | `f64` | 1.90 | 3.41 | 4.91 | 6.10 | 6.28 | **7.50** | — |
+
+**At 64 threads, threading costs up to 10x below a megabyte.** `f32` at 0.25 MiB
+runs at **0.10** — a 0.22 ms contraction takes 2.2 ms. And the best thread count
+walks monotonically with size: 4, 8, 16, 32, 64 at 0.25, 1, 4, 16, 64 MiB. **A
+fixed default is wrong at every size but one.**
+
+The fixed cost reads straight off the smallest rung, where parallel work is
+negligible: `t64` on a 0.32 ms job takes 2.29 ms, so the overhead is ~2.3 ms, or
+**~36 µs per thread**; at `t8` the same arithmetic gives ~21 µs. That is
+per-call `std::thread` spawn, and it is what makes the sub-MiB region
+catastrophic rather than merely inefficient.
+
+**Two regimes, and only one is dangerous.** Below ~1 MiB the spawn cost dominates
+and threading is a *loss*. Above it, the curve saturates early (best at `t8`–`t32`
+rather than `t64`) — that is a bandwidth ceiling, not spawn, and it is benign: you
+get 4x instead of 6x. A guard only has to fix the first.
+
+**So `TENSORCONTRACT_THREADS` must not simply be flipped on.** Two ways forward,
+and they compose:
+
+* **Amortisation guard** — cap the thread count so the spawn cost stays a bounded
+  fraction of the estimated serial work. Fitting the 0.25 MiB rung, "spawn ≤ 50%
+  of serial" gives `p <= 5`, and `t4` is indeed the measured optimum there. Small,
+  needs only a flop estimate, and converts a 10x regression into "no worse than
+  serial". It does *not* predict the saturation above 1 MiB, which is a different
+  mechanism — do not fit it to that.
+* **Pool the threads**, which removes the ~30 µs/thread outright and shrinks the
+  dangerous region rather than steering around it.
+
+And it sharpens the batched-API argument: for many small contractions the right
+parallel axis is *the batch*, giving one spawn per batch instead of one per
+contraction, which is exactly the cost measured here.
+
+### Load imbalance from block-scatter irregularity: refuted, and cleanly
+
+`--stress ragged` subtracts 1 from every extent, destroying TCCG's multiple-of-24
+property. It did what it was meant to, and the perturbation is characterised
+rather than assumed:
+
+| | case-dtype-methods with `reg_a < 1.0` | values |
+|---|---|---|
+| unperturbed | **11.7%** | 0.667, 0.889, 0.963 — the periodic quantisation |
+| ragged | **87.2%** | 0.348, 0.349, 0.696, 0.697, 0.789, 0.793, 0.87, 0.901 — aperiodic |
+
+(The unperturbed figure is lower here than the 42.9% in part 14 because this is an
+AVX2 node: `MR = 8` for `f64` *does* divide 24. The contrast is therefore cleaner,
+not weaker.)
+
+Scaling, each mode against **its own** `t1`:
+
+| dtype | width | unperturbed | ragged | ragged/unperturbed |
+|---|---|---|---|---|
+| `f64` | 8 | 4.93 | 5.23 | 1.062 |
+| `c64` | 8 | 5.96 | 6.13 | 1.028 |
+| `f64` | 64 | 7.64 | 7.92 | 1.037 |
+| `c64` | 64 | 8.21 | 8.60 | 1.048 |
+| `f32` | 64 | 8.04 | 8.36 | 1.040 |
+| `c32` | 64 | 7.91 | 8.89 | 1.124 |
+
+**No degradation — 0.976 to 1.124, and if anything ragged scales slightly
+better.** Seven and a half times as many heterogeneous cases, at aperiodic
+fractions down to 35% of blocks irregular, and parallel efficiency does not move.
+
+Why, most likely: at 64 threads occupancy is 32–39%, so threads are waiting on
+memory rather than on each other, and compute-side imbalance hides inside that.
+Static strips are also 12+ panels wide at 64 threads, which averages a good deal
+even when the pattern is aperiodic.
+
+**So the design ladder in part 14 is not worth building** — cost-weighted cuts and
+dynamic `ic` claiming are solutions to a problem that does not measurably exist
+here. Two limits on that conclusion, both real: it says nothing about **block-sparse
+with wildly varying block sizes**, which is a far larger imbalance of a different
+kind, and it was measured where the machine is bandwidth-bound. If a future kernel
+or a smaller working set makes the engine compute-bound at scale, re-run it.
+
+| # | Decision | Rationale |
+|---|---|---|
+| D46 | Do **not** flip `TENSORCONTRACT_THREADS` to a fixed non-1 default. | Measured: at 64 threads, contractions below ~1 MiB run 1.2–10x *slower* than serial, and the optimal thread count walks 4 → 64 across the size range. A fixed default is wrong at every size but one, and wrong by an order of magnitude at the small end — which is the regime Phase 1 named as this project's real headroom. |
+| D47 | Do not build cost-weighted or dynamic partitioning for the dense path on current evidence. | `--stress ragged` raises heterogeneous cases from 11.7% to 87.2% at aperiodic fractions and parallel efficiency does not move (0.976–1.124). TBLIS reached the same conclusion by inaction (part 15). Revisit for block-sparse, where the imbalance is block *size*, not block *regularity*. |
+
+| # | Assumption | Status |
+|---|---|---|
+| A41 | Blocks of a block-scatter contraction are equal-cost, so partitioning by block count balances the load. | **False in the premise, true in the consequence.** Blocks genuinely differ in cost — part 14 measured the heterogeneity and it is large. But making it 7.5x more prevalent and aperiodic changes parallel efficiency by less than the noise floor, so the imbalance does not *cost* at these thread counts on this machine class. Stated this way because the premise may matter again where the consequence does not follow — a compute-bound machine, or block-sparse. |
+| A43 | Per-call thread spawn is a second-order cost, worth fixing after the partition. | **Refuted at small sizes.** ~20–36 µs per thread, which is the entire story below 1 MiB: a 0.22 ms `f32` contraction takes 2.2 ms on 64 threads. It is first-order for exactly the workload Phase 1 identified as the headroom. |
+
 ## Phases 4 (rest) – 5
 
 In progress. See "Resume here" at the top of this file.

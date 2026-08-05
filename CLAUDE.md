@@ -112,9 +112,14 @@ Four results and four decisions handed back, none of them taken:
   a fixed-16-thread arm varying only the packing reads 1.19x packed over 4 domains
   against **2.74x spread over 16**. Zen2 corpus scaling at 64 cores goes 5.81 →
   7.54 (`f64`), 5.51 → 7.88 (`f32`), and stops declining past 16 threads.
-  **Recommendation: turn the gate on by default, then threads** — the gate is a
-  no-op wherever one L3 serves the thread set and there is no machine on which it
-  is known to cost anything. Flipping either is D22 and the user's call. Three
+  **The gate is now the default (D44).** **Threads are not, and now for a measured
+  reason (D46):** below ~1 MiB at 64 threads threading is 1.2–10x *slower* than
+  serial — per-call spawn is ~20–36 µs per thread — and the optimal thread count
+  walks 4 → 64 across the size range, so a fixed default is wrong at every size
+  but one. Fix it with an amortisation guard or by pooling before revisiting.
+  Separately, **load imbalance from block-scatter irregularity does not cost**
+  (D47): `--stress ragged` takes heterogeneous cases from 11.7% to 87.2% at
+  aperiodic fractions and parallel efficiency moves 0.976–1.124, i.e. not at all. Three
   things came out of building it: a cross-domain traffic term in the cost model
   **cannot be calibrated** (A38, four refuted variants), **per-case ratios at 64
   threads are unreadable** so only per-family geomeans mean anything at that width

@@ -1,0 +1,30 @@
+cache descriptors (sysfs):
+  L1d       32 KiB   8-way      64 sets   64 B lines  shared by  1 logical CPU(s)
+  L2       512 KiB   8-way    1024 sets   64 B lines  shared by  1 logical CPU(s)
+  L3     16384 KiB  16-way   16384 sets   64 B lines  shared by  4 logical CPU(s)
+  1 logical CPU(s) per core, so the L2 belongs to 1 core(s) and the L3 to 4
+  blocking in force: legacy
+
+threads = 1
+dtype  method   MR  NR |     mc   kc      nc   A KiB   B KiB |     mc   kc      nc   A KiB   B KiB
+f64    -         8   6 |    256  256    1536     512    3072 |    192  256    7170     384   14340
+f32    -        16   6 |    352  384    2052     528    3078 |    320  320   11472     400   14340
+c64    planar    4   5 |    128  256     770     512    3080 |    128  192    4780     384   14340
+c64    1m        4   6 |     64  256     768     512    3072 |     96  128    7170     384   14340
+c64    3m        4   4 |     88  256     512     528    3072 |    128  128    4780     384   14340
+c32    planar    8   5 |    176  384    1025     528    3075 |    192  256    7170     384   14340
+c32    1m        8   6 |     88  384    1026     528    3078 |    160  160   11472     400   14340
+c32    3m        8   4 |    120  384     684     540    3078 |    192  170    7196     382   14335
+
+threads = 8
+dtype  method   MR  NR |     mc   kc      nc   A KiB   B KiB |     mc   kc      nc   A KiB   B KiB
+f64    -         8   6 |    256  256    1536     512    3072 |    192  256    6660     384   13320
+f32    -        16   6 |    352  384    2052     528    3078 |    320  320   10650     400   13312
+c64    planar    4   5 |    128  256     770     512    3080 |    128  192    4440     384   13320
+c64    1m        4   6 |     64  256     768     512    3072 |     96  128    6660     384   13320
+c64    3m        4   4 |     88  256     512     528    3072 |    128  128    4440     384   13320
+c32    planar    8   5 |    176  384    1025     528    3075 |    192  256    6660     384   13320
+c32    1m        8   6 |     88  384    1026     528    3078 |    160  160   10650     400   13312
+c32    3m        8   4 |    120  384     684     540    3078 |    192  170    6684     382   13315
+
+left block: legacy (hardcoded)   right block: analytical model
