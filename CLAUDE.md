@@ -64,11 +64,19 @@ they can be benchmarked against each other and against TBLIS on equal footing.
   nothing in CI will catch it. The same goes for the README's "what is tuned"
   section.
 
-**The engine-vs-baseline numbers in the README are Phase 3 (2026-08-02) and
-understate the engine**, because every Phase 4 gain landed after them. The
-re-measurement is built and not yet run: `scripts/compare-bench.sh`, wrapped for
-a cluster node by `scripts/rusty-compare.sbatch`. It wants an exclusive machine
-for ~3.5 h.
+**The README's engine-vs-baseline numbers are current as of 2026-08-05** and come
+from two independent Ice Lake runs (jobs 6753260 and 6754877, `worker6156`) that
+agree to 0.997–1.003 on all twenty columns — see the Phase 5 report part 3. The
+engine reaches 1.31–1.78x TBLIS 2.0-dev and 1.95–2.20x TTGT there, and TBLIS
+v1.3.0's 0.215 complex-over-real efficiency reproduced *identically* to Cascade
+Lake, because that ratio is a property of the software rather than the machine.
+
+**What is still not measured: what Phase 4 actually bought.** Those runs are Ice
+Lake and the Phase 3 table is Cascade Lake, so the two cannot be differenced —
+two things changed at once. Only a `ccqlin038` run supplies it:
+`scripts/compare-bench.sh` (see `scripts/README.md`), ~3.5 h on an exclusive
+machine. `scripts/rusty-compare.sbatch` is the cluster wrapper and picks the right
+TBLIS 2.0 build for the node.
 
 **Four cluster sessions are done.** Rusty `rome` (Zen2, AVX2) jobs 6745376
 (`worker5040`) and 6745978 (`worker5175`) on 2026-08-03, 6751550 (`worker5137`)

@@ -7,9 +7,33 @@ is auditable after the fact.
 
 ## Resume here
 
-**State as of 2026-08-03.** Phases 1, 2 and 3 are complete and their gates are
-met. **Phase 4 is in progress: items 1 (the write-back), 1c (the micro-tile
-row block) and 1d (the orientation rule) are done; item 2 is next.**
+**State as of 2026-08-05.** Phases 1, 2 and 3 are complete and their gates are
+met. Phase 4 items 1, 1c, 1d and 2 are closed; item 4 is measured and off by
+default. Phase 5 is in progress.
+
+**Newest first, since it changes what may be quoted** (full account in the Phase 5
+report part 3, at the end of this file):
+
+* **The engine-vs-baseline comparison is re-measured and current.** Two
+  independent Ice Lake runs, jobs 6753260 and 6754877 on `worker6156`, agreeing to
+  0.997–1.003 across all twenty dtype × engine columns. The engine reaches
+  1.31–1.78x TBLIS 2.0-dev and 1.95–2.20x TTGT. **TBLIS v1.3.0's 0.215
+  complex-over-real efficiency reproduced identically to Cascade Lake** — the
+  ratio is a property of the software, not the machine, exactly as Phase 1
+  argued. The README and CHANGELOG now carry these numbers.
+* **Still unmeasured: what Phase 4 bought end to end.** Those runs are Ice Lake
+  and the Phase 3 table is Cascade Lake; the two cannot be differenced. A
+  `ccqlin038` run of `scripts/compare-bench.sh` is the only thing that supplies it.
+* **A37 — the complex-method ranking does not transfer, and item 3's premise fails
+  on Ice Lake.** 3m drops to 0.694/0.744 against planar, is last in every column
+  and wins 0 of 49 cases; the memory-bound inversion is absent. Confounded with
+  A34. **Item 3 must not ship as an unconditional rule.** This is the substantive
+  open engine question.
+* **A38/A39 — a baseline's *configuration* is part of its identity**, and problem
+  size is a confound separate from time. A claim that the skx-only TBLIS 2.0
+  understated the baseline by 1.68x was measured at 8 MiB and is **withdrawn**; at
+  64 and 200 MiB the two builds are identical. The skx build does SIGILL on Zen2,
+  which is why `../baselines/tblis-2.0-x86_64-install` now exists.
 
 What exists:
 
