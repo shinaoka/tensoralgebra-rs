@@ -16,10 +16,17 @@ BLIS was configured with `BLIS_CONFIG_FAMILY=auto` on a Cascade Lake host and is
 therefore **skx-only**: one `bli_cntx_init_skx`, 1364 `bli_` symbols, and no
 skinny-GEMM kernel set. It is the build every previously committed number used,
 which is why it was used here too. A one-shot look put the multi-config build of
-the same source up to 1.68x ahead of it on low-arithmetic-intensity shapes, so
-**the TBLIS 2.0 columns in this run are under review** and a proper A/B plus a
-like-for-like counterpart run are pending. The engine's own columns, TTGT, and
-TBLIS v1.3.0 are unaffected.
+the same source up to 1.68x ahead of it on low-arithmetic-intensity shapes, so the
+TBLIS 2.0 columns here were held under review.
+
+**That review is complete and the columns are sound.** The A/B in `ab-tblis/`
+(job 6754877, same node) found the two builds indistinguishable at both published
+sizes: 0.997-1.000 against a 0.998-1.003 floor on the 64 MiB corpus, and 0.998
+against a 1.000 floor on the 200 MiB premise shapes. The shapes that produced the
+1.68x read 0.993-1.001. That figure was an artifact of the 8 MiB size it was taken
+at, where BLIS's skinny-GEMM kernels decide the result and the skx-only build has
+none; at 64 and 200 MiB they are irrelevant. Nothing here needs qualifying on that
+account. See DECISIONS.md part 3 and A39.
 
 Quality of the measurement, which is the best in this repo so far:
 
