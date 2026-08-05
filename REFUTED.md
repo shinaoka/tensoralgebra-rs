@@ -434,27 +434,53 @@ rule is refuted; a per-microarchitecture rule would need per-microarchitecture
 shape tables that do not exist. Neither the ranking nor the inversion may be
 quoted without naming Cascade Lake.
 
-**Confidence.** `measured once`, and **confounded** — this is the honest reading.
-A34 says three of the eight shipped register blocks are 9–13% wrong on Ice Lake,
-and the arms confirm the shipped shapes ran (3m used `8x10` in `c64`, `16x10` in
-`c32`). A 9–13% shape error does not obviously account for 26 points of relative
-standing, but it cannot be separated without an Ice Lake register-block sweep for
-3m.
+**Confidence.** `settled` for the ranking, and **the confound is gone**. It was
+recorded as confounded with A34 (three of eight shipped blocks are 9–13% wrong on
+Ice Lake) and the deconfounding sweep turned out to be **already committed** —
+`bench-results/worker6016-icelake/kernel-shapes.txt` covers all four methods. It
+says the confound never existed: **3m ships `(1, 10)` in both precisions and that is
+the Ice Lake sweep's own best 3m shape**, so there is no better shape to give it.
+A34 lands on `real` and on planar `f32`, not on 3m.
 
-The *mechanism* — bytes moved per useful flop, not flop count and not shuffles —
-is unrefuted and still explains both machines.
+At shipped shapes, kernel-level, at each dtype's operating `kc`: `c64` goes
+102.8/87.8 = 0.854 on Cascade Lake to 108.4/63.8 = **0.589** on Ice Lake; `c32` goes
+0.996 to **0.606**. Those bracket the corpus ratios, and the collapse is uniform
+across 3m's whole shape space — every 3m shape is slower on Ice Lake at every depth
+while planar gets faster — so it is not a shape choice. Nor is it the register
+budget: 3m's `16x10` is over budget on Ice Lake (`live = 32!`), but the best
+unflagged 3m shape there is slower still.
+
+**And the mechanism does not survive either, which is the bigger casualty.** This
+project carried "3m's 25% flop saving is real, and with L1-resident panels 3m is the
+*fastest* of the three" as settled. At `kc = 16`, which *is* that regime, 3m leads
+planar by **1.105** (`c64`) and **1.155** (`c32`) on Cascade Lake and trails at
+**0.567** and **0.662** on Ice Lake. On Ice Lake 3m does not win at any depth, at
+any shape, in either precision. What survives is only the accounting — 3 products
+against 4, 3 planes against 2 — not the claim that the saving pays anywhere
+nameable. The one visible candidate is load-port pressure (3m runs `f/l` 0.89–1.71
+against planar's 1.78–3.75), and that is a hypothesis from one column, not a
+measurement.
 
 **Evidence.** `bench-results/worker6156-icelake/compare-tblis-skx/` (job
 6753260); Cascade Lake baseline in `bench-results/phase3-sweep-*.csv`. Phase 5
 report part 3; A44, A34.
 
-**What would reopen it.** **An Ice Lake register-block sweep extended to 3m.**
-`bench-results/worker6016-icelake/kernel-shapes.txt` is that sweep for the shapes
-A34 covered; extending it to 3m is the experiment, it needs no baselines, and
-`examples/kernel_shapes` is ~8 minutes. If 3m at its *own* Ice Lake shapes still
-loses uniformly, the mechanism is machine-dependent and item 3 is dead for good.
-If it recovers, item 3 comes back as a per-microarchitecture rule and the
-register blocks are the thing to fix first.
+**What would reopen it.** Not the sweep — that is done, and it closed the question
+rather than opening it. Item 3 is **dead**: an unconditional rule is a pessimisation
+on one of the two AVX-512 machines measured, and a per-microarchitecture rule would
+have to be built on a mechanism that does not reproduce.
+
+What *would* reopen it is a **third microarchitecture on which 3m wins at some
+depth** — that would make the Cascade Lake behaviour a family trait rather than one
+machine's, and it costs eight minutes of `examples/kernel_shapes` on any new machine,
+no baselines needed. Run it as a matter of course when this project first touches new
+hardware. Until then, treat 3m as the method that exists to make the comparison
+honest rather than as a candidate default.
+
+**Second lesson, and it is the reason this entry is long:** the answer was in
+committed raw output for two days while `DECISIONS.md` described it as unmeasured and
+a to-do list asked for node time to obtain it. That is A35's lesson recurring — check
+what is already on disk before booking a machine.
 
 ---
 

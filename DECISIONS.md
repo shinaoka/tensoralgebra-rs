@@ -64,12 +64,14 @@ on Ice Lake, where 3m is last in every column and wins 0 of 49 cases. An
 unconditional rule is a pessimisation there; a per-microarchitecture rule needs
 per-microarchitecture shape tables that do not exist.
 
-What survives is one cheap experiment, because the result is **confounded with
-A34**: an **Ice Lake register-block sweep extended to 3m**. It needs no
-baselines, `examples/kernel_shapes` is ~8 minutes, and
-`bench-results/worker6016-icelake/kernel-shapes.txt` is that sweep for the shapes
-A34 already covered. See `REFUTED.md`, "the complex-method ranking … as facts
-about the engine".
+**Nothing is owed to it.** The experiment that would have deconfounded A44 from
+A34 had already been run and committed — `bench-results/worker6016-icelake/kernel-shapes.txt`
+covers 3m — and it says the confound does not exist: 3m already runs its Ice Lake
+optimal shape. The collapse is uniform across 3m's whole shape space, and at the
+L1-resident `kc = 16` 3m leads by 10–16% on Cascade Lake and trails by 34–43% on
+Ice Lake. So **3m's L1-resident advantage is a Cascade Lake result too**, which
+this project had carried as settled mechanism. See part 3, "the A34 confound does
+not exist", and `REFUTED.md`.
 
 **Consequence for quoting: the ranking and the inversion are Cascade Lake
 results.** Never state either as a property of the engine.
@@ -106,17 +108,14 @@ None of the three has an end-to-end A/B, and that is now the top of the list.
    engine may no longer use.
 5. **A35's A/B**, reachable since D43 and never run:
    `scripts/ab.sh bench-results/ab-rowblock-idx3 "TENSORCONTRACT_ROWBLOCK=idx=3"`.
-6. **The Ice Lake 3m register-block sweep**, which is the only thing that
-   deconfounds A44 from A34 — see "item 3 is dropped" above. No baselines, ~8 min.
-7. Then the rest of Phase 4: small-`k` handling, `pc`-loop fusion **for small `K`
+6. Then the rest of Phase 4: small-`k` handling, `pc`-loop fusion **for small `K`
    only** (it is not the general enabler earlier drafts implied — see
    `REFUTED.md`), a pack-free fast path for already-unit-stride block scatter,
    prefetch.
-8. Route the batch axis through the thread pool too, removing its one remaining
+7. Route the batch axis through the thread pool too, removing its one remaining
    spawn set.
 
-Items 2, 3 and 8 need no cluster time. Items 1, 4 and 5 want an exclusive machine;
-item 6 wants one but only for eight minutes.
+Items 2, 3 and 7 need no cluster time; items 1, 4 and 5 want an exclusive machine.
 
 ### Settled — do not re-derive
 
@@ -425,7 +424,7 @@ in [`REFUTED.md`](REFUTED.md).
 | A41 | Blocks of a block-scatter contraction are equal-cost. | **False in the premise, true in the consequence.** Blocks differ in cost — 123 of 392 case-dtype-methods are internally mixed — but making it 7.5x more prevalent and aperiodic moves parallel efficiency by less than the floor. | threading (parts 14, 16); `REFUTED.md` |
 | A42 | Block-scatter load imbalance is solved in mature implementations, so a cost-aware partition would be reinvention. | **False.** TBLIS computes the same regularity sentinel and feeds it to no scheduling decision, in either version. | threading (part 15) |
 | A43 | Per-call thread spawn is a second-order cost. | **Refuted at small sizes.** ~20–36 µs per thread; a 0.22 ms contraction takes 2.2 ms on 64 threads. First-order for exactly the workload Phase 1 named as the headroom. | threading (part 16); `REFUTED.md` |
-| A44 | The complex-method ranking, and the memory-bound inversion, are properties of the engine and the shape. | **Refuted for the ranking.** On Ice Lake 3m is last in every column and wins 0 of 49; the inversion is absent. Confounded with A34. **Item 3 is dropped.** | comparison (part 3); `REFUTED.md` |
+| A44 | The complex-method ranking, the memory-bound inversion, and 3m's L1-resident advantage are properties of the engine and the shape. | **Refuted, and not confounded after all.** 3m already runs its Ice Lake-optimal shape, so A34 cannot explain it; the collapse is uniform across 3m's shape space, and even at L1-resident depth 3m leads on Cascade Lake and trails badly on Ice Lake. **Item 3 is dead.** | comparison (part 3); `REFUTED.md` |
 | A45 | A baseline built from the right source at the right commit is the right baseline. | **Refuted, on portability.** `BLIS_CONFIG_FAMILY=auto` fits BLIS to the build host: skx-only, SIGILLs without AVX-512. Record a baseline's **configuration**. | comparison (part 3); `REFUTED.md` |
 | A46 | This file's measurement rules (A27, A31, A32) cover the ways a comparison can mislead. | **Refuted: they are all about time, and problem size is a separate axis.** A 1.68x claim measured at 8 MiB vanishes at the sizes actually published, and is withdrawn. | comparison (part 3); `REFUTED.md` |
 | A47 | The shipped header agrees with the library it describes. *(was the second `A31`)* | **Now tested rather than assumed.** `examples/c-consumer` compiles the header with a C compiler, links the built library and checks numbers; CI runs three link modes. | packaging (C-surface interlude) |
@@ -4132,16 +4131,73 @@ Lake 3m was the *fastest* of the three on the memory-bound subset. So:
   to be conditioned on the microarchitecture, which is the same conclusion A34
   reached for register blocks and A36 for the thread partition. That is three
   independent findings pointing one way.
-* **This is confounded with A34 and is not a clean refutation of the mechanism.**
-  The register blocks are known to be wrong on Ice Lake, and the arms confirm the
-  shipped ones ran: 3m used `8x10` in `c64` and `16x10` in `c32`. A34 priced the
-  shape error at 9–13%, while 3m loses 26 points of relative standing, so the
-  shape miss does not obviously account for all of it — but it cannot be
-  separated without an Ice Lake register-block sweep. `bench-results/worker6016-icelake/kernel-shapes.txt`
-  is that sweep for the shapes A34 covered; extending it to 3m is the experiment.
+* **This looked confounded with A34, and it is not.** See the next subsection: the
+  deconfounding data was already committed and the confound does not exist.
 * Practical consequence for quoting: **the ranking, and the inversion, are Cascade
   Lake results.** The README must say so rather than stating them as properties of
   the engine.
+
+#### The A34 confound does not exist, and the data was already on disk
+
+*Added 2026-08-05, from committed data, at no machine cost.* The subsection above
+recorded A44 as confounded with A34 and named "extend the Ice Lake register-block
+sweep to 3m" as the experiment that would separate them. **That experiment had
+already run.** `bench-results/worker6016-icelake/kernel-shapes.txt` (job 6746817)
+covers all four methods — 35 lines of 3m — at three depths in both AVX-512 dtype
+pairs. This is a second instance of A35's lesson: the answer sat in committed raw
+output for two days while the file above described it as unmeasured.
+
+**The confound requires 3m to be running a shape that is wrong for Ice Lake. It is
+not.** 3m ships `(1, 10)` in both precisions — `8x10` in `c64`, `16x10` in `c32` —
+and the Ice Lake sweep names `MV=1 NR=10` as 3m's *best* shape in both. Shipped and
+optimal coincide, on both machines, in both precisions. A34's shape error is real
+and it lands on `real` (Ice Lake wants `MV=3 NR=9`) and on planar `f32` (A35's
+`32x5`); it does not touch 3m at all, because there is no better shape to give it.
+
+So the comparison can be made at each method's shipped shape, which is what the
+corpus actually runs, at the operating `kc` for each dtype:
+
+| | Cascade Lake | **Ice Lake** |
+|---|---|---|
+| `c64`, `kc = 256`: planar `16x6` / 3m `8x10` | 102.8 / 87.8 → **0.854** | 108.4 / 63.8 → **0.589** |
+| `c32`, `kc = 384`: planar `32x6` / 3m `16x10` | 195.7 / 194.9 → **0.996** | 221.8 / 134.5 → **0.606** |
+
+Those kernel-level ratios bracket the corpus-level 0.694 / 0.744 that A44 measured,
+which is the consistency check. And the collapse is **uniform across 3m's whole
+shape space** rather than a shape choice: every 3m shape is slower on Ice Lake at
+every depth (`8x10` 87.8 → 63.8, `16x4` 82.5 → 59.5, `24x3` 76.1 → 56.2) while
+planar `16x6` gets *faster* (102.8 → 108.4). Nor is it the register budget: 3m's
+`16x10` is flagged `live = 32!` on Ice Lake, but the best *unflagged* 3m shape there
+is slower still (`32x4` at 125.8 against `16x10`'s 134.5), so avoiding the spill
+does not rescue it either.
+
+**The bigger casualty is the mechanism, not the rule.** This project has carried
+"3m's 25% flop saving is real, and with L1-resident panels 3m is the *fastest* of
+the three" as settled mechanism rather than as a machine-specific result. At
+`kc = 16`, which is that regime, at shipped shapes:
+
+| | Cascade Lake | **Ice Lake** |
+|---|---|---|
+| `c64` 3m / planar | **1.105** | **0.567** |
+| `c32` 3m / planar | **1.155** | **0.662** |
+
+3m leads by 10–16% on Cascade Lake at L1-resident depth and trails by 34–43% on Ice
+Lake at the same depth. **On Ice Lake 3m does not win at any depth, at any shape, in
+either precision.** So the L1-resident advantage is a Cascade Lake property too, and
+the sentence above must be qualified wherever it appears — it was carried into
+`CLAUDE.md` unchecked during the 2026-08-05 clean-up, which is the same failure mode
+as "the corpus is fully regular".
+
+What survives is the *accounting*: 3m really does 3 products where planar does 4,
+and it really moves 3 planes of both operands where planar moves 2. What does not
+survive is the claim that the saving pays in a nameable regime. The one candidate
+explanation visible in the committed columns is load-port pressure — 3m runs at
+`f/l` 0.89–1.71 against planar's 1.78–3.75, i.e. it is load-bound where planar is
+FMA-bound — and Ice Lake evidently punishes that. That is a **hypothesis from one
+column of one sweep**, not a measurement.
+
+**Consequence: item 3 is dead rather than blocked**, and no node time is owed to it.
+The Ice Lake shape sweep that was on the to-do list is deleted from it.
 
 #### The TBLIS 2.0 columns are under review, and why
 
@@ -4293,7 +4349,7 @@ columns while running shapes chosen for a different microarchitecture.
 
 | # | Assumption | Status |
 |---|---|---|
-| A44 | The complex-method ranking, and the inversion on memory-bound shapes, are properties of the engine and the shape. | **Refuted for the ranking.** On Ice Lake 3m is last in every column and wins 0 of 49 cases (0.694 `c64`, 0.744 `c32` against planar, against Cascade Lake's 0.956 / 0.921), and the memory-bound inversion is absent. Confounded with A34's wrong register blocks and not separable without an Ice Lake shape sweep, but item 3 cannot ship as an unconditional rule either way. |
+| A44 | The complex-method ranking, the memory-bound inversion, **and 3m's L1-resident advantage** are properties of the engine and the shape. | **Refuted, and no longer confounded.** On Ice Lake 3m is last in every column and wins 0 of 49 cases (0.694 `c64`, 0.744 `c32` against planar, against Cascade Lake's 0.956 / 0.921), and the inversion is absent. The A34 confound was *assumed* and does not exist: 3m ships `(1, 10)` in both precisions and the Ice Lake sweep names that as 3m's own best shape, so there is no better shape to give it. At shipped shapes the kernel-level ratio goes 0.854 → 0.589 (`c64`) and 0.996 → 0.606 (`c32`), the collapse is uniform across 3m's whole shape space, and **at the L1-resident `kc = 16` 3m leads by 10–16% on Cascade Lake and trails by 34–43% on Ice Lake** — so the mechanism this project called settled is machine-specific too. Item 3 is **dead**, not blocked. |
 | A45 | A baseline install built from the right source at the right commit is the right baseline. | **Refuted, but on portability only** — the performance half was measured and withdrawn, see the A/B subsection. `BLIS_CONFIG_FAMILY=auto` silently fits BLIS to the *build host*, so this TBLIS 2.0 is skx-only and **SIGILLs on any machine without AVX-512** (job 6753261). It also lacks the skinny-GEMM kernels, which looked like a large performance defect and turns out to cost **nothing at 64 or 200 MiB** (0.997–1.000 against a 0.998–1.003 floor). So: record a baseline's *configuration*, not just its version and commit; verify a multi-ISA claim with `nm` rather than `strings`, because BLIS compiles its config name table in whether or not the kernels are there; and do not infer a performance consequence from a symbol count. |
 | A46 | This file's measurement rules (A27, A31, A32) cover the ways a comparison can mislead. | **Refuted: they are all about time, and problem size is a separate axis.** A one-shot `premise --size 8` run reported TBLIS 2.0's two builds differing by up to 1.68x. At the sizes actually published — 64 MiB sweeps, 200 MiB premise, i.e. 8–25x larger — they are identical to within the floor, because the kernels that differ only matter while the operands are small. A warm-up arm, an in-session floor and per-arm occupancy would each have passed the bad measurement through unchanged. **Measure at the size you publish at, and treat a result taken at a smaller size as being about that size.** |
 

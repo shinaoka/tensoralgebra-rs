@@ -199,14 +199,19 @@ and the much-quoted inversion on memory-bound shapes are **Cascade Lake results
 that do not transfer.** On Cascade Lake 3m was the fastest of the three on
 memory-bound shapes, where its 25% flop saving pays; on Ice Lake 3m is last in
 every column, wins 0 of 49 cases, and sits at 0.694 (`c64`) and 0.744 (`c32`)
-against planar where Cascade Lake had it at 0.956 and 0.921. That is partly
-confounded with the wrong register blocks above and cannot be fully separated
-without an Ice Lake shape sweep. The deciding quantity is still bytes moved per
-useful flop — the mechanism is intact — but **do not treat the ranking, or the
-inversion, as a property of the engine.** On AVX2 the kernel-level ordering
-differs again, putting 3m first in `f32`/`c32`; that is a kernel measurement with
-panels packed and hot, not a corpus ranking, and the corpus-level AVX2 comparison
-has not been made.
+against planar where Cascade Lake had it at 0.956 and 0.921.
+
+That was initially recorded as confounded with the wrong register blocks above.
+It is not: 3m ships the same shape the Ice Lake kernel sweep names as 3m's *own*
+best, in both precisions, so there is no better shape to give it, and the collapse
+is uniform across 3m's entire shape space. Even at the L1-resident depth where 3m's
+flop saving is supposed to pay, it leads planar by 10–16% on Cascade Lake and
+trails by 34–43% on Ice Lake. So the *accounting* behind the mechanism holds — 3
+products against 4, 3 planes against 2 — but the claim that the saving pays in a
+nameable regime does not, and **neither the ranking nor the inversion is a property
+of the engine.** On AVX2 the kernel-level ordering differs again, putting 3m first
+in `f32`/`c32`; that is a kernel measurement with panels packed and hot, not a
+corpus ranking, and the corpus-level AVX2 comparison has not been made.
 
 ## What is tuned, and what is not
 

@@ -154,17 +154,29 @@ scatter machinery, five-loop driver and write-back scatter; they differ only in
 `size_of::<Element>()`, so 1m automatically gets a smaller `MC` and every method
 sees the same L2 budget. Getting that wrong would silently rig the comparison.
 
-**The mechanism, which is settled and should not be re-derived:** the deciding
-quantity is **bytes moved per useful flop**, not flop count and not shuffles.
-3m's 25% flop saving is real and shows up whenever the kernel is FMA-issue-bound
-— with L1-resident panels 3m is the *fastest* of the three — but at the `kc` the
-engine uses, the `A` sliver is an L2 stream and the saving is consumed by the
-extra plane traffic. `kc` is what decides which regime you are in.
+**What is settled:** the deciding quantity is **bytes moved per useful flop**, not
+flop count and not shuffles, and the accounting behind it — 3m does 3 products
+where planar does 4, and moves 3 planes of both operands where planar moves 2. That
+much is arithmetic and holds everywhere.
+
+**What is not settled, and was wrongly recorded here as if it were:** that 3m's
+flop saving *pays* in a nameable regime. This file used to say "with L1-resident
+panels 3m is the fastest of the three". At `kc = 16`, which is that regime, 3m
+leads planar by 1.105 (`c64`) and 1.155 (`c32`) on Cascade Lake — and trails at
+0.567 and 0.662 on Ice Lake. **On Ice Lake 3m does not win at any depth, at any
+shape, in either precision**, and it already runs its own Ice Lake-optimal shape,
+so this is not a shape miss (A44, part 3). Treat 3m as the method that makes the
+comparison honest, not as a candidate default.
 
 **No ranking table is reproduced here on purpose.** Planar wins the corpus on
 both AVX-512 machines measured; everything below that is machine-specific (A44)
 and the AVX2 kernel-level ordering is different again (A24). Re-measure before
 quoting any ranking number.
+
+**On new hardware, run `examples/kernel_shapes` as a matter of course** — eight
+minutes, no baselines. It is what would tell you whether Cascade Lake's 3m
+behaviour is a family trait or one machine's, and this project has twice described
+a question as unmeasured while its answer sat in committed output.
 
 ## Environment and build recipes
 
