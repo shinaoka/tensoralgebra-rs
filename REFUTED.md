@@ -297,6 +297,66 @@ sentinel and **feeds it to no scheduling decision** in either version, and its
 author published the diagnosis without a fix (A42). Reaching the same conclusion
 by inaction is weak evidence, but it is evidence.
 
+## The thread-count amortisation guard, in the form that was built (D48 → D52)
+
+**Tried.** Cap the thread count so per-call spawn stays a bounded fraction of the
+work: `p <= work_fmas / 3e6`, holding the spawn fraction at ~0.2. Built as the
+smaller of the two answers to A43 — it steers around the spawn cost rather than
+removing it — and calibrated offline against a committed grid before being shipped
+off-by-default.
+
+**Expected, and what happened.** Expected "no worse than serial, everywhere". Got a
+**trade**. Measured on `worker5086` at 64 Zen2 cores, drift-corrected per family:
+
+| 0.25 MiB | t2 | t4 | t8 | t32 | t64 |
+|---|---|---|---|---|---|
+| `f64` | 0.76 | **0.61** | 0.83 | 2.81 | 7.86 |
+| `f32` | 0.82 | **0.73** | 1.07 | 4.10 | **10.84** |
+
+It rescues an over-threaded caller by up to 10.8x and costs a correctly-threaded one
+10–39% at 2–8 threads, at the one size where it acts at all (inert at 4 and 16 MiB).
+Per case it leaves **12–14% of all points more than 10% slower** at those widths,
+worst 0.327 — far outside the ±11% a 64-thread measurement produces on identical
+configurations (A39), so systematic rather than noise. **And on top of the thread
+pool it is pure loss**, reaching 0.32, because it rations a cost the pool has already
+removed.
+
+Which side a caller lands on depends on whether their thread count was already well
+chosen — which a library cannot know.
+
+**Why the offline calibration missed it, and this is the transferable part.** The
+scoring simulated `requested = 64` and nothing else, so it measured only the winning
+half of the trade and reported "0 points slower than serial at all four sizes" —
+true, at 64 threads. **A rule that consumes a caller's parameter must be scored across
+that parameter** (A54). `partition-score-rule.py` does this correctly, sweeping `-p`
+and `-d`; `amortise-score-rule.py` did not, and now documents that it does not.
+
+**The form is wrong, not the constant.** A fixed spawn-*fraction* threshold says
+"4 threads on a 0.32 ms contraction is 46% overhead, cap it" while measurement says 4
+threads is the optimum. The real trade is *marginal* — does the next thread return
+more than it costs — and answering that needs a scaling model, which is where the
+analytical blocking model died (A33). Fitting a second constant would be fitting the
+same wrong shape.
+
+**Confidence.** `measured once` for the magnitudes (one Zen2 node, one session, floor
+derived in-session from per-row `t1` controls); `settled` for the direction, because
+the losing and winning halves are both large and appear in all four dtypes; and
+`structural` for the form argument, which does not depend on the measurement.
+
+**Evidence.** `bench-results/worker5086-zen2/phase4g/` (job 6760092), arms `sm-guard-*`
+and `sm-both-*` against `sm-*`. Re-derive the offline half with
+`scripts/amortise-score-rule.py bench-results/worker5086-zen2/phase4g`. Part 18; D48,
+D52, A50, A54.
+
+**What would reopen it.** Not a new constant. A **marginal** criterion — compare the
+predicted gain of thread `p+1` against its cost, rather than a fraction of total work
+— would be a different rule and would need its own scaling model to be worth trying;
+A33 is the warning about what that costs. Alternatively, a caller-supplied hint ("this
+thread count is a ceiling, not a request") moves the decision to where the knowledge
+is. Note also that the guard's whole justification was D46's sub-megabyte loss, and
+**the pool removes that loss directly** (D53), so the guard now has little left to
+protect.
+
 ## Barriers as the reason to restructure threading
 
 **Tried.** The intuition that the two barriers per `(jc, pc)` are what caps
@@ -807,13 +867,20 @@ serial**.
 **Evidence.** `bench-results/worker5139-zen2/phase4g/` (job 6754849);
 `scripts/phase4g-small.sh`. Part 16; A43; D46.
 
-**What would reopen it.** It is open by design, and three answers are now built and
-off by default: the amortisation guard (D48), the thread pool (D49) and the batched
-API (D50). **Re-measure both regimes after each**, and note that the guard is
-deliberately scoped to the spawn regime only — larger constants score better above
-1 MiB precisely because capping threads helps against a *bandwidth* ceiling, and
-fitting one constant to two mechanisms is how the analytical blocking model lost
-(A50, A33).
+**Measured, and the answer is the pool.** Part 18 removed the cost and it is worth up
+to **11.6x** at 0.25 MiB / 64 threads and **2.0–2.8x even at 16 MiB** — so it was not
+confined below a megabyte, and part 16's "benign bandwidth ceiling" above 1 MiB was
+substantially this. The guard is refuted in the form built (above, D52); the batched
+API remains unmeasured.
+
+**What would reopen it.** One thing, and it is open now: **the cost is not thread
+creation** (A53). It is size-dependent — 37 µs/thread at 0.25 MiB rising to 66–94 µs
+at 16 MiB — where creation is not. The named candidate is the per-thread packed-`A`
+buffer, allocated inside each thread's closure on every call, so 64 fresh threads mean
+64 fresh allocator arenas faulting in fresh pages. If that is right, **hoisting those
+allocations out of the per-call closure is a smaller fix that helps the unpooled path
+too**, and the prediction is that the residual after hoisting is flat at ~37 µs/thread.
+Nobody has tried it.
 
 ## A baseline built from the right source at the right commit is the right baseline (A45)
 

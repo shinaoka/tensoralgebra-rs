@@ -69,3 +69,5 @@ from the 8 threads it was argued at to a whole 128-core node.
 [2026-08-05T14:20:58-04:00] prep done. Nothing measured yet.
 [2026-08-05T14:20:58-04:00] outdir: bench-results/worker5086-zen2
 [2026-08-05T14:20:58-04:00] small: does threading still pay on small contractions? (~30 min per arm)
+[2026-08-05T16:07:50-04:00] small done
+[2026-08-05T16:07:50-04:00] outdir: bench-results/worker5086-zen2

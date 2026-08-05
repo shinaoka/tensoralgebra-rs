@@ -261,15 +261,16 @@ socket. Still costing: **threads are spawned per call rather than pooled by defa
 non-1 number: a fixed default is wrong at every size but one. Above ~1 MiB the
 curve saturates on a bandwidth ceiling instead, which is benign.
 
-Three opt-in answers to the spawn cost are built, and the honest state of all three
-is *correct, and measured only offline*: `TENSORCONTRACT_POOL=on` reuses parked
-threads; `TENSORCONTRACT_AMORTISE=on` caps the thread count so spawn stays a
-bounded fraction of the work; and `batch::contract_batched` pays one spawn set per
-batch instead of one per contraction. The guard is calibrated against a committed
-grid — 588 case-dtype-method points at seven thread counts and four sizes, where it
-leaves none slower than serial against 565 of 588 at 0.25 MiB unguarded — but a grid
-score is not an end-to-end A/B, and this project has already had one look like +3%
-and then fail. Do not read a speedup into any of them yet.
+**A thread pool fixes most of this, and it is measured.** `TENSORCONTRACT_POOL=on`
+reuses parked threads instead of spawning per call, and on 64 Zen2 cores it is worth
+up to **11.6x** at 0.25 MiB and **2.0–2.8x even at 16 MiB**, with no per-family cell
+below 0.99 at any size or thread count. It is off by default only because flipping a
+default changes what every previously committed threaded number means; turning it on
+is one environment variable and results stay bitwise identical. A thread-count
+*amortisation guard* was also built and **is not shipped**: it turned out to be a
+trade — rescuing an over-threaded caller while costing a correctly-threaded one
+10–39% — and pure loss on top of the pool. `batch::contract_batched` pays one spawn
+set per batch instead of one per contraction and is **not yet measured**.
 
 Results are bitwise identical at every thread count and every partition, so none
 of this is ever a correctness or accuracy decision.
@@ -313,8 +314,8 @@ process restart rather than a rebuild. None of them changes results.
 | `TENSORCONTRACT_KERNEL` | `auto` (default) \| `scalar` \| `avx2` \| `avx512` — pin the instruction set. A pinned ISA the CPU lacks falls back to scalar, so `avx2` is how the AVX2 kernels get exercised on an AVX-512 machine |
 | `TENSORCONTRACT_BLOCKMODEL` | `legacy` (default) \| `model` — derive cache blocking from probed cache descriptors instead of hardcoded constants. Measured on a foreign machine and **worse in 11 of 12 columns**, so `legacy` is the default on evidence |
 | `TENSORCONTRACT_PARTITION` | `domain` (default) \| `legacy` — which rule apportions the threads over the output. `domain` gates the "row axis fills the threads, so use it" shortcut on how many L3 domains the thread set spans. Measured: it changes **nothing at all** on a machine with one L3 per socket (the identical partition on 392 of 392 corpus cases) and is worth **1.13 geometric mean over the corpus at 64 threads** on a chiplet machine — 1.43 over the 144 cases it actually moves, and 2.1–2.4 on the memory-bound `abcijk` family in the real dtypes. Those are per-family geometric means, which is the only granularity a 64-thread measurement supports. Single-threaded callers never reach it. `legacy` is the ungated rule; `m`, `n` and `<pm>x<pn>` pin the partition outright, for A/B measurement |
-| `TENSORCONTRACT_POOL` | `on` — reuse parked threads instead of spawning per call, which removes the ~20–36 µs per thread that makes threading a *loss* on small contractions. Off by default: every threaded number committed before 2026-08-05 was measured with per-call spawn, and this has not had an end-to-end A/B |
-| `TENSORCONTRACT_AMORTISE` | `on` — cap the thread count so the spawn cost stays a bounded fraction of the work (at least 3e6 real FMAs per thread). Scored against a committed grid of 588 case-dtype-method points at seven thread counts and four sizes: it leaves **none of them slower than serial**, against 565 of 588 at 0.25 MiB unguarded, worst case 0.022. Off by default for the same reason as the pool |
+| `TENSORCONTRACT_POOL` | `on` — reuse parked threads instead of spawning per call. **Measured on 64 Zen2 cores: up to 11.6x at 0.25 MiB, 2.0–2.8x at 16 MiB, and no per-family cell below 0.99 at any size or width.** Off by default only because every threaded number committed before 2026-08-05 was measured with per-call spawn |
+| `TENSORCONTRACT_AMORTISE` | `on` — cap the thread count so spawn stays a bounded fraction of the work. **Measured, and not shipped**: it rescues an over-threaded caller by up to 10.8x and costs a correctly-threaded one 10–39% at 2–8 threads, and on top of the pool it is pure loss. Kept as a record of the experiment |
 | `TENSORCONTRACT_DEEPEN` | `on` — coupled deepening: `kc = 512` for `f64` real geometry with `mc`/`nc` re-derived at that depth. **Off by default because it failed its end-to-end A/B**, and kept only as a record of the experiment. It looked like +3% on two machines; both grids' `base` arm was 1–2% slow, so every `arm/base` ratio was inflated identically and the agreement was a shared artefact rather than a replication. Corrected, the treatment is ≈0.977 |
 
 Plus the levers that exist so a fast path can be A/B-tested at run time rather
