@@ -890,7 +890,10 @@ mod tests {
         assert_eq!(chiplet.l3_domains(64), 16); // up to 4.3x
 
         // No L3 at all: nothing is shared, so every thread is its own domain.
-        let none = CacheHierarchy { l3: None, ..CASCADE };
+        let none = CacheHierarchy {
+            l3: None,
+            ..CASCADE
+        };
         assert_eq!(none.l3_domains(8), 8);
     }
 

@@ -122,7 +122,9 @@ pub fn print_environment() {
         // up here when it is set.
         let widths: Vec<usize> = [1, 4, 8, 16, 32, 64, 128]
             .into_iter()
-            .filter(|&t| t == 1 || t <= 2 * std::thread::available_parallelism().map_or(1, |n| n.get()))
+            .filter(|&t| {
+                t == 1 || t <= 2 * std::thread::available_parallelism().map_or(1, |n| n.get())
+            })
             .collect();
         let spans: Vec<String> = widths
             .iter()

@@ -813,10 +813,17 @@ mod tests {
     /// on, so it is checked directly rather than only end to end.
     fn check_real<T: KernelSet>(tol: f64) {
         check_real_cfg::<T>(T::config_real(), tol);
-        for (i, &(mr, nr)) in T::row_blocks(false, ComplexMethod::default()).iter().enumerate() {
+        for (i, &(mr, nr)) in T::row_blocks(false, ComplexMethod::default())
+            .iter()
+            .enumerate()
+        {
             let cfg = T::config_at(false, ComplexMethod::default(), i)
                 .unwrap_or_else(|| panic!("real menu offers {mr}x{nr} with no kernel"));
-            assert_eq!((cfg.ukr.mr, cfg.ukr.nr), (mr, nr), "menu entry {i} misdescribes itself");
+            assert_eq!(
+                (cfg.ukr.mr, cfg.ukr.nr),
+                (mr, nr),
+                "menu entry {i} misdescribes itself"
+            );
             check_real_cfg::<T>(cfg, tol);
         }
     }
@@ -911,7 +918,11 @@ mod tests {
             let cfg = T::config_at(true, method, i).unwrap_or_else(|| {
                 panic!("{} menu offers {mr}x{nr} with no kernel", method.name())
             });
-            assert_eq!((cfg.ukr.mr, cfg.ukr.nr), (mr, nr), "menu entry {i} misdescribes itself");
+            assert_eq!(
+                (cfg.ukr.mr, cfg.ukr.nr),
+                (mr, nr),
+                "menu entry {i} misdescribes itself"
+            );
             check_cplx_cfg::<T>(cfg, method, tol);
         }
     }
@@ -1005,7 +1016,10 @@ mod tests {
     /// run someone has to remember to do.
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     fn check_isa<T: KernelSet>(s: x86::IsaConfigs<T>, tol: f64) {
-        let default = { let c = (s.real)(); (c.ukr.mr, c.ukr.nr) };
+        let default = {
+            let c = (s.real)();
+            (c.ukr.mr, c.ukr.nr)
+        };
         let menu = (s.row_blocks)(false, ComplexMethod::default());
         assert_eq!(menu[0], default, "{} real menu head", s.isa.name());
         check_real_cfg::<T>((s.real)(), tol);
@@ -1024,7 +1038,10 @@ mod tests {
             check_real_cfg::<T>(cfg, tol);
         }
         for m in ComplexMethod::ALL {
-            let default = { let c = (s.cplx)(m); (c.ukr.mr, c.ukr.nr) };
+            let default = {
+                let c = (s.cplx)(m);
+                (c.ukr.mr, c.ukr.nr)
+            };
             let menu = (s.row_blocks)(true, m);
             assert_eq!(menu[0], default, "{} {} menu head", s.isa.name(), m.name());
             check_cplx_cfg::<T>((s.cplx)(m), m, tol);
