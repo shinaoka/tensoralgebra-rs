@@ -258,6 +258,60 @@ thread count *within* one machine: 16 threads packed into 4 domains reads
 whether the gate's other two conditions (`blocks >= p`, `k <= 64`) are the right
 ones; D42 makes the whole truth table unit-testable on any machine.
 
+## The thread pool as a default (D53, withdrawn the day it was written)
+
+**Tried.** Replace per-call `std::thread::scope` with parked workers, removing the
+~20–36 µs/thread A43 priced. Measured on Zen2 at up to **11.6x** (0.25 MiB, 64
+threads), 2.0–2.8x at 16 MiB, with no per-family cell below 0.99 at any size or width
+and a per-case sub-0.90 tail of 0.7–1.4% indistinguishable from A39's floor. On that
+basis it was recommended as the default (D53), with the flip left to the user pending a
+second machine class.
+
+**Expected, and what happened.** The second machine class **reversed it**. On Ice Lake
+— 32 cores sharing one 48 MiB L3 — `pool / base` is **46 of 60 per-family cells below
+0.97, worst 0.403**, i.e. up to 2.5x *slower* than per-call spawn, with 36–48% of
+individual points below 0.90 at 64 MiB. At the pre-registered decision cell (64 MiB,
+`t32`) it reads **0.80** against the `< 0.97` threshold that had been written down in
+advance as "a real surprise".
+
+So: 11.6x better on one machine class, 2.5x worse on another, with the same code and a
+clean `t1` control (0.996–1.007) on both.
+
+**The a-priori argument that this could not happen is the useful part.** It was recorded
+before the run: *"the pool has no reason to be topology-dependent — it touches where
+threads come from, not what they read."* False. **Reusing a thread reuses its allocator
+arena**, so every worker gets the same packed-`A` buffer address back on each call where
+a freshly spawned thread gets a fresh, well-spread one. A pool is an
+**allocation-locality change** as much as a thread-lifetime one (A55) — and 32 buffers
+at repeating addresses contending in one shared L3 is exactly the configuration that
+loses, where Zen2 spread the same buffers over sixteen private L3s and won.
+
+**Confidence.** `settled` that it does not transfer — two machine classes, opposite
+signs, four dtypes each, both with clean controls. `measured once` for each magnitude.
+`single observation` for the mechanism, which is a candidate and not a finding: the cost
+grows with width and with size then plateaus, which the implementation's fixed costs
+(~100–200 µs of serial wakes and one contended completion mutex) are an order of
+magnitude too small to explain; a 32-participant barrier is the other candidate, and
+`t16` being worse than `t32` fits neither cleanly.
+
+**Evidence.** `bench-results/worker5086-zen2/phase4g/` (job 6760092, the win) and
+`bench-results/worker6194-icelake/phase4g/` (job 6762432, the loss). Parts 18 and 19;
+D49, D52, D53, A55, A56.
+
+**What would reopen it.** A named, cheap experiment: **offset each worker's packed-`A`
+buffer by a per-worker amount** so the addresses cannot alias, then re-run both nodes'
+arms (~1.8 h each). If the Ice Lake loss disappears, the pool becomes a default
+candidate again and A55's mechanism is confirmed; if it does not, the barrier is next
+and the pool stays conditional. Note what is *not* in doubt: the pool is worth up to
+11.6x on Zen2, so this is an implementation defect to find rather than a dead idea —
+which is why D49 keeps the switch rather than deleting the code.
+
+**And a rule that came out of it.** Anything touching threads or caches is a
+**per-microarchitecture** claim until shown otherwise. Four now fail to transfer:
+register blocks (A34), the thread partition (A36), the complex-method ranking (A44),
+and this (A56). One machine class is not evidence for a default, and this project has
+now been wrong on one machine class twice in the same week.
+
 ## Cost-weighted and dynamic partitioning for the dense path (D47)
 
 **Tried.** Block-scatter blocks are *not* equal-cost — 123 of 392

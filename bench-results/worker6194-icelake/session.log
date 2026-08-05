@@ -69,3 +69,5 @@ from the 8 threads it was argued at to a whole 128-core node.
 [2026-08-05T17:12:29-04:00] prep done. Nothing measured yet.
 [2026-08-05T17:12:29-04:00] outdir: bench-results/worker6194-icelake
 [2026-08-05T17:12:29-04:00] small: does threading still pay on small contractions? (~30 min per arm)
+[2026-08-05T18:59:33-04:00] small done
+[2026-08-05T18:59:33-04:00] outdir: bench-results/worker6194-icelake

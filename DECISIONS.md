@@ -83,21 +83,22 @@ guard, the pool, the batched API) **and two of the three answers are now measure
 (part 18, job 6760092). The pool wins, the guard is refuted in the form built, and
 the batched API remains unmeasured.
 
-1. **Two decisions are waiting on you, and both are one line of code.**
-   `TENSORCONTRACT_POOL=on` is **recommended as the default** (D53) on the strength
-   of part 18: no per-family cell below 0.99 at any size or width, up to 11.6x, and
-   2.0–2.8x even at 16 MiB. `TENSORCONTRACT_AMORTISE` **does not ship** (D52) and is
-   already left off. Flipping the pool default is left to you for D22's and D44's
-   reason — it changes what every future measurement means.
+1. **Nothing is waiting on you, and one thing needs undoing in your head if you read
+   the earlier recommendation.** `TENSORCONTRACT_POOL=on` was recommended as a default
+   on Zen2 evidence (D53) and **the recommendation is withdrawn**: on Ice Lake the same
+   switch costs up to 2.5x, and at the pre-registered decision cell it reads 0.80
+   against a 0.97 threshold (part 19). Both switches stay off. `TENSORCONTRACT_AMORTISE`
+   does not ship either (D52).
 
-   Two things would strengthen D53 before the flip, neither expensive: the same
-   four arms on an **Intel hierarchy** (every threading finding so far has been
-   topology-dependent, A36), and a **64 MiB point**, since the pool's win decays
-   with size and the corpus sits outside the sweep:
+   The pool is still worth up to 11.6x on Zen2, so it is a *conditional* switch with an
+   implementation defect to find, not a dead end. The suspected cause is 32 long-lived
+   per-thread buffers at repeating addresses contending in one shared L3 (A55), and the
+   cheap test is to offset each worker's buffer by a per-worker amount and re-run both
+   nodes' arms:
 
    ```bash
    ARMS="base;pool:TENSORCONTRACT_POOL=on" STAGES=small SIZES="1 16 64" \
-     sbatch --constraint=icelake scripts/rusty-phase4.sbatch
+     sbatch --constraint=icelake scripts/rusty-phase4.sbatch   # ~1.8 h
    ```
 
 2. **Find out why the pool's win scales with size — do not build the fix that was
@@ -191,7 +192,7 @@ Reference sections, kept current:
 | [Resume here](#resume-here) | state, the open question, what to do next |
 | [Environment](#environment) | the reference machine, the cluster nodes, both TBLIS baselines, the ABI break |
 | [Measurement rules](#measurement-rules) | the noise floors, each with its session and thread count, and the rules that produced them |
-| [Standing assumptions](#standing-assumptions) | A1–A54, one line each, with where the full account is |
+| [Standing assumptions](#standing-assumptions) | A1–A56, one line each, with where the full account is |
 | [Build-vs-reuse decisions](#build-vs-reuse-decisions) | every dependency taken or declined |
 | [Design decisions](#design-decisions) | D1–D47, complete, in one place |
 
@@ -203,7 +204,7 @@ Reports, by topic. Live chapters first, closed phases last:
 | [The write-back and the two shape rules](#the-write-back-and-the-two-shape-rules) | parts 1–5, 6, 13 | the 2x defect and its real cause; the row-block menu and rule; the orientation rule and its discriminant; the menu keyed by position |
 | [Cache blocking](#cache-blocking) | parts 7, 9 | the `MC`/`KC`/`NC` grid and the A/B that closes item 2; the analytical model, and it loses |
 | [Micro-kernels across instruction sets](#micro-kernels-across-instruction-sets) | AVX2 interlude, part 11 | AVX2 from the same macro bodies; the AVX2 register blocks measured; A24, A34, A35 |
-| [Threading](#threading) | parts 8, 8b, 12, 14, 15, 16, 17, 18 | the scheme and its scaling on seven nodes; the 2-D partition; the domain-aware gate; load imbalance; what TBLIS does; the two experiments that decide the default; three answers to the spawn cost and the batch axis |
+| [Threading](#threading) | parts 8, 8b, 12, 14, 15, 16, 17, 18, 19 | the scheme and its scaling on seven nodes; the 2-D partition; the domain-aware gate; load imbalance; what TBLIS does; the two experiments that decide the default; three answers to the spawn cost and the batch axis |
 | [Packaging and distribution](#packaging-and-distribution) | Phase 5 parts 1, 2, C-surface interlude | quality gates, the API tiers, the TAPP conformance suite, the C header and consumer, cross-compilation, the JLL and the Julia package |
 | [The baseline comparison](#the-baseline-comparison) | Phase 5 part 3 | the engine against TBLIS and TTGT, re-measured; A44–A46 |
 | [Archive: phases 1–3](#archive-phases-13) | Phase 1, 2, 2b, 3 | closed and unlikely to be reopened: the premise check, the correct engine, the three methods, the AVX-512 kernels and the three-way comparison |
@@ -222,7 +223,7 @@ reorganised:
 | 11 | micro-kernels across instruction sets |
 | 12 | threading |
 | 13 | the write-back and the two shape rules |
-| 14, 15, 16, 17, 18 | threading |
+| 14, 15, 16, 17, 18, 19 | threading |
 | Phase 5 parts 1, 2, and the C-surface interlude | packaging and distribution |
 | Phase 5 part 3 | the baseline comparison |
 
@@ -449,6 +450,8 @@ in [`REFUTED.md`](REFUTED.md).
 | A52 | Mutex poisoning is a detail in a pool whose state has no invariants a panic can break. | **False in effect, and a test found it.** A worker's panic poisons the submission mutex, after which the pool declines *permanently*. Recover from poison; decline only on `WouldBlock`. | threading (part 17) |
 | A53 | The cost a thread pool removes is thread creation. | **Refuted.** Size-dependent — 37 µs/thread at 0.25 MiB, 66–94 µs at 16 MiB — where thread creation is not. Named candidate: the per-thread packed-`A` allocation and its page faults, which suggests a cheaper unbuilt fix. | threading (part 18) |
 | A54 | A rule that consumes a caller's parameter can be validated at one value of it. | **Refuted; A20 in a third form.** D48's guard scores 0 points slower at `requested = 64` and loses 39% at `requested = 4`. Score across the caller's parameter. | threading (part 18) |
+| A55 | A thread pool changes thread lifetime, not memory locality. | **Refuted.** Reusing a thread reuses its allocator arena, so every worker gets the same packed-`A` buffer address back each call. A pool is an allocation-locality change, which is why its benefit turns on cache topology. | threading (part 19) |
+| A56 | The pool's benefit is topology-independent, so one machine class suffices to recommend it. | **Refuted — 11.6x on Zen2, 0.40–0.80 on Ice Lake.** The fourth threading or kernel choice here that fails to transfer, after A34, A36 and A44. | threading (part 19) |
 
 ---
 
@@ -526,7 +529,7 @@ does not restate them.
 | D50 | A **batched API** — `batch::BatchItem`, `contract_batched` — with the batch as the *only* parallel axis and each item running serially, via `driver::execute_capped`. Fork-join on `std::thread::scope`; `rayon` fits and is still not used. | It removes the spawn *count* rather than the cost: one spawn set per batch instead of one per contraction, which is the right axis for the many-small-contractions workload Phase 1 named as the real headroom. Nesting the axes would spend the saving again inside every item, hence the cap of 1 per item. Soundness is the borrow checker's: items live in a `&mut [BatchItem]`, so `chunks_mut` *proves* the outputs disjoint and there is no unsafe block in the fan-out. Validation is all-or-nothing before any item runs, which a loop over `Plan::run` cannot give and which is the reason to prefer this entry point even at one thread. `rayon` genuinely fits this axis — no barriers, plain fork-join — and is declined only because ten lines of `std` do it and the crate already owns a pool that can be extended here; recorded so the objection is not mistaken for the inner path's, which is a soundness one. The split is static and contiguous, and **block-sparse is not built**: that is where items differ in *size* rather than in regularity, which is the one place D47's null result does not reach. |
 | D51 | Every measurement script resolves its binary from `TC_TARGET` (default `target/`), and the `.sbatch` wrappers set it to `target-job-$SLURM_JOB_ID`. | A cluster job runs in the submit directory and used its `target/`, so a `cargo build` on the workstation — or a `cargo test`, which relinks the same artefacts — replaced the executable each arm invokes, mid-session, and the job did not notice. It happened on 2026-08-04 (part 13) and was inert only by luck; "treat the submit directory as frozen" is a rule that depends on remembering, and this removes the class instead. `node-session.sh` exports it as `CARGO_TARGET_DIR` so the build and the arms agree by construction. The two jobs that never compile *snapshot* the prebuilt binaries into it, which also closes the failure that killed job 6753197: a concurrent `prep` left a 0-byte executable that every arm ran for 0.0 s with `rc=0`. |
 | D52 | **The amortisation guard does not ship.** `TENSORCONTRACT_AMORTISE` stays reachable as an off-by-default record of the experiment, like `TENSORCONTRACT_DEEPEN`. | Measured on `worker5086` (part 18): it is a *trade*, not a win — it rescues an over-threaded caller by up to 10.8x and costs a correctly-threaded one 10–39% at 2–8 threads on sub-megabyte work, and which side a caller lands on is something a library cannot know. Per case it leaves **12–14% of points more than 10% slower** at those widths, far outside A39's floor. On top of the pool it is pure loss, reaching **0.32**, because it rations a spawn cost the pool has removed. And the form is wrong, not just the constant: a fixed spawn-*fraction* threshold caps at 2 threads where measurement says 4 is optimal, because the real trade is marginal rather than fractional — and fitting a marginal model is where A33 died. Its calibration was sound and validated at one value of the caller's thread count, which is A20 in a third form (A54). |
-| D53 | **`TENSORCONTRACT_POOL=on` is recommended as the default, and the flip is not taken here.** | The measurement supports it about as cleanly as this project gets: no per-family cell below 0.99 at any size or width, up to 11.6x, 2.0–2.8x even at 16 MiB, and a per-case sub-0.90 tail of 0.7–1.4% that is indistinguishable from what A39's floor produces on identical configurations. Results stay bitwise identical, so it is never a numerical decision. Left to the user for the reason D22 and D44 record: flipping a default changes what every future measurement means, and one node on one machine class is not two. What would strengthen it: the same arms on an Intel hierarchy, and a 64 MiB point, since the win decays with size and the corpus sits outside the sweep. |
+| D53 | **`TENSORCONTRACT_POOL=on` was recommended as the default on 2026-08-05 and the recommendation is WITHDRAWN the same day.** The pool stays a switch, off by default (D49); it is **topology-conditional at best**. | Recommended on Zen2 evidence — no per-family cell below 0.99 at any size or width, up to 11.6x, 2.0–2.8x at 16 MiB (part 18) — with the flip deliberately left to the user pending a second machine class. That second machine class **reversed it**: on Ice Lake, 32 cores over one 48 MiB L3, the pool costs up to **2.5x** (46 of 60 per-family cells below 0.97, worst 0.403, 36–48% of individual points below 0.90 at 64 MiB), and at the pre-registered decision cell — 64 MiB, `t32` — it reads **0.80** against the `< 0.97` threshold written down as "a real surprise" (part 19). The Zen2 measurement stands and was always labelled with its machine; what is withdrawn is the default. The a-priori argument that a pool could not be topology-dependent is itself refuted (A55): reusing a thread reuses its allocator arena, so a pool is an allocation-locality change and not merely a thread-lifetime one. **Do not flip this default.** What would revive it: fixing the suspected cause — 32 long-lived buffers at repeating addresses contending in one shared L3 — by offsetting each worker's buffer, then re-running both nodes' arms. |
 
 ---
 
@@ -3890,6 +3893,125 @@ from outside.
 | A50 | A guard fitted to the sub-megabyte regime will misjudge the saturation above it. | **Confirmed, and the misjudgement is the other way round from the worry.** The guard is inert above 4 MiB (0.98–1.09), so it does no damage there. What was misjudged is the *saturation itself*: it is largely fixed cost, not bandwidth. |
 | A53 | The cost a thread pool removes is thread creation, and the part that scales with size is the per-thread packed-`A` allocation. | **First half refuted, second half refuted too.** The pooled-vs-unpooled difference is not a pure fixed cost: it grows 2.4 → 6.0 ms with size while the ratio falls 9.6 → 2.1, so it has a proportional component and the "µs/thread" figure manufactures growth by dividing a mixed quantity by the thread count. The named candidate is *also* wrong: `ap_len` is byte-identical at all four sizes (65536 reals in `f64`, 22528 in `c64`), because `mc` never binds against `m` at these shapes. **A fixed ~37 µs/thread is solid** and confirms A43 independently; the scaling component's mechanism is **unknown**, with scheduler placement and barrier skew as untested candidates. Nothing supports hoisting the `Panel` allocations. |
 | A54 | A rule that consumes a caller's parameter can be validated at one value of it. | **Refuted, and it is A20 in a third form.** D48's guard scores 0 points slower than serial at `requested = 64` and loses 39% at `requested = 4` on the same size. The offline scoring simulated only 64, so the losing half of the trade was invisible by construction. Score across the caller's parameter, as `partition-score-rule.py` does with `-p` and `-d`. |
+
+### Part 19: the pool loses on Ice Lake, and D53 is withdrawn
+
+Job **6762432**, `worker6194` (Ice Lake-SP, 32 cores of one socket, **one 48 MiB L3**),
+2026-08-05, 107 min, `--exclusive`, engine at `ea10301`. Two arms, `base` and `pool`,
+at 1 / 16 / 64 MiB. Raw data in `bench-results/worker6194-icelake/phase4g/` — 84
+arm-runs, 21168 rows, 0 missing, 0 zero-second.
+
+This was the strengthening evidence part 18 asked for before flipping D53: the same
+arms on an Intel hierarchy, plus a 64 MiB point at the corpus size. **The reading rule
+was fixed before the data existed** — at 64 MiB and `t32`, `>= 1.10` meant "matters
+everywhere", `1.00–1.10` "small contractions only", `< 0.97` "the pool costs at corpus
+size, which would be a real surprise".
+
+It came in at **0.80**.
+
+#### The result
+
+`pool / base`, drift-corrected by each row's own `t1` (0.996–1.007 throughout, so the
+control is clean and this is not session drift):
+
+| MiB | dtype | t2 | t4 | t8 | t16 | t32 |
+|---|---|---|---|---|---|---|
+| 1 | `f64` | 1.054 | 1.006 | 0.591 | **0.457** | 0.527 |
+| 1 | `c32` | 1.028 | 0.928 | 0.546 | **0.403** | 0.478 |
+| 16 | `f64` | 0.994 | 0.875 | 0.740 | 0.505 | 0.587 |
+| 16 | `c32` | 0.993 | 0.895 | 0.773 | 0.592 | 0.650 |
+| 64 | `f64` | 0.993 | 0.932 | 0.872 | 0.791 | **0.802** |
+| 64 | `c32` | 0.997 | 0.961 | 0.893 | 0.779 | **0.781** |
+
+**46 of 60 cells below 0.97, worst 0.403** — the pool is up to **2.5x slower** than
+per-call spawn on this machine. All four dtypes agree. Per case at 64 MiB, **210–284 of
+588 points fall below 0.90** (36–48%), worst 0.094, which is systematic under any
+reading of A39.
+
+The shape: neutral at `t2` (1.01–1.08, where the pool has a single worker), degrading
+through `t4`–`t8`, **worst at `t16`**, partial recovery at `t32`. Worst at `t16` rather
+than at the top width is not explained and does not fit a simple monotone story.
+
+So on Zen2 the pool is worth up to 11.6x and on Ice Lake it costs up to 2.5x. **D53's
+recommendation cannot stand**, and the switch is topology-conditional at best.
+
+#### The a-priori argument was wrong, and that is the transferable part
+
+Recorded here before the run, as the reason a null result was expected rather than a
+reversal: *"the pool has no reason to be topology-dependent — it touches where threads
+come from, not what they read."*
+
+**That is false, and it is false for a reason worth carrying.** Reusing a thread also
+reuses its **allocator arena**, so each worker gets the *same* packed-`A` buffer address
+back on every call, where a freshly spawned thread gets a fresh, well-spread one. **A
+thread pool is an allocation-locality change as much as a thread-lifetime change** — it
+changes what the threads read, not just where they come from (A55).
+
+That reframing also makes the topology dependence unsurprising in hindsight, which is
+the uncomfortable part: 32 long-lived buffers at repeating addresses all contend in
+**one** 48 MiB 12-way L3 here, where Zen2 spread the same buffers across **sixteen**
+private 16 MiB L3s — and Zen2 is exactly where the pool won.
+
+#### The mechanism is a candidate, not a finding
+
+The extra time the pool costs is neither a fixed per-call cost nor proportional to
+runtime:
+
+| MiB | width | base ms | pool ms | delta ms | delta/base |
+|---|---|---|---|---|---|
+| 1 | 32 | 0.609 | 1.046 | 0.431 | 0.71 |
+| 16 | 32 | 2.304 | 3.944 | 1.671 | 0.73 |
+| 64 | 32 | 5.355 | 7.484 | 1.781 | 0.33 |
+| 64 | 8 | 8.293 | 9.284 | 0.939 | 0.11 |
+| 64 | 16 | 6.061 | 7.857 | 1.459 | 0.24 |
+
+It grows with width and with size, then plateaus. The implementation's *fixed* costs —
+31 serial `notify_one` wakes and 31 threads contending on one completion mutex — are of
+order 100–200 µs, an order of magnitude too small to be this.
+
+Two candidates, and this data cannot separate them:
+
+1. **Shared-L3 conflict between reused buffers**, per A55 above. Scales with width (more
+   aliasing buffers) and with traffic (size). A cheap test: pad each worker's buffer by
+   a per-worker offset so the addresses cannot alias, and re-run this arm.
+2. **Barrier cost at 32 participants**, or the wake pattern interacting with it. `t16`
+   being worse than `t32` is unexplained under (1) and might belong here.
+
+Both locate the problem in **our implementation rather than in pooling as a concept**,
+which is the reason D49 keeps the pool as a switch rather than deleting it.
+
+#### What did not change
+
+* **The Zen2 result stands**, and was labelled with its machine throughout. The pool
+  really is worth up to 11.6x there. What is withdrawn is the *default*, not the
+  measurement.
+* **D52 stands.** The guard lost on Zen2, where the pool won; nothing here touches it.
+* **A control replicated, and it is now the strongest baseline in this file.** The base
+  arm at 64 MiB reproduces both committed Ice Lake curves to **0.1–1.5%**: `f64`
+  `t8`/`t16`/`t32` = 6.14 / 9.62 / 10.55 against `worker6016`'s 6.17 / 9.67 / 10.59 and
+  `worker6150`'s 6.13 / 9.61 / 10.54, and `c64` 3m `t8` = 6.96 against 6.96. Three
+  nodes, three sessions, two scripts. It also cross-checks `phase4g`'s 64 MiB path
+  against `phase4f`'s `threads` stage for the first time — they measure the same thing.
+
+#### What this run says about the process, twice over
+
+* **The pre-registered reading rule earned its keep.** Writing `< 0.97 → a real
+  surprise` down *before* the data meant the reversal could not be narrated as
+  "roughly neutral" afterwards. It cost two minutes.
+* **Two of my own a-priori arguments were wrong in one day** — that the pool could not
+  be topology-dependent (this part) and that the buffer grows with problem size (part
+  18's A53). Both were stated as reasoning rather than measurement, and both were
+  checked because they were written down as claims. The lesson is not "argue less"; it
+  is that an argument recorded as an argument gets tested, and one folded into prose
+  does not.
+
+*Decisions introduced here: none. D53 is revised in place — see
+[Design decisions](#design-decisions).*
+
+| # | Assumption | Status |
+|---|---|---|
+| A55 | A thread pool changes thread lifetime, not memory locality — it touches where threads come from, not what they read. | **Refuted, and it was the reason a reversal was thought impossible.** Reusing a thread reuses its allocator arena, so every worker gets the same packed-`A` buffer address back each call where a fresh thread gets a well-spread one. On a one-L3-per-socket machine 32 such buffers contend in one 48 MiB cache; on Zen2 they spread over sixteen private L3s, which is where the pool won. A pool is an allocation-locality change. |
+| A56 | The pool's benefit is topology-independent, so one machine class is enough to recommend it. | **Refuted — 11.6x on Zen2, 0.40–0.80 on Ice Lake.** This is the **fourth** threading or kernel choice here that fails to transfer between microarchitectures, after A34 (register blocks), A36 (the partition) and A44 (the method ranking). Treat "measured on one machine class" as a statement about that class until shown otherwise, for anything touching threads or caches. |
 
 ## Packaging and distribution
 

@@ -50,20 +50,25 @@ Five things that decide what you may say and do:
   antisymmetric orientation rule, the guarded row-block rule, planar complex.**
   The domain-aware partition gate is the default (D44); the *thread count* is not,
   and now for a measured reason (D46).
-* **Three answers to the per-call spawn cost are built; two are measured** (parts
-  17 and 18, job 6760092). **The thread pool wins** — up to 11.6x at 0.25 MiB and
-  64 threads, 2.0–2.8x even at 16 MiB, no per-family cell below 0.99 anywhere — and
-  `TENSORCONTRACT_POOL=on` **is recommended as the default, a flip left to the user**
-  (D53). **The amortisation guard does not ship** (D52): it is a trade, costing a
-  correctly-threaded caller 10–39% while rescuing an over-threaded one, and on top of
-  the pool it is pure loss. **The batched API is unmeasured**, and block-sparse — its
-  second half — is not built.
-* **Why the pool's win scales with size is unknown** (A53), and the obvious
-  explanation is refuted. A fixed ~37 µs/thread is solid and confirms A43
-  independently; beyond that the pooled-vs-unpooled difference has a proportional
-  component, so the per-thread framing overstates it. The per-thread packed-`A`
-  buffer was the named candidate and `ap_len` turns out to be identical at every
-  size, so **do not hoist those allocations expecting a win**.
+* **Three answers to the per-call spawn cost are built; two are measured, and
+  neither ships** (parts 17–19). The **thread pool is topology-conditional**: up to
+  **11.6x** on Zen2 at 0.25 MiB / 64 threads, and up to **2.5x slower** on Ice Lake,
+  where 32 cores share one 48 MiB L3 (jobs 6760092, 6762432). D53 recommended it as a
+  default on the Zen2 half and **that recommendation is withdrawn** — do not flip it.
+  The **amortisation guard does not ship** (D52): a trade that costs a
+  correctly-threaded caller 10–39%, and pure loss on top of the pool. **The batched API
+  is unmeasured**, and block-sparse — its second half — is not built.
+* **A pool is an allocation-locality change, not just a thread-lifetime change**
+  (A55). Reusing a thread reuses its allocator arena, so each worker gets the same
+  packed-`A` buffer address back every call where a fresh thread gets a well-spread
+  one. That is the suspected reason it loses where one L3 serves all the threads, and
+  the cheap test is to offset each worker's buffer. It is also why "it touches where
+  threads come from, not what they read" was a wrong argument.
+* **Anything touching threads or caches is a per-microarchitecture claim until
+  shown otherwise** (A56). Four now fail to transfer: register blocks (A34), the
+  thread partition (A36), the complex-method ranking (A44) and the thread pool (A56).
+  Two machine classes is the minimum for a recommendation, and this project has been
+  wrong on one class twice.
 * **The engine-vs-baseline numbers in `README.md` are Ice Lake**
   (`worker6156`, jobs 6753260 / 6754877, 2026-08-04/05): 1.31–1.78x TBLIS
   2.0-dev, 1.95–2.20x TTGT. They are **not** differenceable against the Phase 3
@@ -292,7 +297,7 @@ results are bitwise identical across all of them.
 | `TENSORCONTRACT_THREADS` | thread count, default **1**. Bitwise identical at any value, so never a correctness or accuracy decision. Also runs the whole test suite through the threaded driver — worth doing after any driver change |
 | `TENSORCONTRACT_PARTITION` | `domain` (**default** since D44) \| `legacy`: which partition *rule*; or `m` \| `n` \| `<pm>x<pn>` to pin it outright. `domain` gates `Plan::partition`'s `panels >= p` early return on the L3 domain count — a measured no-op on 392 of 392 cases where one L3 serves the thread set, 1.133 corpus geomean at 64 Zen2 threads where sixteen do. `legacy` is the ungated rule, which is what every threaded number committed before 2026-08-04 was measured with |
 | `TENSORCONTRACT_AMORTISE` | `on`: cap the thread count so per-call spawn stays a bounded fraction of the work. **Off, and it does not ship** (D52) — measured as a trade that costs a correctly-threaded caller 10–39% and is pure loss on top of the pool. Kept as a record of the experiment, like `_DEEPEN` |
-| `TENSORCONTRACT_POOL` | `on`: reuse parked threads instead of spawning per `execute` call. **Measured and it wins** (part 18) — up to 11.6x, never below 0.99 per family. **Recommended as the default; the flip is the user's** (D53). Off today so every pre-2026-08-05 threaded number stays reproducible |
+| `TENSORCONTRACT_POOL` | `on`: reuse parked threads instead of spawning per `execute` call. **Measured on two machine classes and it does not transfer**: up to 11.6x on Zen2 (part 18), up to **2.5x slower** on Ice Lake (part 19). **Off, and D53's recommendation to default it on is withdrawn.** Suspected cause is reused buffer addresses contending in one shared L3 (A55) |
 | `TENSORCONTRACT_L3_DOMAINS` | override how many L3 domains the thread set is taken to span. The derivation assumes compact placement (A37); this exercises the other case without a rebuild |
 | `TENSORCONTRACT_BLOCKMODEL` | `legacy` (default) \| `model`: the analytical cache model instead of the hardcoded constants. `legacy` is the default **on evidence** — the model loses in 11 of 12 columns on a foreign machine (A33) |
 | `TENSORCONTRACT_MC` / `_KC` / `_NC` | override cache blocking absolutely |
