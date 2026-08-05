@@ -27,3 +27,65 @@ warm-up arm (discarded): t64 at 16 MiB
   14:22:47 sm-s0.25-t16-f64c64 done
   14:23:15 sm-s0.25-t32-f64c64 done
   14:24:23 sm-s0.25-t64-f64c64 done
+  14:25:16 sm-s1-t1-f64c64 done
+  14:25:44 sm-s1-t2-f64c64 done
+  14:26:00 sm-s1-t4-f64c64 done
+  14:26:14 sm-s1-t8-f64c64 done
+  14:26:25 sm-s1-t16-f64c64 done
+  14:26:39 sm-s1-t32-f64c64 done
+  14:27:02 sm-s1-t64-f64c64 done
+  14:28:42 sm-s4-t1-f64c64 done
+  14:29:35 sm-s4-t2-f64c64 done
+  14:30:03 sm-s4-t4-f64c64 done
+  14:30:24 sm-s4-t8-f64c64 done
+  14:30:42 sm-s4-t16-f64c64 done
+  14:31:00 sm-s4-t32-f64c64 done
+  14:31:20 sm-s4-t64-f64c64 done
+  14:35:00 sm-s16-t1-f64c64 done
+  14:36:56 sm-s16-t2-f64c64 done
+  14:37:59 sm-s16-t4-f64c64 done
+  14:38:42 sm-s16-t8-f64c64 done
+  14:39:14 sm-s16-t16-f64c64 done
+  14:39:47 sm-s16-t32-f64c64 done
+  14:40:20 sm-s16-t64-f64c64 done
+done base f64c64
+  14:40:34 sm-s0.25-t1-f32c32 done
+  14:40:42 sm-s0.25-t2-f32c32 done
+  14:40:48 sm-s0.25-t4-f32c32 done
+  14:40:56 sm-s0.25-t8-f32c32 done
+  14:41:08 sm-s0.25-t16-f32c32 done
+  14:41:33 sm-s0.25-t32-f32c32 done
+  14:42:40 sm-s0.25-t64-f32c32 done
+  14:43:07 sm-s1-t1-f32c32 done
+  14:43:22 sm-s1-t2-f32c32 done
+  14:43:30 sm-s1-t4-f32c32 done
+  14:43:38 sm-s1-t8-f32c32 done
+  14:43:45 sm-s1-t16-f32c32 done
+  14:43:55 sm-s1-t32-f32c32 done
+  14:44:15 sm-s1-t64-f32c32 done
+  14:45:05 sm-s4-t1-f32c32 done
+  14:45:31 sm-s4-t2-f32c32 done
+  14:45:46 sm-s4-t4-f32c32 done
+  14:45:58 sm-s4-t8-f32c32 done
+  14:46:09 sm-s4-t16-f32c32 done
+  14:46:20 sm-s4-t32-f32c32 done
+  14:46:33 sm-s4-t64-f32c32 done
+  14:48:25 sm-s16-t1-f32c32 done
+  14:49:25 sm-s16-t2-f32c32 done
+  14:49:58 sm-s16-t4-f32c32 done
+  14:50:21 sm-s16-t8-f32c32 done
+  14:50:42 sm-s16-t16-f32c32 done
+  14:51:01 sm-s16-t32-f32c32 done
+  14:51:22 sm-s16-t64-f32c32 done
+done base f32c32
+===== arm pool (TENSORCONTRACT_POOL=on)
+  14:51:49 sm-pool-s0.25-t1-f64c64 done
+  14:52:04 sm-pool-s0.25-t2-f64c64 done
+  14:52:12 sm-pool-s0.25-t4-f64c64 done
+  14:52:18 sm-pool-s0.25-t8-f64c64 done
+  14:52:22 sm-pool-s0.25-t16-f64c64 done
+  14:52:27 sm-pool-s0.25-t32-f64c64 done
+  14:52:35 sm-pool-s0.25-t64-f64c64 done
+  14:53:28 sm-pool-s1-t1-f64c64 done
+  14:53:56 sm-pool-s1-t2-f64c64 done
+  14:54:12 sm-pool-s1-t4-f64c64 done

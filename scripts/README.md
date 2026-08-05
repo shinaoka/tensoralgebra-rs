@@ -1,6 +1,6 @@
 # `scripts/` — what each one is for
 
-Thirty-one files, and the overlaps are real but mostly not accidental. This
+Thirty-two files, and the overlaps are real but mostly not accidental. This
 index exists so that "which script do I use" is answered here rather than by
 reading five headers, and so that a script kept only because it produced
 committed data is visibly that.
@@ -37,7 +37,7 @@ into it instead, because they never compile.
 | decide between N discrete options | sweep the **whole grid** once (`phase4c`/`phase4d`/`phase4e-blocking.sh`), then score rules offline — see below |
 | run a whole session on a cluster node | **`rusty-compare.sbatch`** or **`rusty-phase4.sbatch`**, or `node-session.sh` by hand |
 | know if this machine can host concurrent arms | `validate-placement.sh`, then `placement-verdict.py` |
-| analyse committed data, costing no CPU | `compare-sweeps.py`, the four `*-score-rules.py`, `thread-width.py` |
+| analyse committed data, costing no CPU | `compare-sweeps.py`, the five `*-score-rule*.py`, `thread-width.py` |
 
 **The grid pattern is the most valuable thing in this directory.** When the
 choice is discrete, measure every option once and score candidate rules against
@@ -82,6 +82,7 @@ the orientation rule were settled that way, and the grids are still in
 |---|---|
 | `compare-sweeps.py` | Two sweep CSVs into the ratio tables used throughout `DECISIONS.md`, with the AB/BA split as a control |
 | `rowblock-score-rules.py` | Score candidate row-block rules against the 1c grid |
+| `amortise-score-rule.py` | Score candidate amortisation-guard constants against a `phase4g` grid. Reproduces D48's table in part 17, and cross-checks the constant against `plan.rs` so the script and the engine cannot drift apart silently |
 | `rowblock-decompose.py` | Split a row-block grid into what the shape *costs* and what it *buys* |
 | `orient-score-rules.py` | Score candidate orientation rules against the 1d grid |
 | `blocking-score-rules.py` | Score `MC`/`KC`/`NC` rules against the item-2 grid. The most evolved of the four — it adds `arms` and `noise` sections the earlier ones lack |

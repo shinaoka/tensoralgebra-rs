@@ -3472,6 +3472,12 @@ arithmetic per element.
 all 588 case-dtype-method points at 1, 2, 4, 8, 16, 32 and 64 threads at four
 sizes, so candidate constants score exactly, offline, for free — the same method
 that settled the row-block rule, the orientation rule and the partition gate.
+**Reproduce every row below with `scripts/amortise-score-rule.py
+bench-results/worker5139-zen2/phase4g`**, which also cross-checks the constant it
+scores against `plan.rs` so the script and the engine cannot drift apart in silence.
+(The table was first produced by an ad-hoc script and was therefore un-rederivable
+from the repository for a day, which is the defect the rest of this file exists to
+prevent.)
 Corpus geometric mean against serial with 64 threads requested throughout, and the
 count of points left slower than serial:
 
