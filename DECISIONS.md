@@ -3664,15 +3664,75 @@ the sweep corpus and then the premise shapes, the latter because a dry run showe
 the two libraries indistinguishable over the sweep corpus at trivial size and the
 original signal came from `premise`.
 
-**Until that lands, do not quote a TBLIS 2.0 number from this run.** The engine
-columns, TTGT and TBLIS v1.3.0 stand.
+**Resolved by the next subsection: the TBLIS 2.0 columns from this run are
+sound after all.** The A/B found the two builds identical at both measured sizes,
+so the skx build understated nothing here, and the 1.68x was an artifact of the
+8 MiB size it was taken at. Read this paragraph together with that retraction.
+
+### The TBLIS A/B lands, and it retracts the alarm — the 1.68x was a size artifact
+
+Job **6754877**, `worker6156` (the same node, which is the best case for
+comparability), 2026-08-04, stage 1 = 90 min. Data in
+`bench-results/worker6156-icelake/ab-tblis/`.
+
+**The two TBLIS 2.0 builds are indistinguishable at the sizes this project
+publishes at.** Treatment is multi-config ÷ skx; `planar` is the in-arm control,
+which no TBLIS library can move.
+
+| | `f64` | `c64` | `f32` | `c32` |
+|---|---|---|---|---|
+| sweep corpus, 64 MiB — floor (`A2` vs `A`) | 1.001 | 0.998 | 1.001 | 0.999 |
+| sweep corpus, 64 MiB — **treatment** | 1.000 | 0.997 | 0.998 | 0.997 |
+| premise, 200 MiB — floor | 1.000 | 1.000 | — | — |
+| premise, 200 MiB — **treatment** | 0.998 | 0.998 | — | — |
+
+Every treatment ratio is inside its floor. Per case on the premise shapes the
+spread is 0.979–1.002 against a floor spread of 0.992–1.003, and **the specific
+shapes that produced the original 1.5–1.7x read 0.993–1.001**: `ajbc-ckba-jk`
+0.993/1.000, `abrs-qb-aqrs` 0.997/0.999, `ijkl-imkn-jnlm` 1.000/1.000,
+`ij-ikl-ljk` 0.999/0.999, `abjcd-dkbac-jk` 0.999/1.001.
+
+**So the alarm is withdrawn.** The claim that the skx-only build understated
+TBLIS 2.0 by up to 1.68x on low-arithmetic-intensity shapes, and that the
+README's near-parity-with-TBLIS-2.0 statement therefore rested on a
+mis-configured baseline, **was wrong.** Nothing in the README or the CHANGELOG
+needed to change on that account, and the Phase 1 headline is untouched.
+
+**What actually happened, because the process failure is the useful part.** The
+1.68x came from one `premise --size 8 --reps 2` run: a problem size **8 to 25x
+smaller** than anything this project publishes (sweeps at 64 MiB, premise at
+200 MiB), on a shared machine, no warm-up, no repeat, no control. At 8 MiB the
+operands are small enough that BLIS's skinny-GEMM (`sup`) kernels — present in the
+multi-config build and absent from the skx-only one — decide the result. At 64 and
+200 MiB they are irrelevant, so the two libraries converge exactly. The symbol
+count that looked like a smoking gun (1364 against 3809 `bli_` symbols) was real
+and had no consequence at the sizes that matter.
+
+This is a **new failure mode for this file's methodology rules**, which are all
+about time: discard a warm-up arm (A31), derive the floor in session (A32), price
+co-tenancy per arm (A27). None of them would have caught this, because the
+confound was **problem size**, not timing or contention. Hence A39.
+
+It also vindicates a decision that was not mine: rewriting the docs on the
+strength of the signal was considered and rejected in favour of measuring first.
+Had the signal been acted on, a false retraction would have gone into the
+release-facing documents — the exact failure mode the CHANGELOG's confidence
+table exists to prevent, arriving through the person maintaining it.
+
+**What survives.** The portability half, entirely: the skx-only build SIGILLs on
+any machine without AVX-512, which killed job 6753261, and
+`../baselines/tblis-2.0-x86_64-install` is now the build a non-AVX-512 node needs.
+And a genuine positive result, cheaply held: the TBLIS 2.0 baseline is **measured
+to be build-insensitive at publication sizes**, where before it was an
+assumption nobody had tested.
 
 ### Assumptions added
 
 | # | Assumption | Status |
 |---|---|---|
 | A37 | The complex-method ranking, and the inversion on memory-bound shapes, are properties of the engine and the shape. | **Refuted for the ranking.** On Ice Lake 3m is last in every column and wins 0 of 49 cases (0.694 `c64`, 0.744 `c32` against planar, against Cascade Lake's 0.956 / 0.921), and the memory-bound inversion is absent. Confounded with A34's wrong register blocks and not separable without an Ice Lake shape sweep, but item 3 cannot ship as an unconditional rule either way. |
-| A38 | A baseline install built from the right source at the right commit is the right baseline. | **Refuted.** `BLIS_CONFIG_FAMILY=auto` silently fits BLIS to the build host, producing a TBLIS 2.0 that is skx-only, SIGILLs on Zen2, and lacks the skinny-GEMM kernels — up to 1.68x slow on precisely the low-arithmetic-intensity shapes this project cares about. Record a baseline's *configuration*, not just its version and commit, and verify a multi-ISA claim with `nm` rather than `strings`: BLIS compiles its config name table in whether or not the kernels are there. |
+| A38 | A baseline install built from the right source at the right commit is the right baseline. | **Refuted, but on portability only** — the performance half was measured and withdrawn, see the A/B subsection. `BLIS_CONFIG_FAMILY=auto` silently fits BLIS to the *build host*, so this TBLIS 2.0 is skx-only and **SIGILLs on any machine without AVX-512** (job 6753261). It also lacks the skinny-GEMM kernels, which looked like a large performance defect and turns out to cost **nothing at 64 or 200 MiB** (0.997–1.000 against a 0.998–1.003 floor). So: record a baseline's *configuration*, not just its version and commit; verify a multi-ISA claim with `nm` rather than `strings`, because BLIS compiles its config name table in whether or not the kernels are there; and do not infer a performance consequence from a symbol count. |
+| A39 | This file's measurement rules (A27, A31, A32) cover the ways a comparison can mislead. | **Refuted: they are all about time, and problem size is a separate axis.** A one-shot `premise --size 8` run reported TBLIS 2.0's two builds differing by up to 1.68x. At the sizes actually published — 64 MiB sweeps, 200 MiB premise, i.e. 8–25x larger — they are identical to within the floor, because the kernels that differ only matter while the operands are small. A warm-up arm, an in-session floor and per-arm occupancy would each have passed the bad measurement through unchanged. **Measure at the size you publish at, and treat a result taken at a smaller size as being about that size.** |
 
 ---
 

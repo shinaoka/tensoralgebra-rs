@@ -1,0 +1,143 @@
+TBLIS 2.0 build A/B on cpu0
+  A (skx, as every committed number used) : /mnt/home/ldevos/Projects/tensorcontract-rs/cleanup/../baselines/tblis-2.0-install
+  B (x86_64 multi-config)                 : /mnt/home/ldevos/Projects/tensorcontract-rs/cleanup/../baselines/tblis-2.0-x86_64-install
+  control: the planar column, which no TBLIS library can move
+started 2026-08-04T19:07:50-04:00 on worker6156
+=== A: /mnt/home/ldevos/Projects/tensorcontract-rs/cleanup/../baselines/tblis-2.0-install ===
+bli_ symbols: 1364
+contexts    : skx 
+=== B: /mnt/home/ldevos/Projects/tensorcontract-rs/cleanup/../baselines/tblis-2.0-x86_64-install ===
+bli_ symbols: 3809
+contexts    : bulldozer excavator generic haswell knl penryn piledriver sandybridge skx steamroller zen zen2 zen3 
+host worker6156  64 physical cores, SMT width 1, 2 L3 domains
+8 arms, 1 concurrent, cpus 0
+  19:17:11 warm-f64c64      cpu0    dom0     561.3s  rc=0  self 100%  co-tenants: none
+  19:26:33 A-f64c64         cpu0    dom0     561.4s  rc=0  self 100%  co-tenants: none
+  19:35:54 B-f64c64         cpu0    dom0     561.6s  rc=0  self 100%  co-tenants: none
+  19:45:16 A2-f64c64        cpu0    dom0     561.5s  rc=0  self 100%  co-tenants: none
+  19:50:03 warm-f32c32      cpu0    dom0     287.3s  rc=0  self 100%  co-tenants: none
+  19:54:50 A-f32c32         cpu0    dom0     287.3s  rc=0  self 100%  co-tenants: none
+  19:59:38 B-f32c32         cpu0    dom0     287.9s  rc=0  self 100%  co-tenants: none
+  20:04:26 A2-f32c32        cpu0    dom0     287.4s  rc=0  self 100%  co-tenants: none
+
+8 arms in 56.6 min wall (sum of arm times 56.6 min)
+observed overlap per arm: min 0, max 0
+
+###### the same A/B on the premise shapes, at 200 MiB ######
+host worker6156  64 physical cores, SMT width 1, 2 L3 domains
+3 arms, 1 concurrent, cpus 0
+  20:15:43 pA-f64c64        cpu0    dom0     677.7s  rc=0  self 100%  co-tenants: none
+  20:27:02 pB-f64c64        cpu0    dom0     678.2s  rc=0  self 100%  co-tenants: none
+  20:38:20 pA2-f64c64       cpu0    dom0     677.9s  rc=0  self 100%  co-tenants: none
+
+3 arms in 33.9 min wall (sum of arm times 33.9 min)
+observed overlap per arm: min 0, max 0
+
+###### premise floor: pA' against pA ######
+dtype  engine  or   n  geomean     min     max
+  c64  planar  AB   9    0.998   0.994   1.000
+  c64  planar  BA   3    0.999   0.997   1.000
+  c64   tblis  AB   9    1.000   1.000   1.001
+  c64   tblis  BA   3    1.001   1.000   1.002
+  f64  planar  AB   9    0.999   0.994   1.001
+  f64  planar  BA   3    1.000   0.997   1.002
+  f64   tblis  AB   9    1.000   0.992   1.003
+  f64   tblis  BA   3    1.000   0.999   1.001
+
+--- outside the +/-6% per-case noise floor (0 of 48) ---
+
+--- overall, all cases (what a user sees) ---
+  c64  planar  0.998
+  c64   tblis  1.000
+  f64  planar  0.999
+  f64   tblis  1.000
+
+###### premise treatment: multi-config against skx ######
+dtype  engine  or   n  geomean     min     max
+  c64  planar  AB   9    0.998   0.993   1.000
+  c64  planar  BA   3    1.000   0.996   1.004
+  c64   tblis  AB   9    0.998   0.993   1.002
+  c64   tblis  BA   3    0.997   0.992   1.001
+  f64  planar  AB   9    1.000   0.995   1.009
+  f64  planar  BA   3    1.001   0.996   1.005
+  f64   tblis  AB   9    0.997   0.979   1.002
+  f64   tblis  BA   3    0.999   0.997   1.001
+
+--- outside the +/-6% per-case noise floor (0 of 48) ---
+
+--- overall, all cases (what a user sees) ---
+  c64  planar  0.999
+  c64   tblis  0.998
+  f64  planar  1.000
+  f64   tblis  0.998
+
+###### this session's floor: A' against A ######
+dtype  engine  or   n  geomean     min     max
+  c32  planar  AB  37    0.998   0.945   1.022
+  c32  planar  BA  12    1.000   0.996   1.005
+  c32   tblis  AB  37    0.999   0.989   1.007
+  c32   tblis  BA  12    0.997   0.985   1.004
+  c64  planar  AB  37    1.000   0.995   1.003
+  c64  planar  BA  12    1.001   0.998   1.003
+  c64   tblis  AB  37    0.999   0.985   1.004
+  c64   tblis  BA  12    0.997   0.988   1.001
+  f32  planar  AB  37    1.002   0.936   1.022
+  f32  planar  BA  12    1.007   0.988   1.053
+  f32   tblis  AB  37    1.002   0.983   1.029
+  f32   tblis  BA  12    0.998   0.992   1.002
+  f64  planar  AB  37    0.999   0.969   1.008
+  f64  planar  BA  12    1.001   0.998   1.009
+  f64   tblis  AB  37    1.001   0.994   1.007
+  f64   tblis  BA  12    1.002   0.998   1.006
+
+--- outside the +/-6% per-case noise floor (1 of 392) ---
+  0.936      adbjc-cbdka-kj  f32  planar  AB     11.4 ->    10.6
+  0.936      adbjc-cbdka-kj  f32  planar  AB     11.4 ->    10.6
+
+--- overall, all cases (what a user sees) ---
+  c32  planar  0.999
+  c32   tblis  0.999
+  c64  planar  1.000
+  c64   tblis  0.998
+  f32  planar  1.003
+  f32   tblis  1.001
+  f64  planar  1.000
+  f64   tblis  1.001
+
+###### the treatment: multi-config against skx ######
+dtype  engine  or   n  geomean     min     max
+  c32  planar  AB  37    1.000   0.977   1.023
+  c32  planar  BA  12    1.000   0.997   1.006
+  c32   tblis  AB  37    0.996   0.981   1.010
+  c32   tblis  BA  12    0.999   0.991   1.002
+  c64  planar  AB  37    1.000   0.996   1.004
+  c64  planar  BA  12    1.000   0.998   1.003
+  c64   tblis  AB  37    0.997   0.986   1.006
+  c64   tblis  BA  12    0.996   0.988   1.002
+  f32  planar  AB  37    1.003   0.965   1.026
+  f32  planar  BA  12    1.007   0.993   1.051
+  f32   tblis  AB  37    0.999   0.983   1.036
+  f32   tblis  BA  12    0.995   0.986   1.004
+  f64  planar  AB  37    0.996   0.905   1.009
+  f64  planar  BA  12    1.000   0.994   1.009
+  f64   tblis  AB  37    1.001   0.995   1.014
+  f64   tblis  BA  12    1.000   0.995   1.007
+
+--- outside the +/-6% per-case noise floor (2 of 392) ---
+  0.905      ajbdc-ckbad-jk  f64  planar  AB      9.1 ->     8.3
+  0.910      abjcd-dkbac-jk  f64  planar  AB      9.2 ->     8.4
+  0.905      ajbdc-ckbad-jk  f64  planar  AB      9.1 ->     8.3
+  0.910      abjcd-dkbac-jk  f64  planar  AB      9.2 ->     8.4
+
+--- overall, all cases (what a user sees) ---
+  c32  planar  1.000
+  c32   tblis  0.997
+  c64  planar  1.000
+  c64   tblis  0.997
+  f32  planar  1.004
+  f32   tblis  0.998
+  f64  planar  0.997
+  f64   tblis  1.000
+
+done 2026-08-04T20:38:20-04:00. Read bench-results/worker6156-icelake/ab-tblis/PROVENANCE.txt, then treatment.txt.
+Judge the tblis column against the planar control in the same arm.

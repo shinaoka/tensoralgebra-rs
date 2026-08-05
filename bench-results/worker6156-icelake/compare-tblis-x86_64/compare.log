@@ -1,0 +1,51 @@
+comparison benchmark on cpu0; size 64 MiB, 3 reps, engines planar,1m,3m,ttgt,tblis
+premise size 200 MiB; filter <none>
+started 2026-08-04T20:38:20-04:00 on worker6156
+host            : worker6156
+slurm           : job 6754877 on worker6156
+cpus allowed    : 64 of 64 online (0-63)
+physical cores  : 64   SMT width 1  (SMT off: no sibling to contend with)
+sockets         : 0:32c  1:32c
+numa nodes      : 0:32c  1:32c
+L1              : 48K 12-way, shared by 1 logical cpus
+L2              : 1280K 20-way, shared by 1 logical cpus
+L3              : 49152K 12-way, shared by 32 logical cpus
+L3 domains      : 2, 32 cpus each (49152K per domain)
+
+placement       : 1 concurrent arms of 2 domains, one core per domain, rest of each domain idle
+                  cpus 0
+                  per numa node: 0:1
+
+wrote bench-results/worker6156-icelake/compare-tblis-x86_64/topology.json
+
+########## environment and correctness ##########
+
+host        : worker6156
+target      : x86_64 / linux
+cpu features: avx2 fma avx512f avx512dq 
+caches      : L1=48KiB/12-way/1sh L2=1280KiB/20-way/1sh L3=49152KiB/12-way/32sh (via sysfs), blocking=legacy
+baselines   : tblis=true blas=true
+tblis       : abi 2.x, 1 thread(s)
+--- verify, planar ---
+       abc-bk-akc |   f64 |    120 | 12000 |   100 |   0.0e0 |    0.0e0 |     ok 
+       abc-bk-akc |   c32 |    120 | 12000 |   100 |  2.9e-7 |   1.0e-7 |     ok 
+       abc-bk-akc |   c64 |    120 | 12000 |   100 | 5.3e-16 |  1.9e-16 |     ok 
+
+all comparisons within tolerance
+--- verify, 1m ---
+       abc-bk-akc |   f64 |    120 | 12000 |   100 |   0.0e0 |    0.0e0 |     ok 
+       abc-bk-akc |   c32 |    120 | 12000 |   100 |  2.9e-7 |    0.0e0 |     ok 
+       abc-bk-akc |   c64 |    120 | 12000 |   100 | 5.3e-16 |    0.0e0 |     ok 
+
+all comparisons within tolerance
+--- verify, 3m ---
+       abc-bk-akc |   f64 |    120 | 12000 |   100 |   0.0e0 |    0.0e0 |     ok 
+       abc-bk-akc |   c32 |    120 | 12000 |   100 |  2.6e-7 |   3.5e-7 |     ok 
+       abc-bk-akc |   c64 |    120 | 12000 |   100 | 4.8e-16 |  6.5e-16 |     ok 
+
+all comparisons within tolerance
+
+########## warm-up (discarded) ##########
+
+host worker6156  64 physical cores, SMT width 1, 2 L3 domains
+2 arms, 1 concurrent, cpus 0
