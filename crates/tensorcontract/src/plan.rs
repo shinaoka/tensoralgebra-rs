@@ -537,107 +537,38 @@ impl Plan {
     /// the row strips run along `N`, so a `1 x 33` output parallelises 33 ways
     /// and not one way.
     ///
-    /// The driver calls this rather than deriving the partition itself, so there
-    /// is one definition; tests call it to assert that a case which is *meant*
-    /// to exercise the 2-D path really does. A test that silently stopped
-    /// splitting would otherwise still pass while testing nothing — the same
-    /// trap the orientation tests guard against.
+    /// This is a **tier-2** answer: the signature is stable, the value is a
+    /// tuning output and will move when the rule is re-measured. Do not encode
+    /// one of these answers as a constant.
     ///
-    /// # The rule
+    /// # The rule, in outline
     ///
     /// `pn == 1` whenever the `M` direction alone can fill the threads, which is
-    /// the overwhelmingly common case — at eight threads, all of the TCCG corpus
-    /// but four cases, 382 of its 392 case-dtype-methods — and is exactly the 1-D
-    /// partition Phase 4 item 4 shipped first. Only when `ceil(M / MR) < p` does
-    /// the `N` direction get involved,
-    /// and then `(pm, pn)` is chosen to minimise
+    /// the overwhelmingly common case. Only when `ceil(M / MR) < p` does the `N`
+    /// direction get involved, and then `(pm, pn)` minimises
     ///
     /// ```text
     /// cost(pm, pn) = ceil(panels/pm) * (NR * ceil(blocks/pn) + PACK_WEIGHT)
     /// ```
     ///
-    /// over `pm in 1..=panels` with `pn = min(p / pm, blocks)`, ties going to
-    /// the larger `pm`. That is one thread's share of the work in units of
-    /// micro-kernel lane-slots per unit of `k`: it owns `ceil(panels/pm) *
-    /// ceil(blocks/pn)` micro-tiles of `MR * NR` lanes each, and — because the
-    /// packed `A` block is per thread — it also packs `ceil(panels/pm) * MR`
-    /// rows for itself no matter how few columns it owns. That second term is
-    /// what stops the rule from splitting `N` when a thread would be left with a
-    /// handful of `NR` blocks to amortise its own packing over, and it is the
-    /// only reason the objective is not simply "balance the tiles".
+    /// — one thread's share of the work, in micro-kernel lane-slots per unit of
+    /// `k`, including the packed `A` block it builds for itself however few
+    /// columns it owns. That second term is the only reason the objective is not
+    /// simply "balance the tiles".
     ///
-    /// `PACK_WEIGHT` is the cost of packing one element relative to one
-    /// lane-FMA, and it is a **model, not a measurement**: 8 is the conservative
-    /// end of the plausible range (a strided load plus an aligned store, against
-    /// two FMA units), and conservative here means biased towards the `M` axis,
-    /// which is the axis every committed measurement was designed around. Its
-    /// exact value is not load-bearing. Replayed over all 392 corpus
-    /// case-dtype-methods at 2, 4, 8, 16 and 32 threads, every weight in
-    /// `[4, 64]` gives the *same* partition everywhere; only two
-    /// case-dtype-methods move at all between `w <= 2` and `w >= 4`
-    /// (`ij-ikl-ljk` and `ij-kil-lkj`, 7 row panels against 37 column blocks at
-    /// 8 threads), and there the two candidate partitions are within 1.4% of
-    /// each other in modelled cost.
+    /// That early return is correct only where the threads share one L3, and
+    /// wrong by up to 4.3x where they span many, so it is **gated** on
+    /// [`cache::l3_domains`](crate::kernel::cache::l3_domains) rather than
+    /// removed: the row axis gives way to `1 x p` only when the thread set spans
+    /// more than one domain, the column axis can fill the threads by itself, and
+    /// the contraction is shallow. `columns_beat_rows` is that predicate, kept
+    /// pure so its truth table can be pinned by a test on any machine.
+    /// `TENSORCONTRACT_PARTITION` selects `domain` (the default, D44) or
+    /// `legacy`, or pins the layout outright.
     ///
-    /// What the rule does to the corpus, at 8 threads: 10 of 392 have fewer row
-    /// panels than threads, and the column axis is used on 8 of them — 1x8 or
-    /// 2x4 in place of a 1-D 2, 3, 5 or 6. The other two are the `ij-*` pair
-    /// above, which stay 1-D on 7 threads *by choice*: 37 column blocks split
-    /// eight ways is five per thread, which does not amortise a packed `A` block
-    /// each, so the eighth thread is not worth having. Whether that is the right
-    /// call is a question for `scripts/phase4f-threads.sh`, and
-    /// `TENSORCONTRACT_PARTITION=n` is the arm to measure it against.
-    ///
-    /// # The domain-aware gate, `TENSORCONTRACT_PARTITION=domain`
-    ///
-    /// The early return above — "the row axis fills the threads, so use it" — is
-    /// **correct only where the threads share one L3**, and it is wrong by up to
-    /// 4.3x where they span many (A36, part 8b). The shared packed `B` panel is
-    /// sized for *an* L3; under `p x 1` every thread reads the whole panel, so on
-    /// a chiplet machine it is replicated across every domain the thread set
-    /// covers and re-streamed from memory once per domain. Under `1 x p` each
-    /// thread owns a slice that fits its local L3.
-    ///
-    /// So the fix is to *gate* the early return on
-    /// [`cache::l3_domains`](crate::kernel::cache::l3_domains), not to remove it:
-    /// on a one-L3-per-socket machine the early return is right and `pn` buys
-    /// nothing (Ice Lake, 32 threads on one domain: 1.014). With
-    /// `TENSORCONTRACT_PARTITION=domain` the row axis gives way to the column
-    /// axis when **all three** of these hold, and the partition is unchanged
-    /// otherwise:
-    ///
-    /// 1. the thread set spans more than one L3 domain — the mechanism, and the
-    ///    only quantity A36 separates from thread count;
-    /// 2. the column axis can fill the threads by itself (`blocks >= p`), so the
-    ///    swap costs no parallelism. Without this the corpus's narrow cases lose
-    ///    2–5x by running on a fraction of their cores;
-    /// 3. the contraction is shallow, `k <= 64`. The penalty being dodged is
-    ///    bandwidth, so it can only dominate where the case is bandwidth-bound;
-    ///    the wide compute-bound families were measured *losing* 25% in the
-    ///    complex methods from the same swap.
-    ///
-    /// `columns_beat_rows` is that predicate, kept as a pure function of four
-    /// numbers so its whole truth table can be pinned by a test on any machine.
-    ///
-    /// It is **on by default** since D44, and `TENSORCONTRACT_PARTITION=legacy`
-    /// asks for the ungated rule by name. It was off while it was unmeasured;
-    /// it is on because the measurement came back a no-op on 392 of 392 cases
-    /// where one L3 serves the thread set, and 1.133 corpus geomean at 64
-    /// threads where sixteen do. A single-threaded caller cannot observe it at
-    /// all — `l3_domains(1)` is 1, so condition 1 never holds. The choice is
-    /// deliberately
-    /// binary — `p x 1` or `1 x p`, the two arms that were actually measured —
-    /// rather than a cross-domain traffic term added to the cost model above: a
-    /// term large enough to move the `k = 24` family moves 263 of 392
-    /// case-dtype-methods onto intermediate grids like `4 x 16` that no session
-    /// has ever run. Those intermediates are the obvious next question and are
-    /// not this change.
-    ///
-    /// `TENSORCONTRACT_PARTITION=m` restores the 1-D `M` partition exactly, `=n`
-    /// forces a 1-D `N` partition, and `=<pm>x<pn>` pins both — so the axis
-    /// choice is a run-time A/B rather than a diff between two builds (A15), and
-    /// `scripts/phase4f-threads.sh` can measure the rule against both extremes
-    /// in one session.
+    /// The derivation of `PACK_WEIGHT`, the three gate conditions and what each
+    /// one is worth are in `DECISIONS.md` — D29, D41, D42, D44 and A28, with the
+    /// measurements in the threading chapter.
     pub fn partition(&self, mr: usize, nr: usize) -> (usize, usize) {
         self.partition_with(mr, nr, self.threads())
     }
@@ -770,41 +701,23 @@ impl Plan {
     /// 2. **Otherwise put the direction with the *shorter* run in the row
     ///    role**, whichever operand that is.
     ///
-    /// Step 1 is the old rule's two conditions, and step 2 is what it was
-    /// missing. The old rule treated "the row block would be shattered either
-    /// way" as a reason to give up and never swap, and **all nine of its known
-    /// misses lived in that case** (A14) — where it is not that swapping is
-    /// wrong, but that neither arm is clean and something still has to decide.
+    /// Step 2 is what the Phase 4.1 rule was missing: it treated "the row block
+    /// would be shattered either way" as a reason never to swap, and all nine of
+    /// its known misses lived in that case (A14). The rule has to be
+    /// antisymmetric under exchanging the two directions, because the `abcijk`
+    /// families are exact mirror images of each other.
     ///
-    /// Step 2 was found by noticing that the `abcijk` families are exact mirror
-    /// images of each other, so any correct rule must be antisymmetric under
-    /// exchanging the two directions — which the old rule, phrased entirely in
-    /// terms of the *column* direction's properties, was not. In `f32` the
-    /// `-mb` family and the `e*ac` family are the same configuration mirrored,
-    /// and the faster arm of each is the one whose rows have the shorter run:
+    /// Step 1 dominates step 2, and must: it is why `c64` (`MR = 16` against a
+    /// run of 24) takes the opposite arm from `f32` (`MR = 48`) on the same
+    /// shapes. That element-type dependence is why the choice is not a property
+    /// of the plan alone — hence the `mr` argument.
     ///
-    /// | family | `f32` faster arm | its row run | its column run |
-    /// |---|---|---|---|
-    /// | `-mb` | `AB` | 16 | 24 |
-    /// | `e*ac` | `BA` | 16 | 24 |
-    /// | `e*bc` | `BA` | 24 | 4096 |
-    /// | `-ma` | `AB` | 24 | 256 |
-    ///
-    /// Step 1 still dominates step 2, and must: it is why `c64` (`MR = 16`
-    /// against a run of 24) takes the opposite arm from `f32` (`MR = 48`) on
-    /// the same shapes. That element-type dependence is real and is why the
-    /// choice is not a property of the plan alone.
-    ///
-    /// Scored against forced-arm measurements of both arms of all 392 corpus
-    /// case-dtype-methods (`bench-results/phase4d`): **12 cases better beyond
-    /// noise, none worse**, recovering the nine known misses at 1.21–1.45x. In
-    /// `f32` it scores 1.128 against never swapping, where an oracle choosing
-    /// with hindsight scores 1.132 — so on that dtype the orientation question
-    /// is now essentially closed. It is not closed on the 21 cases that remain
-    /// (see the Phase 4.1d report).
-    ///
+    /// This is a **tier-2** answer: stable signature, tuning-output value.
     /// `TENSORCONTRACT_ORIENT=none` disables the swap and `=swap` forces it;
-    /// both exist to A/B the decision, and neither affects correctness.
+    /// neither affects correctness. The mirror-family table the rule was derived
+    /// from, the scoring against both forced arms of all 392 corpus
+    /// case-dtype-methods, and the 21 cases still on the slower arm are in
+    /// `DECISIONS.md` — the write-back chapter, Phase 4.1d.
     pub fn transposes_gemm(&self, mr: usize) -> bool {
         match orient_override() {
             Orient::Rule => {}
@@ -885,43 +798,21 @@ impl Plan {
     /// 1. **The contraction is shallow** (`k <= 32`). The write-back costs a
     ///    constant per output element against `~4k` flops of kernel work, so
     ///    the path it takes only matters while `k` is small — and a shape off
-    ///    the kernel's peak always costs something. Measured: at `k = 24` the
-    ///    winning shape gains 1.09–1.26x; at `k >= 204` the same change is
-    ///    1.01–1.04x, i.e. nothing, and it is still being paid for. The corpus
-    ///    jumps from `k = 24` to `k = 52`, so it resolves this boundary only to
-    ///    somewhere in `(24, 52]`.
-    /// 2. **The default is substantially broken** (`wb <= 0.75`). A shape
-    ///    change is not free, so it cannot be repaid by a marginal improvement.
-    ///    Measured: taking `f32` `48x8 -> 32x8` where the default was already
-    ///    0.88 regular lost 7–9%. The corpus only takes the values 0, 0.67,
-    ///    0.88 and 1.0, so any threshold in `(0.67, 0.88]` fits it equally.
+    ///    the kernel's peak always costs something.
+    /// 2. **The default is substantially broken** (`wb <= 0.75`). A shape change
+    ///    is not free, so a marginal improvement cannot repay it.
     ///
-    /// A third guard — that a shape change must not flip the row/column
-    /// orientation as a side effect — was needed while the orientation rule
-    /// was the Phase 4.1 one, which mis-picked the arm on `c32` 3m and lost 19%
-    /// there. **It was removed in Phase 4.1d**, once the orientation rule was
-    /// fixed: the shapes it used to veto for `c32` 3m are now rejected by guard
-    /// 2 anyway, and all the veto still did was block genuine wins. Dropping it
-    /// adds six firings, all `c32` 1m, measured at **1.19–1.24x** against 12
-    /// control cases at 1.002. That coupling runs both ways and is the reason
-    /// the two rules cannot be tuned separately; see the Phase 4.1d report.
+    /// A third guard, against a shape change flipping the orientation as a side
+    /// effect, was removed in Phase 4.1d once the orientation rule was fixed.
+    /// The two rules are coupled and cannot be tuned separately.
     ///
-    /// So guarded, the rule fires on 26 of 392 corpus case-dtype-methods and
-    /// gains 1.07–1.26x on all but one small case, which loses 7% — inside the
-    /// per-case noise floor. Unguarded it is a **loss**: maximising the
-    /// fraction alone scores 0.936 in `f32`.
+    /// Unguarded, the rule is a **loss** — maximising the regular fraction alone
+    /// scores 0.936 in `f32`. This is a **tier-2** answer: stable signature,
+    /// tuning-output value. Both thresholds, what each guard is worth, the
+    /// corpus firing count and the gain an oracle leaves on the table are in
+    /// `DECISIONS.md` (the write-back chapter, Phase 4.1c and 4.1d); the grid
+    /// they were scored against is `bench-results/phase4c`.
     ///
-    /// # What this deliberately leaves on the table
-    ///
-    /// An oracle picking the fastest shape per case with hindsight scores
-    /// 1.03–1.07 across every dtype and method, so most of the available gain
-    /// is *not* reachable from the output's stride pattern. The largest single
-    /// piece of it is the orientation: on the six `abcijk-e*bc-*` cases in
-    /// `f32`/`c32`, shrinking `MR` to 16 flips them to `BA` and gains
-    /// 1.24–1.39x **despite** paying ~30% in kernel shape — which says the
-    /// orientation there is worth about 2x and should be bought directly, at
-    /// the default `MR`, rather than through a shape change. See the Phase 4.1c
-    /// report.
     /// # What `menu` is, and what comes back
     ///
     /// `menu` is the kernel set's `(MR, NR)` shapes, default first, and the
