@@ -126,21 +126,12 @@ impl ComplexMethod {
 
     /// The default method, from `TENSORCONTRACT_COMPLEX` or [`Self::Planar`].
     pub fn from_env() -> ComplexMethod {
-        #[cfg(feature = "std")]
-        {
-            use std::sync::OnceLock;
-            static M: OnceLock<ComplexMethod> = OnceLock::new();
-            *M.get_or_init(|| {
-                std::env::var("TENSORCONTRACT_COMPLEX")
-                    .ok()
-                    .and_then(|v| ComplexMethod::parse(&v))
-                    .unwrap_or_default()
-            })
-        }
-        #[cfg(not(feature = "std"))]
-        {
-            ComplexMethod::Planar
-        }
+        env_once!(
+            ComplexMethod,
+            "TENSORCONTRACT_COMPLEX",
+            ComplexMethod::Planar,
+            |v| ComplexMethod::parse(v).unwrap_or_default()
+        )
     }
 }
 
@@ -589,21 +580,22 @@ pub(crate) enum KernelForce {
     allow(dead_code)
 )]
 pub(crate) fn kernel_force() -> KernelForce {
-    #[cfg(feature = "std")]
-    {
-        use std::sync::OnceLock;
-        static FORCE: OnceLock<KernelForce> = OnceLock::new();
-        *FORCE.get_or_init(|| match std::env::var("TENSORCONTRACT_KERNEL") {
-            Ok(v) if v.eq_ignore_ascii_case("scalar") => KernelForce::Scalar,
-            Ok(v) if v.eq_ignore_ascii_case("avx2") => KernelForce::Avx2,
-            Ok(v) if v.eq_ignore_ascii_case("avx512") => KernelForce::Avx512,
-            _ => KernelForce::Auto,
-        })
-    }
-    #[cfg(not(feature = "std"))]
-    {
-        KernelForce::Auto
-    }
+    env_once!(
+        KernelForce,
+        "TENSORCONTRACT_KERNEL",
+        KernelForce::Auto,
+        |v: &str| {
+            if v.eq_ignore_ascii_case("scalar") {
+                KernelForce::Scalar
+            } else if v.eq_ignore_ascii_case("avx2") {
+                KernelForce::Avx2
+            } else if v.eq_ignore_ascii_case("avx512") {
+                KernelForce::Avx512
+            } else {
+                KernelForce::Auto
+            }
+        }
+    )
 }
 
 /// Force the portable scalar kernels regardless of CPU features.

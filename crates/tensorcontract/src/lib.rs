@@ -88,6 +88,37 @@
 
 #![warn(missing_docs)]
 
+/// Read one `TENSORCONTRACT_*` variable once per process, or fall back.
+///
+/// Nine switches were spelling this out by hand, and the copies had drifted:
+/// `partition_override` returned the *legacy* rule without `std` where the
+/// `std` default is the domain-aware one, so a `--no-default-features` build
+/// silently partitioned differently. Naming the default once, outside the
+/// `cfg`, makes that class of divergence unrepresentable — the two arms cannot
+/// disagree because there is only one expression.
+///
+/// The variable name stays a literal at each call site on purpose, so
+/// `grep TENSORCONTRACT_` still finds every switch in the crate.
+///
+/// `$ty` must be `Copy`; every switch is a small enum, `bool` or `usize`.
+macro_rules! env_once {
+    ($ty:ty, $var:literal, $default:expr, $parse:expr) => {{
+        #[cfg(feature = "std")]
+        {
+            use std::sync::OnceLock;
+            static ENV: OnceLock<$ty> = OnceLock::new();
+            *ENV.get_or_init(|| match std::env::var($var) {
+                Ok(v) => ($parse)(v.as_str()),
+                Err(_) => $default,
+            })
+        }
+        #[cfg(not(feature = "std"))]
+        {
+            $default
+        }
+    }};
+}
+
 #[cfg(feature = "std")]
 pub mod batch;
 mod buffer;

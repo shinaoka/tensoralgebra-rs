@@ -623,21 +623,12 @@ impl BlockModel {
 /// build-to-build diff (A15). Flip the default only after an end-to-end A/B in
 /// the configuration that ships (A20).
 pub fn block_model() -> BlockModel {
-    #[cfg(feature = "std")]
-    {
-        use std::sync::OnceLock;
-        static M: OnceLock<BlockModel> = OnceLock::new();
-        *M.get_or_init(|| {
-            std::env::var("TENSORCONTRACT_BLOCKMODEL")
-                .ok()
-                .and_then(|v| BlockModel::parse(&v))
-                .unwrap_or_default()
-        })
-    }
-    #[cfg(not(feature = "std"))]
-    {
-        BlockModel::default()
-    }
+    env_once!(
+        BlockModel,
+        "TENSORCONTRACT_BLOCKMODEL",
+        BlockModel::Legacy,
+        |v| BlockModel::parse(v).unwrap_or_default()
+    )
 }
 
 // ---------------------------------------------------------------------------

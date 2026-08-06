@@ -901,26 +901,12 @@ enum Orient {
 /// instead of deriving it from `D`'s strides. Read once per process; for
 /// measurement only, and none of it affects correctness.
 fn orient_override() -> Orient {
-    #[cfg(feature = "std")]
-    {
-        use std::sync::OnceLock;
-        static ENV: OnceLock<Orient> = OnceLock::new();
-        *ENV.get_or_init(|| {
-            match std::env::var("TENSORCONTRACT_ORIENT")
-                .unwrap_or_default()
-                .as_str()
-            {
-                "none" | "ab" => Orient::Force(false),
-                "swap" | "ba" => Orient::Force(true),
-                "legacy" | "phase41" => Orient::Legacy,
-                _ => Orient::Rule,
-            }
-        })
-    }
-    #[cfg(not(feature = "std"))]
-    {
-        Orient::Rule
-    }
+    env_once!(Orient, "TENSORCONTRACT_ORIENT", Orient::Rule, |v| match v {
+        "none" | "ab" => Orient::Force(false),
+        "swap" | "ba" => Orient::Force(true),
+        "legacy" | "phase41" => Orient::Legacy,
+        _ => Orient::Rule,
+    })
 }
 
 /// What `TENSORCONTRACT_ROWBLOCK` asked for. Without `std` there is no
@@ -948,14 +934,11 @@ enum RowBlock {
 /// can be repeated in one session rather than as a diff between two builds
 /// (A15), and `idx=<i>` re-runs the whole grid the rule was derived from.
 fn row_block_override() -> RowBlock {
-    #[cfg(feature = "std")]
-    {
-        use std::sync::OnceLock;
-        static ENV: OnceLock<RowBlock> = OnceLock::new();
-        *ENV.get_or_init(|| {
-            let Ok(v) = std::env::var("TENSORCONTRACT_ROWBLOCK") else {
-                return RowBlock::Auto;
-            };
+    env_once!(
+        RowBlock,
+        "TENSORCONTRACT_ROWBLOCK",
+        RowBlock::Auto,
+        |v: &str| {
             let v = v.trim().to_ascii_lowercase();
             match v.as_str() {
                 "auto" => RowBlock::Auto,
@@ -971,12 +954,8 @@ fn row_block_override() -> RowBlock {
                     }
                 }
             }
-        })
-    }
-    #[cfg(not(feature = "std"))]
-    {
-        RowBlock::Auto
-    }
+        }
+    )
 }
 
 /// The depth below which a contraction is bandwidth-bound enough for the
@@ -1057,17 +1036,17 @@ enum PartitionMode {
 /// once per process; for measurement only, and none of it affects correctness —
 /// every partition gives bitwise identical results.
 fn partition_override() -> PartitionMode {
-    #[cfg(feature = "std")]
-    {
-        use std::sync::OnceLock;
-        static ENV: OnceLock<PartitionMode> = OnceLock::new();
-        *ENV.get_or_init(|| {
-            // Unset means the domain-aware rule (D44). `legacy` is how the
-            // pre-2026-08-04 behaviour is asked for by name, and it is what every
-            // threaded number committed before that date was measured with.
-            let Ok(v) = std::env::var("TENSORCONTRACT_PARTITION") else {
-                return PartitionMode::Domain;
-            };
+    // Unset means the domain-aware rule (D44), on both arms of the `std` cfg --
+    // `env_once!` names the default once so they cannot drift. It returned the
+    // legacy rule without `std` until 0.1.0, which silently gave such a build the
+    // pre-D44 partition. `legacy` is how the pre-2026-08-04 behaviour is asked
+    // for by name, and it is what every threaded number committed before that
+    // date was measured with.
+    env_once!(
+        PartitionMode,
+        "TENSORCONTRACT_PARTITION",
+        PartitionMode::Domain,
+        |v: &str| {
             let v = v.trim().to_ascii_lowercase();
             match v.as_str() {
                 "m" | "rows" | "1d" => PartitionMode::Rows,
@@ -1082,20 +1061,8 @@ fn partition_override() -> PartitionMode {
                     None => PartitionMode::Rule,
                 },
             }
-        })
-    }
-    #[cfg(not(feature = "std"))]
-    {
-        // The same default as the `std` arm, which is the point: without `std`
-        // there is no environment to read, so this must be what *unset* means,
-        // not what `legacy` means. It returned `Rule` until 0.1.0, which silently
-        // gave a no-`std` build the pre-D44 partition rule -- a real behavioural
-        // divergence, reachable by any such build calling `Plan::with_threads`.
-        // `orient_override` and `row_block_override` both already agree across
-        // the two arms. `cache::l3_domains`, which `Domain` consults, has a
-        // working no-`std` path (CPUID, then the built-in descriptors).
-        PartitionMode::Domain
-    }
+        }
+    )
 }
 
 /// `TENSORCONTRACT_THREADS=<n>` sets the default thread count. Read once per
@@ -1107,22 +1074,11 @@ fn partition_override() -> PartitionMode {
 /// is asked for a configuration without a plan — one definition of the default,
 /// rather than two readers of one variable.
 pub(crate) fn env_threads() -> usize {
-    #[cfg(feature = "std")]
-    {
-        use std::sync::OnceLock;
-        static ENV: OnceLock<usize> = OnceLock::new();
-        *ENV.get_or_init(|| {
-            std::env::var("TENSORCONTRACT_THREADS")
-                .ok()
-                .and_then(|v| v.trim().parse::<usize>().ok())
-                .unwrap_or(1)
-                .max(1)
-        })
-    }
-    #[cfg(not(feature = "std"))]
-    {
-        1
-    }
+    env_once!(usize, "TENSORCONTRACT_THREADS", 1, |v: &str| v
+        .trim()
+        .parse::<usize>()
+        .unwrap_or(1)
+        .max(1))
 }
 
 /// Collapse repeated labels within one tensor onto its diagonal, validating
