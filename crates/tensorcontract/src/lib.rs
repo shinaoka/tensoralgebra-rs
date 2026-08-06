@@ -1,4 +1,4 @@
-//! Transpose-free dense tensor contraction with planar-complex packing.
+//! Dense tensor contraction, computed in place over the operands' own strides.
 //!
 //! This crate computes
 //!
@@ -6,88 +6,32 @@
 //! D[idx_D] = alpha * op_A(A[idx_A]) * op_B(B[idx_B]) + beta * op_C(C[idx_C])
 //! ```
 //!
-//! for dense, generally-strided tensors, without ever materialising a
-//! transposed copy of an operand. It follows the block-scatter-matrix
-//! algorithm of Matthews (arXiv:1607.00291) — a tensor contraction is a GEMM
-//! over a scatter memory layout — inside BLIS's five-loop, two-level-packing
-//! structure.
+//! for dense, generally-strided tensors of any rank, **without materialising a
+//! transposed copy of an operand and without allocating a workspace.** Index
+//! labels say what contracts with what; the engine works out the rest.
 //!
-//! # What is different here
+//! # Quick start
 //!
-//! Complex contraction can be induced from real arithmetic in more than one
-//! way, and this crate implements **three interchangeable methods** so they can
-//! be measured against each other on genuinely equal footing — same index
-//! analysis, same scatter machinery, same five-loop driver, same write-back
-//! scatter. Only packing, the micro-kernel and the tile recombination differ.
-//!
-//! | [`ComplexMethod`] | packing | kernel | note |
-//! |---|---|---|---|
-//! | `Planar` (default) | split real/imaginary planes, 2 reals per element | fused complex | smallest packed A, no in-register shuffles |
-//! | `OneM` | BLIS "1e" for A (4 reals per element), "1r" for B | plain real | what BLIS and TBLIS 2.x use |
-//! | `ThreeM` | real, imaginary and sum planes, 3 reals per element | Karatsuba | 25% fewer flops, weaker error bound |
-//!
-//! Select per plan with [`Plan::with_complex_method`], or globally with the
-//! `TENSORCONTRACT_COMPLEX` environment variable (`planar` | `1m` | `3m`).
-//! See [`kernel`] for the packed formats and the micro-kernel contract.
-//!
-//! # What is API, and what it promises
-//!
-//! The public surface is deliberately in three tiers, because they carry very
-//! different promises:
-//!
-//! 1. **The contraction API** — [`contract`], [`Plan`], [`Layout`],
-//!    [`TensorView`], [`TensorViewMut`], [`Element`], [`Error`], the per-plan
-//!    choices [`Plan::with_complex_method`], [`Plan::with_threads`],
-//!    [`Plan::with_blocking`], and the batched entry points
-//!    [`batch::contract_batched`] / [`batch::BatchItem`]. Ordinary semver: a
-//!    breaking change here needs a major version.
-//! 2. **Introspection of the engine's own decisions** — [`PlanStats`],
-//!    [`plan::Scatters`], [`Plan::transposes_gemm`], [`Plan::row_block`],
-//!    [`Plan::partition`], [`Plan::partition_with`],
-//!    [`kernel::selected_config`], [`kernel::cache`] and
-//!    friends. The *signatures* are semver-stable, and they exist so that a
-//!    benchmark harness or an alternative execution strategy can describe
-//!    exactly what this engine would do. The *values* are tuning outputs and
-//!    will change whenever a heuristic is re-measured; that is not a breaking
-//!    change, and no caller should encode one of these answers as a constant.
-//! 3. **`#[doc(hidden)]` internals**, which are public only because sibling
-//!    crates in this workspace need them. They are outside the semver
-//!    guarantee entirely and may change or vanish without a major bump. Today
-//!    that is `kernel::x86` alone — the SIMD kernels, whose register-block
-//!    menus are re-measured per machine. It has no page here, which is the
-//!    point.
-//!
-//! [`kernel::scalar`] sits in tier 1 by intent: it is the documented route by
-//! which a foreign scalar type gets a correct, unvectorised engine.
-//!
-//! # Where the numbers come from
-//!
-//! Several tuning heuristics below cite a path — `docs/results.md`,
-//! `docs/notebook/`, `bench-results/…`, `scripts/…`. Those are in the
-//! **[repository]**, not in this crate's published package: every performance
-//! claim this project makes has committed raw data behind it, and the citation
-//! names the file rather than asking you to take the number on trust.
-//!
-//! [`docs/results.md`][results] is the one to start from. It says what is
-//! measured, on which machine, and — the part that matters for a tier-2 value —
-//! what is *not* claimed.
-//!
-//! [repository]: https://github.com/lkdvos/tensorprimitives-rs
-//! [results]: https://github.com/lkdvos/tensorprimitives-rs/blob/main/docs/results.md
-//!
-//! # Example
+//! A contraction is three layouts, three label lists, and a call. Labels are
+//! matched by equality across the operands, so a label appearing in `A`, `B`
+//! and `D` alike is a *batch* index — something no single matrix multiply
+//! expresses:
 //!
 //! ```
 //! use tensorcontract::{contract, parse_einsum, Layout, TensorView, TensorViewMut};
 //!
-//! // D[i,j] = sum_k A[i,k] * B[k,j]
-//! let (ia, ib, id) = parse_einsum("ik,kj->ij").unwrap();
-//! let la = Layout::col_major(&[2, 3]);
-//! let lb = Layout::col_major(&[3, 2]);
-//! let ld = Layout::col_major(&[2, 2]);
-//! let a = vec![1.0f64, 2.0, 3.0, 4.0, 5.0, 6.0];
-//! let b = vec![1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0];
-//! let mut d = vec![0.0f64; 4];
+//! // D[h,i,j] = sum_k A[h,i,k] * B[h,k,j]   — `h` batches, `k` contracts.
+//! let (ia, ib, id) = parse_einsum("hik,hkj->hij").unwrap();
+//! let (la, lb, ld) = (
+//!     Layout::col_major(&[2, 2, 2]),
+//!     Layout::col_major(&[2, 2, 2]),
+//!     Layout::col_major(&[2, 2, 2]),
+//! );
+//!
+//! let a: Vec<f64> = (1..=8).map(|x| x as f64).collect();
+//! // B is the 2x2 identity in (k, j) for each h, so D comes back equal to A.
+//! let b = vec![1.0f64, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0];
+//! let mut d = vec![0.0f64; 8];
 //!
 //! contract(
 //!     1.0,
@@ -98,8 +42,256 @@
 //!     TensorViewMut::new(&mut d, &ld, &id),
 //! )
 //! .unwrap();
-//! assert_eq!(d, vec![1.0, 2.0, 3.0, 4.0]);
+//! assert_eq!(d, a);
 //! ```
+//!
+//! # Expressing a contraction
+//!
+//! An operand is three independent things, which is why no reshaping or
+//! copying is ever needed to hand one over:
+//!
+//! * a [`Layout`] — extents and strides, **in elements**, where a stride may be
+//!   negative (walks backwards) or zero (reads one element repeatedly);
+//! * an `idx` list of one `i64` label per mode, in layout order. Labels are
+//!   arbitrary integers compared by equality; [`parse_einsum`] and
+//!   [`einsum_labels`] build them from strings for convenience only;
+//! * the data, as a slice ([`TensorView`], [`TensorViewMut`]) or a raw pointer
+//!   ([`Plan::run_raw`]).
+//!
+//! Where a label appears decides what it does, and that is the whole of the
+//! interface:
+//!
+//! | label appears in | role |
+//! |---|---|
+//! | `A` and `D` | free index of `A` — rows of the underlying GEMM |
+//! | `B` and `D` | free index of `B` — columns |
+//! | `A` and `B` | contracted (summed over) |
+//! | `A`, `B` and `D` | batch / Hadamard index |
+//! | `A` only, or `B` only | reduction — summed over, needing no workspace |
+//! | twice within one operand | that operand's diagonal |
+//! | `D` only | rejected: [`Error::BroadcastIndexUnsupported`] |
+//!
+//! [`plan`] documents how these classes are derived, folded and ordered.
+//!
+//! # What is supported
+//!
+//! | | |
+//! |---|---|
+//! | element types | `f32`, `f64`, [`C32`], [`C64`] — see [`element`] |
+//! | operand ranks | any, including rank 0 |
+//! | strides | general, including negative and zero |
+//! | contraction, batch indices | yes |
+//! | diagonals (a label twice in one operand) | yes |
+//! | reductions (a label in one input only) | yes, with no temporary |
+//! | conjugation on any operand | yes — free, folded into packing |
+//! | mixed element types across operands | no: one element type per contraction |
+//! | output-only labels (broadcast) | no, rejected rather than guessed at |
+//!
+//! The vocabulary is [TAPP][tapp]'s, whose "cases 1–5" this table covers in
+//! order; the C ABI itself lives in the sibling `tensorprimitives-tapp` crate.
+//! Anything rejected is rejected while *planning*, so a [`Plan`] that exists
+//! will run — see [`error`].
+//!
+//! # Complex arithmetic
+//!
+//! Complex contraction has to be induced from real arithmetic, and there is
+//! more than one way to do it. Three are implemented, sharing every other line
+//! of the engine — the same index analysis, scatter machinery, five-loop driver
+//! and write-back — and differing only in what packing emits, what the
+//! micro-kernel computes, and how the accumulator is read back:
+//!
+//! | [`ComplexMethod`] | packed reals per element (A / B) | kernel | trade |
+//! |---|---|---|---|
+//! | `Planar` (default) | 2 / 2 | fused complex | smallest packed `A`, no in-register shuffles |
+//! | `OneM` | 4 / 2 | one real GEMM | Van Zee's 1m ([1m][onem]); no complex kernel needed |
+//! | `ThreeM` | 3 / 3 | Karatsuba | 25% fewer flops, weaker error bound, more traffic |
+//!
+//! **Planar is the default and is the one to use absent a reason.** The
+//! deciding quantity between them is bytes moved per useful flop rather than
+//! flop count, so `ThreeM`'s arithmetic saving does not reliably pay; which
+//! method wins beyond that depends on the machine, and this crate quotes no
+//! ranking it has not measured on the machine in question.
+//!
+//! ```
+//! use tensorcontract::{kernel::ComplexMethod, parse_einsum, Layout, Operand};
+//! use tensorcontract::{Plan, TensorView, TensorViewMut, C64};
+//!
+//! // D[i,j] = sum_k conj(A[i,k]) * B[k,j], with B the identity.
+//! let (ia, ib, id) = parse_einsum("ik,kj->ij").unwrap();
+//! let l = Layout::col_major(&[2, 2]);
+//!
+//! // Conjugation belongs to the *plan*, not to the data handed to `run`.
+//! let plan = Plan::new(
+//!     Operand::new(&l, &ia).conj(),
+//!     Operand::new(&l, &ib),
+//!     None,
+//!     Operand::new(&l, &id),
+//! )
+//! .unwrap()
+//! .with_complex_method(ComplexMethod::Planar);
+//!
+//! let a = vec![C64::new(1.0, 2.0), C64::new(3.0, 4.0),
+//!              C64::new(5.0, 6.0), C64::new(7.0, 8.0)];
+//! let b = vec![C64::new(1.0, 0.0), C64::new(0.0, 0.0),
+//!              C64::new(0.0, 0.0), C64::new(1.0, 0.0)];
+//! let mut d = vec![C64::new(0.0, 0.0); 4];
+//!
+//! plan.run(
+//!     C64::new(1.0, 0.0),
+//!     TensorView::new(&a, &l, &ia),          // conjugation costs nothing
+//!     TensorView::new(&b, &l, &ib),
+//!     C64::new(0.0, 0.0),
+//!     None,
+//!     TensorViewMut::new(&mut d, &l, &id),
+//! )
+//! .unwrap();
+//! assert_eq!(d, a.iter().map(|z| z.conj()).collect::<Vec<_>>());
+//! ```
+//!
+//! [`kernel`] has the packed panel formats, the micro-kernel contract, and the
+//! environment override that selects a method process-wide.
+//!
+//! # Performance
+//!
+//! **Reuse a [`Plan`] across contractions of the same shape.** Planning is
+//! `O(M + N + K)` — it builds the scatter vectors — which is not negligible for
+//! small tensors. [`contract`] is the convenience form that plans and discards;
+//! for anything in a loop, plan once:
+//!
+//! ```
+//! use tensorcontract::{parse_einsum, Layout, Operand, Plan, TensorView, TensorViewMut};
+//!
+//! let (ia, ib, id) = parse_einsum("ik,kj->ij").unwrap();
+//! let l = Layout::col_major(&[2, 2]);
+//! let plan = Plan::new(
+//!     Operand::new(&l, &ia),
+//!     Operand::new(&l, &ib),
+//!     None,
+//!     Operand::new(&l, &id),
+//! )
+//! .unwrap();
+//!
+//! let identity = vec![1.0f64, 0.0, 0.0, 1.0];
+//! for a in [vec![1.0f64, 2.0, 3.0, 4.0], vec![5.0f64, 6.0, 7.0, 8.0]] {
+//!     let mut d = vec![0.0f64; 4];
+//!     plan.run(
+//!         1.0,
+//!         TensorView::new(&a, &l, &ia),
+//!         TensorView::new(&identity, &l, &ib),
+//!         0.0,
+//!         None,
+//!         TensorViewMut::new(&mut d, &l, &id),
+//!     )
+//!     .unwrap();
+//!     assert_eq!(d, a);       // same plan, different data
+//! }
+//! ```
+//!
+//! **Threading is off by default** — one thread unless [`Plan::with_threads`]
+//! asks otherwise. A library should not decide how many cores its caller has,
+//! and thread spawn is tens of microseconds, which dominates a small
+//! contraction outright. Any thread count gives bitwise the same result.
+//!
+#![cfg_attr(
+    feature = "std",
+    doc = "**Many small contractions are a batch, not a loop.** \
+[`batch::contract_batched`] parallelises over independent items, paying one set \
+of spawns for the whole batch instead of one per contraction — which is the \
+regime where per-call threading loses."
+)]
+//!
+//! Cache blocking, the register block and the row/column orientation are all
+//! derived per machine and per element type; [`Plan::with_blocking`] overrides
+//! them. What has actually been measured, on which machine, and what is
+//! explicitly *not* claimed, is recorded in [`docs/results.md`][results] in the
+//! [repository] — no performance number is restated here.
+//!
+//! # Algorithm
+//!
+//! A tensor contraction becomes a matrix multiplication once the operands are
+//! addressed through **scatter vectors**: group the labels into classes,
+//! linearise each class as a mixed-radix multi-index, and precompute
+//! `rscat[i] = sum_l i_l * stride_l`. Matrix element `(i, j)` then lives at
+//! `base + rscat[i] + cscat[j]`, and no transposition is needed because the
+//! traversal, not the data, is what changes. The refinement that makes it fast
+//! is the **block** scatter vector: for each aligned run of `MR` entries,
+//! record whether they form an arithmetic progression, and if so pack that
+//! block with ordinary strided loads instead of a gather.
+//!
+//! That matrix multiply then runs in BLIS's five-loop nest with two levels of
+//! packing — `NC` on the columns, `KC` on the contraction, `MC` on the rows,
+//! an L3-resident packed `B` and an L2-resident packed `A`, and a
+//! register-blocked micro-kernel at the bottom. The only tensor-specific
+//! change is that packing and write-back read through the scatter vectors.
+//!
+//! This is the block-scatter-matrix algorithm of [Matthews][bsmtc]. See
+//! [`scatter`] for the vectors themselves, [`plan`] for the index analysis
+//! that produces them, and [`kernel`] for the packed formats and blocking.
+//!
+//! # Where to read next
+//!
+//! | module | what it covers |
+//! |---|---|
+//! | (root) | [`contract`], [`Plan`], [`TensorView`] — the everyday API |
+//! | [`plan`] | index analysis: label classes, folding, diagonals, reductions |
+//! | [`layout`] | extents and general strides |
+//! | [`element`] | `f32`/`f64`/[`C32`]/[`C64`], and the real-scalar boundary |
+//! | [`kernel`] | complex methods, packed formats, micro-kernel contract, cache blocking |
+//! | [`scatter`] | scatter and block-scatter vectors — the core data structure |
+//! | [`error`] | what a rejected contraction reports, and why |
+//! | [`reference`][mod@reference] | a naive oracle for tests; never the fast path |
+#![cfg_attr(
+    feature = "std",
+    doc = "| [`batch`] | many independent contractions, batch as the parallel axis |"
+)]
+//!
+//! # Stability
+//!
+//! The public surface is in three tiers, carrying different promises:
+//!
+//! 1. **The contraction API** — [`contract`], [`Plan`], [`Layout`],
+//!    [`TensorView`], [`TensorViewMut`], [`Element`], [`Error`] and the
+//!    per-plan choices. Ordinary semver. [`kernel::scalar`] is here by intent:
+//!    it is the documented route by which a foreign scalar type gets a correct,
+//!    unvectorised engine.
+//! 2. **Introspection of the engine's own decisions** — [`PlanStats`],
+//!    [`plan::Scatters`], [`Plan::transposes_gemm`], [`Plan::row_block`],
+//!    [`Plan::partition`], [`kernel::selected_config`], [`kernel::cache`] and
+//!    friends. The *signatures* are semver-stable. The *values* are tuning
+//!    outputs and change whenever a heuristic is re-measured; that is not a
+//!    breaking change, and **no caller should encode one of these answers as a
+//!    constant.**
+//! 3. **`#[doc(hidden)]` internals**, public only because sibling crates in this
+//!    workspace need them, and outside the semver guarantee entirely:
+//!    `kernel::x86` and `kernel::aarch64`, the SIMD kernels, whose
+//!    register-block menus are re-measured per machine. They have no page
+//!    here, which is the point.
+//!
+//! # References
+//!
+//! * D. A. Matthews, *High-Performance Tensor Contraction without
+//!   Transposition*, SIAM J. Sci. Comput. 40(1), 2018 — [arXiv:1607.00291][bsmtc].
+//!   The block-scatter-matrix algorithm this engine implements.
+//! * *Tensor Algebra Processing Primitives* — [arXiv:2601.07827][tapp] and the
+//!   [reference implementation][tappref]. The strided data model above mirrors
+//!   its `TAPP_tensor_info`, and the case vocabulary is its own.
+//! * F. G. Van Zee, *Implementing High-Performance Complex Matrix
+//!   Multiplication via the 1m Method*, SIAM J. Sci. Comput. 42(5), 2020 —
+//!   [1m][onem]; and Van Zee & Smith, *Implementing High-Performance Complex
+//!   Matrix Multiplication via the 3m and 4m Methods*, ACM TOMS 44(1), 2017 —
+//!   [3m/4m][threem]. `OneM` and `ThreeM` are theirs.
+//! * F. G. Van Zee & R. A. van de Geijn, *BLIS: A Framework for Rapidly
+//!   Instantiating BLAS Functionality*, ACM TOMS 41(3), 2015 — [BLIS][blis].
+//!   The five-loop, two-level-packing structure.
+//!
+//! [bsmtc]: https://arxiv.org/abs/1607.00291
+//! [tapp]: https://arxiv.org/abs/2601.07827
+//! [tappref]: https://github.com/TAPPorg/reference-implementation
+//! [onem]: https://doi.org/10.1137/19M1282040
+//! [threem]: https://doi.org/10.1145/3086466
+//! [blis]: https://doi.org/10.1145/2764454
+//! [repository]: https://github.com/lkdvos/tensorprimitives-rs
+//! [results]: https://github.com/lkdvos/tensorprimitives-rs/blob/main/docs/results.md
 
 #![warn(missing_docs)]
 
@@ -177,6 +369,9 @@ pub struct TensorView<'a, T> {
     /// [`parse_einsum`] and [`einsum_labels`] produce them from strings.
     pub idx: &'a [i64],
     /// Element-wise operation applied while reading. Set by [`TensorView::conj`].
+    ///
+    /// Read by [`contract`], which builds a plan from these views. It is *not*
+    /// read by [`Plan::run`], where the plan's own [`Operand`] carries it.
     pub op: ElementOp,
 }
 
@@ -276,6 +471,13 @@ impl Plan {
     ///
     /// The slices are bounds-checked against the plan's scatter vectors before
     /// any unsafe access, so this entry point is safe.
+    ///
+    /// Only the `data` of each view is read here. **The views' [`ElementOp`]s
+    /// are ignored**, because conjugation is recorded in the plan and reaches
+    /// the packing routines from there — see [`Operand::conj`]. A view built
+    /// with [`TensorView::conj`] and run against a plan whose `A` was not
+    /// conjugated computes the unconjugated contraction. [`contract`] does not
+    /// have this pitfall: it derives the plan from the same views it executes.
     pub fn run<T>(
         &self,
         alpha: T,

@@ -34,8 +34,10 @@ rand_chacha = "0.3"
 [package.metadata.docs.rs]
 # Document every feature, so `std`-gated items are not silently missing.
 all-features = true
-# One target on purpose. The vectorised micro-kernels are x86 only (`kernel::x86`
-# is `#[cfg(target_arch = ...)]`), so this is the target whose documentation
-# describes the whole crate; anywhere else the docs would show only the scalar
-# path and quietly look like a different library.
+# One target on purpose, and no longer for the reason first recorded here. The
+# original rationale was that the vectorised kernels were x86 only, so x86 was
+# the one target whose documentation showed the whole crate; the NEON kernels in
+# `kernel::aarch64` ended that, and no single target shows both ISA modules now.
+# What makes the choice moot is that both are `#[doc(hidden)]`, so neither
+# renders on any target and the doc-visible surface is target-independent.
 targets = ["x86_64-unknown-linux-gnu"]

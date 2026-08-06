@@ -1,4 +1,23 @@
 //! Error type.
+//!
+//! Everything here describes a contraction that was rejected while being
+//! *planned*, which is the only place this crate reports failure. The variants
+//! fall into four groups:
+//!
+//! * **the description is internally inconsistent** — [`Error::RankMismatch`],
+//!   [`Error::LabelCountMismatch`], [`Error::ExtentMismatch`],
+//!   [`Error::NegativeExtent`], [`Error::OutputLabelMismatch`];
+//! * **the contraction is well formed but out of scope** —
+//!   [`Error::BroadcastIndexUnsupported`] (a label only in the output) and
+//!   [`Error::UnsupportedDatatype`];
+//! * **the shape cannot be addressed at all** —
+//!   [`Error::ExtentProductOverflow`];
+//! * **the data does not back the shape** — [`Error::NullPointer`], the one
+//!   variant raised by [`crate::Plan::run`] rather than by
+//!   [`crate::Plan::new`], because slice lengths are not known until then.
+//!
+//! Consequently a [`crate::Plan`] that exists is a plan that will run: there is
+//! no execution-time failure mode left once the data has been bounds-checked.
 
 use core::fmt;
 

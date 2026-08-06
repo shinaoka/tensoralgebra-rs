@@ -28,6 +28,17 @@
 //! with [`crate::Plan::oriented_scatters`] and
 //! [`crate::kernel::plan_config`], which give the vectors and the block sizes
 //! actually used.
+//!
+//! # Forcing the gather path
+//!
+//! Both packing and the output write-back take the regular path when the block
+//! scatter permits it. Setting `TENSORCONTRACT_WRITEBACK=gather` makes the
+//! write-back use the general scatter loop unconditionally, disabling the
+//! block-scatter row addressing and the `alpha = 1, beta = 0` copy along with
+//! it. Results are unaffected — this exists so the fast path is an A/B switch at
+//! run time rather than a rebuild, in the same spirit as
+//! `TENSORCONTRACT_KERNEL=scalar` (see [`crate::kernel`]). Read once per
+//! process.
 
 /// Sentinel stored in a block-scatter vector for a block whose scatter entries
 /// are *not* an arithmetic progression.
