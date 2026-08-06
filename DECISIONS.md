@@ -1810,8 +1810,9 @@ and the shipped 256 is close to it.
 **Conclusion for item 2: the blocking on the reference machine is already near
 optimal, and there is no few-percent win available from `MC`/`KC`/`NC`.** That is a
 negative result, it closes the item for this machine class, and it is worth more than
-the wrong default it prevented. `TENSORCONTRACT_DEEPEN` stays as an off-by-default
-switch documenting the experiment rather than a pending change.
+the wrong default it prevented. `TENSORCONTRACT_DEEPEN` stayed for a while as an
+off-by-default switch documenting the experiment; it was **removed before 0.1.0**,
+and `REFUTED.md` plus `bench-results/ab-deepen/` is the record.
 
 **Caveat, stated because it is the honest limit of this run.** The machine was not
 quiet: every arm shows 6–14 co-tenants in its L3 domain and the load varied between

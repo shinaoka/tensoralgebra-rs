@@ -94,8 +94,14 @@ replicate.
 A/B.** Both grids' `base` arm was 1–2% slow, which inflated every `arm/base`
 ratio in both grids *identically*, so the two-machine agreement was a shared
 artefact rather than a replication. Control-corrected, the treatment is ≈0.977.
-The switch survives as an off-by-default record of the experiment, not as a
-pending improvement.
+
+**The switch is gone.** It survived for a while as an off-by-default record of
+the experiment; it was **removed before 0.1.0**, because a refuted branch in a
+published crate is a maintenance cost and a reader's false lead, and this entry
+plus the committed data is the record. The last commit that contains it is the
+parent of the one that removed it — `git log -S TENSORCONTRACT_DEEPEN` finds
+both. Nothing about the result changes; the code implementing it does not need
+to ship for the finding to stand.
 
 **Confidence.** `measured once` for the refutation (one end-to-end A/B on the
 reference machine, floor derived in session), `settled` for the conclusion that
@@ -750,7 +756,7 @@ recovered a correct answer; `measured once` as a number.
 
 **Rule.** **Put every new fast path behind an environment switch** so both arms
 interleave in one process-restart A/B. That is why
-`TENSORCONTRACT_{ORIENT,WRITEBACK,ROWBLOCK,PARTITION,DEEPEN,BLOCKMODEL,KERNEL}`
+`TENSORCONTRACT_{ORIENT,WRITEBACK,ROWBLOCK,PARTITION,POOL,BLOCKMODEL,KERNEL}`
 exist, and adding one is part of adding a fast path.
 
 **What would reopen it.** Nothing.

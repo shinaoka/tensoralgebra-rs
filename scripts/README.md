@@ -135,7 +135,7 @@ the way they do:
   measured at 8 MiB that vanishes at 64 and 200 MiB has already been published
   here once and withdrawn.
 * **Prefer a runtime switch to a rebuild** (A15), so both arms interleave in one
-  session. `TENSORCONTRACT_ORIENT`, `_ROWBLOCK`, `_WRITEBACK`, `_DEEPEN`,
+  session. `TENSORCONTRACT_ORIENT`, `_ROWBLOCK`, `_WRITEBACK`, `_POOL`,
   `_PARTITION` exist for exactly this. A build-to-build diff already produced one
   wrong sign.
 * **Do not place traffic-changing arms concurrently** (A27). One arm per L3

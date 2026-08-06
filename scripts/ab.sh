@@ -3,8 +3,8 @@
 #
 #   scripts/ab.sh OUTDIR "ENV=VAL [ENV=VAL ...]" [cpu] [size_mib] [reps] [filter]
 #
-# e.g. the pending coupled-deepening A/B (part 7):
-#   scripts/ab.sh bench-results/ab-deepen "TENSORCONTRACT_DEEPEN=on"
+# e.g. the row-block A/B that D43 made reachable:
+#   scripts/ab.sh bench-results/ab-rowblock-idx3 "TENSORCONTRACT_ROWBLOCK=idx=3"
 #
 # `scripts/phase4-remeasure.sh` is the same pattern with its B arm hardcoded to the
 # write-back experiment; its output is committed and cited, so it is left alone and
@@ -33,7 +33,7 @@ set -e
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 OUT=${1:?usage: scripts/ab.sh OUTDIR \"ENV=VAL ...\" [cpu] [size] [reps] [filter]}
-BENV=${2:?give the B arm as environment assignments, e.g. \"TENSORCONTRACT_DEEPEN=on\"}
+BENV=${2:?give the B arm as environment assignments, e.g. \"TENSORCONTRACT_POOL=on\"}
 CPU=${3:-4}
 SIZE=${4:-64}
 REPS=${5:-3}

@@ -188,13 +188,18 @@ jobs:
       - run: cargo test --workspace --release
         env:
           TENSORCONTRACT_BLOCKMODEL: model
-      # Coupled deepening. Off by default pending an end-to-end A/B, which makes
-      # this the only thing that would enter the branch at all: it changes `kc`
-      # *and* re-derives `mc`/`nc`, so it moves every cache-blocking boundary at
-      # once, and the suite has tests that deliberately straddle those.
+      # The thread pool. Off by default and topology-conditional -- it is worth
+      # up to 11.6x on Zen2 and up to 2.5x *slower* on Ice Lake -- so it is not
+      # a default candidate, but it is the most concurrency-heavy code in the
+      # crate: a hand-rolled parked-thread pool with a Condvar broadcast, two
+      # `unsafe impl Send`/`Sync`, and the crate's only `transmute`. Nothing
+      # else in CI enters it. `THREADS` is load-bearing here, not decoration:
+      # the pool is consulted only on the threaded path, so a bare `POOL=on`
+      # arm would test nothing.
       - run: cargo test --workspace --release
         env:
-          TENSORCONTRACT_DEEPEN: "on"
+          TENSORCONTRACT_THREADS: 4
+          TENSORCONTRACT_POOL: "on"
 
   # Feature combinations of the published crate. Nothing else checks either end
   # of the range.
