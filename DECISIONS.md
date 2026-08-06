@@ -28,8 +28,12 @@ refutation gets an entry in `REFUTED.md` in the same commit as the measurement.
 ## Resume here
 
 **State, 2026-08-06.** Tests green (9 suites), `clippy --workspace --all-targets`
-silent, `fmt` clean. Workspace MSRV 1.89. Two lines of work are open and they are
-independent; the Apple one is the live one.
+silent, `fmt` clean, `cargo doc` clean under `-D warnings` on both aarch64 and
+x86 (it was not, until this session). Workspace MSRV 1.89. Two lines of work are
+open and they are independent. **The Apple line reached its conclusion today** —
+Stages A and B are complete and the NEON kernel is measured at 1.840 — so what
+is left there is one corpus session, and the x86 line's open question is the
+larger one.
 
 ### START HERE if you are picking up the Apple Silicon work
 
@@ -4906,10 +4910,13 @@ shapes, 64 MiB, reps 3, one thread — geomean GF/s:
 **Quote those, and quote them with their size.** A separate probe — one case
 (`ij-ik-kj`), `--size 8`, reps 1 — read engine 25.9, OpenBLAS-TTGT 54.5, TBLIS
 2.0-dev 55.8 in `f64`, i.e. **0.46x of TBLIS**. That number is real but it is one
-case at one size, and **the corpus sweep that would confirm it at 64 MiB was not
-run** (see "Resume here"). A46 exists because a one-shot small-size run produced a
-1.68x that vanished at the published size; do not let 0.46 become the headline
-until a 64 MiB sweep says so.
+case at one size.
+
+> **Superseded on the same day — do not quote 0.46.** Part 22 supplies the 64
+> MiB TBLIS number this paragraph said was missing: over 12 shapes the scalar
+> path is **0.54** of TBLIS 2.0-dev, and the NEON path is **1.00**. Direction
+> right, magnitude 17% off, which is exactly the check A46 asks for and exactly
+> why this figure was labelled provisional rather than promoted.
 
 **The mechanism is one instruction, not a missing kernel.** The disassembly of
 `kernel::scalar::real_ukr` on this target shows LLVM *does* vectorise it: eight

@@ -9,8 +9,11 @@ The portable path on Apple Silicon, and the first non-x86 measurement here.
   date    : 2026-08-06
   script  : scripts/macos-session.sh prep|bench, size 64, reps 3
   engine  : kernel::scalar at MR x NR = 4 x 4 real / 2 x 4 complex.
-            THERE IS NO NEON KERNEL. `TENSORCONTRACT_KERNEL` is a no-op here.
-  full    : DECISIONS.md part 20
+            The arms in THIS directory predate the NEON kernel, so they are
+            portable-path measurements and TENSORCONTRACT_KERNEL was a no-op
+            when they were taken. A NEON kernel exists as of the same day; see
+            kernel-shapes*.txt here and the neon-ab/ subdirectory.
+  full    : DECISIONS.md parts 20, 21; neon-ab/ is part 22
 
 WHAT THIS DATA IS GOOD FOR
 
@@ -33,7 +36,8 @@ WHAT IT CANNOT SUPPORT, AND THIS IS NOT BOILERPLATE
   * **No number here may be compared with a number from another machine.**
     Different architecture as well as a different hierarchy.
   * **Nothing here is evidence about Apple Silicon as hardware.** It is evidence
-    about the portable path on Apple Silicon. The two differ by about 2x (A58).
+    about the portable path on Apple Silicon. The two differ by 1.840, measured
+    (neon-ab/), which A58 had predicted at ~2x.
 
 THE ACCELERATE FILE IS NOT A ROOFLINE. DO NOT MERGE IT WITH THE OPENBLAS ONE.
 
@@ -86,9 +90,11 @@ HEADLINE NUMBERS — AND EACH ONE COMES WITH ITS SIZE
 
   PROVISIONAL, AND LABELLED: a separate probe -- one case (ij-ik-kj), --size 8,
   reps 1 -- read engine 25.9, OpenBLAS-TTGT 54.5, TBLIS 2.0-dev 55.8 in f64,
-  i.e. 0.46x of TBLIS. It is one case at one size and there is no TBLIS number
-  at 64 MiB, because the TBLIS sweep did not run. Do not promote 0.46 to the
-  headline until a 64 MiB sweep says so.
+  i.e. 0.46x of TBLIS. It is one case at one size.
+
+  SUPERSEDED THE SAME DAY -- DO NOT QUOTE 0.46. neon-ab/ supplies the 64 MiB
+  TBLIS number: over 12 premise shapes the scalar path is 0.54 of TBLIS 2.0-dev
+  and the NEON path is 1.00. Direction right, magnitude 17% off.
 
   Complex methods, premise geomean over 12 cases, c64, 64 MiB:
 
@@ -100,8 +106,9 @@ HEADLINE NUMBERS — AND EACH ONE COMES WITH ITS SIZE
   crippled kernel, not about the machine: with no FMA the kernel is
   instruction-throughput-bound, so 3m's 25% saving in products is a saving in
   the binding resource, and the bytes-per-useful-flop accounting that decides it
-  on x86 is not what binds. EXPECT THIS TO MOVE once a NEON FMA kernel exists.
-  See A59. In f64 all three methods read 19.84 exactly, because they select the
+  on x86 is not what binds. IT WAS EXPECTED TO MOVE once a NEON FMA kernel
+  existed, and it did -- but only from 1.226 to 1.135, and 3m still wins
+  (neon-ab/, part 22). See A59. In f64 all three methods read 19.84 exactly, because they select the
   same real kernel — a control on the harness, not a coincidence.
 
 STRUCTURAL

@@ -31,17 +31,18 @@ compared with each other and with TBLIS on equal footing.
 
 ## Current state
 
-**As of 2026-08-05.** Tests green (9 suites), `cargo clippy --workspace
+**As of 2026-08-06.** Tests green (9 suites), `cargo clippy --workspace
 --all-targets` silent, `fmt` clean, everything builds warning-free. Workspace
 MSRV **1.89** (AVX-512 intrinsics stabilised there).
 
-**Apple Silicon work is live, and it is where the last session stopped.** Stage A
-is complete and committed (`DECISIONS.md` part 20). **Stage B — the NEON
-micro-kernel — is built, green, and its register blocks are measured** (part 21);
-what remains is the end-to-end A/B and a Stage A corpus session that was cut
-short and left this machine with **no noise floor**. `DECISIONS.md` → "Resume
-here" → "START HERE if you are picking up the Apple Silicon work" has the exact
-state and the ordered next steps.
+**Apple Silicon Stages A and B are both complete** (`DECISIONS.md` parts 20, 21,
+22). The NEON micro-kernel is built and green, its register blocks are measured
+with a floor, and the end-to-end A/B puts it at **1.840** — enough that the
+engine reaches **1.00x TBLIS 2.0-dev** in `f64` and **1.12x** in `c64` with 3m on
+that machine. One thing is still owed there: the Stage A corpus session was cut
+short, so there is **no `ragged` arm and no per-case corpus spread**.
+`DECISIONS.md` → "Resume here" → "START HERE if you are picking up the Apple
+Silicon work" has the exact state and the ordered next steps.
 
 | phase | state |
 |---|---|
@@ -83,10 +84,11 @@ Five things that decide what you may say and do:
   shapes at 64 MiB. LLVM vectorises `kernel::scalar` to NEON unasked but cannot
   contract `acc += a * b` into `fmla`, so it spends two instructions per
   multiply-accumulate, which halves its ceiling; it then reaches 80% of that.
-  The NEON kernel buys back that one instruction form and its register blocks
-  are measured (part 21) — but **what it is worth end to end is the open Apple
-  question**, and until that A/B has run the only evidence is a one-case
-  `--size 8` probe reading ~1.9x, which A46 is exactly about. **Do not quote any
+  The NEON kernel buys back that one instruction form, and **measured end to end
+  it is worth 1.840** with a ±1% floor (part 22), reaching 81.4% of the *full*
+  ceiling — same efficiency, twice the ceiling. On that machine 3m is the fastest
+  complex method (1.135x planar) and is the arm that passes TBLIS, which scopes
+  "3m is not a candidate default" to x86. **Do not quote any
   Apple number as a pinned measurement** — Darwin has no CPU affinity API, so
   none of them is one — and **do not quote Accelerate as a roofline**: its GEMM
   reaches Apple's AMX coprocessor at 5.2x the NEON FMA peak, so OpenBLAS is the
