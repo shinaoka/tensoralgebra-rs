@@ -60,6 +60,21 @@
 //! [`kernel::scalar`] sits in tier 1 by intent: it is the documented route by
 //! which a foreign scalar type gets a correct, unvectorised engine.
 //!
+//! # Where the numbers come from
+//!
+//! Several tuning heuristics below cite a path — `docs/results.md`,
+//! `docs/notebook/`, `bench-results/…`, `scripts/…`. Those are in the
+//! **[repository]**, not in this crate's published package: every performance
+//! claim this project makes has committed raw data behind it, and the citation
+//! names the file rather than asking you to take the number on trust.
+//!
+//! [`docs/results.md`][results] is the one to start from. It says what is
+//! measured, on which machine, and — the part that matters for a tier-2 value —
+//! what is *not* claimed.
+//!
+//! [repository]: https://github.com/lkdvos/tensorprimitives-rs
+//! [results]: https://github.com/lkdvos/tensorprimitives-rs/blob/main/docs/results.md
+//!
 //! # Example
 //!
 //! ```

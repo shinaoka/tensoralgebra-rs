@@ -835,8 +835,10 @@ pub extern "C" fn TAPP_implementation_name() -> *const c_char {
 /// `<tapp.h>`: those describe the header a caller compiled against, this
 /// describes the library it actually linked. When a distribution ships the two
 /// separately — a JLL, a system package, an `LD_PRELOAD` — they can disagree,
-/// and without this there is no way to find out. `examples/c-consumer` compares
-/// them and fails if they differ.
+/// and without this there is no way to find out. The [C consumer example] in the
+/// repository compares them and fails if they differ.
+///
+/// [C consumer example]: https://github.com/lkdvos/tensorprimitives-rs/tree/main/examples/c-consumer
 #[no_mangle]
 pub extern "C" fn TAPP_implementation_version() -> *const c_char {
     // `c"..."` cannot interpolate, so the NUL is appended by hand.
