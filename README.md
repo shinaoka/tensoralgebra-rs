@@ -2,7 +2,7 @@
 
 A native-Rust, transpose-free dense tensor contraction engine with **three
 interchangeable complex methods** (planar, 1m, 3m) behind one switch, plus a
-systematic benchmark of complex-vs-real tensor contraction across TBLIS, TTGT
+systematic benchmark of complex-vs-real tensor contraction against TBLIS, TTGT
 and a vendor GEMM ceiling.
 
 ```
@@ -13,396 +13,28 @@ No transposed copies, no temporary workspace, no FFI in the hot path. The
 algorithm is Matthews' block-scatter-matrix tensor contraction
 (arXiv:1607.00291) inside BLIS's five-loop, two-level-packing structure.
 
-> **Status: prerelease.** The engine is correct, vectorised, and benchmarked
-> against TBLIS on three machines. Tuning is a different matter, and the section
-> on [what is and is not tuned](#what-is-tuned-and-what-is-not) says exactly
-> which claims are measured, on which microarchitecture, and which are not
-> claimed at all. The API may still change.
->
-> What you get today, by hardware:
->
-> | | micro-kernels | tuned? |
-> |---|---|---|
-> | x86-64 with AVX-512F | AVX-512, per method | register blocks **measured on Cascade Lake**, and they do not transfer — an Ice Lake machine runs three of the eight shipped shapes 9–13% off its own optimum. Cache blocking is fitted to the same Cascade Lake workstation and has now been swept: it is near optimal there |
-> | x86-64 with AVX2+FMA | AVX2, per method | register blocks **measured on Zen2**, and all eight shipped shapes were confirmed as the winners |
-> | anything else | portable scalar | correct; slow by design |
->
-> Threading and an analytical cache-blocking model are implemented and **off by
-> default**, and both have now been measured — see [Switches](#switches).
-> Threading reaches 10.6x (`f64`) and 15.3x (`c64` 3m) on 32 Ice Lake cores and
-> 7.5–7.9x on 64 Zen2 cores. It is off for a *measured* reason: below about a
-> megabyte, 64 threads run **1.2–10x slower than serial**, because threads are
-> spawned per call rather than pooled, and the optimal thread count walks 4 → 64
-> across the size range — so a fixed default would be wrong at every size but one.
-> Three opt-in answers to that exist (a thread pool, a thread-count amortisation
-> guard, and a batched entry point that parallelises over the batch instead); all
-> three are off or inert by default and **none has been A/B'd end to end yet**.
-> The blocking model is off because it was measured and **lost**, on the first
-> machine it was meant to help. Turning any of them on is one call or one
-> environment variable, and results are bitwise identical either way.
->
-> The project's original thesis — that complex contraction is where existing
-> engines leave the most on the table, because interleaved storage compounds
-> with scatter/gather — did not survive the Phase 1 premise check. The observed
-> weakness is real against the *released* TBLIS but has a much more mundane
-> cause, and is already fixed in TBLIS 2.0. See the headline finding below and
-> [`docs/`](docs/README.md) for the data.
-
-## Headline finding
-
-**Which TBLIS you measure changes the answer by a factor of five.**
-
-Efficiency here is contraction GF/s divided by same-shape vendor GEMM GF/s.
-Because a complex MAC is exactly four real FMAs, the achievable GF/s ceiling is
-the same in both domains (measured: `dgemm` 96 GF/s, `zgemm` 96 GF/s), so the
-number below — **each engine's own complex efficiency divided by its own real
-efficiency** — is 1.0 when that engine treats complex data as well as it treats
-real data. Single-core, Xeon Gold 6244, 12 TCCG contractions:
-
-| | complex ÷ real efficiency, **within the same engine** |
-|---|---|
-| **TBLIS v1.3.0** — latest *stable* release | **0.215** |
-| TBLIS 2.0-dev | **1.06** |
-| TBLIS 2.0-dev, irregular strides forced | **1.03** |
-| TBLIS 2.0-dev, f32→c32 | **1.15** |
-| TTGT (OpenBLAS) | **1.17** |
-
-**This is not a speed comparison between engines, and it must not be read as
-one.** An engine can score well by being uniformly bad. TTGT has the *highest*
-ratio in the table and is by a wide margin the *slowest* of the three: on those
-same 12 cases its median `c64` throughput is 17.4 GF/s against TBLIS 2.0's 42.4.
-Its ratio is high because its **real** path is worse still — 6.8 GF/s median in
-`f64`, where the transpose-transpose-GEMM-transpose overhead dominates a small
-GEMM — and complex, with twice the arithmetic intensity, amortises that overhead
-better. That is the same mechanism as everywhere else in this project, and here
-it produces a flattering ratio for the slowest engine. The ratio answers exactly
-one question: *is complex penalised relative to real, in this engine?*
-
-Against the released TBLIS, complex tensor contraction really is roughly **5x
-less efficient** than real. But the cause is not the subtle one usually
-proposed (interleaved storage compounding with scatter/gather). The diagnostic:
-v1.3.0's complex throughput is nearly **flat across shapes** — 4.1 to 9.1 GF/s,
-a 2.2x spread — while its real throughput spans 6.2 to 48.4 GF/s. A
-memory-bound effect would track shape; a flat ceiling means one fixed kernel is
-the bottleneck.
-
-`src/configs/*/config.hpp` in v1.3.0 confirms it. `TBLIS_CONFIG_GEMM_UKR` takes
-`(float, double, scomplex, dcomplex)`, and **Sandy Bridge is the only
-configuration that fills the complex slots**. On Haswell, Zen, Skylake-X and
-KNL, TBLIS 1.x runs complex on the generic templated fallback while real gets
-hand-tuned BLIS assembly. At TBLIS's own register blocks, which divide the
-corpus's multiples of 24, block scatter is regular (`regA = 1.00`) in every case
-measured, so the gather path is not what separates the two. That is a statement
-about TBLIS's blocks, not about the corpus: at this engine's `f32`/`c32` blocks
-the same cases are irregular 42.9% of the time.
-
-TBLIS 2.0 fixes this by adopting BLIS as its core framework, which brings the
-1m induced method. Complex immediately regains full shape sensitivity
-(11.2–82.9 GF/s, matching real) and reaches parity or better. So the
-opportunity is real in the wild today, already closed upstream, and not
-evidence for any algorithmic claim.
-
-Complex is not intrinsically disadvantaged: it does 4x the flops on 2x the
-bytes, i.e. **twice the arithmetic intensity**, so packing and indexing
-overheads amortise better. Once a real complex kernel exists, the memory-bound
-shapes where complex was predicted to be worst are where it looks best.
-
-The remaining headroom is **low arithmetic intensity in either domain**: TBLIS
-2.0's efficiency against the GEMM ceiling ranges from 0.85 on large
-compute-bound contractions down to **0.34** on small-`k` skinny ones.
-
-For orientation, since the table above deliberately says nothing about it: on
-those same 12 cases, measured in the same run, median `c64` throughput was
-**42.5 GF/s for this engine, 42.4 for TBLIS 2.0-dev and 17.4 for TTGT**; in
-`f64`, 30.7 / 21.8 / 6.8. Twelve cases are not the corpus and these predate the
-Phase 4 work, so the 49-case numbers below are the ones to quote — but parity
-with TBLIS 2.0 on complex is roughly where this engine sits.
-
-A methodological note worth carrying forward: the standard TCCG corpus rounds
-every stride-1 extent up to a multiple of 24. That is regular only at a register
-block which *divides* 24 — true of the blocks TBLIS uses in the comparison above,
-and **not** true of this engine's `f32`/`c32` blocks (`MR` 16, 32, 48), where
-`reg_a` falls below 1.0 on **43%** of case-dtype-methods at the 64 MiB size used
-here — a ninth of them *entirely*, the rest at one block in three, nine or
-twenty-seven. So the corpus does exercise the gather path here, periodically. Two
-qualifiers travel with that number: the fraction moves with the tensor size,
-because the extents do, and it is 11.7% on an AVX2 machine, where `MR = 8` for
-`f64` does divide 24. What the corpus cannot produce is *aperiodic* irregularity,
-which is what the `--stress ragged` / `--stress padded` modes added here are for.
-Any claim about awkward strides needs one of them named.
-
-## Performance, and what is actually measured
-
-Single core, **Intel Ice Lake-SP, AVX-512** (2 x 32 cores, SMT off; 48 KiB
-12-way L1d, 1280 KiB 20-way L2 per core, 48 MiB L3 per socket — the geometry the
-engine itself probed), full 49-case
-TCCG corpus at 64 MiB nominal tensor size, planar method, GF/s counting 2 flops
-per real MAC and 8 per complex one. **Measured 2026-08-04/05** on an exclusive
-cluster node, against **TBLIS 2.0-dev** (`develop` @ `555320c`) and **TBLIS
-v1.3.0** in the same runs. Raw CSVs and provenance in
-[`bench-results/worker6156-icelake/`](bench-results/README.md):
-
-| dtype | min | median | geomean | max |
-|---|---|---|---|---|
-| `f32` | 11.0 | 74.8 | 77.2 | **168.8** |
-| `f64` | 7.1 | 44.7 | 43.7 | **71.6** |
-| `c32` | 25.5 | 121.0 | 113.9 | **179.3** |
-| `c64` | 15.7 | 62.0 | 63.3 | **91.1** |
-
-The corpus deliberately spans compute-bound and badly memory-bound contractions,
-which is why min and max differ by an order of magnitude; the worst cases are
-memory-bound for every engine measured, TBLIS included.
-
-**How well this is known.** The whole set was run **twice**, in separate
-allocations three hours apart, and the two runs agree across all twenty
-dtype × engine columns to **0.997–1.003**. Within each run, a repeat arm 2.5 h
-from its original reproduces it to 0.998–1.001 with **0 of 980** case points
-outside ±6%. A discarded warm-up arm precedes everything, and every arm records
-occupancy for its whole L3 domain — all of them came back with no co-tenants.
-
-**Against the baselines**, median over the 12-case premise set at 200 MiB, same
-run, same core, everything single-threaded:
-
-| dtype | this engine | TBLIS 2.0-dev | TTGT (OpenBLAS) | engine ÷ TBLIS 2.0 |
-|---|---|---|---|---|
-| `f64` | 46.5 | 30.8 | 14.0 | **1.51x** |
-| `c64` | 64.0 | 48.8 | 25.9 | **1.31x** |
-| `f32` | 81.1 | 45.6 | 25.9 | **1.78x** |
-| `c32` | 123.2 | 88.3 | 49.2 | **1.40x** |
-
-Over the full 49-case corpus the engine is 1.95–2.20x TTGT in every dtype.
-
-> **What these numbers are not.** They are Ice Lake, and the previous set was
-> Cascade Lake, so **the difference between them is not the improvement the
-> optimisation work bought.** Two different things changed at once. The Phase 4
-> gains are real and separately measured — the write-back orientation fix is
-> +12–17% of corpus geometric mean in all four dtypes on the reference machine,
-> the orientation rule up to 1.48x per case — but attributing any part of the
-> table above to them would be wrong. Nothing in this repo permits comparing a
-> number from one machine with a number from another.
->
-> The engine is also **handicapped** in this table: its register blocks were
-> chosen on Cascade Lake and three of the eight are 9–13% off on Ice Lake, and its
-> complex-method ranking does not transfer here either. It wins these columns
-> while running shapes picked for a different microarchitecture.
-
-**The counterintuitive part, and the project's main technical result:** complex
-throughput is *higher* than real on the same shapes — 62.0 against 44.7 GF/s in
-double, 121.0 against 74.8 in single, at the median. A complex MAC is four real
-FMAs on twice the bytes, so complex contraction has **twice the arithmetic
-intensity** and amortises packing and indexing overhead better. Complex is not
-the weak spot; low arithmetic intensity is, in either domain. This is a
-within-run ratio, so it holds where the absolute numbers are not comparable: it
-came out 1.449 (`c64`/`f64`) and 1.474 (`c32`/`f32`) here, against 1.416 and
-1.432 on Cascade Lake — the same result on two microarchitectures.
-
-**On the three methods, and this changed.** Planar wins the corpus geometric mean
-in both precisions on both AVX-512 machines measured. But the *ordering below it*
-and the much-quoted inversion on memory-bound shapes are **Cascade Lake results
-that do not transfer.** On Cascade Lake 3m was the fastest of the three on
-memory-bound shapes, where its 25% flop saving pays; on Ice Lake 3m is last in
-every column, wins 0 of 49 cases, and sits at 0.694 (`c64`) and 0.744 (`c32`)
-against planar where Cascade Lake had it at 0.956 and 0.921.
-
-That was initially recorded as confounded with the wrong register blocks above.
-It is not: 3m ships the same shape the Ice Lake kernel sweep names as 3m's *own*
-best, in both precisions, so there is no better shape to give it, and the collapse
-is uniform across 3m's entire shape space. Even at the L1-resident depth where 3m's
-flop saving is supposed to pay, it leads planar by 10–16% on Cascade Lake and
-trails by 34–43% on Ice Lake. So the *accounting* behind the mechanism holds — 3
-products against 4, 3 planes against 2 — but the claim that the saving pays in a
-nameable regime does not, and **neither the ranking nor the inversion is a property
-of the engine.** On AVX2 the kernel-level ordering differs again, putting 3m first
-in `f32`/`c32`; that is a kernel measurement with panels packed and hot, not a
-corpus ranking, and the corpus-level AVX2 comparison has not been made.
-
-## What is tuned, and what is not
-
-The most useful thing measurement established here is where the tuning stops.
-
-**Register blocks are per-microarchitecture, not per-ISA** — which was assumed
-the other way round, and dispatch still selects them by instruction set alone.
-Cascade Lake and Ice Lake, same ISA and same 32 registers, disagree by up to 13%
-on three of the eight shipped shapes, each machine preferring the other's loser
-by about 9%. Ice Lake's 48 KiB 12-way L1d accommodates an accumulator footprint
-Cascade Lake's 32 KiB 8-way does not. So on any Ice Lake machine this engine
-currently runs a `real` kernel 9.2% off its own optimum. The AVX-512 blocks are
-measured on Cascade Lake, the AVX2 blocks on Zen2 — where all eight were
-confirmed as the winners — and neither set is a claim about anything else.
-
-**Cache blocking is fitted to the reference machine, and swept.** `KC` is
-first-order: it decides whether the `A` sliver is an L1 resident or an L2 stream,
-which is what the whole complex-method ranking turns on. But there is no
-few-percent win left in `MC`/`KC`/`NC` there — `kc = 384` is the measured optimum
-and the shipped 256 is close to it, `MC` is a plateau a sixteenfold range moves
-by at most 3%, and a deeper coupled setting that looked like +3% on two machines
-failed its end-to-end A/B. That item is closed, on evidence. It says nothing
-about a machine with a different hierarchy.
-
-**The analytical blocking model is off by default because it lost**, not because
-it is unmeasured. It was built to solve exactly the portability problem above,
-and on the first unseen machine it was worse in 11 of 12 columns by up to 7.2%.
-On the reference machine it costs 14–34%. Its `kc` sinks it on one machine and
-its `mc` on the other, so both halves of the derivation are wrong — in different
-places. The probing and the cache descriptors it introduced are worth having and
-are still used; the default is not changing.
-
-**Threading is off by default, and not for lack of data.** Scaling is measured on
-two topologies and is strongly topology-dependent: Zen2 saturates by 16–32 threads
-and declines at 64, while Ice Lake reaches 10.6x (`f64`) and 15.3x (`c64` 3m) on
-32 cores and is still climbing.
-
-One thing has been fixed and one is still missing. Fixed: `Plan::partition` now
-knows how many L3 domains the thread set spans, and gating its early return on
-that — rather than removing it — is the default
-(`TENSORCONTRACT_PARTITION=domain`). That is worth **1.13 corpus geometric mean
-at 64 Zen2 threads** and provably changes nothing on a machine with one L3 per
-socket. Still costing: **threads are spawned per call rather than pooled by default**, at
-~20–36 µs per thread, which is the whole story below ~1 MiB — there 64 threads run
-**1.2–10x slower than serial**, and the optimal thread count walks 4 → 8 → 16 → 32
-→ 64 across 0.25 → 64 MiB. That is why the default is 1 rather than a fixed
-non-1 number: a fixed default is wrong at every size but one. Above ~1 MiB the
-curve saturates on a bandwidth ceiling instead, which is benign.
-
-**A thread pool helps enormously on one machine and hurts on another**, which is the
-current honest state. `TENSORCONTRACT_POOL=on` reuses parked threads instead of
-spawning per call: on 64 Zen2 cores it is worth up to **11.6x** at 0.25 MiB and
-2.0–2.8x at 16 MiB, and on 32 Ice Lake cores sharing one 48 MiB L3 it is up to **2.5x
-slower**. It stays off. The suspected reason is that reusing a thread reuses its
-allocator arena, so every worker gets the same packed buffer address back each call
-and 32 of them contend in a single cache — a pool is an allocation-locality change,
-not only a thread-lifetime one — but that is a candidate, not a finding. A thread-count
-*amortisation guard* was also built and **is not shipped** either: it rescues an
-over-threaded caller while costing a correctly-threaded one 10–39%, and on top of the
-pool it is pure loss. `batch::contract_batched` pays one spawn set per batch instead of
-one per contraction and is **not yet measured**.
-
-Results are bitwise identical at every thread count and every partition, so none
-of this is ever a correctness or accuracy decision.
-
-**One known defect, stated because it ships.** In `planar` `f32`/`c32` the
-register block is `32x6`, where the Phase 3 sweep's own output names `32x5` as
-**7.8% faster** at the operating `kc`. The shipped shape appears to have been
-picked by a bytes-per-flop model over the measurement sitting next to it.
-
-It is not fixed here — but it *is* now testable, which it was not when it was
-found. The row-block menu was keyed by `MR`, and `32x5` shares its `MR` with the
-shipped `32x6`, so the menu could not express an `NR`-only alternate and no
-runtime switch could reach it. Re-keying the menu by position fixed that:
-`TENSORCONTRACT_ROWBLOCK=idx=3` selects `32x5` end to end. It stays unfixed on
-purpose, because a kernel margin is not a corpus margin — `NR` also changes the
-`jr` loop count and the packed sliver geometry — so the corpus effect has to be
-measured before the default moves. It was found inside committed raw output months
-after the fact, at no machine cost, which is the argument for committing raw
-output.
-
-**Not measured, and so not claimed:** absolute throughput on the Cascade Lake
-reference machine *since the Phase 4 work landed* — the table above is Ice Lake,
-and the newest Cascade Lake sweep predates every Phase 4 gain, so **what that work
-bought end to end is unmeasured**; the corpus-level method ranking on AVX2;
-anything on non-x86 hardware.
-
-**Ideas already measured and refuted** are catalogued in
-[`docs/refuted.md`](docs/refuted.md), one entry each with its evidence and what would reopen
-it. It is the fastest way to find out whether an obvious-looking optimisation here
-has already lost.
-
-## Switches
-
-Every performance-relevant choice is reachable at run time, so an A/B is a
-process restart rather than a rebuild. None of them changes results.
-
-| variable | effect |
-|---|---|
-| `TENSORCONTRACT_COMPLEX` | `planar` \| `1m` \| `3m` — the complex method |
-| `TENSORCONTRACT_THREADS` | thread count, default **1**. Results are bitwise identical at any count, so this is never a correctness or accuracy decision. Off by default for the two reasons under [what is tuned](#what-is-tuned-and-what-is-not), and because it keeps every committed single-core number reproducible |
-| `TENSORCONTRACT_KERNEL` | `auto` (default) \| `scalar` \| `avx2` \| `avx512` — pin the instruction set. A pinned ISA the CPU lacks falls back to scalar, so `avx2` is how the AVX2 kernels get exercised on an AVX-512 machine |
-| `TENSORCONTRACT_BLOCKMODEL` | `legacy` (default) \| `model` — derive cache blocking from probed cache descriptors instead of hardcoded constants. Measured on a foreign machine and **worse in 11 of 12 columns**, so `legacy` is the default on evidence |
-| `TENSORCONTRACT_PARTITION` | `domain` (default) \| `legacy` — which rule apportions the threads over the output. `domain` gates the "row axis fills the threads, so use it" shortcut on how many L3 domains the thread set spans. Measured: it changes **nothing at all** on a machine with one L3 per socket (the identical partition on 392 of 392 corpus cases) and is worth **1.13 geometric mean over the corpus at 64 threads** on a chiplet machine — 1.43 over the 144 cases it actually moves, and 2.1–2.4 on the memory-bound `abcijk` family in the real dtypes. Those are per-family geometric means, which is the only granularity a 64-thread measurement supports. Single-threaded callers never reach it. `legacy` is the ungated rule; `m`, `n` and `<pm>x<pn>` pin the partition outright, for A/B measurement |
-| `TENSORCONTRACT_POOL` | `on` — reuse parked threads instead of spawning per call. **Measured on two machine classes and it does not transfer**: up to 11.6x on 64 Zen2 cores (0.25 MiB), up to **2.5x slower** on 32 Ice Lake cores sharing one L3. Off by default, and not a default candidate until that is understood |
-
-Plus the levers that exist so a fast path can be A/B-tested at run time rather
-than as a diff between two builds — `TENSORCONTRACT_ORIENT` (`none` | `swap` |
-`legacy`, the row/column orientation), `_ROWBLOCK` (`base` | `auto` | `mr=<n>` |
-`idx=<i>`, the micro-tile row block — `idx=3` reaches the `32x5` shape the known
-defect above is about), `_WRITEBACK` (`gather` forces the general scatter path),
-and `_MC`/`_KC`/`_NC` with their `_MC_PCT`/`_NC_PCT`/`_KC_COUPLE` relatives for
-cache blocking. None of them affects correctness; they exist for measurement, and
-a build-to-build diff already produced one wrong sign here.
-
-`Plan::with_complex_method`, `Plan::with_threads` and `Plan::with_blocking` are
-the programmatic equivalents, and take precedence.
-
-### Many small contractions
-
-If you have a batch of independent contractions rather than one big one, the batch
-is the right parallel axis: `batch::contract_batched` pays **one** spawn set for the
-whole batch instead of one per contraction, and each item runs serially inside.
-Every item's bounds are checked before any item runs, so a batch containing one bad
-item writes to no output at all — which a loop over `Plan::run` cannot give you, and
-is a reason to prefer it even at one thread.
-
-```rust
-use tensorcontract::batch::{contract_batched, BatchItem};
-
-let mut items: Vec<BatchItem<'_, f64>> = /* one per contraction */ vec![];
-contract_batched(&mut items)?;
-```
-
-Threading partitions the *output* — row strips of micro-panels by column groups,
-never the contraction index — so every output element has exactly one owning
-thread accumulating over the full contraction in the original order. That is why
-the result is bitwise identical to serial at every thread count, and it is
-asserted in the test suite rather than assumed.
-
-## Three complex methods, one engine
-
-Complex contraction can be induced from real arithmetic in several ways, and
-which one wins depends on shape, element type and machine. Rather than pick
-one, the engine implements three and lets you switch:
-
-| `ComplexMethod` | A / B reals per complex elt | FMAs per k per tile | accumulator planes |
-|---|---|---|---|
-| `Planar` (default) | 2 / 2 | `4*MR*NR` | 2 |
-| `OneM` — BLIS's 1m, what TBLIS 2.x uses | **4** / 2 | `4*MR*NR` | 2 (as `2*MR x NR` real) |
-| `ThreeM` — Karatsuba | 3 / 3 | **`3*MR*NR`** | 3 |
-
-```rust
-let plan = Plan::new(a, b, None, d)?.with_complex_method(ComplexMethod::ThreeM);
-```
-```bash
-TENSORCONTRACT_COMPLEX=1m ./target/release/tcbench sweep --dtype c64
-./target/release/tcbench premise --engines planar,1m,3m --dtype f64,c64
-```
-
-The three share the *entire* engine — index analysis, scatter machinery,
-five-loop driver, write-back scatter. `driver.rs` contains no branch on the
-method; everything a method changes is declared on the `Ukr` it selects
-(`a_pack`, `b_pack`, `tile_fmt` and the sliver widths). Cache blocking is
-derived from the reals a method actually packs, not from `size_of::<Element>()`,
-so 1m automatically gets a smaller `MC` and every method sees the same L2
-budget — otherwise the comparison would be quietly rigged.
-
-`ThreeM` trades accuracy for its 25% flop saving: its error bound is relative to
-`|Ar||Br| + |Ai||Bi|` rather than the complex magnitudes, so it can lose
-relative accuracy under cancellation. It is opt-in for that reason, and the
-test suite gives it a correspondingly looser tolerance rather than hiding it.
-
-## Layout
-
 | crate | what |
 |---|---|
-| `crates/tensorcontract` | the contraction engine: data model, index analysis, scatter/block-scatter, packing, micro-kernels, five-loop driver, brute-force oracle |
-| `crates/tensortranspose` | dedicated transpose kernels — **planned, not yet written** |
-| `crates/tensorprimitives-tapp` | TAPP C-ABI front end (`lib` / `cdylib` / `staticlib`) |
-| `crates/tensorprimitives-bench` | `tcbench`: correctness and performance harness, TCCG corpus, TBLIS and TTGT baselines |
-| `julia/TensorPrimitives` | Julia wrapper over the TAPP surface, including a `TensorOperations.jl` backend |
-| `packaging/yggdrasil` | the BinaryBuilder recipe that produces `tensorprimitives_tapp_jll` |
+| [`tensorcontract`](crates/tensorcontract) | the contraction engine |
+| [`tensorprimitives-tapp`](crates/tensorprimitives-tapp) | TAPP C-ABI front end (`lib` / `cdylib` / `staticlib`) |
+| [`tensorprimitives-bench`](crates/tensorprimitives-bench) | `tcbench`: the correctness and benchmark harness (not published) |
+| [`julia/TensorPrimitives`](julia/TensorPrimitives) | Julia wrapper, with a `TensorOperations.jl` backend |
 
-`tensorprimitives` is the project and the repository, not a crate: with one
-primitive implemented, a facade re-exporting it would be indirection rather than
-abstraction, and it can be added later without breaking anyone. Depend on the
+`tensorprimitives` is the project and the repository, not a crate. Depend on the
 operation crate you need.
+
+> **Status: prerelease.** The engine is correct, vectorised on x86-64, and
+> benchmarked against TBLIS on three machines. The API may still change.
+>
+> **Tuning is per-microarchitecture**, and the honest account of what is measured
+> — on which machine, and what is not claimed at all — is
+> [`docs/results.md`](docs/results.md). Register blocks are measured on Cascade
+> Lake (AVX-512) and Zen2 (AVX2); on other hardware they are reasonable, not
+> optimal. Threading and an analytical cache-blocking model are implemented and
+> **off by default**, both for measured reasons.
+>
+> Anything without AVX-512 or AVX2 runs a portable scalar path: correct, and slow
+> by design.
 
 ## Usage
 
@@ -429,27 +61,114 @@ contract(
 
 Build a `Plan` once and reuse it for repeated contractions of the same shape.
 Operands may be conjugated (`.conj()`), strides may be negative or zero, labels
-may repeat within a tensor (diagonals), and indices present in only one input
-are summed over.
+may repeat within a tensor (diagonals), and indices present in only one input are
+summed over.
 
-Supported element types: `f32`, `f64`, `Complex<f32>`, `Complex<f64>`. Any
-other real scalar type — extended precision, dual numbers for forward-mode AD —
-works by implementing `kernel::KernelSet` with the provided generic scalar
-kernels.
+Supported element types: `f32`, `f64`, `Complex<f32>`, `Complex<f64>`. Any other
+real scalar type — extended precision, dual numbers for forward-mode AD — works
+by implementing `kernel::KernelSet`; `kernel::scalar` is a worked example.
+
+### Many small contractions
+
+If you have a batch of independent contractions rather than one big one, the
+batch is the right parallel axis: `batch::contract_batched` pays **one** spawn
+set for the whole batch instead of one per contraction, and each item runs
+serially inside. Every item's bounds are checked before any item runs, so a batch
+containing one bad item writes to no output at all — which a loop over
+`Plan::run` cannot give you, and a reason to prefer it even at one thread.
+
+```rust
+use tensorcontract::batch::{contract_batched, BatchItem};
+
+let mut items: Vec<BatchItem<'_, f64>> = /* one per contraction */ vec![];
+contract_batched(&mut items)?;
+```
+
+## Three complex methods, one engine
+
+Complex contraction can be induced from real arithmetic in several ways, and
+which one wins depends on shape, element type and machine. Rather than pick one,
+the engine implements three and lets you switch:
+
+| `ComplexMethod` | A / B reals per complex elt | FMAs per k per tile | accumulator planes |
+|---|---|---|---|
+| `Planar` (default) | 2 / 2 | `4*MR*NR` | 2 |
+| `OneM` — BLIS's 1m, what TBLIS 2.x uses | **4** / 2 | `4*MR*NR` | 2 (as `2*MR x NR` real) |
+| `ThreeM` — Karatsuba | 3 / 3 | **`3*MR*NR`** | 3 |
+
+```rust
+let plan = Plan::new(a, b, None, d)?.with_complex_method(ComplexMethod::ThreeM);
+```
+
+The three share the *entire* engine — index analysis, scatter machinery,
+five-loop driver, write-back scatter. `driver.rs` contains no branch on the
+method; everything a method changes is declared on the `Ukr` it selects. Cache
+blocking is derived from the reals a method actually packs, not from
+`size_of::<Element>()`, so 1m automatically gets a smaller `MC` and every method
+sees the same L2 budget — otherwise the comparison would be quietly rigged.
+
+`ThreeM` trades accuracy for its 25% flop saving: its error bound is relative to
+`|Ar||Br| + |Ai||Bi|` rather than the complex magnitudes, so it can lose relative
+accuracy under cancellation. It is opt-in for that reason, and the test suite
+gives it a correspondingly looser tolerance rather than hiding it.
+
+**Which is fastest is not a property of the engine.** Planar wins the corpus on
+both AVX-512 machines measured; everything below that changes with the
+microarchitecture. See [`docs/results.md`](docs/results.md) before quoting a
+ranking.
+
+## Performance
+
+**This README quotes no throughput numbers, on purpose.** Every number this
+project has is machine-specific, and the two comparable sets were taken on
+different microarchitectures — so what the optimisation work bought end to end is
+still unmeasured. Publishing a headline figure without that context is the exact
+mistake the measurement rules here exist to prevent.
+
+[`docs/results.md`](docs/results.md) has the numbers, each with its machine, its
+date, its noise floor and its raw data — and says plainly what is *not* claimed.
+[`docs/refuted.md`](docs/refuted.md) has the ideas that were measured and lost,
+each with what would reopen it; it is the fastest way to find out whether an
+obvious-looking optimisation here has already failed.
+
+## Switches
+
+Every performance-relevant choice is reachable at run time, so an A/B is a
+process restart rather than a rebuild. **None of them changes results** — output
+is bitwise identical across all of them.
+
+| variable | effect |
+|---|---|
+| `TENSORCONTRACT_COMPLEX` | `planar` (default) \| `1m` \| `3m` — the complex method |
+| `TENSORCONTRACT_THREADS` | thread count, default **1**. Bitwise identical at any count, so never a correctness or accuracy decision |
+| `TENSORCONTRACT_KERNEL` | `auto` (default) \| `scalar` \| `avx2` \| `avx512` — pin the instruction set. A pinned ISA the CPU lacks falls back to scalar |
+| `TENSORCONTRACT_PARTITION` | `domain` (default) \| `legacy` — which rule apportions threads over the output; or `m` \| `n` \| `<pm>x<pn>` to pin it |
+| `TENSORCONTRACT_POOL` | `on` — reuse parked threads instead of spawning per call. Off by default: measured on two machine classes, and it does not transfer |
+| `TENSORCONTRACT_BLOCKMODEL` | `legacy` (default) \| `model` — cache blocking from probed cache descriptors instead of hardcoded constants. `legacy` is the default on evidence |
+| `TENSORCONTRACT_ORIENT` | `none` \| `swap` \| `legacy` — pin the row/column orientation |
+| `TENSORCONTRACT_ROWBLOCK` | `base` \| `auto` \| `mr=<n>` \| `idx=<i>` — pin the micro-tile row block |
+| `TENSORCONTRACT_WRITEBACK` | `gather` — force the general scatter write-back |
+| `TENSORCONTRACT_MC` / `_KC` / `_NC` | override cache blocking, with `_MC_PCT` / `_NC_PCT` / `_KC_COUPLE` relatives |
+
+Why each default is what it is, and what it cost to find out, is in
+[`docs/results.md`](docs/results.md). `Plan::with_complex_method`,
+`Plan::with_threads` and `Plan::with_blocking` are the programmatic equivalents
+and take precedence.
 
 ## TAPP
 
 `crates/tensorprimitives-tapp` implements the C interface of
 [TAPP](https://github.com/TAPPorg/reference-implementation) (arXiv:2601.07827),
 so this engine is swappable with TBLIS and cuTENSOR behind one header. Covered:
-datatypes `F32`/`F64`/`C32`/`C64`, conjugation on any operand, and TAPP cases
-1–4 (contraction, Hadamard/batch indices, repeated indices, isolated input
-indices). Case 5 (output broadcasting) is rejected, as TAPP permits.
+datatypes `F32`/`F64`/`C32`/`C64`, conjugation on any operand, and TAPP cases 1–4
+(contraction, Hadamard/batch indices, repeated indices, isolated input indices).
+Case 5 (output broadcasting) is rejected, as TAPP permits.
 
-Note: despite the TAPP paper's claim, TBLIS `develop` (v2.0) has no in-tree
-TAPP support, so the benchmark drives it through `tblis_tensor_mult` directly.
+Note that despite the TAPP paper's claim, TBLIS `develop` (v2.0) has **no
+in-tree TAPP support**, so the benchmark drives it through `tblis_tensor_mult`
+directly.
 
-Also note a silent ABI break between TBLIS releases: `type_t` swaps
+Note also a silent ABI break between TBLIS releases: `type_t` swaps
 `TYPE_DOUBLE` and `TYPE_SCOMPLEX` between 1.3 and 2.0, so mixing headers and
 libraries yields plausible wrong numbers with no error. Select the ABI with the
 `tblis13` cargo feature; the harness self-checks at startup and aborts on
@@ -457,12 +176,11 @@ mismatch.
 
 ### From C or C++
 
-The header is shipped rather than fetched — `crates/tensorprimitives-tapp/include/tapp.h`
-versions with the implementation, because upstream TAPP has no releases and no
-tags. `examples/c-consumer` is a CMake project that consumes it three ways
-(corrosion, a prebuilt library, an installed prefix), and CI compiles and runs all
-three. `examples/c-consumer/README.md` has the details, including the link flags
-cargo will not set for you.
+The header is shipped rather than fetched —
+`crates/tensorprimitives-tapp/include/tapp.h` versions with the implementation,
+because upstream TAPP has no releases and no tags. `examples/c-consumer` is a
+CMake project that consumes it three ways (corrosion, a prebuilt library, an
+installed prefix), and CI compiles and runs all three.
 
 ```bash
 cargo build --release -p tensorprimitives-tapp
@@ -481,78 +199,20 @@ one keyword:
 @tensor backend = TAPPBackend() C[i, j] := conj(A[i, k, l]) * B[l, k, j]
 ```
 
-Neither it nor its JLL is registered yet. `packaging/yggdrasil/build_tarballs.jl`
-builds the JLL and `julia/TensorPrimitives/README.md` says how to run it locally.
+Neither it nor its JLL is registered yet.
 
-## Running the benchmarks
+## Documentation
 
-```bash
-# One-time: build the TBLIS baseline (see scripts/env.sh for the exact recipe)
-export TBLIS_ROOT=/path/to/tblis-install
-source scripts/env.sh
-
-cargo build --release -p tensorprimitives-bench --features tblis,blas
-
-# correctness: whole corpus vs TBLIS and TTGT, all dtypes
-./target/release/tcbench verify --size 4
-
-# the Phase 1 premise check
-./target/release/tcbench premise --size 64 --reps 3 --dtype f64,c64 \
-    --engines tblis,ttgt --csv /tmp/premise-f64c64.csv
-
-# the same against the last stable TBLIS release (note the feature and ABI)
-cargo build --release -p tensorprimitives-bench --features tblis13,blas
-TBLIS_ROOT=/path/to/tblis-1.3.0-install \
-    ./target/release/tcbench premise --size 64 --dtype f64,c64 --engines tblis
-
-# same, with the gather path actually exercised
-./target/release/tcbench premise --size 64 --stress ragged --dtype f64,c64
-
-# full corpus sweep
-./target/release/tcbench sweep --size 32 --csv /tmp/sweep.csv
-```
-
-Or run the whole comparison set the way this project runs it — a discarded
-warm-up arm, both TBLIS ABIs from prebuilt binaries so nothing compiles mid-run,
-and two repeat arms that derive the session's own noise floor instead of
-importing one:
-
-```bash
-TBLIS_ROOT_2X=../baselines/tblis-2.0-install \
-TBLIS_ROOT_13=../baselines/tblis-1.3.0-install \
-  scripts/compare-bench.sh prep                              # the only compile
-  scripts/compare-bench.sh bench-results/$(hostname -s)-$(scripts/arch-label.sh)
-```
-
-**It wants an exclusive machine for about three and a half hours**, and that is
-not pedantry: pinning is not enough, because the pinned core's SMT sibling shares
-L1d and L2, which is what every cache-blocking measurement here turns on. Two
-Phase 4 conclusions had to be corrected after re-measuring on a quiet machine.
-[`scripts/README.md`](scripts/README.md) indexes the rest, including the Slurm
-wrappers and the offline analyses that cost no CPU at all.
-
-Raw results from every run quoted anywhere in this repo are committed under
-[`bench-results/`](bench-results/README.md), one `PROVENANCE.txt` per directory
-saying which machine and date produced it.
-
-## Testing
-
-```bash
-cargo test --workspace --release                       # includes 1000 randomised
-TENSORCONTRACT_KERNEL=scalar cargo test --workspace --release   # portable path
-TENSORCONTRACT_KERNEL=avx2 cargo test --workspace --release      # AVX2 kernels
-```
-
-`TENSORCONTRACT_KERNEL` takes `scalar`, `avx2`, `avx512` or `auto` (the
-default, meaning the widest the CPU has). Pinning an instruction set narrower
-than the CPU's is how the AVX2 path is exercised on an AVX-512 machine; the
-kernel-contract tests in `kernel/mod.rs` additionally run *every* kernel family
-the CPU supports on every `cargo test`, whatever is selected.
-
-The engine is checked against a brute-force oracle that shares no code with it,
-under both realistic and deliberately tiny cache blocking so that every level
-of the five-loop nest and every partial block is exercised on tensors small
-enough to verify exhaustively.
+| | |
+|---|---|
+| [`docs/results.md`](docs/results.md) | what is measured, on which machine, and what is not claimed |
+| [`docs/refuted.md`](docs/refuted.md) | ideas measured and lost, each with what would reopen it |
+| [`docs/open-questions.md`](docs/open-questions.md) | what is still unknown |
+| [`docs/design.md`](docs/design.md) | the architecture |
+| [`docs/decisions.md`](docs/decisions.md) | every decision and standing assumption |
+| [`docs/notebook/`](docs/notebook/README.md) | the full measurement narrative |
+| [`bench-results/`](bench-results/README.md) | raw CSVs for every number, one `PROVENANCE.txt` per directory |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | building, testing, and running the benchmarks |
 
 ## License
 
