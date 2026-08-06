@@ -212,7 +212,8 @@ is a separate confound from time (A46).
 
 ### Added — Julia and a binary distribution
 
-* **A BinaryBuilder recipe**, `packaging/yggdrasil/build_tarballs.jl`, producing
+* **A BinaryBuilder recipe**, maintained in Yggdrasil at
+  `T/tensorprimitives_tapp/build_tarballs.jl`, producing
   `tensorprimitives_tapp_jll` over 15 platforms. It calls the same `install.sh` a
   site install does, so the layout a JLL presents is the layout CI tests. It carries
   a `TAPP_LOCAL_SRC` switch so the file that gets submitted is the file that was

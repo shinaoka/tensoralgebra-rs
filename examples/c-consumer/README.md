@@ -102,7 +102,7 @@ cc myprog.c $(pkg-config --cflags --libs tensorprimitives-tapp) \
 
 From CMake, `-DTAPP_PREFIX=/opt/tapp` in this example project does the same
 through `pkg_check_modules`. This is the same script the BinaryBuilder recipe
-under `packaging/yggdrasil` calls, so the layout a JLL presents and the layout a
+the Yggdrasil recipe calls, so the layout a JLL presents and the layout a
 manual install produces are the same layout by construction.
 
 ### Set the SONAME, because cargo will not

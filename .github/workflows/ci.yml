@@ -75,7 +75,7 @@ jobs:
   # for compilation. `cargo check` rather than `cargo build`, deliberately: a
   # linker for each of these is a cross toolchain this job has no business
   # installing, and the link step is covered where it belongs — by the
-  # BinaryBuilder recipe under `packaging/yggdrasil`, which brings its own.
+  # BinaryBuilder recipe in Yggdrasil, which brings its own.
   #
   # `-p tensorprimitives-tapp` pulls in the engine as a dependency and excludes
   # the bench harness, whose build script requires TBLIS_ROOT.
@@ -265,7 +265,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       # Prebuilt: cargo first, then CMake links what is already there. The
-      # SONAME flag is the one from `packaging/yggdrasil` -- rustc emits no
+      # SONAME flag is the one the Yggdrasil recipe sets -- rustc emits no
       # DT_SONAME for a cdylib -- so what CI links is what a distribution ships.
       - run: cargo build --release -p tensorprimitives-tapp
         env:
