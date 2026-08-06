@@ -12,7 +12,6 @@ pub(crate) const PANEL_ALIGN: usize = 64;
 /// handed back. `as_mut_ptr` is the only way in.
 pub(crate) struct Panel<T> {
     ptr: *mut T,
-    len: usize,
     layout: Layout,
 }
 
@@ -29,18 +28,12 @@ impl<T> Panel<T> {
             "failed to allocate {} byte panel",
             layout.size()
         );
-        Panel { ptr, len, layout }
+        Panel { ptr, layout }
     }
 
     #[inline]
     pub fn as_mut_ptr(&mut self) -> *mut T {
         self.ptr
-    }
-
-    #[inline]
-    #[allow(dead_code)]
-    pub fn len(&self) -> usize {
-        self.len
     }
 }
 

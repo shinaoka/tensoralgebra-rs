@@ -28,5 +28,5 @@ point is that it was measured rather than assumed.
 
 Not comparable to anything measured on ccqlin038.
 
-Read with: DECISIONS.md part 7, subsection "The `nc` and `model` arms,
+Read with: docs/notebook/ part 7, subsection "The `nc` and `model` arms,
 re-measured sequentially", and part 10.

@@ -61,7 +61,14 @@ breaking change.
 ```bash
 git commit -am "Release vX.Y.Z"
 git tag -a vX.Y.Z -m "vX.Y.Z"
-git push origin main --follow-tags
+git push origin main
+git push origin vX.Y.Z
+
+# NEVER `git push --tags`, and note this is not `--follow-tags` either.
+# `backup/pre-split-2026-08-03` is a local safety net pointing at c1229e6,
+# which is NOT an ancestor of main -- pushing it would publish two orphaned
+# commits, and deleting it locally would strand them. Push the release tag by
+# name.
 gh release create vX.Y.Z --title "vX.Y.Z" --notes-file <(...)   # from CHANGELOG.md
 ```
 
@@ -158,7 +165,7 @@ on a commit, noting the `subdir`:
 ## After
 
 Open a `## X.Y.Z+1 — unreleased` section in `CHANGELOG.md` and record the release
-in `DECISIONS.md`.
+in `docs/notebook/`.
 
 Keep the CHANGELOG's "Confidence" table honest. It is the most useful thing in
 this repository for anyone deciding whether to depend on it, and it is the first

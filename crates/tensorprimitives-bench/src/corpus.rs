@@ -294,15 +294,23 @@ fn normalize(spec: &str) -> String {
 
 /// How to perturb the TCCG extents.
 ///
-/// TCCG deliberately rounds every stride-1 extent up to a multiple of 24. That
-/// makes the extents divisible by every plausible register block (`MR`, `NR`
-/// are 4, 8, 12, 16, 24, 32 ...), so a block of `MR` consecutive rows never
-/// straddles an index boundary and the block-scatter vectors come out
-/// **fully regular**. The published corpus therefore never exercises the
-/// irregular gather path at all.
+/// TCCG deliberately rounds every stride-1 extent up to a multiple of 24, which
+/// makes the extents regular **at a register block that divides 24** — and only
+/// there. That is a narrower guarantee than it looks, and reading it as "the
+/// corpus is fully regular" steered this project's conclusions for three phases.
+/// The shipped `f32`/`c32` blocks are `MR` 16, 32 and 48, none of which divides
+/// 24, so on the arm the orientation rule actually picks, `reg_a < 1.0` on
+/// **42.9%** of the 392 case-dtype-methods at `--size 64` — 45 of them at
+/// `reg_a = 0.0`, i.e. *entirely* on the gather path. Both qualifiers belong to
+/// the number: it is 11.7% on an AVX2 node, where `MR = 8` for `f64` does divide
+/// 24, and 40.6% at `tcbench orient`'s default size, because the extents scale
+/// with it.
 ///
-/// Since the project's thesis is specifically about awkward strides forcing
-/// work onto that gather path, the corpus has to be perturbed to test it.
+/// So the unperturbed corpus does exercise the gather path, and any claim about
+/// awkward strides must name its [`Stress`] mode and quote the observed `reg_a`.
+/// What TCCG cannot produce is *aperiodic* irregularity — the extents are round,
+/// so a block either straddles a boundary on a fixed period or never does. That
+/// is what the perturbations below are for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum Stress {
     /// TCCG's own sizing, unmodified.

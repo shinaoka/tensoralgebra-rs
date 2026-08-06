@@ -48,14 +48,12 @@
 //!     const ONE: Q = Q(1.0);
 //!     fn from_f64(v: f64) -> Q { Q(v) }
 //!     fn to_f64(self) -> f64 { self.0 }
-//!     fn abs(self) -> Q { Q(self.0.abs()) }
 //! }
 //!
 //! // A real element type: one plane, no imaginary part, two flops per MAC.
 //! impl Element for Q {
 //!     type Real = Q;
 //!     const IS_COMPLEX: bool = false;
-//!     const PLANES: usize = 1;
 //!     const FLOPS_PER_MAC: u64 = 2;
 //!     fn zero() -> Q { Q(0.0) }
 //!     fn one() -> Q { Q(1.0) }

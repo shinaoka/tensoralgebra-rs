@@ -153,21 +153,12 @@ impl ComplexMethod {
 
     /// The default method, from `TENSORCONTRACT_COMPLEX` or [`Self::Planar`].
     pub fn from_env() -> ComplexMethod {
-        #[cfg(feature = "std")]
-        {
-            use std::sync::OnceLock;
-            static M: OnceLock<ComplexMethod> = OnceLock::new();
-            *M.get_or_init(|| {
-                std::env::var("TENSORCONTRACT_COMPLEX")
-                    .ok()
-                    .and_then(|v| ComplexMethod::parse(&v))
-                    .unwrap_or_default()
-            })
-        }
-        #[cfg(not(feature = "std"))]
-        {
-            ComplexMethod::Planar
-        }
+        env_once!(
+            ComplexMethod,
+            "TENSORCONTRACT_COMPLEX",
+            ComplexMethod::Planar,
+            |v| ComplexMethod::parse(v).unwrap_or_default()
+        )
     }
 }
 
@@ -283,7 +274,7 @@ pub struct Blocking {
     /// Rows of the packed `A` block, sized so `mc x kc` reals fit the L2.
     /// Also bounds the strip of `D` that one pass over the `jr` loop revisits,
     /// which is a *second*, opposing constraint the derivation does not model —
-    /// see A13 in `DECISIONS.md`.
+    /// see A13 in `docs/notebook/`.
     pub mc: usize,
     /// Contraction depth of one pass. First-order for the complex method
     /// ranking, because it decides whether the `A` sliver is an L1 resident or
@@ -303,24 +294,6 @@ impl Blocking {
     /// the comparison meaningless.
     pub fn derive(real_bytes: usize, a_reals: usize, b_reals: usize) -> Blocking {
         let kc = if real_bytes <= 4 { 384 } else { 256 };
-        // Coupled deepening, measured on two machines and **off by default**
-        // pending the end-to-end A/B (part 7). `TENSORCONTRACT_DEEPEN=on` gives
-        // 8-byte reals a `kc` of 512 with `mc`/`nc` re-derived against the same
-        // budgets, which is worth +2.9% on Cascade Lake and +3.1% on Zen2 —
-        // where the *pinned* `kc = 512` arm is 0.961 and 1.050 respectively, so
-        // it is the coupling and not the depth that transfers.
-        //
-        // Scoped to `f64` real geometry deliberately. Coupling shrinks `mc` as it
-        // deepens `kc`, and the methods whose derived `mc` is already smallest
-        // cannot afford that: `c64` 1m loses 5.5% on the reference machine, 3m
-        // 2.6%, while `f32`/`c32`/`c64`-planar are neutral. The general form —
-        // couple while `mc` stays above a small multiple of `MR` — is scorable
-        // against the two committed grids offline and is not done yet.
-        let deepen = real_bytes == 8
-            && a_reals == 1
-            && b_reals == 1
-            && env_is("TENSORCONTRACT_DEEPEN", "on");
-        let kc = if deepen { 512 } else { kc };
         // A *coupled* `kc` override re-derives `mc`/`nc` against the same cache
         // budgets at the new depth; the plain `TENSORCONTRACT_KC` override
         // changes `kc` alone and leaves the `D` strip a `jr` pass revisits
@@ -344,7 +317,7 @@ impl Blocking {
     /// **+13% on one case and −18% on another**, because `MC` also bounds the
     /// strip of `D` that a `jr` pass revisits, which this budget does not
     /// model. See the Phase 4 report before reaching for it.
-    pub fn derive_at_depth(
+    pub(crate) fn derive_at_depth(
         real_bytes: usize,
         a_reals: usize,
         b_reals: usize,
@@ -540,19 +513,6 @@ fn env_usize(_key: &str) -> Option<usize> {
     }
 }
 
-/// Is `key` set to exactly `val`? A bool rather than the string, so the `no_std`
-/// arm needs no allocation and the call sites cannot drift on parsing.
-fn env_is(_key: &str, _val: &str) -> bool {
-    #[cfg(feature = "std")]
-    {
-        std::env::var(_key).is_ok_and(|v| v == _val)
-    }
-    #[cfg(not(feature = "std"))]
-    {
-        false
-    }
-}
-
 /// Real scalar types for which the engine has a micro-kernel.
 ///
 /// `f32` and `f64` get runtime-dispatched vectorised kernels: AVX-512F if the
@@ -660,22 +620,24 @@ pub(crate) enum KernelForce {
     allow(dead_code)
 )]
 pub(crate) fn kernel_force() -> KernelForce {
-    #[cfg(feature = "std")]
-    {
-        use std::sync::OnceLock;
-        static FORCE: OnceLock<KernelForce> = OnceLock::new();
-        *FORCE.get_or_init(|| match std::env::var("TENSORCONTRACT_KERNEL") {
-            Ok(v) if v.eq_ignore_ascii_case("scalar") => KernelForce::Scalar,
-            Ok(v) if v.eq_ignore_ascii_case("avx2") => KernelForce::Avx2,
-            Ok(v) if v.eq_ignore_ascii_case("avx512") => KernelForce::Avx512,
-            Ok(v) if v.eq_ignore_ascii_case("neon") => KernelForce::Neon,
-            _ => KernelForce::Auto,
-        })
-    }
-    #[cfg(not(feature = "std"))]
-    {
-        KernelForce::Auto
-    }
+    env_once!(
+        KernelForce,
+        "TENSORCONTRACT_KERNEL",
+        KernelForce::Auto,
+        |v: &str| {
+            if v.eq_ignore_ascii_case("scalar") {
+                KernelForce::Scalar
+            } else if v.eq_ignore_ascii_case("avx2") {
+                KernelForce::Avx2
+            } else if v.eq_ignore_ascii_case("avx512") {
+                KernelForce::Avx512
+            } else if v.eq_ignore_ascii_case("neon") {
+                KernelForce::Neon
+            } else {
+                KernelForce::Auto
+            }
+        }
+    )
 }
 
 /// Force the portable scalar kernels regardless of CPU features.
@@ -1269,12 +1231,12 @@ mod tests {
 
     /// The shipped blocking, spelled out.
     ///
-    /// Every performance number in `DECISIONS.md` was taken against exactly
+    /// Every performance number in `docs/notebook/` was taken against exactly
     /// these, and the pending `MC`/`KC`/`NC` grid defines its arms relative to
     /// them, so changing one is changing what those measurements mean. The
     /// analytical model is the reason to have this test: it must stay opt-in,
     /// and if it ever becomes the default that is a decision recorded in
-    /// `DECISIONS.md`, not a diff that slips through here.
+    /// `docs/notebook/`, not a diff that slips through here.
     #[test]
     fn legacy_blocking_is_unchanged() {
         if env_usize("TENSORCONTRACT_KC_COUPLE").is_some() {
@@ -1284,19 +1246,6 @@ mod tests {
             let x = Blocking::derive(real_bytes, a, b);
             (x.mc, x.kc, x.nc)
         };
-        // Coupled deepening is opt-in (part 7). Rather than skip when it is on,
-        // assert what it does — including that it moves **only** `f64` real, which
-        // is the whole point of scoping it and the thing a silent widening would
-        // break. Following the orientation tests' precedent: a test that stops
-        // testing anything when a switch is set is worse than no test.
-        if env_is("TENSORCONTRACT_DEEPEN", "on") {
-            assert_eq!(d(8, 1, 1), (128, 512, 768), "f64 real, deepened");
-            assert_eq!(d(8, 2, 2), (128, 256, 768), "c64 planar must not deepen");
-            assert_eq!(d(8, 4, 2), (64, 256, 768), "c64 1m must not deepen");
-            assert_eq!(d(8, 3, 3), (85, 256, 512), "c64 3m must not deepen");
-            assert_eq!(d(4, 1, 1), (341, 384, 2048), "f32 real must not deepen");
-            return;
-        }
         // 8-byte reals: `kc = 256`, half a 1 MiB L2 for A, 3 MiB of L3 for B.
         assert_eq!(d(8, 1, 1), (256, 256, 1536), "f64 real");
         assert_eq!(d(8, 2, 2), (128, 256, 768), "c64 planar");

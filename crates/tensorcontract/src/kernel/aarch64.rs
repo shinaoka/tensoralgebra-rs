@@ -52,7 +52,7 @@
 //! # The shipped shapes are MEASURED, and the budget did not pick them
 //!
 //! Three arms of `examples/kernel_shapes` on an M3 Max
-//! (`bench-results/CKF6QCDVPD-m3max/kernel-shapes*.txt`, `DECISIONS.md` part
+//! (`bench-results/CKF6QCDVPD-m3max/kernel-shapes*.txt`, `docs/notebook/apple-silicon.md` part
 //! 21). The menus in [`cfg_neon_f64`] / [`cfg_neon_f32`] are that measurement,
 //! ordered by it, and each carries its own margin against the session floor.
 //!
@@ -193,7 +193,7 @@ simd_kernels!(
 /// punishes by 30–50%, and it wins anyway at the shipping depth. It is also the
 /// one shape whose two regimes disagree — perfectly reproducible at `kc = 64`
 /// and `256` (0.0% across three arms) and bimodal at `kc = 16` (51.5 / 51.5 /
-/// 40.9). The engine never runs it at 16. See `DECISIONS.md` part 21.
+/// 40.9). The engine never runs it at 16. See `docs/notebook/apple-silicon.md` part 21.
 pub mod cfg_neon_f64 {
     use super::*;
     configs!(

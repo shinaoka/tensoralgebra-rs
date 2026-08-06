@@ -35,4 +35,4 @@ not a new result.
 
 Not comparable to anything measured on ccqlin038.
 
-Read with: DECISIONS.md -> Threading -> "Part 16", and D46, A43.
+Read with: docs/notebook/ -> Threading -> "Part 16", and D46, A43.

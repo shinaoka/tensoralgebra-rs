@@ -87,5 +87,5 @@ pad each worker's buffer by a per-worker offset so the addresses cannot alias.
 Not comparable to anything on ccqlin038, and the absolute speedups are not comparable
 to job 6760092's -- different machine. Every ratio here is within-session.
 
-Read with: DECISIONS.md -> Threading -> "Part 19", and D49, D53, A55, A56;
-and REFUTED.md.
+Read with: docs/notebook/ -> Threading -> "Part 19", and D49, D53, A55, A56;
+and docs/refuted.md.

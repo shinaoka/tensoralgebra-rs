@@ -26,4 +26,4 @@ own t1/t1b floor coming back at 0.954-0.973 on a third node.
 
 Not comparable to anything measured on ccqlin038.
 
-Read with: DECISIONS.md "Phase 4 report, part 8b" and A36.
+Read with: docs/notebook/ "Phase 4 report, part 8b" and A36.

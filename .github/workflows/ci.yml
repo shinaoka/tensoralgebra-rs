@@ -188,13 +188,33 @@ jobs:
       - run: cargo test --workspace --release
         env:
           TENSORCONTRACT_BLOCKMODEL: model
-      # Coupled deepening. Off by default pending an end-to-end A/B, which makes
-      # this the only thing that would enter the branch at all: it changes `kc`
-      # *and* re-derives `mc`/`nc`, so it moves every cache-blocking boundary at
-      # once, and the suite has tests that deliberately straddle those.
+      # The thread pool. Off by default and topology-conditional -- it is worth
+      # up to 11.6x on Zen2 and up to 2.5x *slower* on Ice Lake -- so it is not
+      # a default candidate, but it is the most concurrency-heavy code in the
+      # crate: a hand-rolled parked-thread pool with a Condvar broadcast, two
+      # `unsafe impl Send`/`Sync`, and the crate's only `transmute`. Nothing
+      # else in CI enters it. `THREADS` is load-bearing here, not decoration:
+      # the pool is consulted only on the threaded path, so a bare `POOL=on`
+      # arm would test nothing.
       - run: cargo test --workspace --release
         env:
-          TENSORCONTRACT_DEEPEN: "on"
+          TENSORCONTRACT_THREADS: 4
+          TENSORCONTRACT_POOL: "on"
+      # The two pinned orientation arms and the superseded Phase 4.1 rule. These
+      # went unnoticed for a long time precisely because nothing here ran them:
+      # `=swap` failed eight unit tests and `=none` four, on a clean tree, because
+      # the assertions went through the override-dispatching entry point and a
+      # pinned arm turned them into tautologies or contradictions. Cheap to run
+      # and the only thing that stops it recurring.
+      - run: cargo test --workspace --release
+        env:
+          TENSORCONTRACT_ORIENT: swap
+      - run: cargo test --workspace --release
+        env:
+          TENSORCONTRACT_ORIENT: none
+      - run: cargo test --workspace --release
+        env:
+          TENSORCONTRACT_ORIENT: legacy
 
   # Feature combinations of the published crate. Nothing else checks either end
   # of the range.
@@ -389,3 +409,29 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo doc -p tensorcontract -p tensorprimitives-tapp --no-deps --all-features
       - run: cargo doc --workspace --no-deps
+      # Every relative markdown link resolves. The documentation is a graph of
+      # about thirty files across docs/, docs/notebook/, bench-results/ and the
+      # root, and the citation chain from a claim to its raw data is the
+      # project's actual product -- a dead link in it is a defect, not a typo.
+      # Nothing else catches this: rustdoc sees intra-doc links only, and the
+      # PROVENANCE.txt "read with" lines are prose.
+      - name: relative markdown links resolve
+        run: |
+          python3 - <<'PY'
+          import re, pathlib, sys
+          bad = []
+          for md in pathlib.Path('.').rglob('*.md'):
+              if 'target' in md.parts:
+                  continue
+              for m in re.finditer(r'\[[^\]]*\]\(([^)#\s]+)(?:#[^)]*)?\)',
+                                   md.read_text(errors='replace')):
+                  link = m.group(1)
+                  if link.startswith(('http', 'mailto:')):
+                      continue
+                  if not (md.parent / link).exists():
+                      bad.append(f'{md} -> {link}')
+          if bad:
+              print('broken relative links:', *bad, sep='\n  ')
+              sys.exit(1)
+          print('all relative markdown links resolve')
+          PY

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Apply the pre-registered accept/reject rule for concurrent arm placement.
 
-The rule is fixed in `DECISIONS.md` part 10 and in the header of
+The rule is fixed in `docs/notebook/` part 10 and in the header of
 `scripts/validate-placement.sh`, *before* any data existed:
 
   * **Accept** if placed-vs-solo lies inside the solo-vs-solo floor on the

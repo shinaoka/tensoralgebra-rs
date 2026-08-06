@@ -16,10 +16,10 @@ Arms: `rm-A`, `rm-B`, `rm-A2` -- A, B, A' with a repeat bracketing the treatment
 Why it matters: this directory is the re-measurement that corrected two earlier
 Phase 4 conclusions taken on a shared machine (the write-back reported as "a
 wash in double" when it is +2-3%, and an f32 regression that does not exist).
-`rm-A` against `rm-A2` is also the repeat that DECISIONS.md's Resume-here block
+`rm-A` against `rm-A2` is also the repeat that docs/notebook/'s Resume-here block
 uses as a no-CPU check that the analysis tooling still agrees with this file.
 
-Read with: DECISIONS.md "Phase 4 report, part 1" and parts 2-4.
+Read with: docs/notebook/ "Phase 4 report, part 1" and parts 2-4.
 
 Note on the measurement pattern. `scripts/phase4-remeasure.sh` produced this
 data and is kept for that reason, but it has been superseded by

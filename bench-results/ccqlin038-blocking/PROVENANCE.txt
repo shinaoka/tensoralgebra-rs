@@ -29,4 +29,4 @@ this directory alone will mislead you in the optimistic direction.
 Note: the naming here is host-prefixed while the same experiment on Zen2 sits at
 `worker5040-zen2/phase4e/`. See ../README.md for the two schemes.
 
-Read with: DECISIONS.md "Phase 4 report, part 7".
+Read with: docs/notebook/ "Phase 4 report, part 7".

@@ -4,9 +4,8 @@
 //!
 //! Threads are spawned per [`Plan::run`] call. At ~20–36 µs each that is the whole
 //! story below about a megabyte: 64 threads make a 0.22 ms contraction take 2.2 ms
-//! (A43, D46). Two of this project's answers to that steer around the cost — the
-//! amortisation guard ([`Plan::amortised_threads`]) and the crate-internal thread
-//! pool. This one removes the *count*: parallelising over a batch of `n`
+//! (A43, D46). The crate-internal thread pool removes that cost where it
+//! transfers. This one removes the *count* instead: parallelising over a batch of `n`
 //! contractions pays **one** spawn set for the whole batch instead of `n` of them,
 //! and Phase 1 named many small repeated contractions as this project's real
 //! headroom, so it is the regime that matters most.
@@ -108,10 +107,9 @@ where
 ///
 /// `threads` bounds the *batch* axis, and the items themselves run serially — see
 /// the module documentation. It is further capped by the item count (spawning more
-/// threads than there is work for is the mistake this whole area exists to avoid)
-/// and, under `TENSORCONTRACT_AMORTISE=on`, by the batch's total work: the spawn
-/// cost amortises over the whole batch here, not over one item, which is exactly
-/// why the batch axis is the good one.
+/// threads than there is work for is the mistake this whole area exists to avoid).
+/// The spawn cost amortises over the whole batch here, not over one item, which
+/// is exactly why the batch axis is the good one.
 pub fn contract_batched_with_threads<T>(
     items: &mut [BatchItem<'_, T>],
     threads: usize,
@@ -135,14 +133,7 @@ where
         return Ok(());
     }
 
-    let mut p = threads.max(1).min(items.len());
-    if p > 1 && crate::plan::amortise_enabled() {
-        let work: u128 = items
-            .iter()
-            .map(|it| it.plan.work_fmas(T::IS_COMPLEX))
-            .sum();
-        p = crate::plan::amortised_cap(work, p);
-    }
+    let p = threads.max(1).min(items.len());
 
     if p == 1 {
         for it in items.iter_mut() {

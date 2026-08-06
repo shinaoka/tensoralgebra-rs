@@ -41,19 +41,28 @@
 //!    stream out of L2, not an L1 resident, and the packed footprint per flop
 //!    becomes the binding constraint.
 //!
-//! The second point is the measured story of Phase 3, and it is not the one
-//! the flop counts predict:
+//! The second point is the measured story, and it is not the one the flop
+//! counts predict:
 //!
 //! * **planar** has the lowest bytes-per-flop of the three (two reals per
 //!   complex element in *both* panels, and four FMAs from every (A-vector,
-//!   B-scalar) pair with no in-register shuffling). It wins.
+//!   B-scalar) pair with no in-register shuffling). It wins the corpus on both
+//!   AVX-512 machines measured.
 //! * **1m** issues the same FMAs but spread over two real k-steps and reads a
 //!   packed `A` panel twice the size — 1.5x planar's bytes per flop.
 //! * **3m** does 25% *fewer* FMAs and still loses, because it loads three
-//!   planes of both operands to do it. Sweeping `kc` shows this directly: with
-//!   both panels L1-resident (`kc = 16..64`) 3m is the fastest of the three, by
-//!   roughly the margin its flop saving predicts; at the `kc` the engine
-//!   actually uses it is no longer FMA-bound and the saving evaporates.
+//!   planes of both operands to do it.
+//!
+//! The accounting above — bytes moved per useful flop, not flop count — is
+//! arithmetic and holds everywhere. **Whether 3m's flop saving ever *pays* is a
+//! per-microarchitecture question with no settled answer.** This module used to
+//! claim that it pays with both panels L1-resident; that is a Cascade Lake
+//! result and it does not transfer. At `kc = 16`, which is that regime, 3m leads
+//! planar by 1.105 (`c64`) and 1.155 (`c32`) on Cascade Lake and trails at 0.567
+//! and 0.662 on Ice Lake, where it wins at no depth, no shape and neither
+//! precision while already running its own Ice Lake-optimal block. Ranking
+//! anything below planar without naming the machine is a mistake this project
+//! has made twice.
 //!
 //! The **AVX-512** shapes were chosen by measuring, not by the reasoning above:
 //! `cargo run --release -p tensorcontract --example kernel_shapes`, raw output
@@ -403,6 +412,7 @@ pub enum Isa {
 }
 
 impl Isa {
+    /// The name used in test failure messages and in `tcbench info` output.
     pub fn name(self) -> &'static str {
         match self {
             Isa::Avx512 => "avx512",

@@ -43,23 +43,26 @@ use crate::scatter::IRREGULAR;
 /// two arms can be measured in one session under identical conditions. Read
 /// once per process.
 fn force_gather() -> bool {
-    #[cfg(feature = "std")]
-    {
-        use std::sync::OnceLock;
-        static FORCE: OnceLock<bool> = OnceLock::new();
-        *FORCE.get_or_init(|| {
-            std::env::var("TENSORCONTRACT_WRITEBACK")
-                .map(|v| v.eq_ignore_ascii_case("gather") || v.eq_ignore_ascii_case("scatter"))
-                .unwrap_or(false)
-        })
-    }
-    #[cfg(not(feature = "std"))]
-    {
-        false
-    }
+    env_once!(bool, "TENSORCONTRACT_WRITEBACK", false, |v: &str| v
+        .eq_ignore_ascii_case("gather")
+        || v.eq_ignore_ascii_case("scatter"))
 }
 
 /// Read complex element `(i, j)` out of an accumulator tile.
+///
+/// # Safety
+///
+/// * `ab` must point at an accumulator tile written by a micro-kernel whose
+///   [`TileFormat`] is exactly `fmt`, with the register block `(mr, nr)` that
+///   kernel was selected with. The three formats disagree about both the
+///   element count and the index arithmetic — `Real` reads `mr * nr` values,
+///   `Planar` and `OneM` read `2 * mr * nr`, `ThreeM` reads `3 * mr * nr` — so a
+///   mismatched `fmt` reads out of bounds rather than merely reading the wrong
+///   value.
+/// * `i < mr` and `j < nr`.
+/// * The tile must be fully initialised. Kernels overwrite rather than
+///   accumulate into it (see [`crate::kernel`]), so this holds after any kernel
+///   call and does *not* hold for a freshly allocated [`crate::buffer::Panel`].
 #[inline(always)]
 unsafe fn tile_value<R: Real>(
     ab: *const R,
@@ -134,74 +137,49 @@ pub(crate) unsafe fn writeback<T: Element>(
     let (d0, c0) = (*d_r.get_unchecked(0), *c_r.get_unchecked(0));
     let gather = force_gather();
 
+    // The three arms differ in exactly two arguments -- how a row index becomes
+    // an offset into `C` and into `D` -- and agreed on the other sixteen, which
+    // were copied out three times. A `macro_rules!` rather than a struct of
+    // invariants: the expansion is textually the call that was there before, so
+    // codegen is identical by construction. Each arm must stay a *separate*
+    // instantiation, because that is what specialises the row addressing; the
+    // duplication being removed here is in the source, not in the binary.
+    macro_rules! wb {
+        ($c_row:expr, $d_row:expr) => {
+            writeback_rows::<T, _, _>(
+                ab,
+                fmt,
+                mr,
+                nr,
+                mrem,
+                nrem,
+                alpha,
+                beta,
+                beta_is_zero,
+                gather,
+                c_base,
+                $c_row,
+                c_c,
+                conj_c,
+                d_base,
+                $d_row,
+                d_c,
+                conj_d,
+            )
+        };
+    }
+
     if gather || d_rs == IRREGULAR || !c_ok {
-        writeback_rows::<T, _, _>(
-            ab,
-            fmt,
-            mr,
-            nr,
-            mrem,
-            nrem,
-            alpha,
-            beta,
-            beta_is_zero,
-            gather,
-            c_base,
-            |i| *c_r.get_unchecked(i),
-            c_c,
-            conj_c,
-            d_base,
-            |i| *d_r.get_unchecked(i),
-            d_c,
-            conj_d,
-        )
+        wb!(|i| *c_r.get_unchecked(i), |i| *d_r.get_unchecked(i))
     } else if d_rs == 1 && (beta_is_zero || c_rs == 1) {
         // Unit stride: a micro-tile column is a contiguous run of `D`. Worth
         // its own instantiation rather than folding into the strided one,
         // because only a *compile-time* unit stride lets LLVM turn the plane
         // recombination into vector loads and interleaved stores. This is the
         // case `Plan::transposes_gemm` exists to create.
-        writeback_rows::<T, _, _>(
-            ab,
-            fmt,
-            mr,
-            nr,
-            mrem,
-            nrem,
-            alpha,
-            beta,
-            beta_is_zero,
-            gather,
-            c_base,
-            |i| c0 + i as i64,
-            c_c,
-            conj_c,
-            d_base,
-            |i| d0 + i as i64,
-            d_c,
-            conj_d,
-        )
+        wb!(|i| c0 + i as i64, |i| d0 + i as i64)
     } else {
-        writeback_rows::<T, _, _>(
-            ab,
-            fmt,
-            mr,
-            nr,
-            mrem,
-            nrem,
-            alpha,
-            beta,
-            beta_is_zero,
-            gather,
-            c_base,
-            |i| c0 + c_rs * i as i64,
-            c_c,
-            conj_c,
-            d_base,
-            |i| d0 + d_rs * i as i64,
-            d_c,
-            conj_d,
-        )
+        wb!(|i| c0 + c_rs * i as i64, |i| d0 + d_rs * i as i64)
     }
 }
 
@@ -210,6 +188,24 @@ pub(crate) unsafe fn writeback<T: Element>(
 /// Instantiated once per row-addressing mode. The `alpha == 1, beta == 0, no
 /// conjugation` case gets its own inner loop because it is both the common one
 /// and the only one that reduces to a straight tile-to-`D` copy.
+///
+/// # Safety
+///
+/// * `ab` must satisfy [`tile_value`]'s contract for `fmt` and `(mr, nr)`.
+/// * `mrem <= mr` and `nrem <= nr`: they are the live extent of a possibly
+///   partial edge tile, and the loops are bounded by them, not by `mr`/`nr`.
+/// * `c_c` and `d_c` must each have at least `nrem` entries.
+/// * For every `i < mrem` and `j < nrem`, `c_base.offset(c_row(i) + c_c[j])`
+///   must be a valid readable `T` and `d_base.offset(d_row(i) + d_c[j])` a valid
+///   writable one. These offsets come from the scatter vectors, so this is the
+///   obligation [`crate::Plan::check_bounds`] discharges once per call for the
+///   whole output rather than per tile.
+/// * `D` must not alias `C`, `A` or `B`. The exclusive borrow in
+///   [`crate::TensorViewMut`] is what supplies this; `Plan::run_raw` hands it to
+///   the caller instead.
+/// * `beta_is_zero` must equal `beta == T::zero()`. When it is true, `c_base`
+///   and `c_row` are never read and may be dangling — that is how the no-`C`
+///   case is expressed.
 #[allow(clippy::too_many_arguments)]
 #[inline(always)]
 unsafe fn writeback_rows<T: Element, CR, DR>(

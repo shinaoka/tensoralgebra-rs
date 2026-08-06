@@ -98,5 +98,22 @@ scheduler placement of fresh threads and barrier skew are untested candidates.
 Not comparable to anything measured on ccqlin038, and the absolute speedups are not
 comparable to part 16's -- different node. Every ratio here is within-session.
 
-Read with: DECISIONS.md -> Threading -> "Part 18", and D48, D49, D52, D53,
-A50, A53, A54; and REFUTED.md for the guard.
+LAYOUT -- where the numbers actually are
+----------------------------------------
+phase4g/            453 files, the largest single directory in this repository.
+                    Named for scripts/phase4g-small.sh, which produced it. One
+                    CSV and one .txt per (arm, size, width, dtype-pair) cell:
+                      sm-<arm>-s<size>-t<threads>-<dtypes>.{csv,txt}
+                    with <arm> in {base, pool, guard, both} -- the 2x2 that is
+                    the whole point of this run, since either switch alone looks
+                    good and the joint arm is what shows they conflict.
+                    Sizes 0.25 / 1 / 4 / 16 MiB, widths 1..64.
+features.csv        structural features of every corpus case, zero CPU.
+shapes.csv          what each MR does to the write-back, zero CPU.
+topology.{json,txt} what the machine is, and which cores each arm was given.
+placement.log,      occupancy evidence: which cores were busy during each arm.
+  session.log
+slurm-tp-phase4-6760092.out   the job transcript.
+
+Read with: docs/notebook/ -> Threading -> "Part 18", and D48, D49, D52, D53,
+A50, A53, A54; and docs/refuted.md for the guard.

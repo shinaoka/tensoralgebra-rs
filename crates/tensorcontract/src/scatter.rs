@@ -168,60 +168,6 @@ pub fn regular_fraction(bs: &[i64]) -> f64 {
     reg as f64 / bs.len() as f64
 }
 
-/// A matrix view of a tensor through scatter vectors, with block-scatter
-/// metadata for the two axes.
-///
-/// **Not part of the public API** — `#[doc(hidden)]`, public only so the
-/// driver and write-back (private modules) can share one definition, and
-/// outside the crate's semver guarantee. It is not usefully constructible from
-/// outside anyway: `rblk`/`cblk` must be exactly the register blocks the
-/// selected micro-kernel uses, and `rbs`/`cbs` must have been built at those
-/// block sizes, neither of which a caller can know without also driving the
-/// loop nest. The building blocks are public and documented instead —
-/// [`build_scatter`], [`build_block_scatter`], [`run_structure`].
-#[doc(hidden)]
-#[derive(Debug)]
-pub struct BlockScatterMatrix<'a> {
-    pub rscat: &'a [i64],
-    pub cscat: &'a [i64],
-    pub rbs: &'a [i64],
-    pub cbs: &'a [i64],
-    pub rblk: usize,
-    pub cblk: usize,
-}
-
-#[doc(hidden)]
-impl BlockScatterMatrix<'_> {
-    #[inline]
-    pub fn nrows(&self) -> usize {
-        self.rscat.len()
-    }
-    #[inline]
-    pub fn ncols(&self) -> usize {
-        self.cscat.len()
-    }
-
-    /// Row stride of the block containing row `i0`, where `i0` must be a
-    /// multiple of `rblk`. `None` if the block is irregular.
-    #[inline]
-    pub fn row_stride_at(&self, i0: usize) -> Option<i64> {
-        debug_assert_eq!(i0 % self.rblk, 0);
-        match self.rbs[i0 / self.rblk] {
-            IRREGULAR => None,
-            s => Some(s),
-        }
-    }
-
-    #[inline]
-    pub fn col_stride_at(&self, j0: usize) -> Option<i64> {
-        debug_assert_eq!(j0 % self.cblk, 0);
-        match self.cbs[j0 / self.cblk] {
-            IRREGULAR => None,
-            s => Some(s),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

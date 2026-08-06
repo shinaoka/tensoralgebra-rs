@@ -5,11 +5,11 @@ three-methods decision.
 
 Status: **complete.** The working thesis it was written to serve — that planar
 complex packing is a research win over BLIS's 1m — did not survive the Phase 1
-premise check (see [`DECISIONS.md`](DECISIONS.md) §Phase 1 report). The project
+premise check (see [the phase-1 archive](notebook/archive-phases-1-3.md) §Phase 1 report). The project
 has been re-aimed: rather than advocating for planar, the engine now implements
 **all three induced-complex methods behind one switch** so they can be measured
 against each other and against TBLIS on genuinely equal footing
-(§3.4, §3.5, and `DECISIONS.md` §Phase 2b).
+(§3.4, §3.5, and `notebook/` §Phase 2b).
 
 ---
 
@@ -347,7 +347,7 @@ Two things the prediction did not say, both of which turned out to matter:
   need one packed B panel per column group, and `NC` is sized for a whole L3.
 
 `K`-parallelism — the one axis that would need accumulators and a reduction — is
-**deliberately not implemented**: see assumption A21 in `DECISIONS.md`, which
+**deliberately not implemented**: see assumption A21 in `notebook/`, which
 argues the shapes needing it are bounded away from being compute-bound and
 measures that none in the benchmark corpus needs it.
 
@@ -355,8 +355,8 @@ Threading is **off by default**, and since 2026-08-04 that is a *measured*
 position rather than a placeholder: per-call thread spawn costs ~20–36 µs per
 thread, which makes 64 threads 1.2–10x slower than serial below about a megabyte,
 and the optimal thread count walks 4 → 64 across the size range — so a fixed
-non-1 default is wrong at every size but one (`DECISIONS.md` D46). Keeping it at 1
-also keeps every performance number in `DECISIONS.md` a reproducible single-core
+non-1 default is wrong at every size but one (`notebook/` D46). Keeping it at 1
+also keeps every performance number in `notebook/` a reproducible single-core
 measurement.
 
 One thing this section's prediction did not anticipate at all: the *partition
@@ -365,7 +365,7 @@ panel for "an L3", and on a chiplet machine a 64-thread set spans sixteen of the
 so a panel every thread reads whole is effectively replicated sixteen times.
 Gating the row-axis shortcut on the L3 domain count is worth 1.13 corpus geometric
 mean at 64 Zen2 threads and is a measured no-op where one L3 serves the socket; it
-is the default (`DECISIONS.md` D41, D44).
+is the default (`notebook/` D41, D44).
 
 ---
 
@@ -431,7 +431,7 @@ the real-vs-complex ratio meaningless.
 > layout with `MR` rather than by the tensors, which is why the row-block and
 > orientation rules exist at all. What the corpus still cannot produce is
 > *aperiodic* irregularity: its straddling is periodic, so a static partition
-> self-averages. See `DECISIONS.md` → Threading → part 14, and A4.
+> self-averages. See `notebook/` → Threading → part 14, and A4.
 
 TCCG rounds every stride-1 extent **up to a multiple of 24**. With the register
 blocks in use when this was written (4, 8, 12, 24 — all of which divide 24), a run
@@ -509,4 +509,4 @@ about, which is the resolution of this section.
 > `complex eff / real eff` for TBLIS on real shapes, and if that number is at
 > or above 1.0 the thesis is dead.
 
-That is what the measurement found. See `DECISIONS.md`.
+That is what the measurement found. See `notebook/`.

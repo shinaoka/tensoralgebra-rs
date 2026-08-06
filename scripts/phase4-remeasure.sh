@@ -13,7 +13,7 @@
 #     in time. A vs A' is the noise floor; A vs B is the effect; if the two are
 #     comparable the effect is not real.
 #   * reps stays at 3, matching the recorded Phase 3 sweeps, so the noise floor
-#     published here applies to the numbers already quoted in DECISIONS.md.
+#     published here applies to the numbers already quoted in docs/notebook/.
 #   * Per-CPU occupancy of the pinned core and its sibling is sampled across
 #     every sweep and written next to the results, so a contended run is a
 #     recorded fact rather than a silent one.

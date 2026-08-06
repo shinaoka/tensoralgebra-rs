@@ -42,4 +42,4 @@ PROVENANCE.txt: the skx-only TBLIS 2.0 install SIGILLing on this node (A45).
 
 Not comparable to anything measured on ccqlin038.
 
-Read with: DECISIONS.md -> Threading -> "Part 12", and D41, D42, D44, A38, A39, A40.
+Read with: docs/notebook/ -> Threading -> "Part 12", and D41, D42, D44, A38, A39, A40.

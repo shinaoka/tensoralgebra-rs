@@ -37,7 +37,7 @@
 # here is that. Add a laptop's DVFS and thermal envelope, and 12 P-cores beside 4
 # E-cores the scheduler may move you between, and the honest position is: derive
 # the floor in-session, quote it with every ratio, and expect it to be the worst
-# in `DECISIONS.md`'s table. The compensations below are cheap and all of them
+# in `docs/measurement-rules.md`'s table. The compensations below are cheap and all of them
 # matter; none of them is a substitute for an exclusive pinned core.
 #
 # The one thing that is *better* here: no SMT. The hyperthread sibling sharing
@@ -68,7 +68,7 @@
 #         -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON
 #   cmake --build build-arm64 -j 10 && cmake --install build-arm64
 #
-# `arm64`, not `auto`, for the reason DECISIONS.md gives for preferring `x86_64`
+# `arm64`, not `auto`, for the reason docs/measurement-rules.md gives for preferring `x86_64`
 # on a non-AVX-512 node: it is the multi-configuration family with runtime
 # dispatch. It includes BLIS's Apple `firestorm` config, and **BLIS selects
 # `firestorm` on an M3 Max** -- confirm it with `BLIS_ARCH_DEBUG=1`, which prints

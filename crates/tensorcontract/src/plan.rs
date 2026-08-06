@@ -57,8 +57,12 @@ use crate::layout::Layout;
 use crate::scatter::{build_scatter, run_structure, unbroken_fraction};
 
 /// Index class.
+///
+/// Crate-internal: it appears in no public signature and no public field --
+/// [`PlanStats`] exposes [`Axis`], not this -- and its only uses are inside
+/// [`Plan::new`]'s classification pass.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Class {
+pub(crate) enum Class {
     /// Free index of A (GEMM rows).
     M,
     /// Free index of B (GEMM columns).
@@ -505,114 +509,17 @@ impl Plan {
     /// each, which below about a megabyte makes 64 threads **1.2–10x slower than
     /// serial**; and the optimal thread count walks 4 → 8 → 16 → 32 → 64 across
     /// 0.25 → 64 MiB, so any *fixed* non-1 default is wrong at every size but one.
-    /// Keeping it at 1 also keeps every single-core number in `DECISIONS.md`
+    /// Keeping it at 1 also keeps every single-core number in `docs/notebook/`
     /// reproducible from a bare checkout.
     ///
-    /// What would change it: an amortisation guard that caps the count so spawn
-    /// cost stays a bounded fraction of estimated serial work, or a thread pool
-    /// that removes the spawn cost outright. Either makes a non-1 default safe;
-    /// neither exists yet.
+    /// What would change it: a thread pool that removes the per-call spawn cost
+    /// outright. One exists behind `TENSORCONTRACT_POOL=on` and is **not** a
+    /// default candidate — it is worth up to 11.6x on Zen2 and up to 2.5x
+    /// *slower* on Ice Lake, so it is measured and does not transfer. An
+    /// amortisation guard was the other candidate and was measured and rejected:
+    /// it is a trade, costing a correctly-threaded caller 10-39%.
     pub fn threads(&self) -> usize {
         self.threads.unwrap_or_else(env_threads)
-    }
-
-    /// The contraction's work, in **real FMAs**: `m * n * k` weighted by how many
-    /// real multiply-adds one logical MAC costs in the selected complex method.
-    ///
-    /// Real dtypes weigh 1; `Planar` and `OneM` weigh 4 (a complex MAC is four
-    /// real FMAs); `ThreeM` weighs 3, which is exactly the 25% flop saving that
-    /// method exists for. Weighting matters because at a fixed *byte* size a
-    /// complex contraction has half the elements and four times the arithmetic
-    /// per element, so an unweighted `m * n * k` misjudges the two domains in
-    /// opposite directions.
-    ///
-    /// `u128` because `m * n * k` overflows `u64` on nothing realistic but
-    /// costs nothing to make impossible.
-    pub fn work_fmas(&self, is_complex: bool) -> u128 {
-        let w = if !is_complex {
-            1
-        } else if self.complex_method() == crate::kernel::ComplexMethod::ThreeM {
-            3
-        } else {
-            4
-        };
-        (self.a_m.len() as u128) * (self.b_n.len() as u128) * (self.a_k.len() as u128) * w
-    }
-
-    /// [`Plan::threads`], capped so per-call thread spawn stays a bounded
-    /// fraction of the work it is spread over. **Off unless
-    /// `TENSORCONTRACT_AMORTISE=on`**, in which case it is what
-    /// [`Plan::partition`] is driven from.
-    ///
-    /// # Why this exists
-    ///
-    /// Threads are spawned per `execute` call, not taken from a pool, at ~20–36 µs
-    /// each (A43). Below about a megabyte that fixed cost is the entire story:
-    /// measured on Zen2 at 64 threads, a 0.22 ms `f32` contraction takes 2.2 ms —
-    /// a speedup of **0.10** — and per case the damage reaches **45x**. The
-    /// optimal thread count walks 4 → 8 → 16 → 32 → 64 across 0.25 → 64 MiB, so
-    /// no *fixed* non-1 default can be right (D46). This guard is the smaller of
-    /// the two fixes: it converts an order-of-magnitude regression into "no worse
-    /// than serial" without removing the cost. Pooling the threads is the other,
-    /// and they compose.
-    ///
-    /// # The rule, and the one constant in it
-    ///
-    /// Each thread must be given at least `MIN_FMAS_PER_THREAD` real FMAs of
-    /// work: `p <= work_fmas / MIN_FMAS_PER_THREAD`, clamped to at least 1 and to
-    /// the requested count. Written that way it holds the spawn *fraction*
-    /// constant rather than the thread count: with a spawn cost `S` and a machine
-    /// rate `R` FMAs/s, spawn over serial time is `(W/C) * S / (W/R) = S * R / C`,
-    /// independent of the problem. At `S = 30 µs`, `R ≈ 20 G` FMAs/s and
-    /// `C = 3e6` that fraction is **0.2** — spawn is held to a fifth of the work
-    /// each thread is given.
-    ///
-    /// `C` bundles the machine's rate, so it is a fitted constant like `kc` and
-    /// carries the same caveat: a *faster* machine wants a *larger* one. It was
-    /// scored offline against `bench-results/worker5139-zen2/phase4g/`, which
-    /// measured all 588 case-dtype-method points at 1, 2, 4, 8, 16, 32 and 64
-    /// threads at four sizes. Corpus geometric mean against serial, and the count
-    /// of points left slower than serial, requesting 64 threads throughout:
-    ///
-    /// | nominal size | unguarded | **`C = 3e6`** | per-case oracle |
-    /// |---|---|---|---|
-    /// | 0.25 MiB | **0.20**, 565 of 588 slower, worst **0.022** | **1.66**, 0 slower, worst 1.000 | 2.40 |
-    /// | 1 MiB | 1.32, 229 slower, worst 0.077 | **3.50**, 0 slower | 4.94 |
-    /// | 4 MiB | 2.91, 57 slower, worst 0.363 | **4.60**, 0 slower | 6.37 |
-    /// | 16 MiB | 5.48, 3 slower, worst 0.800 | **5.67**, 0 slower | 7.42 |
-    ///
-    /// It is better than no guard at **every** size, not merely at the small end,
-    /// and it is a plateau rather than a peak: every `C` in `[3e6, 8e6]` leaves 0
-    /// points slower at all four sizes, and the differences between them are
-    /// inside the ±11% per-case floor that a 64-thread measurement has (A39). The
-    /// choice between guard and no guard is not.
-    ///
-    /// # What it deliberately does not do
-    ///
-    /// It does **not** predict the saturation above ~1 MiB, where the best count
-    /// is `t8`–`t32` rather than `t64`. That is a bandwidth ceiling — a different
-    /// mechanism — and it is benign: you get 4x instead of 6x. Fitting the guard
-    /// to it would be fitting one constant to two mechanisms. At 16 MiB this rule
-    /// caps only 60 of 588 points and never below 36 threads, which is the
-    /// intended near-inertness there.
-    ///
-    /// # Why off by default
-    ///
-    /// Every threaded number committed before 2026-08-05 was measured with an
-    /// uncapped `TENSORCONTRACT_THREADS`, and `scripts/phase4f-threads.sh` asks
-    /// for an exact width and means it. Turning this on silently would make those
-    /// curves irreproducible — the same reason `TENSORCONTRACT_PARTITION=legacy`
-    /// stays reachable. It has also only been *scored offline*, and this project
-    /// has already had an offline grid win and then lose its end-to-end A/B
-    /// (`TENSORCONTRACT_DEEPEN`, A20). The A/B is
-    /// `scripts/ab.sh` with `TENSORCONTRACT_AMORTISE=on` at a small size; the
-    /// threading default cannot move before it passes.
-    pub fn amortised_threads(&self, is_complex: bool) -> usize {
-        let p = self.threads();
-        if p == 1 || !amortise_enabled() {
-            return p;
-        }
-        amortised_cap(self.work_fmas(is_complex), p)
     }
 
     /// How execution will split the output across threads: `(pm, pn)`, the
@@ -620,128 +527,58 @@ impl Plan {
     /// column groups of whole `NR` blocks. Their product is the number of
     /// threads that will actually run, and never exceeds [`Plan::threads`].
     ///
-    /// One caveat: this is the partition at the **requested** thread count. Under
-    /// `TENSORCONTRACT_AMORTISE=on` the driver derives it from
-    /// [`Plan::amortised_threads`] instead, which needs the element type and so
-    /// cannot be reached from here; [`Plan::partition_with`] is the form that
-    /// answers "what will actually run".
+    /// One caveat: this is the partition at the **requested** thread count. The
+    /// driver may run fewer -- `execute` takes a cap -- so
+    /// [`Plan::partition_with`] is the form that answers "what will actually
+    /// run" at a given width.
     ///
     /// Both counts are in the **oriented** directions, i.e. after the
     /// [`Plan::transposes_gemm`] swap: on a plan that computes `D^T = B^T A^T`
     /// the row strips run along `N`, so a `1 x 33` output parallelises 33 ways
     /// and not one way.
     ///
-    /// The driver calls this rather than deriving the partition itself, so there
-    /// is one definition; tests call it to assert that a case which is *meant*
-    /// to exercise the 2-D path really does. A test that silently stopped
-    /// splitting would otherwise still pass while testing nothing — the same
-    /// trap the orientation tests guard against.
+    /// This is a **tier-2** answer: the signature is stable, the value is a
+    /// tuning output and will move when the rule is re-measured. Do not encode
+    /// one of these answers as a constant.
     ///
-    /// # The rule
+    /// # The rule, in outline
     ///
     /// `pn == 1` whenever the `M` direction alone can fill the threads, which is
-    /// the overwhelmingly common case — at eight threads, all of the TCCG corpus
-    /// but four cases, 382 of its 392 case-dtype-methods — and is exactly the 1-D
-    /// partition Phase 4 item 4 shipped first. Only when `ceil(M / MR) < p` does
-    /// the `N` direction get involved,
-    /// and then `(pm, pn)` is chosen to minimise
+    /// the overwhelmingly common case. Only when `ceil(M / MR) < p` does the `N`
+    /// direction get involved, and then `(pm, pn)` minimises
     ///
     /// ```text
     /// cost(pm, pn) = ceil(panels/pm) * (NR * ceil(blocks/pn) + PACK_WEIGHT)
     /// ```
     ///
-    /// over `pm in 1..=panels` with `pn = min(p / pm, blocks)`, ties going to
-    /// the larger `pm`. That is one thread's share of the work in units of
-    /// micro-kernel lane-slots per unit of `k`: it owns `ceil(panels/pm) *
-    /// ceil(blocks/pn)` micro-tiles of `MR * NR` lanes each, and — because the
-    /// packed `A` block is per thread — it also packs `ceil(panels/pm) * MR`
-    /// rows for itself no matter how few columns it owns. That second term is
-    /// what stops the rule from splitting `N` when a thread would be left with a
-    /// handful of `NR` blocks to amortise its own packing over, and it is the
-    /// only reason the objective is not simply "balance the tiles".
+    /// — one thread's share of the work, in micro-kernel lane-slots per unit of
+    /// `k`, including the packed `A` block it builds for itself however few
+    /// columns it owns. That second term is the only reason the objective is not
+    /// simply "balance the tiles".
     ///
-    /// `PACK_WEIGHT` is the cost of packing one element relative to one
-    /// lane-FMA, and it is a **model, not a measurement**: 8 is the conservative
-    /// end of the plausible range (a strided load plus an aligned store, against
-    /// two FMA units), and conservative here means biased towards the `M` axis,
-    /// which is the axis every committed measurement was designed around. Its
-    /// exact value is not load-bearing. Replayed over all 392 corpus
-    /// case-dtype-methods at 2, 4, 8, 16 and 32 threads, every weight in
-    /// `[4, 64]` gives the *same* partition everywhere; only two
-    /// case-dtype-methods move at all between `w <= 2` and `w >= 4`
-    /// (`ij-ikl-ljk` and `ij-kil-lkj`, 7 row panels against 37 column blocks at
-    /// 8 threads), and there the two candidate partitions are within 1.4% of
-    /// each other in modelled cost.
+    /// That early return is correct only where the threads share one L3, and
+    /// wrong by up to 4.3x where they span many, so it is **gated** on
+    /// [`cache::l3_domains`](crate::kernel::cache::l3_domains) rather than
+    /// removed: the row axis gives way to `1 x p` only when the thread set spans
+    /// more than one domain, the column axis can fill the threads by itself, and
+    /// the contraction is shallow. `columns_beat_rows` is that predicate, kept
+    /// pure so its truth table can be pinned by a test on any machine.
+    /// `TENSORCONTRACT_PARTITION` selects `domain` (the default, D44) or
+    /// `legacy`, or pins the layout outright.
     ///
-    /// What the rule does to the corpus, at 8 threads: 10 of 392 have fewer row
-    /// panels than threads, and the column axis is used on 8 of them — 1x8 or
-    /// 2x4 in place of a 1-D 2, 3, 5 or 6. The other two are the `ij-*` pair
-    /// above, which stay 1-D on 7 threads *by choice*: 37 column blocks split
-    /// eight ways is five per thread, which does not amortise a packed `A` block
-    /// each, so the eighth thread is not worth having. Whether that is the right
-    /// call is a question for `scripts/phase4f-threads.sh`, and
-    /// `TENSORCONTRACT_PARTITION=n` is the arm to measure it against.
-    ///
-    /// # The domain-aware gate, `TENSORCONTRACT_PARTITION=domain`
-    ///
-    /// The early return above — "the row axis fills the threads, so use it" — is
-    /// **correct only where the threads share one L3**, and it is wrong by up to
-    /// 4.3x where they span many (A36, part 8b). The shared packed `B` panel is
-    /// sized for *an* L3; under `p x 1` every thread reads the whole panel, so on
-    /// a chiplet machine it is replicated across every domain the thread set
-    /// covers and re-streamed from memory once per domain. Under `1 x p` each
-    /// thread owns a slice that fits its local L3.
-    ///
-    /// So the fix is to *gate* the early return on
-    /// [`cache::l3_domains`](crate::kernel::cache::l3_domains), not to remove it:
-    /// on a one-L3-per-socket machine the early return is right and `pn` buys
-    /// nothing (Ice Lake, 32 threads on one domain: 1.014). With
-    /// `TENSORCONTRACT_PARTITION=domain` the row axis gives way to the column
-    /// axis when **all three** of these hold, and the partition is unchanged
-    /// otherwise:
-    ///
-    /// 1. the thread set spans more than one L3 domain — the mechanism, and the
-    ///    only quantity A36 separates from thread count;
-    /// 2. the column axis can fill the threads by itself (`blocks >= p`), so the
-    ///    swap costs no parallelism. Without this the corpus's narrow cases lose
-    ///    2–5x by running on a fraction of their cores;
-    /// 3. the contraction is shallow, `k <= 64`. The penalty being dodged is
-    ///    bandwidth, so it can only dominate where the case is bandwidth-bound;
-    ///    the wide compute-bound families were measured *losing* 25% in the
-    ///    complex methods from the same swap.
-    ///
-    /// `columns_beat_rows` is that predicate, kept as a pure function of four
-    /// numbers so its whole truth table can be pinned by a test on any machine.
-    ///
-    /// It is **on by default** since D44, and `TENSORCONTRACT_PARTITION=legacy`
-    /// asks for the ungated rule by name. It was off while it was unmeasured;
-    /// it is on because the measurement came back a no-op on 392 of 392 cases
-    /// where one L3 serves the thread set, and 1.133 corpus geomean at 64
-    /// threads where sixteen do. A single-threaded caller cannot observe it at
-    /// all — `l3_domains(1)` is 1, so condition 1 never holds. The choice is
-    /// deliberately
-    /// binary — `p x 1` or `1 x p`, the two arms that were actually measured —
-    /// rather than a cross-domain traffic term added to the cost model above: a
-    /// term large enough to move the `k = 24` family moves 263 of 392
-    /// case-dtype-methods onto intermediate grids like `4 x 16` that no session
-    /// has ever run. Those intermediates are the obvious next question and are
-    /// not this change.
-    ///
-    /// `TENSORCONTRACT_PARTITION=m` restores the 1-D `M` partition exactly, `=n`
-    /// forces a 1-D `N` partition, and `=<pm>x<pn>` pins both — so the axis
-    /// choice is a run-time A/B rather than a diff between two builds (A15), and
-    /// `scripts/phase4f-threads.sh` can measure the rule against both extremes
-    /// in one session.
+    /// The derivation of `PACK_WEIGHT`, the three gate conditions and what each
+    /// one is worth are in `docs/notebook/` — D29, D41, D42, D44 and A28, with the
+    /// measurements in the threading chapter.
     pub fn partition(&self, mr: usize, nr: usize) -> (usize, usize) {
         self.partition_with(mr, nr, self.threads())
     }
 
     /// [`Plan::partition`] at a caller-supplied thread count.
     ///
-    /// Exists because the amortisation guard ([`Plan::amortised_threads`]) needs
-    /// to know the element type and [`Plan`] deliberately does not (D6: one plan
-    /// serves every dtype). The driver computes the capped count and passes it
-    /// here; `partition` is this with [`Plan::threads`].
+    /// Exists because the driver may run at a width other than the requested
+    /// one: `execute` takes a cap, and the batched entry point divides the
+    /// available threads across items. `partition` is this at
+    /// [`Plan::threads`].
     pub fn partition_with(&self, mr: usize, nr: usize, threads: usize) -> (usize, usize) {
         /// Cost of packing one `A` element relative to one micro-kernel lane-FMA.
         /// See [`Plan::partition`]; deliberately at the conservative end.
@@ -864,47 +701,39 @@ impl Plan {
     /// 2. **Otherwise put the direction with the *shorter* run in the row
     ///    role**, whichever operand that is.
     ///
-    /// Step 1 is the old rule's two conditions, and step 2 is what it was
-    /// missing. The old rule treated "the row block would be shattered either
-    /// way" as a reason to give up and never swap, and **all nine of its known
-    /// misses lived in that case** (A14) — where it is not that swapping is
-    /// wrong, but that neither arm is clean and something still has to decide.
+    /// Step 2 is what the Phase 4.1 rule was missing: it treated "the row block
+    /// would be shattered either way" as a reason never to swap, and all nine of
+    /// its known misses lived in that case (A14). The rule has to be
+    /// antisymmetric under exchanging the two directions, because the `abcijk`
+    /// families are exact mirror images of each other.
     ///
-    /// Step 2 was found by noticing that the `abcijk` families are exact mirror
-    /// images of each other, so any correct rule must be antisymmetric under
-    /// exchanging the two directions — which the old rule, phrased entirely in
-    /// terms of the *column* direction's properties, was not. In `f32` the
-    /// `-mb` family and the `e*ac` family are the same configuration mirrored,
-    /// and the faster arm of each is the one whose rows have the shorter run:
+    /// Step 1 dominates step 2, and must: it is why `c64` (`MR = 16` against a
+    /// run of 24) takes the opposite arm from `f32` (`MR = 48`) on the same
+    /// shapes. That element-type dependence is why the choice is not a property
+    /// of the plan alone — hence the `mr` argument.
     ///
-    /// | family | `f32` faster arm | its row run | its column run |
-    /// |---|---|---|---|
-    /// | `-mb` | `AB` | 16 | 24 |
-    /// | `e*ac` | `BA` | 16 | 24 |
-    /// | `e*bc` | `BA` | 24 | 4096 |
-    /// | `-ma` | `AB` | 24 | 256 |
-    ///
-    /// Step 1 still dominates step 2, and must: it is why `c64` (`MR = 16`
-    /// against a run of 24) takes the opposite arm from `f32` (`MR = 48`) on
-    /// the same shapes. That element-type dependence is real and is why the
-    /// choice is not a property of the plan alone.
-    ///
-    /// Scored against forced-arm measurements of both arms of all 392 corpus
-    /// case-dtype-methods (`bench-results/phase4d`): **12 cases better beyond
-    /// noise, none worse**, recovering the nine known misses at 1.21–1.45x. In
-    /// `f32` it scores 1.128 against never swapping, where an oracle choosing
-    /// with hindsight scores 1.132 — so on that dtype the orientation question
-    /// is now essentially closed. It is not closed on the 21 cases that remain
-    /// (see the Phase 4.1d report).
-    ///
+    /// This is a **tier-2** answer: stable signature, tuning-output value.
     /// `TENSORCONTRACT_ORIENT=none` disables the swap and `=swap` forces it;
-    /// both exist to A/B the decision, and neither affects correctness.
+    /// neither affects correctness. The mirror-family table the rule was derived
+    /// from, the scoring against both forced arms of all 392 corpus
+    /// case-dtype-methods, and the 21 cases still on the slower arm are in
+    /// `docs/notebook/` — the write-back chapter, Phase 4.1d.
     pub fn transposes_gemm(&self, mr: usize) -> bool {
         match orient_override() {
-            Orient::Rule => {}
-            Orient::Force(v) => return v,
-            Orient::Legacy => return self.transposes_gemm_legacy(mr),
+            Orient::Rule => self.transposes_gemm_rule(mr),
+            Orient::Force(v) => v,
+            Orient::Legacy => self.transposes_gemm_legacy(mr),
         }
+    }
+
+    /// [`Plan::transposes_gemm`]'s rule with no environment override.
+    ///
+    /// Separate so the unit tests can assert what the *rule* decides even when a
+    /// measurement session has pinned the arm. Testing through the override
+    /// instead means `TENSORCONTRACT_ORIENT=swap` turns every orientation
+    /// assertion into a tautology, which is the trap
+    /// `legacy_blocking_is_unchanged` already guards against by hand.
+    fn transposes_gemm_rule(&self, mr: usize) -> bool {
         // A row block lands inside one run when the rows are unit-stride and
         // the run is at least `MR` long.
         let fits = |(run, stride): (usize, i64)| stride == 1 && run >= mr;
@@ -968,53 +797,32 @@ impl Plan {
     ///
     /// [`IRREGULAR`]: crate::scatter::IRREGULAR
     ///
-    /// # The rule, and the three guards it needs
+    /// # The rule, and the two guards it needs
     ///
     /// Take the first shape on the menu that makes *every* output row block a
-    /// single run, but only when all three of these hold. Each guard is there
+    /// single run, but only when both of these hold. (A third guard existed and
+    /// was removed in Phase 4.1d; see below.) Each guard is there
     /// because the grid in `bench-results/phase4c` measured what happens
     /// without it; none is a plausibility argument.
     ///
     /// 1. **The contraction is shallow** (`k <= 32`). The write-back costs a
     ///    constant per output element against `~4k` flops of kernel work, so
     ///    the path it takes only matters while `k` is small — and a shape off
-    ///    the kernel's peak always costs something. Measured: at `k = 24` the
-    ///    winning shape gains 1.09–1.26x; at `k >= 204` the same change is
-    ///    1.01–1.04x, i.e. nothing, and it is still being paid for. The corpus
-    ///    jumps from `k = 24` to `k = 52`, so it resolves this boundary only to
-    ///    somewhere in `(24, 52]`.
-    /// 2. **The default is substantially broken** (`wb <= 0.75`). A shape
-    ///    change is not free, so it cannot be repaid by a marginal improvement.
-    ///    Measured: taking `f32` `48x8 -> 32x8` where the default was already
-    ///    0.88 regular lost 7–9%. The corpus only takes the values 0, 0.67,
-    ///    0.88 and 1.0, so any threshold in `(0.67, 0.88]` fits it equally.
+    ///    the kernel's peak always costs something.
+    /// 2. **The default is substantially broken** (`wb <= 0.75`). A shape change
+    ///    is not free, so a marginal improvement cannot repay it.
     ///
-    /// A third guard — that a shape change must not flip the row/column
-    /// orientation as a side effect — was needed while the orientation rule
-    /// was the Phase 4.1 one, which mis-picked the arm on `c32` 3m and lost 19%
-    /// there. **It was removed in Phase 4.1d**, once the orientation rule was
-    /// fixed: the shapes it used to veto for `c32` 3m are now rejected by guard
-    /// 2 anyway, and all the veto still did was block genuine wins. Dropping it
-    /// adds six firings, all `c32` 1m, measured at **1.19–1.24x** against 12
-    /// control cases at 1.002. That coupling runs both ways and is the reason
-    /// the two rules cannot be tuned separately; see the Phase 4.1d report.
+    /// A third guard, against a shape change flipping the orientation as a side
+    /// effect, was removed in Phase 4.1d once the orientation rule was fixed.
+    /// The two rules are coupled and cannot be tuned separately.
     ///
-    /// So guarded, the rule fires on 26 of 392 corpus case-dtype-methods and
-    /// gains 1.07–1.26x on all but one small case, which loses 7% — inside the
-    /// per-case noise floor. Unguarded it is a **loss**: maximising the
-    /// fraction alone scores 0.936 in `f32`.
+    /// Unguarded, the rule is a **loss** — maximising the regular fraction alone
+    /// scores 0.936 in `f32`. This is a **tier-2** answer: stable signature,
+    /// tuning-output value. Both thresholds, what each guard is worth, the
+    /// corpus firing count and the gain an oracle leaves on the table are in
+    /// `docs/notebook/` (the write-back chapter, Phase 4.1c and 4.1d); the grid
+    /// they were scored against is `bench-results/phase4c`.
     ///
-    /// # What this deliberately leaves on the table
-    ///
-    /// An oracle picking the fastest shape per case with hindsight scores
-    /// 1.03–1.07 across every dtype and method, so most of the available gain
-    /// is *not* reachable from the output's stride pattern. The largest single
-    /// piece of it is the orientation: on the six `abcijk-e*bc-*` cases in
-    /// `f32`/`c32`, shrinking `MR` to 16 flips them to `BA` and gains
-    /// 1.24–1.39x **despite** paying ~30% in kernel shape — which says the
-    /// orientation there is worth about 2x and should be bought directly, at
-    /// the default `MR`, rather than through a shape change. See the Phase 4.1c
-    /// report.
     /// # What `menu` is, and what comes back
     ///
     /// `menu` is the kernel set's `(MR, NR)` shapes, default first, and the
@@ -1103,26 +911,12 @@ enum Orient {
 /// instead of deriving it from `D`'s strides. Read once per process; for
 /// measurement only, and none of it affects correctness.
 fn orient_override() -> Orient {
-    #[cfg(feature = "std")]
-    {
-        use std::sync::OnceLock;
-        static ENV: OnceLock<Orient> = OnceLock::new();
-        *ENV.get_or_init(|| {
-            match std::env::var("TENSORCONTRACT_ORIENT")
-                .unwrap_or_default()
-                .as_str()
-            {
-                "none" | "ab" => Orient::Force(false),
-                "swap" | "ba" => Orient::Force(true),
-                "legacy" | "phase41" => Orient::Legacy,
-                _ => Orient::Rule,
-            }
-        })
-    }
-    #[cfg(not(feature = "std"))]
-    {
-        Orient::Rule
-    }
+    env_once!(Orient, "TENSORCONTRACT_ORIENT", Orient::Rule, |v| match v {
+        "none" | "ab" => Orient::Force(false),
+        "swap" | "ba" => Orient::Force(true),
+        "legacy" | "phase41" => Orient::Legacy,
+        _ => Orient::Rule,
+    })
 }
 
 /// What `TENSORCONTRACT_ROWBLOCK` asked for. Without `std` there is no
@@ -1150,14 +944,11 @@ enum RowBlock {
 /// can be repeated in one session rather than as a diff between two builds
 /// (A15), and `idx=<i>` re-runs the whole grid the rule was derived from.
 fn row_block_override() -> RowBlock {
-    #[cfg(feature = "std")]
-    {
-        use std::sync::OnceLock;
-        static ENV: OnceLock<RowBlock> = OnceLock::new();
-        *ENV.get_or_init(|| {
-            let Ok(v) = std::env::var("TENSORCONTRACT_ROWBLOCK") else {
-                return RowBlock::Auto;
-            };
+    env_once!(
+        RowBlock,
+        "TENSORCONTRACT_ROWBLOCK",
+        RowBlock::Auto,
+        |v: &str| {
             let v = v.trim().to_ascii_lowercase();
             match v.as_str() {
                 "auto" => RowBlock::Auto,
@@ -1173,12 +964,8 @@ fn row_block_override() -> RowBlock {
                     }
                 }
             }
-        })
-    }
-    #[cfg(not(feature = "std"))]
-    {
-        RowBlock::Auto
-    }
+        }
+    )
 }
 
 /// The depth below which a contraction is bandwidth-bound enough for the
@@ -1253,21 +1040,23 @@ enum PartitionMode {
 
 /// `TENSORCONTRACT_PARTITION=legacy|domain|m|n|<pm>x<pn>` selects the partition
 /// rule, or pins the layout outright instead of deriving it from the shape.
-/// `legacy` (the default) and `domain` are *rules*; `m`, `n` and `<pm>x<pn>` are
-/// pins. Read once per process; for measurement only, and none of it affects
-/// correctness — every partition gives bitwise identical results.
+/// `domain` (**the default since D44**) and `legacy` are *rules*; `m`, `n` and
+/// `<pm>x<pn>` are pins. `legacy` names the ungated pre-2026-08-04 rule, which is
+/// what every threaded number committed before that date was measured with. Read
+/// once per process; for measurement only, and none of it affects correctness —
+/// every partition gives bitwise identical results.
 fn partition_override() -> PartitionMode {
-    #[cfg(feature = "std")]
-    {
-        use std::sync::OnceLock;
-        static ENV: OnceLock<PartitionMode> = OnceLock::new();
-        *ENV.get_or_init(|| {
-            // Unset means the domain-aware rule (D44). `legacy` is how the
-            // pre-2026-08-04 behaviour is asked for by name, and it is what every
-            // threaded number committed before that date was measured with.
-            let Ok(v) = std::env::var("TENSORCONTRACT_PARTITION") else {
-                return PartitionMode::Domain;
-            };
+    // Unset means the domain-aware rule (D44), on both arms of the `std` cfg --
+    // `env_once!` names the default once so they cannot drift. It returned the
+    // legacy rule without `std` until 0.1.0, which silently gave such a build the
+    // pre-D44 partition. `legacy` is how the pre-2026-08-04 behaviour is asked
+    // for by name, and it is what every threaded number committed before that
+    // date was measured with.
+    env_once!(
+        PartitionMode,
+        "TENSORCONTRACT_PARTITION",
+        PartitionMode::Domain,
+        |v: &str| {
             let v = v.trim().to_ascii_lowercase();
             match v.as_str() {
                 "m" | "rows" | "1d" => PartitionMode::Rows,
@@ -1282,12 +1071,8 @@ fn partition_override() -> PartitionMode {
                     None => PartitionMode::Rule,
                 },
             }
-        })
-    }
-    #[cfg(not(feature = "std"))]
-    {
-        PartitionMode::Rule
-    }
+        }
+    )
 }
 
 /// `TENSORCONTRACT_THREADS=<n>` sets the default thread count. Read once per
@@ -1299,60 +1084,11 @@ fn partition_override() -> PartitionMode {
 /// is asked for a configuration without a plan — one definition of the default,
 /// rather than two readers of one variable.
 pub(crate) fn env_threads() -> usize {
-    #[cfg(feature = "std")]
-    {
-        use std::sync::OnceLock;
-        static ENV: OnceLock<usize> = OnceLock::new();
-        *ENV.get_or_init(|| {
-            std::env::var("TENSORCONTRACT_THREADS")
-                .ok()
-                .and_then(|v| v.trim().parse::<usize>().ok())
-                .unwrap_or(1)
-                .max(1)
-        })
-    }
-    #[cfg(not(feature = "std"))]
-    {
-        1
-    }
-}
-
-/// How many threads `work` real FMAs can amortise, given `p` were asked for.
-///
-/// The whole rule, as a pure function of two numbers, so its truth table can be
-/// pinned by a test on any machine and at any thread count — the same reason
-/// [`columns_beat_rows`] is one. See [`Plan::amortised_threads`] for the constant's
-/// derivation and the offline scoring that chose it.
-pub(crate) fn amortised_cap(work: u128, p: usize) -> usize {
-    /// Real FMAs a thread must be given to be worth spawning. Fitted on Zen2 at
-    /// ~30 µs per spawn; see [`Plan::amortised_threads`] for the scoring table and
-    /// for why a faster machine wants a larger value.
-    const MIN_FMAS_PER_THREAD: u128 = 3_000_000;
-
-    let cap = usize::try_from(work / MIN_FMAS_PER_THREAD).unwrap_or(usize::MAX);
-    cap.clamp(1, p.max(1))
-}
-
-/// `TENSORCONTRACT_AMORTISE=on` enables the thread-count amortisation guard, and
-/// nothing else does. Default **off**; see [`Plan::amortised_threads`] for the
-/// rule, the scoring table and why the default is off. Read once per process; it
-/// cannot affect correctness, since every thread count gives bitwise identical
-/// results.
-pub(crate) fn amortise_enabled() -> bool {
-    #[cfg(feature = "std")]
-    {
-        use std::sync::OnceLock;
-        static ENV: OnceLock<bool> = OnceLock::new();
-        *ENV.get_or_init(|| {
-            std::env::var("TENSORCONTRACT_AMORTISE")
-                .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "on" | "1" | "true"))
-                .unwrap_or(false)
-        })
-    }
-    #[cfg(not(feature = "std"))]
-    {
-        false
-    }
+    env_once!(usize, "TENSORCONTRACT_THREADS", 1, |v: &str| v
+        .trim()
+        .parse::<usize>()
+        .unwrap_or(1)
+        .max(1))
 }
 
 /// Collapse repeated labels within one tensor onto its diagonal, validating
@@ -1519,60 +1255,6 @@ mod tests {
         assert!(!columns_beat_rows(1024, 24, 1, 1));
     }
 
-    /// The amortisation guard's truth table, machine-independently.
-    ///
-    /// Pinned as a pure function for the same reason the gate above is: the
-    /// behaviour that matters is at 64 threads on sub-megabyte work, which no
-    /// workstation here can exhibit.
-    #[test]
-    fn amortisation_cap_scales_with_work_and_never_exceeds_the_request() {
-        // The measured catastrophe: `ij-ik-kj` in `f64` at 0.25 MiB is
-        // 192 x 180 x 192 = 6.6e6 FMAs and takes 0.34 ms serially. Asked for 64
-        // threads it ran ~45x slower than serial; the cap allows 2, and `t4` was
-        // the measured optimum for that size, so the guard errs toward serial.
-        assert_eq!(amortised_cap(6_635_520, 64), 2);
-        // The same shape in `c64`: a complex MAC is four real FMAs, so the same
-        // *element* count affords four times the threads. Weighting is the whole
-        // reason `work_fmas` is not `m * n * k`.
-        assert_eq!(amortised_cap(4 * 6_635_520, 64), 8);
-        // 3m does three quarters of the products, and the weight says so.
-        assert_eq!(amortised_cap(3 * 6_635_520, 64), 6);
-        // Never below one thread, however small the contraction.
-        assert_eq!(amortised_cap(0, 64), 1);
-        assert_eq!(amortised_cap(1, 64), 1);
-        // Never above what was asked for: the guard only ever removes threads.
-        assert_eq!(amortised_cap(u128::MAX, 8), 8);
-        assert_eq!(amortised_cap(u128::MAX, 1), 1);
-        // Inert at corpus size. A 64 MiB `f64` case is ~3e9 FMAs, which affords a
-        // thousand threads, so the guard cannot be what limits any number
-        // measured by `scripts/phase4f-threads.sh`.
-        assert_eq!(amortised_cap(3_000_000_000, 64), 64);
-    }
-
-    /// `work_fmas` weights by the method, and the plan reaches it without knowing
-    /// the element type.
-    #[test]
-    fn work_fmas_weights_the_complex_method() {
-        let a = lay(&[4, 5]);
-        let b = lay(&[5, 6]);
-        let d = lay(&[4, 6]);
-        let plan = Plan::new(
-            Operand::new(&a, &[0, 2]),
-            Operand::new(&b, &[2, 1]),
-            None,
-            Operand::new(&d, &[0, 1]),
-        )
-        .unwrap();
-        let macs = 4 * 6 * 5;
-        assert_eq!(plan.work_fmas(false), macs);
-        assert_eq!(plan.work_fmas(true), 4 * macs);
-        let three = plan.with_complex_method(crate::kernel::ComplexMethod::ThreeM);
-        assert_eq!(three.work_fmas(true), 3 * macs);
-        // The real weight does not depend on the complex method, because a real
-        // contraction never runs one.
-        assert_eq!(three.work_fmas(false), macs);
-    }
-
     #[test]
     fn plain_matmul_folds_to_pure_gemm() {
         // C[i,j] = A[i,k] B[k,j], all column-major.
@@ -1697,19 +1379,19 @@ mod tests {
     #[test]
     fn column_major_output_is_not_transposed() {
         // Rows already have the unit stride: nothing to gain.
-        assert!(!gemm_plan(64, 64, [1, 64]).transposes_gemm(16));
+        assert!(!gemm_plan(64, 64, [1, 64]).transposes_gemm_rule(16));
     }
 
     #[test]
     fn row_major_output_is_transposed() {
         // Columns have the unit stride and the run is long enough to cover MR.
-        assert!(gemm_plan(64, 64, [64, 1]).transposes_gemm(16));
+        assert!(gemm_plan(64, 64, [64, 1]).transposes_gemm_rule(16));
     }
 
     #[test]
     fn transpose_taken_when_the_row_block_fits_exactly() {
         let p = gemm_plan(64, 16, [16, 1]);
-        assert!(p.transposes_gemm(16), "run == MR fits");
+        assert!(p.transposes_gemm_rule(16), "run == MR fits");
     }
 
     /// `D` with `M` rows in runs of `m_run` at stride 24 and `N` columns in one
@@ -1741,25 +1423,28 @@ mod tests {
         assert_eq!(short.d_m_run.0, 16);
         assert_eq!(short.d_n_run, (24, 1));
         assert!(
-            !short.transposes_gemm(48),
+            !short.transposes_gemm_rule(48),
             "rows already have the shorter run"
         );
 
         let long = mirrored_plan(256, 1_000_000);
         assert_eq!(long.d_m_run.0, 256);
-        assert!(long.transposes_gemm(48), "columns have the shorter run");
+        assert!(
+            long.transposes_gemm_rule(48),
+            "columns have the shorter run"
+        );
 
         // And step 1 still dominates: give it an `MR` the column run can hold
         // and both plans swap for that reason instead.
-        assert!(short.transposes_gemm(16));
-        assert!(long.transposes_gemm(16));
+        assert!(short.transposes_gemm_rule(16));
+        assert!(long.transposes_gemm_rule(16));
     }
 
     #[test]
     fn transpose_declined_when_columns_are_not_contiguous() {
         // Both directions strided: the swap cannot make the rows contiguous,
         // so the smaller stride alone does not justify it.
-        assert!(!gemm_plan(64, 64, [512, 2]).transposes_gemm(16));
+        assert!(!gemm_plan(64, 64, [512, 2]).transposes_gemm_rule(16));
     }
 
     /// `D[a,c,j] = A[a,c,k] B[k,j]` with `a` contiguous in `D` (extent 24) and
@@ -1785,6 +1470,21 @@ mod tests {
     /// every expectation below is about *which shape* is picked, and an index
     /// would make them say that less clearly while also going stale whenever an
     /// entry is inserted. `NR` is a placeholder here because the rule does not
+    /// The row-block rule reads the *effective* orientation, via
+    /// [`Plan::row_block_score`] -> [`Plan::transposes_gemm`], and it is right to
+    /// -- the shape it should pick genuinely depends on which direction ends up
+    /// in the row role. So pinning the orientation for a measurement changes the
+    /// correct answer here, and the expected values below are the ones for the
+    /// rule's own choice.
+    ///
+    /// Returns true when a session has pinned the arm, in which case the caller
+    /// skips. Preferred over asserting nothing: an assertion that silently
+    /// becomes a tautology under a switch is the trap
+    /// `legacy_blocking_is_unchanged` guards against by hand.
+    fn orientation_is_pinned() -> bool {
+        !matches!(orient_override(), Orient::Rule)
+    }
+
     /// read it; `row_block_may_reach_an_nr_only_alternate` is the test that does.
     fn pick(p: &Plan, mrs: &[usize]) -> Option<usize> {
         let menu: Vec<(usize, usize)> = mrs.iter().map(|&mr| (mr, 6)).collect();
@@ -1793,6 +1493,9 @@ mod tests {
 
     #[test]
     fn row_block_scores_follow_the_output_runs() {
+        if orientation_is_pinned() {
+            return;
+        }
         let p = run24_plan();
         assert_eq!(p.stats.m, 96, "two unfolded M axes");
         assert_eq!(p.row_block_score(24), 1.0);
@@ -1803,6 +1506,9 @@ mod tests {
 
     #[test]
     fn row_block_picks_a_shape_that_tiles_the_run() {
+        if orientation_is_pinned() {
+            return;
+        }
         let p = run24_plan();
         // `c64` planar's menu: the default straddles a third of its blocks,
         // the first alternate none, so the rule moves. This is the case worth
@@ -1848,6 +1554,9 @@ mod tests {
 
     #[test]
     fn row_block_may_change_the_orientation() {
+        if orientation_is_pinned() {
+            return;
+        }
         // Until Phase 4.1d a shape change was forbidden from flipping the
         // orientation, because the orientation rule of the day picked the wrong
         // arm on one family and the shape change would hand it the decision.
@@ -1861,6 +1570,9 @@ mod tests {
 
     #[test]
     fn row_block_leaves_a_deep_contraction_alone() {
+        if orientation_is_pinned() {
+            return;
+        }
         // Same output structure, but `k` large enough that the write-back is
         // amortised: the shape change would cost and buy nothing.
         let d = Layout::new(vec![24, 4, 8], vec![1, 200, 4000]).unwrap();

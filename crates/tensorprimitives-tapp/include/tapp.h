@@ -19,7 +19,7 @@
  * already have the upstream headers, use them.
  *
  * It is not sufficient, though, because the upstream reference implementation
- * has **no releases and no tags** (see D35 in `DECISIONS.md`), so "the header"
+ * has **no releases and no tags** (see D35 in `docs/notebook/`), so "the header"
  * is an untagged `main`. A consumer that pins this crate would be pinning its
  * declarations to a moving target, and the drift would be silent — precisely
  * the failure mode TBLIS's `type_t` enumerator swap already cost this project

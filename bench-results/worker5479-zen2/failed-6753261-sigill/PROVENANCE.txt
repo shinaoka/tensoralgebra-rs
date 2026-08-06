@@ -27,4 +27,4 @@ added in the same session, for the copies in the repo root -- excluded it from t
 commit. The rule is now anchored with a leading slash so future runs keep theirs.
 The message was: `Illegal instruction (core dumped)` from
 `TENSORCONTRACT_COMPLEX=planar tcbench verify`, and it is quoted in
-scripts/compare-bench.sh's header and in DECISIONS.md.
+scripts/compare-bench.sh's header and in docs/notebook/.

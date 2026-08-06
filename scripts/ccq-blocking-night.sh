@@ -18,7 +18,7 @@
 #      Zen2 grid swept and it won. `kc768` and `kc1024` now exist so the optimum
 #      gets bracketed rather than clipped.
 #   2. **This is the machine the default affects.** Every committed number in
-#      `DECISIONS.md` is AVX-512 on this box, and the grid was never run here — it
+#      `docs/notebook/` is AVX-512 on this box, and the grid was never run here — it
 #      was started 2026-08-03 08:11 and stopped after two arms. Changing
 #      `Blocking::derive` on Zen2 evidence alone would be changing it for a machine
 #      class that was never measured.

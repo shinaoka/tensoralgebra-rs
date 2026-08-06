@@ -1,6 +1,6 @@
 # `bench-results/` — every measurement this project quotes
 
-Raw CSVs for every number in [`DECISIONS.md`](../DECISIONS.md), committed. This
+Raw CSVs for every number in [`docs/results.md`](../docs/results.md), committed. This
 is not an archive: two of these directories are *grids* that a candidate tuning
 rule can still be scored against offline, for free, and that is how three Phase 4
 decisions were settled without buying more machine time.
@@ -38,7 +38,7 @@ run under a Zen2 name once already, which is why `worker6016-icelake` carries a
 note about its own rename.
 
 The existing names are **not** being retrofitted. They are cited by path
-throughout `DECISIONS.md`, which is append-only by design, and a rename would
+throughout `docs/notebook/`, which is append-only by design, and a rename would
 turn every one of those citations into a dead reference to buy tidiness.
 
 ## The directories
@@ -54,7 +54,7 @@ turn every one of those citations into a dead reference to buy tidiness.
 | `worker5175-zen2/` | worker5175 (Zen2) | 2026-08-03 | 6745978 | `rusty-phase4-seq.sbatch` | The three traffic-changing blocking arms, sequentially, because A27 rejected concurrent placement for them. **Directory name is wrong** — see its `PROVENANCE.txt` |
 | `worker5137-zen2/` | worker5137 (Zen2) | 2026-08-04 | 6751550 | `rusty-phase4.sbatch`, threads only | Third node. Confirms the partition effect follows **L3 domains spanned**, not thread count |
 | `worker6156-icelake/` | worker6156 (Ice Lake-SP, AVX-512) | 2026-08-04 | 6753260 | `rusty-compare.sbatch` | **The engine against its baselines**, first such run since Phase 3. Tightest floor in the repo (0.998-1.001 session-span). Source of **A44** (the method ranking does not travel). Holds three experiments: `compare-tblis-skx/` and `compare-tblis-x86_64/` (two independent full runs agreeing to 0.997-1.003) and `ab-tblis/` (the TBLIS-build A/B, A45/A46). **The README's numbers come from here** |
-| `worker6016-icelake/` | worker6016 (Ice Lake-SP, AVX-512) | 2026-08-03 | 6746817 | `rusty-phase4.sbatch`, `STAGES="shapes threads"` | The second Intel hierarchy. Source of **A34** (register blocks are per-microarchitecture) and **A36** (the partition win is absent here). `kernel-shapes.txt` covers **all four methods including 3m** at three depths — which is what deconfounds **A44** from A34 and kills Phase 4 item 3, and it sat here unread for two days while `DECISIONS.md` called that measurement pending. Read a directory before booking a machine |
+| `worker6016-icelake/` | worker6016 (Ice Lake-SP, AVX-512) | 2026-08-03 | 6746817 | `rusty-phase4.sbatch`, `STAGES="shapes threads"` | The second Intel hierarchy. Source of **A34** (register blocks are per-microarchitecture) and **A36** (the partition win is absent here). `kernel-shapes.txt` covers **all four methods including 3m** at three depths — which is what deconfounds **A44** from A34 and kills Phase 4 item 3, and it sat here unread for two days while `docs/notebook/` called that measurement pending. Read a directory before booking a machine |
 | `worker5479-zen2/` | worker5479 (Zen2) | 2026-08-04 | 6753208 | `PARTITION_SWEEP=1 STAGES=threads` | The domain-gate confirmation run, **Zen2 arm**: 144 of 392 moved at 1.433 corrected, corpus 1.133, against a prediction of 1.423 / 1.138 made before the node existed. Also the spread arms (A36's residual gap), A38 and A39. Contains `failed-6753261-sigill/`, a separate job with its own provenance |
 | `worker6150-icelake/` | worker6150 (Ice Lake-SP, AVX-512) | 2026-08-04 | 6753209 | the same submission | The domain-gate confirmation run, **Ice Lake arm — the control**: the gate moved **0 of 392** at every width up to the socket. Confirms A39 at 32 threads on a second machine |
 | `worker5139-zen2/` | worker5139 (Zen2) | 2026-08-04 | 6754849 | `STAGES="threads small"` | **Small contractions** (`phase4g/`): threading is 1.2–10x *slower* than serial below ~1 MiB and the optimal thread count walks 4 → 64 across the size range. Source of **D46** and **A43** |
@@ -71,7 +71,7 @@ The Phase 3 measurement set, all on `ccqlin038`, all 2026-08-02, all from
 
 | file | what |
 |---|---|
-| `phase3-sweep-{f64c64,f32c32}.csv` | The 49-case corpus against TBLIS 2.0-dev and TTGT. **These are the newest engine-vs-baseline numbers in the repo and they predate every Phase 4 gain**, so they understate the engine |
+| `phase3-sweep-{f64c64,f32c32}.csv` | The 49-case corpus against TBLIS 2.0-dev and TTGT, **on Cascade Lake, predating every Phase 4 gain**, so they understate the engine. **Superseded** as the newest engine-vs-baseline numbers by `worker6156-icelake/` (jobs 6753260 / 6754877) — but on a different microarchitecture, so the two sets are not differenceable and neither supersedes the other as *evidence*. That is exactly why what Phase 4 bought end to end is still unmeasured |
 | `phase3-sweep-ragged-c64.csv` | The same under `--stress ragged` — the only committed data in which the block-scatter gather path actually runs (`regA` down to 0.0031). Note the unperturbed corpus is **not** fully regular either, contrary to a shorthand this project repeated for a while: at the shipped `f32`/`c32` register blocks `reg_a < 1.0` on 42.9% of the 392 case-dtype-methods at `--size 64`, 45 of them entirely (Phase 4 part 14 — and note the fraction moves with the size and the ISA; this very file's `phase4d/features.csv` reads 36.7% because it was generated at a different size). `--stress` is how you get *severe* irregularity, not the only way to leave 1.00 |
 | `phase3-premise-{f64c64,f32c32}.csv` | Efficiency against a same-shape GEMM ceiling, 200 MiB, 12 cases — the metric the Phase 1 headline is stated in |
 | `phase3-premise-tblis130-f64c64.csv` | The same against **TBLIS v1.3.0**, the latest stable release. This is the half of the headline that shows the 5x |
@@ -86,7 +86,7 @@ file; they are in git history if ever wanted.
 ## Working with it, without spending any CPU
 
 ```bash
-# Turn two sweep CSVs into the ratio tables used throughout DECISIONS.md.
+# Turn two sweep CSVs into the ratio tables used throughout docs/notebook/.
 scripts/compare-sweeps.py BASE_CSVS NEW_CSVS
 
 # Score candidate rules against a grid — as many candidates as you like, free.
@@ -126,7 +126,7 @@ retractions detectable.
 ## What to read next
 
 [`../scripts/README.md`](../scripts/README.md) for what produced any of this, and
-[`../DECISIONS.md`](../DECISIONS.md) for what it means — its "Measurement rules"
+[`../docs/measurement-rules.md`](../docs/measurement-rules.md) for what it means — its "Measurement rules"
 section holds the noise floors, **each with its own session and thread count**,
 and the nine rules these directories were accumulated under. The short form: run
 and discard a warm-up arm (A31) and do not treat it as sufficient (A40); derive
@@ -134,4 +134,4 @@ the floor in session, from repeats adjacent to the arms compared (A32); do not
 place traffic-changing arms concurrently (A27); include columns the change cannot
 touch and check they do not move; measure at the size you publish at (A46); and
 **a per-case ratio at 64 threads is not readable at all** (A39). The full account
-of each, with what would reopen it, is in [`../REFUTED.md`](../REFUTED.md).
+of each, with what would reopen it, is in [`../docs/refuted.md`](../docs/refuted.md).

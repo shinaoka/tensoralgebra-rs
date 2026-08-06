@@ -80,7 +80,7 @@
 //!
 //! # What the model still cannot see
 //!
-//! `mc` is bounded from *both* sides (assumption A13 in `DECISIONS.md`): from
+//! `mc` is bounded from *both* sides (assumption A13 in `docs/notebook/`): from
 //! below by packed-`A` residency in L2, which is what this model computes, and
 //! from above by the strip of `D` that one `jr` pass revisits, which it does
 //! not model at all. A pending measurement (Phase 4 report part 7) is designed
@@ -533,6 +533,11 @@ fn probe_cpuid() -> Option<CacheHierarchy> {
     // 1.89 because that is where the AVX-512 intrinsics stabilised, and paying
     // five Rust releases of compatibility for two braces is the wrong trade.
     //
+    // When the MSRV does reach 1.94, the `allow` and the `unsafe` block come out
+    // **together**. Dropping only the `allow` is a hard error on 1.89..1.94;
+    // dropping only the block leaves a bare `allow` suppressing nothing, which
+    // will outlast anyone's memory of why it was there.
+    //
     // SAFETY: `CPUID` is unconditionally available on every x86 CPU that can
     // run this code — it predates every target feature the dispatch tests for —
     // and the instruction only reads processor identification registers.
@@ -795,26 +800,17 @@ impl BlockModel {
 /// the pending `MC`/`KC`/`NC` grid (`scripts/phase4e-blocking.sh`) defines its
 /// arms *relative to the derived defaults*, so changing the derivation would
 /// silently change what that measurement means; and every performance number in
-/// `DECISIONS.md` was taken against the hardcoded constants, which the project
+/// `docs/notebook/` was taken against the hardcoded constants, which the project
 /// requires be comparable through a run-time switch rather than a
 /// build-to-build diff (A15). Flip the default only after an end-to-end A/B in
 /// the configuration that ships (A20).
 pub fn block_model() -> BlockModel {
-    #[cfg(feature = "std")]
-    {
-        use std::sync::OnceLock;
-        static M: OnceLock<BlockModel> = OnceLock::new();
-        *M.get_or_init(|| {
-            std::env::var("TENSORCONTRACT_BLOCKMODEL")
-                .ok()
-                .and_then(|v| BlockModel::parse(&v))
-                .unwrap_or_default()
-        })
-    }
-    #[cfg(not(feature = "std"))]
-    {
-        BlockModel::default()
-    }
+    env_once!(
+        BlockModel,
+        "TENSORCONTRACT_BLOCKMODEL",
+        BlockModel::Legacy,
+        |v| BlockModel::parse(v).unwrap_or_default()
+    )
 }
 
 // ---------------------------------------------------------------------------

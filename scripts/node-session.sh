@@ -1,7 +1,7 @@
 #!/bin/bash
 # Run the pending Phase 4 measurements on an exclusive cluster node.
 #
-# Everything in `DECISIONS.md` is single-core on `ccqlin038`, a Cascade Lake
+# Everything in `docs/notebook/` is single-core on `ccqlin038`, a Cascade Lake
 # workstation. **Nothing measured here is comparable to any of it** — different
 # machine, different cache hierarchy, and on a Zen2 node a different instruction
 # set as well. Every ratio must be computed *within* this session, which is why
@@ -45,7 +45,7 @@ REPS=${REPS:-3}
 # A cluster job runs in the submit directory and uses its `target/`, so a
 # `cargo build` on the submit host -- or `cargo test`, which relinks the same
 # artefacts -- replaces the very binary a running arm invokes, and the job does
-# not notice. It happened once (DECISIONS.md part 13) and was inert only by luck.
+# not notice. It happened once (docs/notebook/ part 13) and was inert only by luck.
 #
 # `TC_TARGET` is this session's build tree. The sbatch wrappers set it per job;
 # unset it is the ordinary `target/`, so a hand run behaves as before. It is

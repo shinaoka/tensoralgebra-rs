@@ -1,4 +1,4 @@
-# REFUTED.md — things that were tried and did not work
+# Refuted — things that were tried and did not work
 
 **This file is not part of the per-session reading list.** It is a lookup table.
 **Consult it before proposing any performance idea, any measurement design, or
@@ -8,12 +8,17 @@ lost for a reason that tells you where to look instead.
 
 Negative results are the most valuable content this project produced, and the
 easiest to mistake for clutter. They live here so they stop competing for space
-in `CLAUDE.md` and in the live sections of `DECISIONS.md`, and so each one
+in `CLAUDE.md` and in the live sections of `notebook/`, and so each one
 carries the field that makes it useful rather than discouraging: **what would
 reopen it.**
 
-The full accounts stay in [`DECISIONS.md`](DECISIONS.md); every entry below
-points at one.
+The full accounts stay in [`notebook/`](notebook/README.md); every entry below
+points at one. For what *did* survive measurement, see
+[`results.md`](results.md).
+
+Thirty entries, each with a confidence level, an evidence field naming a job id,
+a CSV path or a `file:line`, and a reopening condition. **An entry without
+evidence is a rumour and does not belong here.**
 
 ## The confidence ladder
 
@@ -70,7 +75,7 @@ corpus sweep and this session's own floor; both were cut off.
 Stage B accordingly, and do not justify it with the old claim.
 
 **Evidence.** `bench-results/CKF6QCDVPD-m3max/` and its `PROVENANCE.txt`;
-DECISIONS.md part 20; A58.
+docs/notebook/apple-silicon.md part 20; A58.
 
 **What would reopen it.** A second aarch64 part with different vector issue width,
 or an `f32` measurement — `L = 4` there, so the register pressure and the
@@ -141,8 +146,14 @@ replicate.
 A/B.** Both grids' `base` arm was 1–2% slow, which inflated every `arm/base`
 ratio in both grids *identically*, so the two-machine agreement was a shared
 artefact rather than a replication. Control-corrected, the treatment is ≈0.977.
-The switch survives as an off-by-default record of the experiment, not as a
-pending improvement.
+
+**The switch is gone.** It survived for a while as an off-by-default record of
+the experiment; it was **removed before 0.1.0**, because a refuted branch in a
+published crate is a maintenance cost and a reader's false lead, and this entry
+plus the committed data is the record. The last commit that contains it is the
+parent of the one that removed it — `git log -S TENSORCONTRACT_DEEPEN` finds
+both. Nothing about the result changes; the code implementing it does not need
+to ship for the finding to stand.
 
 **Confidence.** `measured once` for the refutation (one end-to-end A/B on the
 reference machine, floor derived in session), `settled` for the conclusion that
@@ -639,7 +650,7 @@ hardware. Until then, treat 3m as the method that exists to make the comparison
 honest rather than as a candidate default.
 
 **Second lesson, and it is the reason this entry is long:** the answer was in
-committed raw output for two days while `DECISIONS.md` described it as unmeasured and
+committed raw output for two days while `notebook/` described it as unmeasured and
 a to-do list asked for node time to obtain it. That is A35's lesson recurring — check
 what is already on disk before booking a machine.
 
@@ -724,7 +735,7 @@ is a property of threaded measurement here, not of one machine.
 same data at no cost — `scripts/partition-score-rule.py` prints it.
 
 **Rule.** **Name the thread count with every floor.** A floor without one is not
-a floor. `DECISIONS.md`'s measurement-rules section carries the table.
+a floor. `notebook/`'s measurement-rules section carries the table.
 
 **What would reopen it.** A pooled implementation might tighten it, since some of
 the spread is per-call spawn variance. Re-derive it after task 3 item 3 rather
@@ -797,7 +808,7 @@ recovered a correct answer; `measured once` as a number.
 
 **Rule.** **Put every new fast path behind an environment switch** so both arms
 interleave in one process-restart A/B. That is why
-`TENSORCONTRACT_{ORIENT,WRITEBACK,ROWBLOCK,PARTITION,DEEPEN,BLOCKMODEL,KERNEL}`
+`TENSORCONTRACT_{ORIENT,WRITEBACK,ROWBLOCK,PARTITION,POOL,BLOCKMODEL,KERNEL}`
 exist, and adding one is part of adding a fast path.
 
 **What would reopen it.** Nothing.
@@ -1012,7 +1023,7 @@ one. **No Apple number is a pinned measurement** — Darwin has no CPU affinity
 API.
 
 **Evidence.** `bench-results/CKF6QCDVPD-m3max/kernel-shapes{,-repeat,-arm3}.txt`;
-`scripts/kernel-shapes-compare.py`; `DECISIONS.md` part 21; A60, D55.
+`scripts/kernel-shapes-compare.py`; `notebook/apple-silicon.md` part 21; A60, D55.
 
 **Rule.** Seed a menu from the budget, then **measure it**. A well-known
 library's chosen shape agreeing with your model is evidence about the model, not
@@ -1045,7 +1056,7 @@ that one arm cannot produce a floor.
 
 **Evidence.** The three `kernel-shapes*.txt` files above;
 `scripts/kernel-shapes-compare.py` prints the floor, the unstable list and each
-margin in units of the floor. `DECISIONS.md` part 21; D56.
+margin in units of the floor. `notebook/apple-silicon.md` part 21; D56.
 
 **Rule.** **A register block may not be changed on one sweep arm.** Run two or
 three, score with `kernel-shapes-compare.py`, keep the incumbent wherever the

@@ -32,4 +32,4 @@ machine is bandwidth-bound (occupancy 32-39% at 64 threads).
 
 Not comparable to anything measured on ccqlin038.
 
-Read with: DECISIONS.md -> Threading -> "Part 16" and "Part 14", and D47, A41.
+Read with: docs/notebook/ -> Threading -> "Part 16" and "Part 14", and D47, A41.

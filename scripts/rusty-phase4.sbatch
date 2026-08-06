@@ -6,7 +6,7 @@
 # Submit it from the repo root. Everything lands in
 # `bench-results/<node>-<arch>/` and the job log in `slurm-tp-phase4-<jobid>.out`.
 #
-# Read `DECISIONS.md` part 10 before submitting: the node choice is the experiment
+# Read `docs/notebook/` part 10 before submitting: the node choice is the experiment
 # design, and nothing measured here is comparable to any number committed in this
 # repo (different machine, different cache hierarchy, and on `rome` a different
 # instruction set).
@@ -223,6 +223,6 @@ echo "----------------------------------------------------------"
 cat "$SUMMARY"
 echo "=========================================================="
 echo
-echo "Nothing here is comparable to any number in DECISIONS.md. Every ratio is"
+echo "Nothing here is comparable to any number in docs/notebook/. Every ratio is"
 echo "computed within this session, and the noise floor is the one this node's"
 echo "own bracketing repeats produced -- not the committed +-1.3% / +-6%."

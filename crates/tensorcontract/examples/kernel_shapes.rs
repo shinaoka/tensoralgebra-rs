@@ -15,7 +15,7 @@
 //! It sweeps whichever instruction sets this target has: AVX-512 and AVX2 on
 //! x86, NEON on aarch64. The AVX-512 grid is the one Phase 3 chose the shipped
 //! AVX-512 shapes from, and NEON's menus were chosen from this sweep on
-//! 2026-08-06 (`DECISIONS.md` part 21). **AVX2 is the one family still picked
+//! 2026-08-06 (`docs/notebook/apple-silicon.md` part 21). **AVX2 is the one family still picked
 //! from a model** — the register budget and the uop model, on an AVX-512-only
 //! reference machine — and this is its calibration path. Run it on a
 //! Haswell/Zen box; the NEON calibration found the budget naming the wrong

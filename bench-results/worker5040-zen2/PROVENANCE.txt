@@ -40,4 +40,4 @@ Not comparable to anything measured on ccqlin038: different machine, different
 cache hierarchy, and AVX2 rather than AVX-512. Every ratio here is
 within-session against a floor re-derived here.
 
-Read with: DECISIONS.md parts 8, 8b, 9, 10 and 11.
+Read with: docs/notebook/ parts 8, 8b, 9, 10 and 11.

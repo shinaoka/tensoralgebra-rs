@@ -24,6 +24,20 @@ use tensorcontract::{Layout, Plan};
 
 // ---------------------------------------------------------------- utilities
 
+/// Whether a session has pinned the row/column orientation with
+/// `TENSORCONTRACT_ORIENT`.
+///
+/// Several assertions below are *preconditions* rather than the thing under
+/// test: they check that a case really does take the swapped path, or that a
+/// given axis really is the row axis, so that the test cannot quietly stop
+/// testing anything. Pinning the arm makes those preconditions false by
+/// construction while leaving the numerical result they guard perfectly valid,
+/// so they are skipped and the rest of the test still runs. Same shape as the
+/// `TENSORCONTRACT_PARTITION` guard in `thread_partition_rule`.
+fn orientation_is_pinned() -> bool {
+    std::env::var_os("TENSORCONTRACT_ORIENT").is_some()
+}
+
 fn sample<T: Element>(rng: &mut ChaCha8Rng) -> T {
     let re = T::Real::from_f64(rng.gen_range(-1.0..1.0));
     let im = if T::IS_COMPLEX {
@@ -505,11 +519,13 @@ where
         // path; if the heuristic stops firing here the test still passes but
         // has quietly stopped testing anything.
         let (mr, ..) = tensorcontract::kernel::selected_config::<T>(method);
-        assert_eq!(
-            plan.transposes_gemm(mr),
-            row_major_d,
-            "row_major_d={row_major_d} should decide the orientation at mr={mr}"
-        );
+        if !orientation_is_pinned() {
+            assert_eq!(
+                plan.transposes_gemm(mr),
+                row_major_d,
+                "row_major_d={row_major_d} should decide the orientation at mr={mr}"
+            );
+        }
 
         unsafe {
             plan.run_raw::<T>(
@@ -900,7 +916,11 @@ fn threaded_case<T>(
         // one the gate exists to change.
         let mode = std::env::var("TENSORCONTRACT_PARTITION").unwrap_or_default();
         let domain_aware = mode.is_empty() || mode == "domain";
-        if domain_aware || mode == "legacy" {
+        // Which direction is the *row* axis is exactly what the orientation
+        // switch changes, so `panels`/`blocks` below refer to the other axis
+        // when it is pinned and none of these shape assertions mean what they
+        // say. The bitwise-identity check above is unaffected and has run.
+        if (domain_aware || mode == "legacy") && !orientation_is_pinned() {
             assert!(
                 pm * pn <= p,
                 "{what}: partition oversubscribes the thread count"
@@ -1179,7 +1199,7 @@ fn threaded_clamps_below_one_cell_per_thread() {
 /// paths — see [`Split`] for why that matters.
 #[test]
 fn thread_partition_rule() {
-    if std::env::var_os("TENSORCONTRACT_PARTITION").is_some() {
+    if std::env::var_os("TENSORCONTRACT_PARTITION").is_some() || orientation_is_pinned() {
         // The rule is pinned away, or replaced by the domain-aware one; either
         // way there is nothing of *this* rule to check. The domain-aware gate is
         // a pure function and is pinned exhaustively by

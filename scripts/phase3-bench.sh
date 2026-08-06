@@ -14,7 +14,7 @@
 # engine and the corpus would take a day.
 #
 # Expects TBLIS_ROOT_2X and TBLIS_ROOT_13 to point at the two TBLIS installs;
-# see DECISIONS.md for how they were built.
+# see docs/notebook/ for how they were built.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."

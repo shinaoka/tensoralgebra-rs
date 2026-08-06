@@ -5,9 +5,8 @@
 //! Threading spawns `std::thread`s per [`execute`](crate::driver::execute) call.
 //! That costs **~20–36 µs per thread** and is the entire story below about a
 //! megabyte: a 0.22 ms `f32` contraction takes 2.2 ms on 64 threads, and per case
-//! the damage reaches 45x (A43, D46). The amortisation guard
-//! ([`Plan::amortised_threads`](crate::plan::Plan::amortised_threads)) steers
-//! around that cost; this removes it.
+//! the damage reaches 45x (A43, D46). This removes that cost, where it
+//! transfers -- see the caveat below.
 //!
 //! The shape the driver needs is **SPMD with barriers**: `pn` barriers of width
 //! `pm`, every thread running the same loop nest and rendezvousing twice per
@@ -311,12 +310,36 @@ mod tests {
         f()
     }
 
+    /// `try_broadcast`, retried while it declines.
+    ///
+    /// `serially` above locks the pool tests against *each other*, which is not
+    /// enough: with `TENSORCONTRACT_POOL=on` and a non-1 thread count, the driver
+    /// tests in this same binary take the pool too, and they do not hold that
+    /// lock. A decline is then correct behaviour rather than a failure -- the
+    /// driver answers one by spawning the region itself -- so a bare
+    /// `assert!(try_broadcast(..))` is a race, and it fires often enough on a
+    /// loaded machine to be worthless as a signal.
+    ///
+    /// Retrying keeps what these tests are actually for: that a broadcast which
+    /// *does* run visits every index exactly once, opens a barrier between its
+    /// participants, and leaves the pool usable after a panic. Exhausting the
+    /// retries is still a failure, and would mean the pool never became free.
+    fn broadcast_retrying(n: usize, f: &(dyn Fn(usize) + Sync)) -> bool {
+        for _ in 0..10_000 {
+            if try_broadcast(n, f) {
+                return true;
+            }
+            std::thread::yield_now();
+        }
+        false
+    }
+
     #[test]
     fn broadcast_runs_every_index_exactly_once() {
         serially(|| {
             for n in [1usize, 2, 3, 8, 17] {
                 let seen: Vec<AtomicUsize> = (0..n).map(|_| AtomicUsize::new(0)).collect();
-                assert!(try_broadcast(n, &|i| {
+                assert!(broadcast_retrying(n, &|i| {
                     seen[i].fetch_add(1, Ordering::Relaxed);
                 }));
                 for (i, c) in seen.iter().enumerate() {
@@ -336,7 +359,7 @@ mod tests {
             let n = 8;
             let bar = Barrier::new(n);
             let after = AtomicUsize::new(0);
-            assert!(try_broadcast(n, &|_| {
+            assert!(broadcast_retrying(n, &|_| {
                 bar.wait();
                 after.fetch_add(1, Ordering::Relaxed);
             }));
@@ -362,7 +385,7 @@ mod tests {
             assert!(caught.is_err(), "the panic must not be swallowed");
 
             let seen = AtomicUsize::new(0);
-            assert!(try_broadcast(4, &|_| {
+            assert!(broadcast_retrying(4, &|_| {
                 seen.fetch_add(1, Ordering::Relaxed);
             }));
             assert_eq!(

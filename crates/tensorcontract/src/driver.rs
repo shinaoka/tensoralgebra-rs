@@ -94,7 +94,7 @@
 //! * **The serial path is unchanged.** With `pm == pn == 1` the only difference
 //!   from the pre-threading driver is two `Option` checks and a handful of
 //!   integer divisions per `(jc, pc)` iteration, nowhere near the hot loops.
-//!   Every measurement committed in `DECISIONS.md` was taken single-threaded and
+//!   Every measurement committed in `docs/notebook/` was taken single-threaded and
 //!   stays comparable.
 //!
 //! Known limits, in the order they will bite (see the Phase 4 report):
@@ -105,12 +105,9 @@
 //!
 //! The per-call spawn cost that used to head that list — `std::thread::scope`
 //! rather than a pool, ~20–36 µs per thread and the whole story below a megabyte
-//! (A43, D46) — now has three answers, all opt-in and all measurable against the
+//! (A43, D46) — now has two answers, both opt-in and both measurable against the
 //! shipped behaviour as run-time switches:
 //!
-//! * [`Plan::amortised_threads`](crate::plan::Plan::amortised_threads) caps the
-//!   thread count so the cost stays a bounded fraction of the work
-//!   (`TENSORCONTRACT_AMORTISE=on`) — it steers around the cost;
 //! * [`crate::pool`] reuses parked threads instead of spawning
 //!   (`TENSORCONTRACT_POOL=on`) — it removes the cost;
 //! * [`crate::batch`] parallelises over a *batch* of contractions, paying one
@@ -142,8 +139,17 @@ struct Shared<T>(*mut T);
 
 // SAFETY: see the type's documentation. The disjointness is a property of the
 // strip partition in `execute`, which is the only place `Shared` is created.
-unsafe impl<T> Send for Shared<T> {}
-unsafe impl<T> Sync for Shared<T> {}
+//
+// `T: Send` on both, and it is `Send` rather than `Sync` that is wanted even for
+// the `Sync` impl: `Shared` is written through from several threads at once, so
+// it is morally a split `&mut T` rather than a shared `&T`, and the obligation
+// it discharges is that values of `T` may be produced and dropped on a thread
+// other than the one that created them. Every instantiation is `T: Element`,
+// which is already `Copy + Send + Sync + 'static`, so the bound costs nothing
+// here -- it is there so the impls cannot silently start covering a `T` that
+// does not deserve them. `buffer::Panel` bounds its `Send` the same way.
+unsafe impl<T: Send> Send for Shared<T> {}
+unsafe impl<T: Send> Sync for Shared<T> {}
 
 /// Everything one thread of the loop nest needs that does not vary with its
 /// row strip. Exists so that the nest can be written once and run either
@@ -410,16 +416,8 @@ pub(crate) unsafe fn execute_capped<T>(
     // each; it caps them at the panel and block counts, so a contraction with
     // three row panels and two column blocks uses six threads at most however
     // many were asked for and however much work it contains.
-    // The thread count the partition is derived from is the *amortised* one: with
-    // `TENSORCONTRACT_AMORTISE=on` it is capped so per-call spawn stays a bounded
-    // fraction of the work, which is what stops a sub-megabyte contraction being
-    // an order of magnitude slower on 64 threads than on one (A43, D46). Off by
-    // default, in which case this is `plan.threads()` exactly. The element type
-    // is only known here, which is why `Plan` cannot do it alone.
     let npanels = m.div_ceil(mr);
-    let want = plan
-        .amortised_threads(T::IS_COMPLEX)
-        .min(max_threads.max(1));
+    let want = plan.threads().min(max_threads.max(1));
     let (pm, pn) = plan.partition_with(mr, nr, want);
     let p = pm * pn;
 

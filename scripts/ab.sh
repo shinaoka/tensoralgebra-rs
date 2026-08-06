@@ -3,8 +3,8 @@
 #
 #   scripts/ab.sh OUTDIR "ENV=VAL [ENV=VAL ...]" [cpu] [size_mib] [reps] [filter]
 #
-# e.g. the pending coupled-deepening A/B (part 7):
-#   scripts/ab.sh bench-results/ab-deepen "TENSORCONTRACT_DEEPEN=on"
+# e.g. the row-block A/B that D43 made reachable:
+#   scripts/ab.sh bench-results/ab-rowblock-idx3 "TENSORCONTRACT_ROWBLOCK=idx=3"
 #
 # `scripts/phase4-remeasure.sh` is the same pattern with its B arm hardcoded to the
 # write-back experiment; its output is committed and cited, so it is left alone and
@@ -18,7 +18,7 @@
 #     single-core boost and nothing else does, which came back as a uniform 4.4%
 #     "floor" while inflating every ratio measured against A. One arm, thrown away.
 #   * **A' is compared to A explicitly**, and that ratio is the floor every claim
-#     about B is judged against. Do not import ±1.3%/±6% from `DECISIONS.md`; those
+#     about B is judged against. Do not import ±1.3%/±6% from `docs/notebook/`; those
 #     are `ccqlin038`'s from one session and drift is a function of how far apart two
 #     arms are (A32) — 0.02% at a minute, 1–2% at an hour, 4.4% across a cold start.
 #   * **Occupancy for the pinned core, its SMT sibling, and its whole L3 domain** is
@@ -33,7 +33,7 @@ set -e
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 OUT=${1:?usage: scripts/ab.sh OUTDIR \"ENV=VAL ...\" [cpu] [size] [reps] [filter]}
-BENV=${2:?give the B arm as environment assignments, e.g. \"TENSORCONTRACT_DEEPEN=on\"}
+BENV=${2:?give the B arm as environment assignments, e.g. \"TENSORCONTRACT_POOL=on\"}
 CPU=${3:-4}
 SIZE=${4:-64}
 REPS=${5:-3}
@@ -79,5 +79,5 @@ scripts/compare-sweeps.py "$OUT/A-f64c64.csv,$OUT/A-f32c32.csv" \
     "$OUT/B-f64c64.csv,$OUT/B-f32c32.csv" | tee "$OUT/treatment.txt"
 
 echo
-echo "Judge the treatment against floor.txt, not against any number in DECISIONS.md."
+echo "Judge the treatment against floor.txt, not against any number in docs/notebook/."
 echo "The warm-* arms are deliberately not analysed."

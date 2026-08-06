@@ -21,7 +21,7 @@
 # columns is drift, and it bounds the engine columns' credibility from outside.
 #
 # There is NO CPU PINNING on Darwin and this script cannot invent one. See
-# `DECISIONS.md` part 20. The compensations are the warm-up arm, the repeat
+# `docs/notebook/apple-silicon.md` part 20. The compensations are the warm-up arm, the repeat
 # control, AC power, a quiesced machine, single-threaded everything, and the
 # thermal level recorded at both ends.
 #

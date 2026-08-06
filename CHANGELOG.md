@@ -2,16 +2,20 @@
 
 All notable changes to `tensorcontract` and `tensorprimitives-tapp`. The reasoning
 behind every entry, and all of the data, lives in
-[`DECISIONS.md`](DECISIONS.md) — this file records *what* changed and how well
+[`docs/`](docs/README.md) — this file records *what* changed and how well
 it is known, not why.
 
 The two crates share a version. `tensorprimitives-bench` is not published.
+
+**Conventions for this file are in [`RELEASING.md`](RELEASING.md)**, which CI
+enforces. It is deliberately not Keep a Changelog: the *Confidence* section is
+the part a prospective dependant most needs, and it has no KaC category.
 
 ## 0.1.0 — unreleased
 
 First public prerelease. The engine is correct and framework-complete, the
 x86 micro-kernels are real, and performance work is partly done and
-[documented case by case](DECISIONS.md). Read "Confidence" below before quoting
+[documented case by case](docs/results.md). Read "Confidence" below before quoting
 a number.
 
 ### Added — crate layout
@@ -72,12 +76,14 @@ added later without breaking existing dependents.
   ground — the driver is SPMD-with-barriers and a task blocking on a barrier inside a
   bounded pool deadlocks — and declined for the batch axis, where it would fit, only
   because ten lines of `std` do the same job.
-* **A thread-count amortisation guard**, `TENSORCONTRACT_AMORTISE=on`, built and
-  **not shipped.** It caps threads so spawn stays a bounded fraction of the work, and
-  measurement made it a *trade* rather than a win: it rescues an over-threaded caller
-  by up to 10.8x and costs a correctly-threaded one 10–39% at 2–8 threads on
-  sub-megabyte work, leaving 12–14% of individual points more than 10% slower there.
-  On top of the pool it is pure loss. Kept as a record of the experiment.
+* **A thread-count amortisation guard** was built, measured and **not shipped**;
+  its switch was removed before this release, and `docs/refuted.md` plus
+  `bench-results/worker5086-zen2/phase4g/` is the record. It capped threads so
+  spawn stayed a bounded fraction of the work, and measurement made it a *trade*
+  rather than a win: it rescues an over-threaded caller by up to 10.8x and costs
+  a correctly-threaded one 10–39% at 2–8 threads on sub-megabyte work, leaving
+  12–14% of individual points more than 10% slower there. On top of the pool it
+  is pure loss.
 * **Multi-threading** behind `Plan::with_threads` / `TENSORCONTRACT_THREADS`,
   default **1**. A 2-D `pm x pn` static partition of the *output*: every element
   has one owning thread accumulating over the full `K` in the original order, so
@@ -87,7 +93,7 @@ added later without breaking existing dependents.
 * **Runtime switches** for every fast path, so any change can be A/B-tested in
   one session instead of as a diff between two builds: `TENSORCONTRACT_COMPLEX`,
   `_KERNEL`, `_BLOCKMODEL`, `_MC`/`_KC`/`_NC`, `_MC_PCT`/`_NC_PCT`,
-  `_KC_COUPLE`, `_DEEPEN`, `_PARTITION`, `_THREADS`, `_ORIENT`, `_WRITEBACK`,
+  `_KC_COUPLE`, `_POOL`, `_PARTITION`, `_THREADS`, `_ORIENT`, `_WRITEBACK`,
   `_ROWBLOCK`.
   Documented in `CLAUDE.md`; they exist for measurement and none of them affects
   correctness.
@@ -102,6 +108,29 @@ added later without breaking existing dependents.
   headers from `TAPPorg/reference-implementation` and exercised end to end
   through the C entry points. `num-complex` layout compatibility with
   `TAPP_C32`/`TAPP_C64` is pinned by a test.
+
+### Confidence — what is measured and what is only correct
+
+The distinction matters more than the numbers, so it is stated per item.
+
+| Component | Status |
+|---|---|
+| Correctness of everything below, in every dtype, method, ISA and thread count | **Tested** against a brute-force oracle, and in the harness against TTGT and TBLIS. Randomised extents and axis orders, diagonals, reductions, negative strides, empty and scalar cases, all 16 conjugation masks, shapes that cross every cache-blocking level, and the irregular block-scatter path |
+| AVX-512 register blocks | **Measured** (`examples/kernel_shapes`), per method and element type, at the `kc` the engine uses — **on one microarchitecture.** Two later findings qualify this and neither is fixed in this release: register blocks turn out to be a property of the *microarchitecture*, not of the instruction set, so Cascade Lake's winners are not Ice Lake's (A34); and one of the eight shipped configurations disagrees with the sweep that chose it — `planar` `f32`/`c32` ships `32x6` where the sweep's own output names `32x5`, **7.8% faster** at the operating `kc` (A35). The default is unchanged, but the shape is no longer unreachable: the row-block menu is keyed by position rather than by `MR` (D43), so `32x5` is on the menu and `TENSORCONTRACT_ROWBLOCK=idx=3` runs it. A kernel margin is not a corpus margin, which is why this is an arm and not a retune |
+| Write-back, orientation and row-block rules | **Measured** — whole-grid sweeps over all 392 corpus case-dtype-methods, scored offline |
+| **NEON register blocks** | **Measured on an M3 Max, with three arms and a floor — and that is why six of the eight winners are recorded as *ties* rather than decisions.** Only `f64` real (`16x3`, +4.9%), `f64` 3m and `f32` 3m (+7–8%) clear the session's p90 spread; the other five kept the budget-derived incumbent. Three candidate shapes are excluded as **unstable rather than slow** — 1m `3x10` reads 37.8 / 54.9 / 54.8 GF/s across arms, a shape doing two different things, which averaging over more reps would have hidden. The register budget that seeded the menu named the wrong winner in **three of eight** columns, including one where it agreed with BLIS's own `armv8a_asm_6x8` and the machine preferred a shape the budget calls over-limit. **The AVX-512 and AVX2 menus above were each chosen from a single arm and therefore carry the same unknown error bar.** `f64` real's `MR = 16` does not divide the corpus's 24 and costs write-back regularity on 12 of 49 `f64` cases; it ships because the guarded row-block rule demotes exactly those 12 |
+| **What the NEON kernel is worth** | **Measured end to end against a floor**, one binary, four arms, `TENSORCONTRACT_KERNEL` as the treatment — a comparison the x86 kernels cannot have, since an AVX-512 machine cannot un-have its own. **1.840** in `f64` (19.90 → 36.60 GF/s geomean, 12 premise shapes, 64 MiB, one thread), 1.69–1.83 in `c64`, against a floor of 1.000–1.008 and baseline columns that moved 0.996–1.006. The engine reaches **1.00x TBLIS 2.0-dev** in `f64` and **1.12x** in `c64` with 3m, at **81.4%** of the 64.8 GF/s NEON FMA peak on its best shape — the same efficiency the scalar path reached against a ceiling halved by the missing `fmla`. On this machine **3m is the fastest complex method** (1.135x planar) and it is the arm that passes TBLIS; that is a fourth per-microarchitecture ordering and does not transfer. **Not a pinned measurement** — Darwin has no CPU affinity API — and there is no corpus sweep or `ragged` arm behind it, only the 12 premise shapes |
+| **AVX2 register blocks** | **Measured, and all eight shipped shapes are the winners** — on Zen2 (`worker5040`), where the `avx2`-without-`avx512` dispatch branch also executed on real hardware for the first time. They stopped being a guess with no code change. Read with A34 above: this is one AVX2 microarchitecture, not AVX2 in general |
+| **Default cache blocking (`MC`/`KC`/`NC`)** | **Swept on two machines, and closed with a negative result: there is no few-percent win here.** `KC` is first-order — it decides whether the `A` sliver is an L1 resident or an L2 stream — but on the reference machine `kc = 384` is the optimum and the shipped 256 is close to it, while `MC` is a wide plateau a sixteenfold range moves by at most 3%. Pinned `kc = 512` is a *machine-specific* result and must not ship: 1.050 on Zen2, **0.961** on Cascade Lake. Coupled deepening looked like +3% on both machines and **failed its end-to-end A/B** — both grids' `base` arm was 1–2% slow, inflating every `arm/base` ratio identically, so the two-machine agreement was a shared artefact rather than a replication; control-corrected the treatment is ≈0.977. The switch that implemented it was removed before 0.1.0; `docs/refuted.md` and `bench-results/ab-deepen/` are the record. Shipped defaults remain `kc = 384/256` by real size, fitted to one Cascade Lake workstation. Three candidate changes and a mechanism all died on measurement; do not reopen without a new machine or a new mechanism |
+| **The analytical blocking model** | **Measured, and it loses. Off by default and staying there.** On the first unseen machine it is worse in **11 of 12 columns**, by up to 7.2% in the complex methods, and the whole loss is attributable to its `kc` (A33). It was built to solve portability and does not; the hypothesis is refuted rather than pending |
+| **Threading** | **Scaling measured on seven nodes (five Zen2, two Ice Lake), off by default and now off for a measured reason.** Below ~1 MiB at 64 threads it is 1.2–10x *slower* than serial — per-call thread spawn is ~20–36 µs per thread — and the optimal thread count walks 4 → 64 across the size range, so a fixed default is wrong at every size but one (D46). Bitwise-identical results are asserted at every thread count *and every partition*. Scaling is strongly topology-dependent: Zen2 saturates by 16–32 and declines at 64, Ice Lake reaches 48% of linear at 32 in `c64` 3m. A 4.3x partition win on Zen2 is **absent on Ice Lake** (A36), so the first machine alone would have produced the wrong rule. Threads are spawned per call by default. A pool (`TENSORCONTRACT_POOL=on`) is measured on **two** machine classes and **does not transfer**: up to 11.6x on 64 Zen2 cores, up to 2.5x *slower* on 32 Ice Lake cores sharing one L3, so it stays off and is not a default candidate. The amortisation guard beside it is measured and **not shipped**. On Zen2 the pool's win is *not* confined below 1 MiB, so the "bandwidth ceiling" account of the large-size saturation is substantially wrong there |
+| **The domain-aware partition** (`TENSORCONTRACT_PARTITION=domain`) | **Measured on two topologies, it met its pre-registered prediction, and it is now the default (D44).** It supplies the input `Plan::partition` was missing (how many L3 domains the thread set spans) and *gates* the `panels >= p` early return on it rather than removing it, which would be wrong where one L3 serves the socket. Predicted from another node's grid before the run: 1.423 on the 144 case-dtype-methods it moves, 1.138 corpus. Measured: **1.433 and 1.133** drift-corrected, on exactly 144 of 392, and **0 of 392 moved on a one-L3-per-socket machine**. The effect is monotone in domain count and flat in thread count, including a fixed-16-thread arm that varies only the packing (1.19x packed over 4 domains, **2.74x spread over 16**). Corpus scaling at 64 Zen2 cores goes 5.81 → 7.54 (`f64`) and 5.51 → 7.88 (`f32`). `TENSORCONTRACT_PARTITION=legacy` restores the ungated rule, which is what every threaded number committed before 2026-08-04 was measured with. Reproduce the prediction with `scripts/partition-score-rule.py`; raw arms in `bench-results/worker5479-zen2` and `worker6150-icelake` |
+| Absolute throughput off the reference machine | **Measured on Ice Lake, twice, and it is the best-known set here — but still not comparable with the reference machine.** Two full engine-vs-baseline runs in separate allocations agree to 0.997–1.003 on all twenty dtype × engine columns, each internally bracketed by a repeat arm 2.5 h away reading 0.998–1.001 with 0 of 980 case points outside ±6%. The Zen2 sessions remain within-session only. **No number from any of them may be differenced against a `ccqlin038` number** — which is why the improvement the Phase 4 work bought is still unmeasured end to end |
+| **The complex-method ranking, off Cascade Lake** | **Measured, it does not transfer, and it is not confounded (A44).** Planar still wins the corpus, but 3m falls from 0.956/0.921 against planar to 0.694/0.744 on Ice Lake, is last in every column, and wins 0 of 49 cases — and the memory-bound inversion Phase 4 item 3 was to exploit is absent. This was first recorded as confounded with A34's wrong register blocks; the kernel sweep that settles it was already committed and says otherwise, because 3m ships the shape that sweep names as 3m's own Ice Lake best. The collapse is uniform across 3m's whole shape space, and even at L1-resident depth 3m leads by 10–16% on Cascade Lake and trails by 34–43% on Ice Lake. **Item 3 is dropped, and 3m's L1-resident advantage is a Cascade Lake result too** — the flop-saving *accounting* holds everywhere, the claim that it pays does not |
+| **The TBLIS 2.0 baseline's build** | **Measured, and it does not matter at these sizes — but it decides whether the baseline runs at all.** The install every number here used was configured `BLIS_CONFIG_FAMILY=auto`, hence skx-only, and **SIGILLs on any machine without AVX-512**. Rebuilt multi-config it is identical at 64 MiB and 200 MiB (0.997–1.000 against a 0.998–1.003 floor), so the comparison numbers stand; an earlier claim that the skx build understated TBLIS 2.0 by up to 1.68x was measured at 8 MiB and is withdrawn (A45, A46) |
+
+`K`-parallelism is deliberately absent, on evidence rather than by omission —
+see [`docs/decisions.md`](docs/decisions.md) A21.
 
 ### Performance
 
@@ -139,8 +168,11 @@ is a separate confound from time (A46).
   memory-bound shapes where 3m's flop saving pays, are **Cascade Lake results that
   do not transfer**: on Ice Lake 3m is last in every column and wins 0 of 49 cases
   (0.694 `c64`, 0.744 `c32` against planar, where Cascade Lake had 0.956 and
-  0.921), and the inversion is absent (A44). Partly confounded with the register
-  blocks being wrong there (A34). The ranking also depends on the instruction set:
+  0.921), and the inversion is absent (A44). This was first recorded as partly
+  confounded with the register blocks being wrong there (A34); **it is not.** The
+  kernel sweep that settles it was already committed, and 3m ships the shape that
+  sweep names as its own Ice Lake best, so there is no better shape to give it.
+  The ranking also depends on the instruction set:
   at the kernel level on **AVX2**, 3m comes first in `f32`/`c32`, the opposite of
   AVX-512 (A24). Do not treat the ranking as a property of the engine.
 * **Against the baselines on Ice Lake** — median over the 12-case premise set at
@@ -149,29 +181,6 @@ is a separate confound from time (A46).
   and 1.95–2.20x over TTGT across the full corpus. Measured twice in separate
   allocations, agreeing to 0.997–1.003 on all twenty columns. Not comparable with
   any Cascade Lake number, and not evidence of what the Phase 4 work bought.
-
-### Confidence — what is measured and what is only correct
-
-The distinction matters more than the numbers, so it is stated per item.
-
-| Component | Status |
-|---|---|
-| Correctness of everything below, in every dtype, method, ISA and thread count | **Tested** against a brute-force oracle, and in the harness against TTGT and TBLIS. Randomised extents and axis orders, diagonals, reductions, negative strides, empty and scalar cases, all 16 conjugation masks, shapes that cross every cache-blocking level, and the irregular block-scatter path |
-| AVX-512 register blocks | **Measured** (`examples/kernel_shapes`), per method and element type, at the `kc` the engine uses — **on one microarchitecture.** Two later findings qualify this and neither is fixed in this release: register blocks turn out to be a property of the *microarchitecture*, not of the instruction set, so Cascade Lake's winners are not Ice Lake's (A34); and one of the eight shipped configurations disagrees with the sweep that chose it — `planar` `f32`/`c32` ships `32x6` where the sweep's own output names `32x5`, **7.8% faster** at the operating `kc` (A35). The default is unchanged, but the shape is no longer unreachable: the row-block menu is keyed by position rather than by `MR` (D43), so `32x5` is on the menu and `TENSORCONTRACT_ROWBLOCK=idx=3` runs it. A kernel margin is not a corpus margin, which is why this is an arm and not a retune |
-| Write-back, orientation and row-block rules | **Measured** — whole-grid sweeps over all 392 corpus case-dtype-methods, scored offline |
-| **NEON register blocks** | **Measured on an M3 Max, with three arms and a floor — and that is why six of the eight winners are recorded as *ties* rather than decisions.** Only `f64` real (`16x3`, +4.9%), `f64` 3m and `f32` 3m (+7–8%) clear the session's p90 spread; the other five kept the budget-derived incumbent. Three candidate shapes are excluded as **unstable rather than slow** — 1m `3x10` reads 37.8 / 54.9 / 54.8 GF/s across arms, a shape doing two different things, which averaging over more reps would have hidden. The register budget that seeded the menu named the wrong winner in **three of eight** columns, including one where it agreed with BLIS's own `armv8a_asm_6x8` and the machine preferred a shape the budget calls over-limit. **The AVX-512 and AVX2 menus above were each chosen from a single arm and therefore carry the same unknown error bar.** `f64` real's `MR = 16` does not divide the corpus's 24 and costs write-back regularity on 12 of 49 `f64` cases; it ships because the guarded row-block rule demotes exactly those 12 |
-| **What the NEON kernel is worth** | **Measured end to end against a floor**, one binary, four arms, `TENSORCONTRACT_KERNEL` as the treatment — a comparison the x86 kernels cannot have, since an AVX-512 machine cannot un-have its own. **1.840** in `f64` (19.90 → 36.60 GF/s geomean, 12 premise shapes, 64 MiB, one thread), 1.69–1.83 in `c64`, against a floor of 1.000–1.008 and baseline columns that moved 0.996–1.006. The engine reaches **1.00x TBLIS 2.0-dev** in `f64` and **1.12x** in `c64` with 3m, at **81.4%** of the 64.8 GF/s NEON FMA peak on its best shape — the same efficiency the scalar path reached against a ceiling halved by the missing `fmla`. On this machine **3m is the fastest complex method** (1.135x planar) and it is the arm that passes TBLIS; that is a fourth per-microarchitecture ordering and does not transfer. **Not a pinned measurement** — Darwin has no CPU affinity API — and there is no corpus sweep or `ragged` arm behind it, only the 12 premise shapes |
-| **AVX2 register blocks** | **Measured, and all eight shipped shapes are the winners** — on Zen2 (`worker5040`), where the `avx2`-without-`avx512` dispatch branch also executed on real hardware for the first time. They stopped being a guess with no code change. Read with A34 above: this is one AVX2 microarchitecture, not AVX2 in general |
-| **Default cache blocking (`MC`/`KC`/`NC`)** | **Swept on two machines, and closed with a negative result: there is no few-percent win here.** `KC` is first-order — it decides whether the `A` sliver is an L1 resident or an L2 stream — but on the reference machine `kc = 384` is the optimum and the shipped 256 is close to it, while `MC` is a wide plateau a sixteenfold range moves by at most 3%. Pinned `kc = 512` is a *machine-specific* result and must not ship: 1.050 on Zen2, **0.961** on Cascade Lake. Coupled deepening looked like +3% on both machines and **failed its end-to-end A/B** — both grids' `base` arm was 1–2% slow, inflating every `arm/base` ratio identically, so the two-machine agreement was a shared artefact rather than a replication; control-corrected the treatment is ≈0.977. `TENSORCONTRACT_DEEPEN=on` survives as an off-by-default record of that experiment, not as a pending improvement. Shipped defaults remain `kc = 384/256` by real size, fitted to one Cascade Lake workstation. Three candidate changes and a mechanism all died on measurement; do not reopen without a new machine or a new mechanism |
-| **The analytical blocking model** | **Measured, and it loses. Off by default and staying there.** On the first unseen machine it is worse in **11 of 12 columns**, by up to 7.2% in the complex methods, and the whole loss is attributable to its `kc` (A33). It was built to solve portability and does not; the hypothesis is refuted rather than pending |
-| **Threading** | **Scaling measured on seven nodes (five Zen2, two Ice Lake), off by default and now off for a measured reason.** Below ~1 MiB at 64 threads it is 1.2–10x *slower* than serial — per-call thread spawn is ~20–36 µs per thread — and the optimal thread count walks 4 → 64 across the size range, so a fixed default is wrong at every size but one (D46). Bitwise-identical results are asserted at every thread count *and every partition*. Scaling is strongly topology-dependent: Zen2 saturates by 16–32 and declines at 64, Ice Lake reaches 48% of linear at 32 in `c64` 3m. A 4.3x partition win on Zen2 is **absent on Ice Lake** (A36), so the first machine alone would have produced the wrong rule. Threads are spawned per call by default. A pool (`TENSORCONTRACT_POOL=on`) is measured on **two** machine classes and **does not transfer**: up to 11.6x on 64 Zen2 cores, up to 2.5x *slower* on 32 Ice Lake cores sharing one L3, so it stays off and is not a default candidate. The amortisation guard beside it is measured and **not shipped**. On Zen2 the pool's win is *not* confined below 1 MiB, so the "bandwidth ceiling" account of the large-size saturation is substantially wrong there |
-| **The domain-aware partition** (`TENSORCONTRACT_PARTITION=domain`) | **Measured on two topologies, it met its pre-registered prediction, and it is now the default (D44).** It supplies the input `Plan::partition` was missing (how many L3 domains the thread set spans) and *gates* the `panels >= p` early return on it rather than removing it, which would be wrong where one L3 serves the socket. Predicted from another node's grid before the run: 1.423 on the 144 case-dtype-methods it moves, 1.138 corpus. Measured: **1.433 and 1.133** drift-corrected, on exactly 144 of 392, and **0 of 392 moved on a one-L3-per-socket machine**. The effect is monotone in domain count and flat in thread count, including a fixed-16-thread arm that varies only the packing (1.19x packed over 4 domains, **2.74x spread over 16**). Corpus scaling at 64 Zen2 cores goes 5.81 → 7.54 (`f64`) and 5.51 → 7.88 (`f32`). `TENSORCONTRACT_PARTITION=legacy` restores the ungated rule, which is what every threaded number committed before 2026-08-04 was measured with. Reproduce the prediction with `scripts/partition-score-rule.py`; raw arms in `bench-results/worker5479-zen2` and `worker6150-icelake` |
-| Absolute throughput off the reference machine | **Measured on Ice Lake, twice, and it is the best-known set here — but still not comparable with the reference machine.** Two full engine-vs-baseline runs in separate allocations agree to 0.997–1.003 on all twenty dtype × engine columns, each internally bracketed by a repeat arm 2.5 h away reading 0.998–1.001 with 0 of 980 case points outside ±6%. The Zen2 sessions remain within-session only. **No number from any of them may be differenced against a `ccqlin038` number** — which is why the improvement the Phase 4 work bought is still unmeasured end to end |
-| **The complex-method ranking, off Cascade Lake** | **Measured, it does not transfer, and it is not confounded (A44).** Planar still wins the corpus, but 3m falls from 0.956/0.921 against planar to 0.694/0.744 on Ice Lake, is last in every column, and wins 0 of 49 cases — and the memory-bound inversion Phase 4 item 3 was to exploit is absent. This was first recorded as confounded with A34's wrong register blocks; the kernel sweep that settles it was already committed and says otherwise, because 3m ships the shape that sweep names as 3m's own Ice Lake best. The collapse is uniform across 3m's whole shape space, and even at L1-resident depth 3m leads by 10–16% on Cascade Lake and trails by 34–43% on Ice Lake. **Item 3 is dropped, and 3m's L1-resident advantage is a Cascade Lake result too** — the flop-saving *accounting* holds everywhere, the claim that it pays does not |
-| **The TBLIS 2.0 baseline's build** | **Measured, and it does not matter at these sizes — but it decides whether the baseline runs at all.** The install every number here used was configured `BLIS_CONFIG_FAMILY=auto`, hence skx-only, and **SIGILLs on any machine without AVX-512**. Rebuilt multi-config it is identical at 64 MiB and 200 MiB (0.997–1.000 against a 0.998–1.003 floor), so the comparison numbers stand; an earlier claim that the skx build understated TBLIS 2.0 by up to 1.68x was measured at 8 MiB and is withdrawn (A45, A46) |
-
-`K`-parallelism is deliberately absent, on evidence rather than by omission —
-see `DECISIONS.md` A21.
 
 ### Added — distribution surface
 
@@ -254,7 +263,7 @@ see `DECISIONS.md` A21.
   inversion that would have justified it is a Cascade Lake result, absent on Ice
   Lake, where the same rule would be a pessimisation — and not explained by the
   register-block error either, since 3m already runs its Ice Lake-optimal shape
-  (A44). See [`REFUTED.md`](REFUTED.md).
+  (A44). See [`docs/refuted.md`](docs/refuted.md).
 * No `pc`-loop fusion, no pack-free fast path for already unit-stride block
   scatter, no software prefetch. `pc` fusion is **not** the general enabler earlier
   notes implied — at `K = 3744` and `mc = 256` the fused packed `A` block is 7.7 MB
@@ -304,6 +313,6 @@ one test. All four were behaviour a C caller could observe:
   on the engine by path *and* version, so it cannot even be packaged beforehand — `cargo package` fails at "failed to prepare local
   package for uploading" until `tensorcontract 0.1.0` is in the registry.
 * Licensed MIT OR Apache-2.0.
-* Any statement about TBLIS in `DECISIONS.md` names a version. v1.3.0 and
+* Any statement about TBLIS in `docs/` names a version. v1.3.0 and
   2.0-dev differ by ~5x on complex data and swap two ABI enumerators; treating
   them as one library is the single easiest way to get a wrong answer here.

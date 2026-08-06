@@ -6,7 +6,7 @@ reading five headers, and so that a script kept only because it produced
 committed data is visibly that.
 
 **Nothing here is deleted, and superseded is not the same as dead.**
-`phase4-remeasure.sh` and `phase3-bench.sh` produced data that `DECISIONS.md`
+`phase4-remeasure.sh` and `phase3-bench.sh` produced data that `docs/notebook/`
 cites; they stay, and they are marked.
 
 Shared conventions: the shell scripts refuse to be sourced, `cd` to the repo
@@ -57,11 +57,12 @@ the orientation rule were settled that way, and the grids are still in
 | `ab.sh` | Generic end-to-end A/B on one runtime switch: `warm-up, A, B, A'`. ~2 h | current |
 | `ab-tblis.sh` | A/B the two **TBLIS 2.0 builds** against each other — skx-only against multi-config — over the sweep corpus and then the premise shapes. The treatment is `LD_LIBRARY_PATH` on one binary, and `planar` rides in every arm as a control no TBLIS library can move. ~2.7 h. Needs an **AVX-512** node: the skx build SIGILLs elsewhere | current |
 | `phase3-bench.sh` | The Phase 3 measurement set. Produced `bench-results/phase3-*` | **superseded by `compare-bench.sh`** — it writes flat into `bench-results/` and would overwrite that committed data, it has no warm-up arm (it predates A31), and it compiles *between* measurement groups |
-| `phase4-remeasure.sh` | The Phase 4 A/B with its B arm hardcoded to the write-back experiment. Produced `bench-results/phase4` | **superseded by `ab.sh`**, which adds the discarded warm-up arm and an explicit A-vs-A′ floor. Kept because its output is cited. Note the citation weight is inverted — `DECISIONS.md` mentions the old one far more often, because it is older, not because it is better |
+| `phase4-remeasure.sh` | The Phase 4 A/B with its B arm hardcoded to the write-back experiment. Produced `bench-results/phase4` | **superseded by `ab.sh`**, which adds the discarded warm-up arm and an explicit A-vs-A′ floor. Kept because its output is cited. Note the citation weight is inverted — `docs/notebook/` mentions the old one far more often, because it is older, not because it is better |
 | `phase4c-rowblock.sh` | **Grid.** Every register block, all 392 corpus case-dtype-methods | current |
 | `phase4d-orient.sh` | **Grid.** Both orientation arms, forced, all 392 | current |
 | `phase4e-blocking.sh` | **Grid.** The `MC`/`KC`/`NC` arms. Honours `ARMS_ONLY` | current, but the *item* is closed: see A33 and part 7 before spending a node on it |
 | `phase4f-threads.sh` | Thread scaling, physical cores of one socket, `t1` brackets, a `--cross-socket` arm. Wants a whole socket. ~1 h | current |
+| `phase4g-small.sh` | **Grid.** The small-size regime across thread widths, over arbitrary `ARMS` (`base;pool:TENSORCONTRACT_POOL=on;…`), sizes and widths. Produced `worker5086-zen2/phase4g` and `worker6194-icelake/phase4g` — the 2x2 that measured the pool and the guard on the two machine classes | current |
 | `ccq-blocking-night.sh` | The blocking grid on the **reference machine**, overnight: warm-up, grid, audit, score. ~7 h | current. Not superseded by `phase4e-blocking.sh` — it *calls* it twice. The real duplication is with `node-session.sh`, which implements the same warm-up/topology/grid orchestration independently |
 | `validate-placement.sh` | The pre-registered test: can arms run one-per-L3-domain without changing what is measured? `solo1`/`solo2`/`placed` plus memory-bound variants | current |
 | `macos-neon-ab.sh` | The scalar-vs-NEON A/B: `warm, A-scalar, B-neon, A2-scalar`, one binary, `TENSORCONTRACT_KERNEL` as the treatment, `ttgt` and `tblis` riding along as columns the switch cannot reach. Derives its own floor from A/A2 and prints both tables. ~1 h. **Does not compile** — it refuses to start unless `$OUT/bin/tcbench-tblis` is already there | current. This is `ab.sh` for Darwin, and it is a separate file rather than a flag because `ab.sh` pins with `taskset` and pinning does not exist here |
@@ -84,13 +85,14 @@ the orientation rule were settled that way, and the grids are still in
 
 | script | what it does |
 |---|---|
-| `compare-sweeps.py` | Two sweep CSVs into the ratio tables used throughout `DECISIONS.md`, with the AB/BA split as a control |
+| `compare-sweeps.py` | Two sweep CSVs into the ratio tables used throughout `docs/notebook/`, with the AB/BA split as a control |
 | `kernel-shapes-compare.py` | Two or more `examples/kernel_shapes` runs into a floor, a list of **unstable** shapes (arms disagreeing by >5% — a shape doing two different things, not a noisy number), and each method's winning margin in units of that floor. Scores on the per-cell median, so one wild arm cannot crown a shape. Use it before copying a `best per method` line into a `cfg_*` menu: on the M3 Max it demoted six of eight winners to ties |
 | `rowblock-score-rules.py` | Score candidate row-block rules against the 1c grid |
 | `amortise-score-rule.py` | Score candidate amortisation-guard constants against a `phase4g` grid. Reproduces D48's table in part 17, and cross-checks the constant against `plan.rs` so the script and the engine cannot drift apart silently |
 | `rowblock-decompose.py` | Split a row-block grid into what the shape *costs* and what it *buys* |
 | `orient-score-rules.py` | Score candidate orientation rules against the 1d grid |
-| `blocking-score-rules.py` | Score `MC`/`KC`/`NC` rules against the item-2 grid. The most evolved of the four — it adds `arms` and `noise` sections the earlier ones lack |
+| `blocking-score-rules.py` | Score `MC`/`KC`/`NC` rules against the item-2 grid. The most evolved of the five — it adds `arms` and `noise` sections the earlier ones lack |
+| `partition-score-rule.py` | Score the domain-aware partition rule against a thread grid, and re-derive D44's pre-registered prediction from another node's committed data. Takes `-p <threads>` and `-d <domains>` |
 | `thread-width.py` | How much parallel width the corpus has, and where, for any thread count — from committed data |
 | `topology.py` | What machine is this, and where may a measurement thread go: L3 domains, SMT siblings, NUMA. JSON out. Imported by `run-arms.py` and called by most of the drivers |
 
@@ -102,7 +104,7 @@ None supersedes another, which is not obvious from their names:
   Each concurrent replicate against a solo baseline, by slot, L3 and NUMA.
   Called by `validate-placement.sh`.
 * **`placement-verdict.py`** — *the decision.* Implements the accept/reject rule
-  that was pre-registered in `DECISIONS.md` part 10 before any data existed.
+  that was pre-registered in `docs/notebook/` part 10 before any data existed.
   Called by `rusty-phase4.sbatch`.
 * **`grid-placement-audit.py`** — *post-hoc.* Did where each arm ran contaminate
   an already-run grid's `arm/base` ratios? It reports and **corrects nothing**.
@@ -124,7 +126,7 @@ the way they do:
   position in the session, so a hotter or longer warm-up would not remove it.
 * **Derive the floor in session, and know which floor** (A32). Drift is a
   function of how far apart two arms are — 0.02% at a minute, 1–2% at an hour,
-  4.4% across a cold start. Do not import ±1.3%/±6% from `DECISIONS.md`; those
+  4.4% across a cold start. Do not import ±1.3%/±6% from `docs/notebook/`; those
   belong to one session, on one machine, **at one thread count**. At 64 threads a
   per-case ratio is not readable at all — p10 0.885 / p90 1.107 with tails to 1.55
   on repeats of an *identical* partition — so only per-family geomeans mean
@@ -138,7 +140,7 @@ the way they do:
   measured at 8 MiB that vanishes at 64 and 200 MiB has already been published
   here once and withdrawn.
 * **Prefer a runtime switch to a rebuild** (A15), so both arms interleave in one
-  session. `TENSORCONTRACT_ORIENT`, `_ROWBLOCK`, `_WRITEBACK`, `_DEEPEN`,
+  session. `TENSORCONTRACT_ORIENT`, `_ROWBLOCK`, `_WRITEBACK`, `_POOL`,
   `_PARTITION` exist for exactly this. A build-to-build diff already produced one
   wrong sign.
 * **Do not place traffic-changing arms concurrently** (A27). One arm per L3

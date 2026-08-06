@@ -3,18 +3,21 @@
 How to operate in this repository. Re-read at the start of every session.
 
 **This file is state and rules, not history.** Everything historical lives in
-`DECISIONS.md`. If you find yourself appending a paragraph here about something
+`docs/`. If you find yourself appending a paragraph here about something
 that was measured, it belongs there instead.
 
 ## Read next
 
 | when | read |
 |---|---|
-| **every session, in this order** | `DECISIONS.md` → "Resume here" (state, the open question, what to do next), then `DESIGN.md` |
-| **before proposing any performance idea** | `REFUTED.md`. Roughly half the obvious ideas here have already been measured and lost, and each entry says what would reopen it |
-| before designing a measurement | `DECISIONS.md` → "Measurement rules" |
-| before quoting a number | the `PROVENANCE.txt` next to its CSV in `bench-results/` |
+| **every session, in this order** | `docs/open-questions.md` (what is unmeasured and what would settle it), then `docs/README.md` |
+| **before proposing any performance idea** | `docs/refuted.md`. Roughly half the obvious ideas here have already been measured and lost, and each entry says what would reopen it |
+| before quoting any number | `docs/results.md`, and the `PROVENANCE.txt` next to its CSV in `bench-results/` |
+| before designing a measurement | `docs/measurement-rules.md` |
+| for the full account behind any `A<n>` or `D<n>` | `docs/decisions.md`, then the `docs/notebook/` chapter its last column names |
+| the architecture | `docs/design.md` |
 | before running anything on a cluster | `scripts/README.md` |
+
 
 ## What this project is
 
@@ -31,83 +34,23 @@ compared with each other and with TBLIS on equal footing.
 
 ## Current state
 
-**As of 2026-08-06.** Tests green (9 suites), `cargo clippy --workspace
---all-targets` silent, `fmt` clean, everything builds warning-free. Workspace
-MSRV **1.89** (AVX-512 intrinsics stabilised there).
+**Deliberately not recorded here.** It used to be, and it rotted weekly: a phase
+table, plus five bullets that duplicated the results, the open questions and the
+CHANGELOG. `docs/open-questions.md` is the live version and is the first thing to
+read each session.
 
-**Apple Silicon Stages A and B are both complete** (`DECISIONS.md` parts 20, 21,
-22). The NEON micro-kernel is built and green, its register blocks are measured
-with a floor, and the end-to-end A/B puts it at **1.840** — enough that the
-engine reaches **1.00x TBLIS 2.0-dev** in `f64` and **1.12x** in `c64` with 3m on
-that machine. One thing is still owed there: the Stage A corpus session was cut
-short, so there is **no `ragged` arm and no per-case corpus spread**.
-`DECISIONS.md` → "Resume here" → "START HERE if you are picking up the Apple
-Silicon work" has the exact state and the ordered next steps.
+The one thing worth repeating, because it governs what you may *say*: **anything
+touching threads or caches is a per-microarchitecture claim until shown
+otherwise** (A56). Four have now failed to transfer — register blocks, the thread
+partition, the complex-method ranking, and the thread pool. Two machine classes
+is the minimum for a recommendation, and this project has been wrong on one class
+twice.
 
-| phase | state |
-|---|---|
-| 1 — exploration and design | **complete** |
-| 2 / 2b — correct engine, three complex methods | **complete** |
-| 3 — micro-kernels | **complete.** AVX-512, AVX2 and NEON, `f32`/`f64` and all three complex methods, one macro body per method per ISA, runtime-dispatched, scalar path retained. AVX-512 and NEON register blocks measured; **AVX2's are still budget-derived** |
-| 4 — profiling and improvement | **in progress.** Items 1, 1c, 1d closed with wins; item 2 closed with a **negative result**; **item 3 dropped**; item 4 built and measured on seven nodes |
-| 5 — packaging | **in progress.** C header and consumer, prefix install, eleven cross targets, a BinaryBuilder recipe, a Julia package with a `TensorOperations.jl` backend. **Nothing published, nothing tagged**, on purpose |
-
-Five things that decide what you may say and do:
-
-* **The default configuration is: 1 thread, no amortisation guard, no thread
-  pool, `legacy` blocking constants, the `domain` partition rule, the
-  antisymmetric orientation rule, the guarded row-block rule, planar complex.**
-  The domain-aware partition gate is the default (D44); the *thread count* is not,
-  and now for a measured reason (D46).
-* **Three answers to the per-call spawn cost are built; two are measured, and
-  neither ships** (parts 17–19). The **thread pool is topology-conditional**: up to
-  **11.6x** on Zen2 at 0.25 MiB / 64 threads, and up to **2.5x slower** on Ice Lake,
-  where 32 cores share one 48 MiB L3 (jobs 6760092, 6762432). D53 recommended it as a
-  default on the Zen2 half and **that recommendation is withdrawn** — do not flip it.
-  The **amortisation guard does not ship** (D52): a trade that costs a
-  correctly-threaded caller 10–39%, and pure loss on top of the pool. **The batched API
-  is unmeasured**, and block-sparse — its second half — is not built.
-* **A pool is an allocation-locality change, not just a thread-lifetime change**
-  (A55). Reusing a thread reuses its allocator arena, so each worker gets the same
-  packed-`A` buffer address back every call where a fresh thread gets a well-spread
-  one. That is the suspected reason it loses where one L3 serves all the threads, and
-  the cheap test is to offset each worker's buffer. It is also why "it touches where
-  threads come from, not what they read" was a wrong argument.
-* **Anything touching threads or caches is a per-microarchitecture claim until
-  shown otherwise** (A56). Four now fail to transfer: register blocks (A34), the
-  thread partition (A36), the complex-method ranking (A44) and the thread pool (A56).
-  Two machine classes is the minimum for a recommendation, and this project has been
-  wrong on one class twice.
-* **There is a NEON kernel now, and the portable path it replaces cost about
-  1.5x — not the order of magnitude this file used to imply** (A58). On an M3
-  Max the *portable* path runs at **0.65x of OpenBLAS-TTGT** in `f64` over 12
-  shapes at 64 MiB. LLVM vectorises `kernel::scalar` to NEON unasked but cannot
-  contract `acc += a * b` into `fmla`, so it spends two instructions per
-  multiply-accumulate, which halves its ceiling; it then reaches 80% of that.
-  The NEON kernel buys back that one instruction form, and **measured end to end
-  it is worth 1.840** with a ±1% floor (part 22), reaching 81.4% of the *full*
-  ceiling — same efficiency, twice the ceiling. On that machine 3m is the fastest
-  complex method (1.135x planar) and is the arm that passes TBLIS, which scopes
-  "3m is not a candidate default" to x86. **Do not quote any
-  Apple number as a pinned measurement** — Darwin has no CPU affinity API, so
-  none of them is one — and **do not quote Accelerate as a roofline**: its GEMM
-  reaches Apple's AMX coprocessor at 5.2x the NEON FMA peak, so OpenBLAS is the
-  roofline there (part 20).
-* **The engine-vs-baseline numbers in `README.md` are Ice Lake**
-  (`worker6156`, jobs 6753260 / 6754877, 2026-08-04/05): 1.31–1.78x TBLIS
-  2.0-dev, 1.95–2.20x TTGT. They are **not** differenceable against the Phase 3
-  Cascade Lake table, so **what Phase 4 bought end to end is still unmeasured.**
-  That is the one substantive open engine question; `scripts/compare-bench.sh` on
-  `ccqlin038` is the only thing that answers it.
-* **The complex-method ranking and the memory-bound inversion are Cascade Lake
-  results and do not transfer** (A44). Planar wins the corpus on both AVX-512
-  machines measured; the ordering below it does not survive a change of
-  microarchitecture, and Phase 4 item 3 was dropped because of it.
 
 ## Operating mode
 
 Run **autonomously.** Do not wait for approval at routine phase boundaries; at
-each boundary write a report to `DECISIONS.md` and continue. Prefer stating an
+each boundary write a report to the right `docs/notebook/` chapter and continue. Prefer stating an
 assumption and proceeding over asking. Escalate only on a kill/pivot condition or
 a genuine blocker you cannot resolve after a documented attempt.
 
@@ -120,9 +63,10 @@ question is closed.
 ## Standing rules
 
 * **Keep the test suite green at every stage.** Never trade correctness for speed.
-* **Maintain `DECISIONS.md`.** Every material decision, assumption and phase
-  report goes there. A decision goes in the decisions table and nowhere else.
-* **A refutation gets a `REFUTED.md` entry in the same commit as the
+* **Maintain `docs/`.** A report goes in the `docs/notebook/` chapter it belongs
+  to; a decision or an assumption goes in `docs/decisions.md` and nowhere else;
+  a number quoted anywhere goes in `docs/results.md` and is cited from there.
+* **A refutation gets a `docs/refuted.md` entry in the same commit as the
   measurement**, with a confidence level, evidence, and what would reopen it.
 * **Name the TBLIS version** in any statement about TBLIS performance. v1.3.0 and
   2.0-dev differ by ~5x on complex and swap the `TYPE_DOUBLE` / `TYPE_SCOMPLEX`
@@ -138,25 +82,26 @@ question is closed.
   it is 11.7% on an AVX2 node, where `MR = 8` for `f64` does divide 24, and 40.6%
   at `tcbench orient`'s default size, because the extents scale with it.
   **And it was 0% on aarch64 until the NEON blocks were measured**, because the
-  scalar path's `MR = 4` divides 24: `reg_a = reg_b = 1.000` on 784 of 784 rows
-  at `--size 64`. So the figure is an x86 **register-block** artefact, not a
-  property of the corpus. The measured NEON menu reintroduces a little of it —
-  `f64` real's `MR = 16` puts the 12-case `abcijk` family at `wb = 0.67`, which
-  the guarded rule then demotes away (part 21, A61) — so on aarch64
-  `--stress ragged` is still very nearly the only source of irregularity there
-  is.
+  scalar path's `MR = 4` divides 24: `reg_a = reg_b = 1.000` on 784 of 784 rows at
+  `--size 64`. So the figure is an x86 **register-block** artefact, not a property
+  of the corpus. The measured NEON menu reintroduces a little of it — `f64` real's
+  `MR = 16` puts the 12-case `abcijk` family at `wb = 0.67`, which the guarded rule
+  then demotes away (A61) — so on aarch64 `--stress ragged` is still very nearly
+  the only source of irregularity there is.
   Any awkward-stride claim must name its `--stress` mode and quote the observed
   `reg_a`. What the corpus cannot produce is *aperiodic* irregularity; that is
   what `--stress ragged` is for.
 * **Hold shapes fixed across dtypes** when comparing real and complex.
 * **Every noise floor names its session and its thread count.** There is no
-  project-wide floor; see `DECISIONS.md` → "Measurement rules". A per-case ratio
+  project-wide floor; see `docs/measurement-rules.md`. A per-case ratio
   at 64 threads is not readable at all (A39).
 * **Every new fast path gets a runtime switch**, so both arms interleave in one
   process-restart A/B. A build-to-build diff has already produced a wrong sign
   here (A15).
 * **Do not re-derive the register blocks.** They are measured and recorded in
-  `kernel::x86`; `examples/kernel_shapes` re-derives them if the machine changes.
+  `kernel::x86` and `kernel::aarch64`; `examples/kernel_shapes` re-derives them if
+  the machine changes — in **two or three arms**, scored with
+  `scripts/kernel-shapes-compare.py`, never one (D56).
 * Verify library and spec status by search, not from training data; cite sources.
 * **Negative results are valid and publishable.** Report honestly.
 * Commit at meaningful milestones; keep the working tree clean between tasks.
@@ -169,7 +114,7 @@ question is closed.
 * Core is native Rust, **no FFI in the hot path.** FFI only for benchmark
   baselines.
 * Prefer maintained crates over reinvention where they fit; justify every
-  build-vs-reuse call in `DECISIONS.md`.
+  build-vs-reuse call in `docs/decisions.md`.
 * **Primary integration surface: TAPP**, in `crates/tensorprimitives-tapp`,
   verified against the real headers from `TAPPorg/reference-implementation`.
   Despite the TAPP paper's claim, TBLIS has **no in-tree TAPP support**, so the
@@ -178,7 +123,7 @@ question is closed.
   driver.
 * Benchmark baselines: TBLIS (both v1.3.0 and 2.0-dev), TTGT via OpenBLAS, and a
   same-shape vendor GEMM as the roofline ceiling.
-* Benchmark corpus: TCCG. **49 cases, not 48** — see `DESIGN.md` §5.2.
+* Benchmark corpus: TCCG. **49 cases, not 48** — see `docs/design.md` §5.2.
 
 ## The three complex methods
 
@@ -209,35 +154,36 @@ leads planar by 1.105 (`c64`) and 1.155 (`c32`) on Cascade Lake — and trails a
 0.567 and 0.662 on Ice Lake. **On Ice Lake 3m does not win at any depth, at any
 shape, in either precision**, and it already runs its own Ice Lake-optimal shape,
 so this is not a shape miss (A44, part 3). Treat 3m as the method that makes the
-comparison honest, not as a candidate default.
+comparison honest, not as a candidate default — **and that is now an x86
+statement**, because on the M3 Max 3m is the fastest method (1.135x planar) and is
+the arm that passes TBLIS (A59, part 22). A **fourth** ordering from four machines.
 
 **No ranking table is reproduced here on purpose.** Planar wins the corpus on
-both AVX-512 machines measured; everything below that is machine-specific (A44)
-and the AVX2 kernel-level ordering is different again (A24). Re-measure before
-quoting any ranking number.
+both AVX-512 machines measured; everything below that is machine-specific (A44),
+the AVX2 kernel-level ordering is different again (A24), and aarch64 inverts the
+top of it. Re-measure before quoting any ranking number.
 
 **On new hardware, run `examples/kernel_shapes` as a matter of course** — eight
-minutes, no baselines, and it now covers **NEON as well as AVX-512 and AVX2**. It
-is what would tell you whether Cascade Lake's 3m behaviour is a family trait or
-one machine's, and this project has twice described a question as unmeasured while
-its answer sat in committed output. **AVX2 is now the only family whose shapes are
-still provisional and budget-derived**; NEON's were measured on 2026-08-06 (part
-21), and the budget got three of its eight columns wrong (A60), so do not assume
-AVX2's are close.
+minutes, no baselines, and it covers **NEON as well as AVX-512 and AVX2**. It is
+what would tell you whether Cascade Lake's 3m behaviour is a family trait or one
+machine's, and this project has twice described a question as unmeasured while its
+answer sat in committed output. **AVX2 is now the only family whose shapes are
+still budget-derived**; NEON's were measured on 2026-08-06, and the budget got
+three of its eight columns wrong (A60), so do not assume AVX2's are close.
 
 **Run it two or three times and score with `scripts/kernel-shapes-compare.py`**
-(D56). One arm prints eight confident winners with no error bar; three arms on
-the M3 Max put six of them inside the session's own spread and exposed three
-shapes that are *unstable rather than noisy* — one swinging 45% between arms,
-which is a shape doing two different things and must not ship at any mean. **A
-register block may not be changed on one arm.**
+(D56). One arm prints eight confident winners with no error bar; three arms on the
+M3 Max put six of them inside the session's own spread and exposed three shapes
+that are *unstable rather than noisy* — one swinging 45% between arms, which is a
+shape doing two different things and must not ship at any mean. **A register block
+may not be changed on one arm.**
 
 ## Environment and build recipes
 
 Reference machine: `ccqlin038` (Flatiron CCQ), Xeon Gold 6244, Cascade Lake,
 AVX-512, 2x8 cores, 1 MiB L2/core, 25 MiB L3. **Shared during working hours** —
 run long benchmarks off-hours and do the zero-CPU analyses during the day. Full
-details, and the cluster nodes, in `DECISIONS.md` → "Environment".
+details, and the cluster nodes, in `docs/measurement-rules.md`.
 
 ```bash
 module load gcc/13.3.0 openblas          # cmake/3.31.6 for TBLIS 2.x
@@ -254,9 +200,9 @@ Both TBLIS baselines live outside the repo at
 `scripts/env.sh` has the recipe). **TBLIS 2.0's install is ISA-specific and this
 is a trap** — the `auto`-configured build is skx-only and SIGILLs without
 AVX-512; `../baselines/tblis-2.0-x86_64-install` is the multi-config sibling a
-non-AVX-512 node needs. Keep both, and see `DECISIONS.md` → "Environment" for why.
+non-AVX-512 node needs. Keep both, and see `docs/measurement-rules.md` for why.
 
-`scripts/README.md` is the index of all 33 scripts, including which are
+`scripts/README.md` is the index of all 32 scripts, including which are
 superseded. The entry points that matter:
 
 ```bash
@@ -285,7 +231,7 @@ scripts/partition-score-rule.py -p 64 -d 16 bench-results/worker5137-zen2
 
 # No CPU cost, no data touched, exactly reproducible. Safe while a benchmark is
 # in flight, and the right way to decide which measurements are worth making.
-scripts/compare-sweeps.py BASE_CSVS NEW_CSVS    # the ratio tables in DECISIONS.md
+scripts/compare-sweeps.py BASE_CSVS NEW_CSVS    # the ratio tables in docs/notebook/
 ./target/release/tcbench shapes --csv out.csv   # what each MR does to write-back
 ./target/release/tcbench orient --csv out.csv   # both arms' structural features
 
@@ -304,13 +250,18 @@ sbatch scripts/rusty-phase4.sbatch                        # rome, exclusive, 12 
 `sinfo` and `scontrol show` may be executed here at all, scoped and one-shot.
 Write out the `sbatch` line and ask.
 
+`rusty-phase4.sbatch` runs `prep, shapes, threads, validate, grid`, decides the
+grid's placement with `scripts/placement-verdict.py` (the rule pre-registered in
+part 10), and falls back to a scoped sequential grid inside the remaining wall
+time if the placement is rejected. `scripts/node-session.sh <stage> <outdir>`
+drives the same stages by hand. Only `prep` compiles; `topology.py` and
+`run-arms.py` record which cores were busy for every arm, so exclusivity is
+evidence rather than assumption.
+
 ### On an Apple Silicon machine
 
 **Almost none of the above applies.** 17 drivers cannot run — `taskset`,
-`/proc/stat`, sysfs, `os.sched_getaffinity`. Two things this section used to say
-were fixed by Stage B and are no longer true: `examples/kernel_shapes` **runs
-here** and covers NEON, and `tcbench shapes` **emits rows**, because the NEON
-menus gave `row_blocks` something to return. Three drivers work:
+`/proc/stat`, sysfs, `os.sched_getaffinity`. Three work:
 
 ```bash
 brew install openblas cmake
@@ -327,6 +278,9 @@ cargo run --release -p tensorcontract --example kernel_shapes
 scripts/kernel-shapes-compare.py arm1.txt arm2.txt arm3.txt
 ```
 
+`examples/kernel_shapes` runs here and covers NEON, and `tcbench shapes` emits
+rows, because the NEON menus gave `row_blocks` something to return.
+
 `prep` is the only thing that compiles; `bench` is ~2.5 h. Three things to know
 before reading anything it produces: **there is no CPU pinning on Darwin**, so
 nothing measured is the pinned single-core measurement the rest of this file
@@ -336,13 +290,15 @@ scoring workflow is fully available. Two BSD traps that each look like something
 else: `pgrep -a` does not print command lines, so five drivers' exclusivity guards
 silently refuse to start, and `date -Is` fails where `-Iseconds` works.
 
-`rusty-phase4.sbatch` runs `prep, shapes, threads, validate, grid`, decides the
-grid's placement with `scripts/placement-verdict.py` (the rule pre-registered in
-part 10), and falls back to a scoped sequential grid inside the remaining wall
-time if the placement is rejected. `scripts/node-session.sh <stage> <outdir>`
-drives the same stages by hand. Only `prep` compiles; `topology.py` and
-`run-arms.py` record which cores were busy for every arm, so exclusivity is
-evidence rather than assumption.
+**Cross-compile after any change made here.** The x86 tests cannot run on this
+machine, and that is not theoretical: `cargo check --target x86_64-unknown-linux-gnu`
+is what caught a missing `KernelForce::Neon` arm in x86's `pick_isa`. Three targets
+are cheap and all pass — `x86_64`, `i686`, `aarch64` linux.
+
+**What is still owed on this machine** is the interrupted corpus session, plus the
+blocking constants, which are still Cascade Lake's here — `docs/open-questions.md`
+§5 has both, with the exact commands. `prep` is not optional there: the committed
+binaries predate the NEON kernel.
 
 ### Two rules that have each cost a measurement
 
@@ -369,17 +325,16 @@ two that change the arithmetic.** The blanket claim that used to stand here —
 "results are bitwise identical across all of them" — is false on two rows, and
 nothing in the suite pins it.
 
-* **Bitwise identical:** `THREADS`, `PARTITION`, `POOL`, `AMORTISE`,
-  `L3_DOMAINS`, `WRITEBACK`, `ORIENT`, `ROWBLOCK` and the blocking overrides.
-  These change how the work is split and in what order panels are packed, never
-  what arithmetic is performed on which values: every output element has one
-  owning thread accumulating over the full contracted extent in the original
-  order (`plan.rs:492`, `driver.rs:506`, and `batch.rs`'s bitwise test).
+* **Bitwise identical:** `THREADS`, `PARTITION`, `POOL`, `L3_DOMAINS`,
+  `WRITEBACK`, `ORIENT`, `ROWBLOCK` and the blocking overrides. These change how
+  the work is split and in what order panels are packed, never what arithmetic is
+  performed on which values: every output element has one owning thread
+  accumulating over the full contracted extent in the original order.
 * **Not bitwise identical:** `TENSORCONTRACT_KERNEL`, because `kernel::scalar`
   writes `acc += a * b` — two roundings, which LLVM may not contract under IEEE
-  rules — while every `kernel::x86` body uses a true `_mm*_fmadd_*`, which is one.
-  And `TENSORCONTRACT_COMPLEX=3m`, which computes three products where planar
-  computes four; `tests/conformance.rs:416` already says so in as many words.
+  rules — while every vector kernel body uses a true FMA, which is one. And
+  `TENSORCONTRACT_COMPLEX=3m`, which computes three products where planar
+  computes four; `tests/conformance.rs` already says so in as many words.
 
 The consequence for an A/B is small but real: comparing two *kernels* or two
 *complex methods* is comparing two implementations of the same contraction to
@@ -388,18 +343,16 @@ statement, not a performance one — the timing methodology is unaffected.
 
 | variable | effect |
 |---|---|
-| `TENSORCONTRACT_COMPLEX` | `planar` (default) \| `1m` \| `3m` |
-| `TENSORCONTRACT_KERNEL` | `auto` (default) \| `scalar` \| `avx2` \| `avx512`: pin the instruction set. A pinned ISA the CPU lacks falls back to scalar, so `avx2` is how the AVX2 kernels get exercised on an AVX-512 machine |
+| `TENSORCONTRACT_COMPLEX` | `planar` (default) \| `1m` \| `3m`. **`3m` is not bitwise identical** to the other two |
+| `TENSORCONTRACT_KERNEL` | `auto` (default) \| `scalar` \| `avx2` \| `avx512` \| `neon`: pin the instruction set. A pinned ISA the CPU lacks falls back to scalar, so `avx2` is how the AVX2 kernels get exercised on an AVX-512 machine. **Not bitwise identical across arms** |
 | `TENSORCONTRACT_THREADS` | thread count, default **1**. Bitwise identical at any value, so never a correctness or accuracy decision. Also runs the whole test suite through the threaded driver — worth doing after any driver change |
 | `TENSORCONTRACT_PARTITION` | `domain` (**default** since D44) \| `legacy`: which partition *rule*; or `m` \| `n` \| `<pm>x<pn>` to pin it outright. `domain` gates `Plan::partition`'s `panels >= p` early return on the L3 domain count — a measured no-op on 392 of 392 cases where one L3 serves the thread set, 1.133 corpus geomean at 64 Zen2 threads where sixteen do. `legacy` is the ungated rule, which is what every threaded number committed before 2026-08-04 was measured with |
-| `TENSORCONTRACT_AMORTISE` | `on`: cap the thread count so per-call spawn stays a bounded fraction of the work. **Off, and it does not ship** (D52) — measured as a trade that costs a correctly-threaded caller 10–39% and is pure loss on top of the pool. Kept as a record of the experiment, like `_DEEPEN` |
 | `TENSORCONTRACT_POOL` | `on`: reuse parked threads instead of spawning per `execute` call. **Measured on two machine classes and it does not transfer**: up to 11.6x on Zen2 (part 18), up to **2.5x slower** on Ice Lake (part 19). **Off, and D53's recommendation to default it on is withdrawn.** Suspected cause is reused buffer addresses contending in one shared L3 (A55) |
 | `TENSORCONTRACT_L3_DOMAINS` | override how many L3 domains the thread set is taken to span. The derivation assumes compact placement (A37); this exercises the other case without a rebuild |
 | `TENSORCONTRACT_BLOCKMODEL` | `legacy` (default) \| `model`: the analytical cache model instead of the hardcoded constants. `legacy` is the default **on evidence** — the model loses in 11 of 12 columns on a foreign machine (A33) |
 | `TENSORCONTRACT_MC` / `_KC` / `_NC` | override cache blocking absolutely |
 | `TENSORCONTRACT_MC_PCT` / `_NC_PCT` | scale the *derived* `mc`/`nc`, so each dtype and method keeps its budget share |
 | `TENSORCONTRACT_KC_COUPLE` | set `kc` *and* re-derive `mc`/`nc` at that depth |
-| `TENSORCONTRACT_DEEPEN` | `on`: coupled deepening at `kc = 512` for `f64` real geometry. **Off because it failed its end-to-end A/B**; kept as a record of the experiment, not as a pending improvement |
 | `TENSORCONTRACT_ORIENT` | `none` \| `swap`: pin the row/column orientation; `legacy`: the Phase 4.1 rule |
 | `TENSORCONTRACT_WRITEBACK` | `gather` forces the general scatter write-back |
 | `TENSORCONTRACT_ROWBLOCK` | `base` \| `auto` \| `mr=<n>` \| `idx=<i>`: pin the micro-tile row block. **Use `idx=`** — the menu is keyed by *position* (D43), so two entries may share an `MR` and differ only in `NR`, and `mr=<n>` resolves to the first entry of that height. `idx=3` reaches the `32x5` shape A35 is about |
