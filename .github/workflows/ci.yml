@@ -200,6 +200,21 @@ jobs:
         env:
           TENSORCONTRACT_THREADS: 4
           TENSORCONTRACT_POOL: "on"
+      # The two pinned orientation arms and the superseded Phase 4.1 rule. These
+      # went unnoticed for a long time precisely because nothing here ran them:
+      # `=swap` failed eight unit tests and `=none` four, on a clean tree, because
+      # the assertions went through the override-dispatching entry point and a
+      # pinned arm turned them into tautologies or contradictions. Cheap to run
+      # and the only thing that stops it recurring.
+      - run: cargo test --workspace --release
+        env:
+          TENSORCONTRACT_ORIENT: swap
+      - run: cargo test --workspace --release
+        env:
+          TENSORCONTRACT_ORIENT: none
+      - run: cargo test --workspace --release
+        env:
+          TENSORCONTRACT_ORIENT: legacy
 
   # Feature combinations of the published crate. Nothing else checks either end
   # of the range.

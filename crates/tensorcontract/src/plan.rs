@@ -720,10 +720,20 @@ impl Plan {
     /// `DECISIONS.md` — the write-back chapter, Phase 4.1d.
     pub fn transposes_gemm(&self, mr: usize) -> bool {
         match orient_override() {
-            Orient::Rule => {}
-            Orient::Force(v) => return v,
-            Orient::Legacy => return self.transposes_gemm_legacy(mr),
+            Orient::Rule => self.transposes_gemm_rule(mr),
+            Orient::Force(v) => v,
+            Orient::Legacy => self.transposes_gemm_legacy(mr),
         }
+    }
+
+    /// [`Plan::transposes_gemm`]'s rule with no environment override.
+    ///
+    /// Separate so the unit tests can assert what the *rule* decides even when a
+    /// measurement session has pinned the arm. Testing through the override
+    /// instead means `TENSORCONTRACT_ORIENT=swap` turns every orientation
+    /// assertion into a tautology, which is the trap
+    /// `legacy_blocking_is_unchanged` already guards against by hand.
+    fn transposes_gemm_rule(&self, mr: usize) -> bool {
         // A row block lands inside one run when the rows are unit-stride and
         // the run is at least `MR` long.
         let fits = |(run, stride): (usize, i64)| stride == 1 && run >= mr;
@@ -1369,19 +1379,19 @@ mod tests {
     #[test]
     fn column_major_output_is_not_transposed() {
         // Rows already have the unit stride: nothing to gain.
-        assert!(!gemm_plan(64, 64, [1, 64]).transposes_gemm(16));
+        assert!(!gemm_plan(64, 64, [1, 64]).transposes_gemm_rule(16));
     }
 
     #[test]
     fn row_major_output_is_transposed() {
         // Columns have the unit stride and the run is long enough to cover MR.
-        assert!(gemm_plan(64, 64, [64, 1]).transposes_gemm(16));
+        assert!(gemm_plan(64, 64, [64, 1]).transposes_gemm_rule(16));
     }
 
     #[test]
     fn transpose_taken_when_the_row_block_fits_exactly() {
         let p = gemm_plan(64, 16, [16, 1]);
-        assert!(p.transposes_gemm(16), "run == MR fits");
+        assert!(p.transposes_gemm_rule(16), "run == MR fits");
     }
 
     /// `D` with `M` rows in runs of `m_run` at stride 24 and `N` columns in one
@@ -1413,25 +1423,28 @@ mod tests {
         assert_eq!(short.d_m_run.0, 16);
         assert_eq!(short.d_n_run, (24, 1));
         assert!(
-            !short.transposes_gemm(48),
+            !short.transposes_gemm_rule(48),
             "rows already have the shorter run"
         );
 
         let long = mirrored_plan(256, 1_000_000);
         assert_eq!(long.d_m_run.0, 256);
-        assert!(long.transposes_gemm(48), "columns have the shorter run");
+        assert!(
+            long.transposes_gemm_rule(48),
+            "columns have the shorter run"
+        );
 
         // And step 1 still dominates: give it an `MR` the column run can hold
         // and both plans swap for that reason instead.
-        assert!(short.transposes_gemm(16));
-        assert!(long.transposes_gemm(16));
+        assert!(short.transposes_gemm_rule(16));
+        assert!(long.transposes_gemm_rule(16));
     }
 
     #[test]
     fn transpose_declined_when_columns_are_not_contiguous() {
         // Both directions strided: the swap cannot make the rows contiguous,
         // so the smaller stride alone does not justify it.
-        assert!(!gemm_plan(64, 64, [512, 2]).transposes_gemm(16));
+        assert!(!gemm_plan(64, 64, [512, 2]).transposes_gemm_rule(16));
     }
 
     /// `D[a,c,j] = A[a,c,k] B[k,j]` with `a` contiguous in `D` (extent 24) and
@@ -1457,6 +1470,21 @@ mod tests {
     /// every expectation below is about *which shape* is picked, and an index
     /// would make them say that less clearly while also going stale whenever an
     /// entry is inserted. `NR` is a placeholder here because the rule does not
+    /// The row-block rule reads the *effective* orientation, via
+    /// [`Plan::row_block_score`] -> [`Plan::transposes_gemm`], and it is right to
+    /// -- the shape it should pick genuinely depends on which direction ends up
+    /// in the row role. So pinning the orientation for a measurement changes the
+    /// correct answer here, and the expected values below are the ones for the
+    /// rule's own choice.
+    ///
+    /// Returns true when a session has pinned the arm, in which case the caller
+    /// skips. Preferred over asserting nothing: an assertion that silently
+    /// becomes a tautology under a switch is the trap
+    /// `legacy_blocking_is_unchanged` guards against by hand.
+    fn orientation_is_pinned() -> bool {
+        !matches!(orient_override(), Orient::Rule)
+    }
+
     /// read it; `row_block_may_reach_an_nr_only_alternate` is the test that does.
     fn pick(p: &Plan, mrs: &[usize]) -> Option<usize> {
         let menu: Vec<(usize, usize)> = mrs.iter().map(|&mr| (mr, 6)).collect();
@@ -1465,6 +1493,9 @@ mod tests {
 
     #[test]
     fn row_block_scores_follow_the_output_runs() {
+        if orientation_is_pinned() {
+            return;
+        }
         let p = run24_plan();
         assert_eq!(p.stats.m, 96, "two unfolded M axes");
         assert_eq!(p.row_block_score(24), 1.0);
@@ -1475,6 +1506,9 @@ mod tests {
 
     #[test]
     fn row_block_picks_a_shape_that_tiles_the_run() {
+        if orientation_is_pinned() {
+            return;
+        }
         let p = run24_plan();
         // `c64` planar's menu: the default straddles a third of its blocks,
         // the first alternate none, so the rule moves. This is the case worth
@@ -1520,6 +1554,9 @@ mod tests {
 
     #[test]
     fn row_block_may_change_the_orientation() {
+        if orientation_is_pinned() {
+            return;
+        }
         // Until Phase 4.1d a shape change was forbidden from flipping the
         // orientation, because the orientation rule of the day picked the wrong
         // arm on one family and the shape change would hand it the decision.
@@ -1533,6 +1570,9 @@ mod tests {
 
     #[test]
     fn row_block_leaves_a_deep_contraction_alone() {
+        if orientation_is_pinned() {
+            return;
+        }
         // Same output structure, but `k` large enough that the write-back is
         // amortised: the shape change would cost and buy nothing.
         let d = Layout::new(vec![24, 4, 8], vec![1, 200, 4000]).unwrap();
