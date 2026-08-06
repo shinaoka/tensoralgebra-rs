@@ -299,7 +299,7 @@ impl Blocking {
     /// **+13% on one case and −18% on another**, because `MC` also bounds the
     /// strip of `D` that a `jr` pass revisits, which this budget does not
     /// model. See the Phase 4 report before reaching for it.
-    pub fn derive_at_depth(
+    pub(crate) fn derive_at_depth(
         real_bytes: usize,
         a_reals: usize,
         b_reals: usize,

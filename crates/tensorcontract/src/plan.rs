@@ -57,8 +57,12 @@ use crate::layout::Layout;
 use crate::scatter::{build_scatter, run_structure, unbroken_fraction};
 
 /// Index class.
+///
+/// Crate-internal: it appears in no public signature and no public field --
+/// [`PlanStats`] exposes [`Axis`], not this -- and its only uses are inside
+/// [`Plan::new`]'s classification pass.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Class {
+pub(crate) enum Class {
     /// Free index of A (GEMM rows).
     M,
     /// Free index of B (GEMM columns).

@@ -109,7 +109,7 @@ pub use element::{Element, Real, C32, C64};
 pub use error::{Error, Result};
 pub use kernel::{ComplexMethod, KernelSet};
 pub use layout::Layout;
-pub use plan::{Class, ElementOp, Operand, Plan, PlanStats};
+pub use plan::{ElementOp, Operand, Plan, PlanStats};
 
 /// An immutable operand: data, layout and index labels.
 ///
