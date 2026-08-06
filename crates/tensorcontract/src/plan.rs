@@ -1191,7 +1191,15 @@ fn partition_override() -> PartitionMode {
     }
     #[cfg(not(feature = "std"))]
     {
-        PartitionMode::Rule
+        // The same default as the `std` arm, which is the point: without `std`
+        // there is no environment to read, so this must be what *unset* means,
+        // not what `legacy` means. It returned `Rule` until 0.1.0, which silently
+        // gave a no-`std` build the pre-D44 partition rule -- a real behavioural
+        // divergence, reachable by any such build calling `Plan::with_threads`.
+        // `orient_override` and `row_block_override` both already agree across
+        // the two arms. `cache::l3_domains`, which `Domain` consults, has a
+        // working no-`std` path (CPUID, then the built-in descriptors).
+        PartitionMode::Domain
     }
 }
 

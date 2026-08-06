@@ -139,8 +139,17 @@ struct Shared<T>(*mut T);
 
 // SAFETY: see the type's documentation. The disjointness is a property of the
 // strip partition in `execute`, which is the only place `Shared` is created.
-unsafe impl<T> Send for Shared<T> {}
-unsafe impl<T> Sync for Shared<T> {}
+//
+// `T: Send` on both, and it is `Send` rather than `Sync` that is wanted even for
+// the `Sync` impl: `Shared` is written through from several threads at once, so
+// it is morally a split `&mut T` rather than a shared `&T`, and the obligation
+// it discharges is that values of `T` may be produced and dropped on a thread
+// other than the one that created them. Every instantiation is `T: Element`,
+// which is already `Copy + Send + Sync + 'static`, so the bound costs nothing
+// here -- it is there so the impls cannot silently start covering a `T` that
+// does not deserve them. `buffer::Panel` bounds its `Send` the same way.
+unsafe impl<T: Send> Send for Shared<T> {}
+unsafe impl<T: Send> Sync for Shared<T> {}
 
 /// Everything one thread of the loop nest needs that does not vary with its
 /// row strip. Exists so that the nest can be written once and run either

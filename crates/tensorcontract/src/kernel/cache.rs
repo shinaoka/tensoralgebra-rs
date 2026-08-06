@@ -522,6 +522,11 @@ fn probe_cpuid() -> Option<CacheHierarchy> {
     // 1.89 because that is where the AVX-512 intrinsics stabilised, and paying
     // five Rust releases of compatibility for two braces is the wrong trade.
     //
+    // When the MSRV does reach 1.94, the `allow` and the `unsafe` block come out
+    // **together**. Dropping only the `allow` is a hard error on 1.89..1.94;
+    // dropping only the block leaves a bare `allow` suppressing nothing, which
+    // will outlast anyone's memory of why it was there.
+    //
     // SAFETY: `CPUID` is unconditionally available on every x86 CPU that can
     // run this code — it predates every target feature the dispatch tests for —
     // and the instruction only reads processor identification registers.

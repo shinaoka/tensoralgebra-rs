@@ -107,6 +107,20 @@ pub(crate) unsafe fn pack_panel<T: Element>(
 }
 
 /// Write one gathered element into lane `t` of a logical k-step.
+///
+/// # Safety
+///
+/// * `o` must point at the start of one logical k-step of a packed panel laid
+///   out in `fmt`, with room for `vr * fmt.reals_per_element()` reals — 1, 2, 3
+///   or 4 planes of `vr` depending on the format. A `fmt` that disagrees with
+///   how the buffer was sized writes past its end: `OneE` stores at
+///   `3 * vr + t`, four times as far as `Real`.
+/// * `t < vr`.
+/// * The whole k-step is treated as write-only. `emit` never reads what is
+///   there, which is what lets [`crate::buffer::Panel`] hand back uninitialised
+///   memory — but it also means every lane must be emitted before the panel is
+///   read, and that is why the caller zero-fills the lanes of an edge block
+///   rather than leaving them.
 #[inline(always)]
 unsafe fn emit<T: Element>(
     z: T,

@@ -60,6 +60,20 @@ fn force_gather() -> bool {
 }
 
 /// Read complex element `(i, j)` out of an accumulator tile.
+///
+/// # Safety
+///
+/// * `ab` must point at an accumulator tile written by a micro-kernel whose
+///   [`TileFormat`] is exactly `fmt`, with the register block `(mr, nr)` that
+///   kernel was selected with. The three formats disagree about both the
+///   element count and the index arithmetic — `Real` reads `mr * nr` values,
+///   `Planar` and `OneM` read `2 * mr * nr`, `ThreeM` reads `3 * mr * nr` — so a
+///   mismatched `fmt` reads out of bounds rather than merely reading the wrong
+///   value.
+/// * `i < mr` and `j < nr`.
+/// * The tile must be fully initialised. Kernels overwrite rather than
+///   accumulate into it (see [`crate::kernel`]), so this holds after any kernel
+///   call and does *not* hold for a freshly allocated [`crate::buffer::Panel`].
 #[inline(always)]
 unsafe fn tile_value<R: Real>(
     ab: *const R,
@@ -210,6 +224,24 @@ pub(crate) unsafe fn writeback<T: Element>(
 /// Instantiated once per row-addressing mode. The `alpha == 1, beta == 0, no
 /// conjugation` case gets its own inner loop because it is both the common one
 /// and the only one that reduces to a straight tile-to-`D` copy.
+///
+/// # Safety
+///
+/// * `ab` must satisfy [`tile_value`]'s contract for `fmt` and `(mr, nr)`.
+/// * `mrem <= mr` and `nrem <= nr`: they are the live extent of a possibly
+///   partial edge tile, and the loops are bounded by them, not by `mr`/`nr`.
+/// * `c_c` and `d_c` must each have at least `nrem` entries.
+/// * For every `i < mrem` and `j < nrem`, `c_base.offset(c_row(i) + c_c[j])`
+///   must be a valid readable `T` and `d_base.offset(d_row(i) + d_c[j])` a valid
+///   writable one. These offsets come from the scatter vectors, so this is the
+///   obligation [`crate::Plan::check_bounds`] discharges once per call for the
+///   whole output rather than per tile.
+/// * `D` must not alias `C`, `A` or `B`. The exclusive borrow in
+///   [`crate::TensorViewMut`] is what supplies this; `Plan::run_raw` hands it to
+///   the caller instead.
+/// * `beta_is_zero` must equal `beta == T::zero()`. When it is true, `c_base`
+///   and `c_row` are never read and may be dangling — that is how the no-`C`
+///   case is expressed.
 #[allow(clippy::too_many_arguments)]
 #[inline(always)]
 unsafe fn writeback_rows<T: Element, CR, DR>(

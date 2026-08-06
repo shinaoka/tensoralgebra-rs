@@ -248,9 +248,11 @@ mod tests {
         // The FFI/TAPP boundary and the packing code both assume this.
         assert_eq!(core::mem::size_of::<C64>(), 16);
         assert_eq!(core::mem::align_of::<C64>(), core::mem::align_of::<f64>());
-        let z = C64::new(1.0, 2.0);
-        let parts: [f64; 2] = unsafe { core::mem::transmute(z) };
-        assert_eq!(parts, [1.0, 2.0]);
+        // `offset_of!` rather than a transmute to `[f64; 2]`: it asserts the same
+        // thing without unsafe, and it asserts it more precisely — the field
+        // *order* is named rather than inferred from which value came out first.
+        assert_eq!(core::mem::offset_of!(C64, re), 0);
+        assert_eq!(core::mem::offset_of!(C64, im), core::mem::size_of::<f64>());
     }
 
     #[test]
