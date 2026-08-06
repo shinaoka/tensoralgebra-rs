@@ -49,6 +49,17 @@ pub const IRREGULAR: i64 = i64::MIN;
 /// `extents`/`strides` are ordered fastest-varying first. The returned vector
 /// has length `extents.iter().product()` (1 for an empty group, i.e. a single
 /// zero offset).
+///
+/// ```
+/// use tensorcontract::scatter::build_scatter;
+///
+/// // Two modes: extent 2 stride 1 (fastest), extent 3 stride 10.
+/// // Entry n is the element offset of the n'th index tuple.
+/// assert_eq!(build_scatter(&[2, 3], &[1, 10]), vec![0, 1, 10, 11, 20, 21]);
+///
+/// // An empty group is one element at offset zero, not zero elements.
+/// assert_eq!(build_scatter(&[], &[]), vec![0]);
+/// ```
 pub fn build_scatter(extents: &[i64], strides: &[i64]) -> Vec<i64> {
     debug_assert_eq!(extents.len(), strides.len());
     let total: i64 = extents.iter().product();
@@ -87,6 +98,23 @@ pub fn build_scatter(extents: &[i64], strides: &[i64]) -> Vec<i64> {
 /// Entry `b` covers `scat[b*blk .. min((b+1)*blk, len)]` and is the common
 /// difference of that run, or [`IRREGULAR`]. Runs of length 0 or 1 are
 /// trivially regular and report a stride of 0.
+///
+/// This is where the register block earns or loses the fast path: the *same*
+/// scatter vector is fully regular at one block size and fully irregular at
+/// another, which is why `MR` is a performance decision and not just a tile
+/// shape.
+///
+/// ```
+/// use tensorcontract::scatter::{build_block_scatter, build_scatter, IRREGULAR};
+///
+/// let scat = build_scatter(&[2, 3], &[1, 10]);   // [0, 1, 10, 11, 20, 21]
+///
+/// // At blk = 2 every block sits inside one run of stride 1: all strided loads.
+/// assert_eq!(build_block_scatter(&scat, 2), vec![1, 1, 1]);
+///
+/// // At blk = 3 every block straddles a run boundary: all gathers.
+/// assert_eq!(build_block_scatter(&scat, 3), vec![IRREGULAR, IRREGULAR]);
+/// ```
 pub fn build_block_scatter(scat: &[i64], blk: usize) -> Vec<i64> {
     assert!(blk > 0);
     let nblk = scat.len().div_ceil(blk);
@@ -123,6 +151,17 @@ fn run_stride(run: &[i64]) -> i64 {
 /// rather than by rebuilding a block scatter per candidate. It is also the
 /// quantity both the orientation rule and the row-block rule turn on, so it
 /// lives here rather than in either of them.
+///
+/// ```
+/// use tensorcontract::scatter::{build_scatter, run_structure};
+///
+/// // Three maximal runs of length 2, each of stride 1.
+/// let scat = build_scatter(&[2, 3], &[1, 10]);
+/// assert_eq!(run_structure(&scat), Some((2, 1)));
+///
+/// // One contiguous axis is a single run spanning everything.
+/// assert_eq!(run_structure(&build_scatter(&[6], &[1])), Some((6, 1)));
+/// ```
 pub fn run_structure(scat: &[i64]) -> Option<(usize, i64)> {
     if scat.len() < 2 {
         return None;
@@ -154,6 +193,15 @@ pub fn run_structure(scat: &[i64]) -> Option<(usize, i64)> {
 /// a single run, given runs of `len` entries.
 ///
 /// Exactly the fraction that reaches a strided rather than a gather traversal.
+///
+/// ```
+/// use tensorcontract::scatter::unbroken_fraction;
+///
+/// // Six entries in runs of 2. Blocks of 2 align with the runs exactly.
+/// assert_eq!(unbroken_fraction(6, 2, 2), 1.0);
+/// // Blocks of 4 cannot: the first straddles a boundary, the second does not.
+/// assert_eq!(unbroken_fraction(6, 2, 4), 0.5);
+/// ```
 pub fn unbroken_fraction(total: usize, len: usize, blk: usize) -> f64 {
     if total == 0 || blk == 0 || len == 0 {
         return 1.0;
@@ -171,6 +219,15 @@ pub fn unbroken_fraction(total: usize, len: usize, blk: usize) -> f64 {
 
 /// Fraction of blocks in a block-scatter vector that are regular. Used for
 /// diagnostics and for the planar-vs-TTGT dispatch heuristic.
+///
+/// ```
+/// use tensorcontract::scatter::{regular_fraction, IRREGULAR};
+///
+/// assert_eq!(regular_fraction(&[1, 1, IRREGULAR, 1]), 0.75);
+/// // A zero block stride is regular: it is how a reduction's repeated read
+/// // appears, and only IRREGULAR means the gather path.
+/// assert_eq!(regular_fraction(&[0, 0]), 1.0);
+/// ```
 pub fn regular_fraction(bs: &[i64]) -> f64 {
     if bs.is_empty() {
         return 1.0;

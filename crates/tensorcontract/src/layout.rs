@@ -26,6 +26,23 @@ impl Layout {
     /// The only thing validated here is that the two have the same length —
     /// nothing else is checkable without knowing the allocation, and the
     /// remaining conditions are checked when a plan is built or run.
+    ///
+    /// ```
+    /// use tensorcontract::Layout;
+    ///
+    /// // A reversed axis: stride -1 walks backwards from the base pointer.
+    /// let reversed = Layout::new(vec![4], vec![-1]).unwrap();
+    /// assert_eq!(reversed.ndim(), 1);
+    ///
+    /// // A broadcast axis: stride 0 reads one element repeatedly. Legal, and
+    /// // how a reduction is expressed internally.
+    /// let broadcast = Layout::new(vec![2, 3], vec![1, 0]).unwrap();
+    /// assert_eq!(broadcast.len(), 6);            // six index tuples...
+    /// assert_eq!(broadcast.storage_len(), 2);    // ...over two elements
+    ///
+    /// // Mismatched lengths are the one thing rejected here.
+    /// assert!(Layout::new(vec![2, 3], vec![1]).is_err());
+    /// ```
     pub fn new(extents: Vec<i64>, strides: Vec<i64>) -> Result<Self> {
         if extents.len() != strides.len() {
             return Err(Error::RankMismatch {
@@ -37,6 +54,12 @@ impl Layout {
     }
 
     /// Column-major ("Fortran order", first index fastest) dense layout.
+    ///
+    /// ```
+    /// use tensorcontract::Layout;
+    ///
+    /// assert_eq!(Layout::col_major(&[2, 3, 4]).strides, vec![1, 2, 6]);
+    /// ```
     pub fn col_major(extents: &[i64]) -> Self {
         let mut strides = Vec::with_capacity(extents.len());
         let mut acc = 1i64;
@@ -51,6 +74,16 @@ impl Layout {
     }
 
     /// Row-major ("C order", last index fastest) dense layout.
+    ///
+    /// Nothing in the engine prefers one order to the other: both are just
+    /// strides, and mixing them across operands costs nothing — which is what
+    /// "transpose-free" means in practice.
+    ///
+    /// ```
+    /// use tensorcontract::Layout;
+    ///
+    /// assert_eq!(Layout::row_major(&[2, 3, 4]).strides, vec![12, 4, 1]);
+    /// ```
     pub fn row_major(extents: &[i64]) -> Self {
         let mut strides = vec![0i64; extents.len()];
         let mut acc = 1i64;

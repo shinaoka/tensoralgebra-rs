@@ -76,6 +76,60 @@ pub struct BatchItem<'a, T> {
 ///
 /// See [`contract_batched_with_threads`] for the contract; this is that with the
 /// default.
+///
+/// ```
+/// use tensorcontract::batch::{contract_batched, BatchItem};
+/// use tensorcontract::plan::Operand;
+/// use tensorcontract::{Layout, Plan, TensorView, TensorViewMut};
+///
+/// let (i, j, k) = (b'i' as i64, b'j' as i64, b'k' as i64);
+/// let l = Layout::col_major(&[2, 2]);
+/// let (ia, ib, id) = ([i, k], [k, j], [i, j]);
+///
+/// // One plan, shared by every item — the common case for a batch.
+/// let plan = Plan::new(
+///     Operand::new(&l, &ia),
+///     Operand::new(&l, &ib),
+///     None,
+///     Operand::new(&l, &id),
+/// )
+/// .unwrap();
+///
+/// let a0 = vec![1.0f64, 2.0, 3.0, 4.0];
+/// let a1 = vec![5.0f64, 6.0, 7.0, 8.0];
+/// let identity = vec![1.0f64, 0.0, 0.0, 1.0];
+/// let mut d0 = vec![0.0f64; 4];
+/// let mut d1 = vec![0.0f64; 4];
+///
+/// // The outputs are distinct `&mut` borrows, which is what proves them
+/// // disjoint — no unsafe on the caller's side.
+/// let mut items = vec![
+///     BatchItem {
+///         plan: &plan,
+///         alpha: 1.0,
+///         a: TensorView::new(&a0, &l, &ia),
+///         b: TensorView::new(&identity, &l, &ib),
+///         beta: 0.0,
+///         c: None,
+///         d: TensorViewMut::new(&mut d0, &l, &id),
+///     },
+///     BatchItem {
+///         plan: &plan,
+///         alpha: 1.0,
+///         a: TensorView::new(&a1, &l, &ia),
+///         b: TensorView::new(&identity, &l, &ib),
+///         beta: 0.0,
+///         c: None,
+///         d: TensorViewMut::new(&mut d1, &l, &id),
+///     },
+/// ];
+///
+/// contract_batched(&mut items).unwrap();
+/// drop(items);                       // release the borrows on d0 / d1
+///
+/// assert_eq!(d0, a0);                // multiplying by the identity
+/// assert_eq!(d1, a1);
+/// ```
 pub fn contract_batched<T>(items: &mut [BatchItem<'_, T>]) -> Result<()>
 where
     T: Element + Send + Sync,

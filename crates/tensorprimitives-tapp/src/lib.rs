@@ -9,6 +9,84 @@
 //! `api/include/tapp/*.h` headers: all handles are `intptr_t`, all fallible
 //! calls return a `TAPP_error` (`int`, zero on success).
 //!
+//! # One contraction, end to end
+//!
+//! Five objects are created and five destroyed, in the order below. Every
+//! fallible call is checked with [`TAPP_check_success`] rather than against a
+//! numeric code, which is the only portable way — see the note under
+//! [Coverage](#coverage). The example is Rust because that is what compiles as a
+//! test; a C caller writes the same sequence, and
+//! [`examples/c-consumer`][c-consumer] in the repository does.
+//!
+//! ```
+//! use std::ffi::c_void;
+//! use tensorprimitives_tapp::*;
+//!
+//! // D[i,j] = sum_k A[i,k] * B[k,j] over 2x2 column-major f64 tensors.
+//! let extents = [2i64, 2];
+//! let strides = [1i64, 2];                    // column-major, in elements
+//! let (i, j, k) = (b'i' as i64, b'j' as i64, b'k' as i64);
+//!
+//! unsafe {
+//!     let mut handle = 0isize;
+//!     assert!(TAPP_check_success(TAPP_create_handle(&mut handle)));
+//!     let mut exec = 0isize;
+//!     assert!(TAPP_check_success(TAPP_create_executor(&mut exec)));
+//!
+//!     // One info serves all four operands: they share a shape here.
+//!     let mut info = 0isize;
+//!     assert!(TAPP_check_success(TAPP_create_tensor_info(
+//!         &mut info, TAPP_F64, 2, extents.as_ptr(), strides.as_ptr(),
+//!     )));
+//!
+//!     // Labels are what make this a contraction rather than a shape: `k` is in
+//!     // A and B only, so it is summed; `i` and `j` survive into D.
+//!     let (ia, ib, id) = ([i, k], [k, j], [i, j]);
+//!     let mut plan = 0isize;
+//!     assert!(TAPP_check_success(TAPP_create_tensor_product(
+//!         &mut plan,
+//!         handle,
+//!         TAPP_IDENTITY, info, ia.as_ptr(),
+//!         TAPP_IDENTITY, info, ib.as_ptr(),
+//!         TAPP_IDENTITY, info, id.as_ptr(),   // C is required; reuse D's info
+//!         TAPP_IDENTITY, info, id.as_ptr(),
+//!         TAPP_F64,
+//!     )));
+//!
+//!     let a = [1.0f64, 2.0, 3.0, 4.0];
+//!     let b = [1.0f64, 0.0, 0.0, 1.0];        // the 2x2 identity
+//!     let mut d = [0.0f64; 4];
+//!     let (alpha, beta) = (1.0f64, 0.0f64);
+//!
+//!     // `alpha` and `beta` are read as the plan's element type, so they are
+//!     // passed by pointer. A null `c` is TAPP_IN_PLACE, legal here only because
+//!     // `beta` is zero.
+//!     let mut status = 0isize;
+//!     assert!(TAPP_check_success(TAPP_execute_product(
+//!         plan,
+//!         exec,
+//!         &mut status,
+//!         &alpha as *const f64 as *const c_void,
+//!         a.as_ptr() as *const c_void,
+//!         b.as_ptr() as *const c_void,
+//!         &beta as *const f64 as *const c_void,
+//!         std::ptr::null(),
+//!         d.as_mut_ptr() as *mut c_void,
+//!     )));
+//!     assert_eq!(d, a);                       // multiplying by the identity
+//!
+//!     // Destroy in any order: a product does not borrow the infos it was built
+//!     // from, so `info` could have gone immediately after the call above.
+//!     TAPP_destroy_status(status);
+//!     TAPP_destroy_tensor_product(plan);
+//!     TAPP_destroy_tensor_info(info);
+//!     TAPP_destroy_executor(exec);
+//!     TAPP_destroy_handle(handle);
+//! }
+//! ```
+//!
+//! [c-consumer]: https://github.com/lkdvos/tensorprimitives-rs/tree/main/examples/c-consumer
+//!
 //! # Coverage
 //!
 //! | TAPP feature | status |
@@ -172,6 +250,36 @@ fn map_err(e: tensorcontract::Error) -> c_int {
 }
 
 /// Whether `error` is [`TAPP_SUCCESS`].
+///
+/// **This, not a comparison against a `TAPP_ERROR_*` constant, is what a
+/// portable caller writes.** Upstream `error.h` is a bare `typedef int
+/// TAPP_error` declaring no enumerators, so zero is the only value the standard
+/// fixes; every non-zero name in this crate is its own numbering and another TAPP
+/// implementation may use different ones. Use this to branch, and
+/// [`TAPP_explain_error`] to report.
+///
+/// ```
+/// use tensorprimitives_tapp::*;
+///
+/// let extents = [2i64, 2];
+/// let strides = [1i64, 2];
+/// let mut info = 0isize;
+///
+/// unsafe {
+///     // `TAPP_F16` has no element type here, so this fails.
+///     let err = TAPP_create_tensor_info(
+///         &mut info, TAPP_F16, 2, extents.as_ptr(), strides.as_ptr(),
+///     );
+///     assert!(!TAPP_check_success(err));
+///
+///     // The same call with a supported type succeeds, and must be released.
+///     let ok = TAPP_create_tensor_info(
+///         &mut info, TAPP_F64, 2, extents.as_ptr(), strides.as_ptr(),
+///     );
+///     assert!(TAPP_check_success(ok));
+///     TAPP_destroy_tensor_info(info);
+/// }
+/// ```
 #[no_mangle]
 pub extern "C" fn TAPP_check_success(error: c_int) -> bool {
     error == TAPP_SUCCESS
@@ -179,6 +287,27 @@ pub extern "C" fn TAPP_check_success(error: c_int) -> bool {
 
 /// Copy a description of `error` into `message` (NUL-terminated, truncated to
 /// `maxlen`). Returns the length that would have been written.
+///
+/// The return value is the *untruncated* length, as `snprintf` reports it, so a
+/// caller can size a buffer by calling once with `maxlen == 0` and a null
+/// `message`.
+///
+/// ```
+/// use tensorprimitives_tapp::*;
+///
+/// unsafe {
+///     // Sizing call: nothing is written, the needed length comes back.
+///     let n = TAPP_explain_error(TAPP_ERROR_DATATYPE, 0, std::ptr::null_mut());
+///     assert!(n > 0);
+///
+///     let mut buf = vec![0i8; n + 1];
+///     let again = TAPP_explain_error(TAPP_ERROR_DATATYPE, buf.len(), buf.as_mut_ptr());
+///     assert_eq!(again, n);
+///
+///     let msg = std::ffi::CStr::from_ptr(buf.as_ptr()).to_str().unwrap();
+///     assert_eq!(msg.len(), n);
+/// }
+/// ```
 ///
 /// # Safety
 /// `message` must be valid for `maxlen` bytes, or `maxlen` must be zero.

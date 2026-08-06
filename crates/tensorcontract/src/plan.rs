@@ -194,8 +194,14 @@ pub struct PlanStats {
     pub k_axes: Vec<Axis>,
     /// The folded Hadamard axes.
     pub h_axes: Vec<Axis>,
-    /// True when every class folded down to at most one axis, i.e. the
-    /// contraction is exactly a (batched) GEMM on strided matrices.
+    /// True when `M`, `N` and `K` each folded to at most one axis **and there
+    /// are no Hadamard axes** — i.e. the contraction is exactly *one* GEMM on
+    /// strided matrices.
+    ///
+    /// A batch index therefore makes this false even when every other class
+    /// folded perfectly: the work is then a sequence of GEMMs rather than one,
+    /// which is the distinction the flag exists to draw. Check `batch == 1`
+    /// alongside it if what you want is "no gather anywhere".
     pub is_pure_gemm: bool,
 }
 
@@ -294,6 +300,58 @@ pub struct Plan {
 impl Plan {
     /// Analyse a contraction. `c` may be `None`, in which case `beta` is
     /// ignored at execution time and `D` is overwritten.
+    ///
+    /// This is where every shape-dependent decision is made — classification,
+    /// folding, and the scatter vectors — so it is the call to hoist out of a
+    /// loop. The [`stats`][Plan::stats] field reports what it concluded.
+    ///
+    /// ```
+    /// use tensorcontract::plan::Operand;
+    /// use tensorcontract::{Layout, Plan};
+    ///
+    /// // D[h,i,j] = sum_k A[h,i,k] * B[h,k,j]: `h` batches, `k` contracts.
+    /// let (h, i, j, k) = (b'h' as i64, b'i' as i64, b'j' as i64, b'k' as i64);
+    /// let l = Layout::col_major(&[2, 3, 4]);
+    /// let ld = Layout::col_major(&[2, 3, 3]);
+    ///
+    /// let plan = Plan::new(
+    ///     Operand::new(&l, &[h, i, k]),
+    ///     Operand::new(&Layout::col_major(&[2, 4, 3]), &[h, k, j]),
+    ///     None,
+    ///     Operand::new(&ld, &[h, i, j]),
+    /// )
+    /// .unwrap();
+    ///
+    /// // Every class folded to a single axis, and `h` became the batch.
+    /// let s = &plan.stats;
+    /// assert_eq!((s.m, s.n, s.k, s.batch), (3, 3, 4, 2));
+    /// assert_eq!((s.m_axes.len(), s.n_axes.len(), s.k_axes.len()), (1, 1, 1));
+    ///
+    /// // Not `is_pure_gemm`, though: that means exactly *one* GEMM, and the
+    /// // batch axis makes this a sequence of them.
+    /// assert!(!s.is_pure_gemm);
+    /// ```
+    ///
+    /// An unsupported contraction is rejected here rather than at execution:
+    ///
+    /// ```
+    /// use tensorcontract::plan::Operand;
+    /// use tensorcontract::{Error, Layout, Plan};
+    ///
+    /// let l = Layout::col_major(&[2, 2]);
+    /// let (i, j, x) = (b'i' as i64, b'j' as i64, b'x' as i64);
+    /// let ld = Layout::col_major(&[2, 2, 2]);
+    ///
+    /// // `x` appears only in the output: a broadcast, which TAPP calls case 5.
+    /// let err = Plan::new(
+    ///     Operand::new(&l, &[i, j]),
+    ///     Operand::new(&l, &[j, i]),
+    ///     None,
+    ///     Operand::new(&ld, &[i, j, x]),
+    /// )
+    /// .unwrap_err();
+    /// assert_eq!(err, Error::BroadcastIndexUnsupported { label: x });
+    /// ```
     pub fn new(
         a: Operand<'_>,
         b: Operand<'_>,

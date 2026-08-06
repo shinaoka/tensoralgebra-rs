@@ -442,6 +442,35 @@ impl<'a, T> TensorViewMut<'a, T> {
 /// For repeated contractions of the same shape, build a [`Plan`] once with
 /// [`Plan::new`] and call [`Plan::run`] instead; planning cost is proportional
 /// to `M + N + K` and is not negligible for small contractions.
+///
+/// Unlike [`Plan::run`], this reads the conjugation off the views themselves,
+/// because it builds the plan from them — so [`TensorView::conj`] takes effect
+/// here with nothing else to keep in sync.
+///
+/// ```
+/// use tensorcontract::{contract, Layout, TensorView, TensorViewMut};
+///
+/// // D[i] = sum_j A[i,j] * v[j] — a matrix-vector product.
+/// let (i, j) = (b'i' as i64, b'j' as i64);
+/// let la = Layout::col_major(&[2, 3]);
+/// let lv = Layout::col_major(&[3]);
+/// let ld = Layout::col_major(&[2]);
+///
+/// let a: Vec<f64> = (1..=6).map(|x| x as f64).collect();   // A[i,j] = i + 2j + 1
+/// let v = vec![1.0f64; 3];
+/// let mut d = vec![0.0f64; 2];
+///
+/// contract(
+///     1.0,
+///     TensorView::new(&a, &la, &[i, j]),
+///     TensorView::new(&v, &lv, &[j]),
+///     0.0,
+///     None,
+///     TensorViewMut::new(&mut d, &ld, &[i]),
+/// )
+/// .unwrap();
+/// assert_eq!(d, vec![1.0 + 3.0 + 5.0, 2.0 + 4.0 + 6.0]);
+/// ```
 pub fn contract<T>(
     alpha: T,
     a: TensorView<'_, T>,
@@ -632,6 +661,25 @@ pub fn einsum_labels(specs: &[&str]) -> Vec<Vec<i64>> {
 }
 
 /// Parse `"ab,bc->ac"` into `(idx_a, idx_b, idx_d)`.
+///
+/// A convenience for tests and examples, not a general einsum front end: it
+/// splits on `->` and one `,`, and every label is a single character. There is no
+/// `C` operand in the notation, and no validation — a spec the engine will
+/// reject still parses.
+///
+/// ```
+/// use tensorcontract::parse_einsum;
+///
+/// let (a, b, d) = parse_einsum("ik,kj->ij").unwrap();
+/// assert_eq!(a, vec!['i' as i64, 'k' as i64]);
+/// assert_eq!(b, vec!['k' as i64, 'j' as i64]);
+/// assert_eq!(d, vec!['i' as i64, 'j' as i64]);
+///
+/// // An output-only label parses; `Plan::new` is what rejects it.
+/// assert!(parse_einsum("i,j->ijk").is_some());
+/// // Missing the second operand or the arrow does not.
+/// assert!(parse_einsum("ik->i").is_none());
+/// ```
 pub fn parse_einsum(spec: &str) -> Option<(Vec<i64>, Vec<i64>, Vec<i64>)> {
     let (lhs, rhs) = spec.split_once("->")?;
     let (a, b) = lhs.split_once(',')?;
