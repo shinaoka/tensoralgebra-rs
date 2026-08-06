@@ -50,15 +50,21 @@ added later without breaking existing dependents.
 * **Scatter and block-scatter layouts**, with an irregular-block sentinel
   distinct from a legal zero block stride, so a reduction stays on the fast path.
 * **Micro-kernels** for `f32`, `f64` and all three complex methods, generated
-  from one body per method over `(lanes, MR, NR)`:
+  from one body per method over `(lanes, MR, NR)`, shared across instruction sets
+  by `kernel::simd`:
   * **AVX-512** — the measured configuration.
   * **AVX2 + FMA** — same source text, different instantiation.
+  * **AArch64 NEON** — same source text again, and the only one whose register
+    blocks were measured with an error bar.
   * **portable scalar** — always present, always correct.
-  Dispatch is `avx512f` → `avx2 + fma` → scalar at run time; a pinned instruction
-  set the CPU lacks falls back to scalar rather than faulting.
+  Dispatch is `avx512f` → `avx2 + fma` → scalar on x86, and NEON unconditionally
+  on aarch64; a pinned instruction set the CPU lacks falls back to scalar rather
+  than faulting.
 * **Cache blocking** with hardcoded constants by default, plus an analytical
   model derived from probed cache descriptors (sysfs, then x86 `CPUID`, then
-  conservative built-ins) behind `TENSORCONTRACT_BLOCKMODEL=model`.
+  Darwin `sysctl`, then conservative built-ins) behind
+  `TENSORCONTRACT_BLOCKMODEL=model`. The Darwin source reports the **performance**
+  cores and reports no L3, both deliberately (D54).
 * **A batched entry point**, `batch::contract_batched` / `batch::BatchItem`, for
   many independent contractions, with the **batch** as the only parallel axis: one
   spawn set per batch instead of one per contraction, which is the axis that matters
