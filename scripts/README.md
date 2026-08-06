@@ -1,6 +1,6 @@
 # `scripts/` — what each one is for
 
-Thirty-two files, and the overlaps are real but mostly not accidental. This
+Thirty-three files, and the overlaps are real but mostly not accidental. This
 index exists so that "which script do I use" is answered here rather than by
 reading five headers, and so that a script kept only because it produced
 committed data is visibly that.
@@ -62,6 +62,7 @@ the orientation rule were settled that way, and the grids are still in
 | `phase4f-threads.sh` | Thread scaling, physical cores of one socket, `t1` brackets, a `--cross-socket` arm. Wants a whole socket. ~1 h | current |
 | `ccq-blocking-night.sh` | The blocking grid on the **reference machine**, overnight: warm-up, grid, audit, score. ~7 h | current. Not superseded by `phase4e-blocking.sh` — it *calls* it twice. The real duplication is with `node-session.sh`, which implements the same warm-up/topology/grid orchestration independently |
 | `validate-placement.sh` | The pre-registered test: can arms run one-per-L3-domain without changing what is measured? `solo1`/`solo2`/`placed` plus memory-bound variants | current |
+| `macos-session.sh` | **The only driver that runs on Darwin.** `prep` builds the three baseline variants (OpenBLAS, Accelerate, TBLIS) and is the only thing that compiles; `bench` runs `info`, `orient`, `verify` in all three methods, `premise` against *both* OpenBLAS and Accelerate, a discarded warm-up plus **three identical** corpus arms, and `ragged`. Its header carries the recipe for all three baselines | current. Not a substitute for `compare-bench.sh` and not comparable with it: no CPU pinning exists on Darwin, so this cannot be a pinned single-core measurement the way every other number here is. It exists because 17 scripts in this directory cannot run on macOS at all — `taskset`, `/proc/stat`, sysfs, `os.sched_getaffinity` — and because BSD `pgrep -a` silently fails to print command lines, which makes every other driver's exclusivity guard refuse to start |
 
 ## Orchestration
 

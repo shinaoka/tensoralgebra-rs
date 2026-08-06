@@ -36,11 +36,16 @@ fn main() {
         let gnu_runtime = env::var("TBLIS_GNU_RUNTIME").is_ok();
         if apple && !gnu_runtime {
             println!("cargo:rustc-link-lib=dylib=c++");
-            // LLVM's OpenMP, which is keg-only, so its directory has to be named.
+            // **No OpenMP by default here, unlike the GNU arm.** A TBLIS
+            // configured with `BLIS_THREAD_MODEL=pthread` -- which is what the
+            // Darwin build uses -- links libc++ and libSystem and nothing else,
+            // so an unconditional `-lomp` would demand a keg-only Homebrew
+            // library the baseline does not need. Set `LIBOMP_ROOT` to opt in,
+            // which is what a TBLIS built with `=openmp` requires.
             if let Ok(prefix) = env::var("LIBOMP_ROOT") {
                 println!("cargo:rustc-link-search=native={prefix}/lib");
+                println!("cargo:rustc-link-lib=dylib=omp");
             }
-            println!("cargo:rustc-link-lib=dylib=omp");
         } else {
             println!("cargo:rustc-link-lib=dylib=stdc++");
             // TBLIS pulls in hwloc and OpenMP through TCI.
