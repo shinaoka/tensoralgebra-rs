@@ -80,6 +80,14 @@ pub mod scalar;
 //
 // Not `pub`: the macros are an implementation detail of the ISA modules, and
 // `#[macro_use]` already puts them where they are needed.
+//
+// Gated on the union of its two consumers below. The module defines macros and
+// nothing else, so on a target that is neither x86 nor aarch64 -- armv7,
+// riscv64gc, powerpc64le -- nothing invokes them and `unused_macros` fires,
+// which under CI's `-D warnings` is a hard error rather than a warning. Keep
+// this cfg equal to the disjunction of the `x86` and `aarch64` cfgs; a new ISA
+// module must be added here as well as below.
+#[cfg(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64"))]
 #[macro_use]
 mod simd;
 
