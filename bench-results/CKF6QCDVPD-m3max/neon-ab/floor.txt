@@ -1,0 +1,53 @@
+dtype  engine  or   n  geomean     min     max
+  c64      1m  AB   9    1.005   0.987   1.037
+  c64      1m  BA   3    1.002   0.992   1.017
+  c64      3m  AB   9    1.008   0.987   1.054
+  c64      3m  BA   3    1.006   0.992   1.021
+  c64  planar  AB   9    0.998   0.965   1.046
+  c64  planar  BA   3    1.006   0.979   1.041
+  c64   tblis  AB   9    0.995   0.981   1.010
+  c64   tblis  BA   3    1.010   0.992   1.032
+  c64    ttgt  AB   9    0.986   0.950   1.013
+  c64    ttgt  BA   3    1.062   0.987   1.212
+  f64      1m  AB   9    1.010   0.976   1.105
+  f64      1m  BA   3    1.005   0.993   1.020
+  f64      3m  AB   9    1.010   0.976   1.105
+  f64      3m  BA   3    1.005   0.993   1.020
+  f64  planar  AB   9    1.010   0.976   1.105
+  f64  planar  BA   3    1.005   0.993   1.020
+  f64   tblis  AB   9    0.990   0.959   1.022
+  f64   tblis  BA   3    0.988   0.959   1.010
+  f64    ttgt  AB   9    0.975   0.843   1.038
+  f64    ttgt  BA   3    1.003   0.993   1.010
+
+--- outside the +/-6% per-case noise floor (9 of 120) ---
+  0.843    abcijk-ikma-mjbc  f64    ttgt  AB     25.1 ->    21.2
+  0.940      ijkl-imkn-jnlm  f64    ttgt  AB     56.0 ->    52.7
+  1.063        ajbc-ckba-jk  f64      1m  AB     17.4 ->    18.5
+  1.063        ajbc-ckba-jk  f64      3m  AB     17.4 ->    18.5
+  1.063        ajbc-ckba-jk  f64  planar  AB     17.4 ->    18.5
+  1.105      abjcd-dkbac-jk  f64      1m  AB     10.2 ->    11.3
+  1.105      abjcd-dkbac-jk  f64      3m  AB     10.2 ->    11.3
+  1.105      abjcd-dkbac-jk  f64  planar  AB     10.2 ->    11.3
+  1.212    abcijk-ikmb-mjac  c64    ttgt  BA     26.0 ->    31.4
+  0.843    abcijk-ikma-mjbc  f64    ttgt  AB     25.1 ->    21.2
+  0.940      ijkl-imkn-jnlm  f64    ttgt  AB     56.0 ->    52.7
+  1.063        ajbc-ckba-jk  f64      1m  AB     17.4 ->    18.5
+  1.063        ajbc-ckba-jk  f64      3m  AB     17.4 ->    18.5
+  1.063        ajbc-ckba-jk  f64  planar  AB     17.4 ->    18.5
+  1.105      abjcd-dkbac-jk  f64      1m  AB     10.2 ->    11.3
+  1.105      abjcd-dkbac-jk  f64      3m  AB     10.2 ->    11.3
+  1.105      abjcd-dkbac-jk  f64  planar  AB     10.2 ->    11.3
+  1.212    abcijk-ikmb-mjac  c64    ttgt  BA     26.0 ->    31.4
+
+--- overall, all cases (what a user sees) ---
+  c64      1m  1.004
+  c64      3m  1.008
+  c64  planar  1.000
+  c64   tblis  0.999
+  c64    ttgt  1.004
+  f64      1m  1.008
+  f64      3m  1.008
+  f64  planar  1.008
+  f64   tblis  0.990
+  f64    ttgt  0.982

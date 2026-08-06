@@ -994,9 +994,11 @@ The NEON menus were seeded that way, and the seeding looked corroborated: its
 two leading `f64` real candidates were `bli_dgemm_armv8a_asm_6x8` and `8x6r`,
 BLIS's own hand-tuned AArch64 shapes.
 
-**Refuted on the M3 Max.** The filter half holds — the over-budget `!` flag
-tracks collapse closely — and the choosing half is wrong in **three of eight**
-columns. `f64` real is the sharp case: the budget proposed `6x8` and the machine
+**Refuted on the M3 Max, and the filter half is weaker than it looked too.**
+The `!` over-budget flag separates cleanly in `planar` and `3m` — its shapes are
+the bottom four and bottom three of those columns, in both dtypes — and is
+unreliable in `real` and `1m`, where over-budget shapes appear at the *top*. The
+choosing half is wrong in **three of eight** columns. `f64` real is the sharp case: the budget proposed `6x8` and the machine
 prefers **`16x3` by 4.9%**, 2.6x the session floor, and `16x3` is a shape the
 budget calls *over* its limit at `live = 33`. `f32` real moves off BLIS's `12x8r`
 to `8x8`, and `f32` 1m prefers `NR = 6` where `f64` 1m prefers `NR = 8` on the

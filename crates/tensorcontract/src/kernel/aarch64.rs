@@ -1,13 +1,13 @@
 //! AArch64 NEON vectorised micro-kernels.
 //!
 //! **Not part of the public API.** `#[doc(hidden)]` and outside the semver
-//! guarantee, on the same terms as [`x86`](super::x86): public only so that
+//! guarantee, on the same terms as `kernel::x86`: public only so that
 //! `examples/kernel_shapes` can measure one kernel family at a time, and the
 //! register-block menus are re-measured whenever the machine changes. Reach the
 //! kernels through [`super::KernelSet`].
 //!
 //! The bodies are not written here. They come from `simd_kernels!` in
-//! [`super::simd`], the same macro that generates the AVX-512 and AVX2 kernels,
+//! `kernel::simd`, the same macro that generates the AVX-512 and AVX2 kernels,
 //! so a NEON-vs-AVX comparison is not also a comparison between two people's
 //! hand-written kernels (D17).
 //!
@@ -56,11 +56,13 @@
 //! 21). The menus in [`cfg_neon_f64`] / [`cfg_neon_f32`] are that measurement,
 //! ordered by it, and each carries its own margin against the session floor.
 //!
-//! **The budget was a good filter and a bad chooser**, which is A34 restated
-//! rather than a new finding: it eliminated the shapes that collapse, and then
-//! picked the wrong winner in three of the eight columns. `f64` real is the
-//! sharp case — the budget proposed `6x8`, BLIS's own shape, and the machine
-//! prefers `16x3` by 4.9%, a shape the budget calls *over* its limit.
+//! **The budget filtered half the columns well and chose badly in three**,
+//! which is A34 restated rather than a new finding. The `!` over-budget flag is
+//! a clean separator for `planar` and `3m` — its shapes are the bottom of those
+//! columns in both dtypes — and unreliable for `real` and `1m`, where
+//! over-budget shapes appear at the *top*. `f64` real is the sharp case: the
+//! budget proposed `6x8`, BLIS's own shape, and the machine prefers `16x3` by
+//! 4.9% — a shape the budget calls *over* its limit.
 //!
 //! Register blocks are per-microarchitecture, so this is an M3 Max result and
 //! not a NEON one. Re-run the sweep on any other Apple part before quoting it.
@@ -307,7 +309,7 @@ fn pick_isa() -> Option<Isa> {
 
 /// One ISA's kernel-set entry points for one element type.
 ///
-/// Deliberately the same shape as [`super::x86::IsaConfigs`] rather than shared
+/// Deliberately the same shape as x86's `IsaConfigs` rather than shared
 /// with it: it carries an `isa: Isa`, and the two `Isa` enums are different
 /// types. Eight lines of duplication buys `examples/kernel_shapes` and the
 /// contract tests one interface across both architectures.

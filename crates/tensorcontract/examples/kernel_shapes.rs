@@ -14,25 +14,28 @@
 //!
 //! It sweeps whichever instruction sets this target has: AVX-512 and AVX2 on
 //! x86, NEON on aarch64. The AVX-512 grid is the one Phase 3 chose the shipped
-//! AVX-512 shapes from. **Two of the three families are still unmeasured, and
-//! this is their calibration path** — the `best per method` lines at the bottom
-//! are exactly what belongs in the corresponding `cfg_*` menu, replacing a model
-//! with a measurement:
-//!
-//! * **AVX2** — picked from the register budget and the uop model on an
-//!   AVX-512-only reference machine. Run this on a Haswell/Zen box.
-//! * **NEON** — picked from the register budget alone. Run this on the Apple
-//!   machine; it is the only thing that makes `cfg_neon_f64` / `cfg_neon_f32`
-//!   more than a model, and A34 says register blocks are per-microarchitecture
-//!   rather than per-ISA, so the budget agreeing with BLIS's chosen ARM shapes is
-//!   corroboration and not evidence about this engine.
+//! AVX-512 shapes from, and NEON's menus were chosen from this sweep on
+//! 2026-08-06 (`DECISIONS.md` part 21). **AVX2 is the one family still picked
+//! from a model** — the register budget and the uop model, on an AVX-512-only
+//! reference machine — and this is its calibration path. Run it on a
+//! Haswell/Zen box; the NEON calibration found the budget naming the wrong
+//! winner in three of eight columns (A60), so do not assume AVX2's are close.
 //!
 //! NEON and AVX-512 share the candidate grid because both have 32 vector
 //! registers and the budget counts registers, not lanes — see `cases!`. Their
-//! rankings have no reason to agree.
+//! rankings have no reason to agree, and measured, they do not.
+//!
+//! **Run it two or three times.** The `best per method` footer is a single
+//! number with no error bar, and copying it into a `cfg_*` menu off one arm is
+//! how a tie becomes a decision: on the M3 Max, three arms put six of the eight
+//! winners inside the session's own spread, and exposed three shapes that swing
+//! 13–45% between arms — shapes doing two different things, which must not ship
+//! at any mean. `scripts/kernel-shapes-compare.py` is the gate (D56).
 //!
 //! ```text
-//! cargo run --release -p tensorcontract --example kernel_shapes
+//! cargo run --release -p tensorcontract --example kernel_shapes | tee arm1.txt
+//! # ... twice more ...
+//! scripts/kernel-shapes-compare.py arm1.txt arm2.txt arm3.txt
 //! ```
 
 // The sweep measures whichever vectorised kernel module this target has, so it

@@ -128,7 +128,7 @@ pub enum CacheSource {
     /// x86 `CPUID` leaf 4, or `0x8000001D` on AMD.
     Cpuid,
     /// Darwin `sysctl`. Reports sizes, the line and L2 sharing, but **no
-    /// associativity and no set count** — see [`from_sysctl`].
+    /// associativity and no set count** — see `from_sysctl` in this module.
     Sysctl,
     /// The conservative built-in fallback.
     Builtin,

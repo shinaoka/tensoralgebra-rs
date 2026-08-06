@@ -159,6 +159,8 @@ The distinction matters more than the numbers, so it is stated per item.
 | Correctness of everything below, in every dtype, method, ISA and thread count | **Tested** against a brute-force oracle, and in the harness against TTGT and TBLIS. Randomised extents and axis orders, diagonals, reductions, negative strides, empty and scalar cases, all 16 conjugation masks, shapes that cross every cache-blocking level, and the irregular block-scatter path |
 | AVX-512 register blocks | **Measured** (`examples/kernel_shapes`), per method and element type, at the `kc` the engine uses — **on one microarchitecture.** Two later findings qualify this and neither is fixed in this release: register blocks turn out to be a property of the *microarchitecture*, not of the instruction set, so Cascade Lake's winners are not Ice Lake's (A34); and one of the eight shipped configurations disagrees with the sweep that chose it — `planar` `f32`/`c32` ships `32x6` where the sweep's own output names `32x5`, **7.8% faster** at the operating `kc` (A35). The default is unchanged, but the shape is no longer unreachable: the row-block menu is keyed by position rather than by `MR` (D43), so `32x5` is on the menu and `TENSORCONTRACT_ROWBLOCK=idx=3` runs it. A kernel margin is not a corpus margin, which is why this is an arm and not a retune |
 | Write-back, orientation and row-block rules | **Measured** — whole-grid sweeps over all 392 corpus case-dtype-methods, scored offline |
+| **NEON register blocks** | **Measured on an M3 Max, with three arms and a floor — and that is why six of the eight winners are recorded as *ties* rather than decisions.** Only `f64` real (`16x3`, +4.9%), `f64` 3m and `f32` 3m (+7–8%) clear the session's p90 spread; the other five kept the budget-derived incumbent. Three candidate shapes are excluded as **unstable rather than slow** — 1m `3x10` reads 37.8 / 54.9 / 54.8 GF/s across arms, a shape doing two different things, which averaging over more reps would have hidden. The register budget that seeded the menu named the wrong winner in **three of eight** columns, including one where it agreed with BLIS's own `armv8a_asm_6x8` and the machine preferred a shape the budget calls over-limit. **The AVX-512 and AVX2 menus above were each chosen from a single arm and therefore carry the same unknown error bar.** `f64` real's `MR = 16` does not divide the corpus's 24 and costs write-back regularity on 12 of 49 `f64` cases; it ships because the guarded row-block rule demotes exactly those 12 |
+| **What the NEON kernel is worth** | **Measured end to end against a floor**, one binary, four arms, `TENSORCONTRACT_KERNEL` as the treatment — a comparison the x86 kernels cannot have, since an AVX-512 machine cannot un-have its own. **1.840** in `f64` (19.90 → 36.60 GF/s geomean, 12 premise shapes, 64 MiB, one thread), 1.69–1.83 in `c64`, against a floor of 1.000–1.008 and baseline columns that moved 0.996–1.006. The engine reaches **1.00x TBLIS 2.0-dev** in `f64` and **1.12x** in `c64` with 3m, at **81.4%** of the 64.8 GF/s NEON FMA peak on its best shape — the same efficiency the scalar path reached against a ceiling halved by the missing `fmla`. On this machine **3m is the fastest complex method** (1.135x planar) and it is the arm that passes TBLIS; that is a fourth per-microarchitecture ordering and does not transfer. **Not a pinned measurement** — Darwin has no CPU affinity API — and there is no corpus sweep or `ragged` arm behind it, only the 12 premise shapes |
 | **AVX2 register blocks** | **Measured, and all eight shipped shapes are the winners** — on Zen2 (`worker5040`), where the `avx2`-without-`avx512` dispatch branch also executed on real hardware for the first time. They stopped being a guess with no code change. Read with A34 above: this is one AVX2 microarchitecture, not AVX2 in general |
 | **Default cache blocking (`MC`/`KC`/`NC`)** | **Swept on two machines, and closed with a negative result: there is no few-percent win here.** `KC` is first-order — it decides whether the `A` sliver is an L1 resident or an L2 stream — but on the reference machine `kc = 384` is the optimum and the shipped 256 is close to it, while `MC` is a wide plateau a sixteenfold range moves by at most 3%. Pinned `kc = 512` is a *machine-specific* result and must not ship: 1.050 on Zen2, **0.961** on Cascade Lake. Coupled deepening looked like +3% on both machines and **failed its end-to-end A/B** — both grids' `base` arm was 1–2% slow, inflating every `arm/base` ratio identically, so the two-machine agreement was a shared artefact rather than a replication; control-corrected the treatment is ≈0.977. `TENSORCONTRACT_DEEPEN=on` survives as an off-by-default record of that experiment, not as a pending improvement. Shipped defaults remain `kc = 384/256` by real size, fitted to one Cascade Lake workstation. Three candidate changes and a mechanism all died on measurement; do not reopen without a new machine or a new mechanism |
 | **The analytical blocking model** | **Measured, and it loses. Off by default and staying there.** On the first unseen machine it is worse in **11 of 12 columns**, by up to 7.2% in the complex methods, and the whole loss is attributable to its `kc` (A33). It was built to solve portability and does not; the hypothesis is refuted rather than pending |
@@ -237,25 +239,17 @@ see `DECISIONS.md` A21.
 
 ### Not included
 
-* No AArch64/NEON, RISC-V or GPU kernels. Off x86 the engine runs the portable
-  scalar path. **On Apple Silicon that path is now measured, and it costs about
-  1.5x rather than the order of magnitude this entry used to imply.** On an M3 Max,
-  single-threaded, over the 12 premise shapes at 64 MiB: **0.65x of an
-  OpenBLAS-TTGT baseline in `f64`** (19.84 against 30.68 GF/s geomean) and 0.69x
-  in `c64` (24.20 against 35.02).
-  The reason is one instruction form, not a missing kernel. LLVM vectorises the
-  scalar micro-kernel to NEON unasked, but will not contract `acc += a * b` into
-  `fmla` because that is two roundings and IEEE forbids it, so the path runs at
-  two instructions per multiply-accumulate where the machine offers one. That
-  halves the ceiling available to it from 64.8 to 32.4 GF/s — and on its best
-  premise shape it reaches **80.5%** of that, where OpenBLAS reaches **87.1%** of
-  the full one. A NEON kernel is worth roughly 2x here, not 10x.
-  A separate single-case probe at 8 MiB put it at **0.46x of TBLIS 2.0-dev**;
-  that figure is one case at one size and the corpus sweep that would confirm it
-  at 64 MiB has not been run.
-  **Not measured on any other aarch64 part**, nothing about it transfers to
-  RISC-V or to an aarch64 core with different vector issue width, and **none of
-  these is a pinned measurement** — Darwin has no CPU affinity API.
+* No RISC-V or GPU kernels. Off x86 and aarch64 the engine runs the portable
+  scalar path, and on an M3 Max that path was measured at **0.63x of an
+  OpenBLAS-TTGT baseline in `f64`** and 0.54x of TBLIS 2.0-dev — about 1.5x, not
+  the order of magnitude this entry used to imply. The reason was one instruction
+  form, not a missing kernel: LLVM vectorises the scalar micro-kernel to NEON
+  unasked, but will not contract `acc += a * b` into `fmla` because that is two
+  roundings and IEEE forbids it, so the path ran at two instructions per
+  multiply-accumulate where the machine offers one, halving the ceiling available
+  to it from 64.8 to 32.4 GF/s. It reached 80.5% of that halved ceiling.
+  Nothing about this transfers to RISC-V or to any core with a different vector
+  issue width.
 * No dispatch of the complex method by shape, and it is **not planned**. The
   inversion that would have justified it is a Cascade Lake result, absent on Ice
   Lake, where the same rule would be a pessimisation — and not explained by the

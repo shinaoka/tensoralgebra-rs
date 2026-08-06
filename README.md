@@ -25,7 +25,7 @@ algorithm is Matthews' block-scatter-matrix tensor contraction
 > |---|---|---|
 > | x86-64 with AVX-512F | AVX-512, per method | register blocks **measured on Cascade Lake**, and they do not transfer — an Ice Lake machine runs three of the eight shipped shapes 9–13% off its own optimum. Cache blocking is fitted to the same Cascade Lake workstation and has now been swept: it is near optimal there |
 > | x86-64 with AVX2+FMA | AVX2, per method | register blocks **measured on Zen2**, and all eight shipped shapes were confirmed as the winners |
-> | aarch64 (Apple Silicon) | portable scalar — **there is no NEON kernel** | untuned, and now **measured**: `0.65x` of OpenBLAS-TTGT in `f64` on an M3 Max, single-threaded, 12 premise shapes at 64 MiB. Not the order of magnitude "slow by design" suggests — LLVM vectorises the scalar kernel to NEON on its own but cannot fuse `acc += a*b` into `fmla`, so it spends two instructions per multiply-accumulate and reaches 80.5% of the halved ceiling that leaves it, against OpenBLAS's 87.1% of the full one. Not a pinned measurement: Darwin has no CPU affinity API |
+> | aarch64 (Apple Silicon) | NEON, per method | register blocks **measured on an M3 Max**, three arms with a floor — and six of the eight winners were ties, so only `f64` real, `f64` 3m and `f32` 3m are resolved. On that machine, single-threaded over 12 premise shapes at 64 MiB, the kernel is worth **1.84x** over the portable path and the engine reaches **1.00x TBLIS 2.0-dev** in `f64` and **1.12x** in `c64` with 3m, at 81.4% of the NEON FMA peak on its best shape. Cache blocking is **not** tuned here — it is still the Cascade Lake constants. Not a pinned measurement: Darwin has no CPU affinity API |
 > | anything else | portable scalar | correct; slow by design, and unmeasured |
 >
 > Threading and an analytical cache-blocking model are implemented and **off by
@@ -227,6 +227,18 @@ Cascade Lake's 32 KiB 8-way does not. So on any Ice Lake machine this engine
 currently runs a `real` kernel 9.2% off its own optimum. The AVX-512 blocks are
 measured on Cascade Lake, the AVX2 blocks on Zen2 — where all eight were
 confirmed as the winners — and neither set is a claim about anything else.
+
+**The NEON blocks were measured last, and they are the ones with an error bar.**
+Three arms of the same sweep on an M3 Max, rather than the single arm the
+AVX-512 and AVX2 menus were each chosen from. That changed the conclusion: six
+of the eight winners turned out to be **ties inside the session's own spread**,
+and three candidate shapes were *unstable* rather than slow — one reading
+37.8 / 54.9 / 54.8 GF/s across three runs, a shape doing two different things.
+The register budget that seeded the menu named the wrong winner in three of
+eight columns, including one case where it agreed with BLIS's own hand-tuned
+AArch64 shape and the machine preferred a shape the budget calls illegal. The
+practical consequence for a reader: the AVX-512 and AVX2 winners have the same
+unknown error bar, because they were each picked from one arm.
 
 **Cache blocking is fitted to the reference machine, and swept.** `KC` is
 first-order: it decides whether the `A` sliver is an L1 resident or an L2 stream,
