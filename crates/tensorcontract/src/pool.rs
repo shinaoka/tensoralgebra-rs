@@ -374,15 +374,30 @@ mod tests {
         serially(|| {
             let hook = std::panic::take_hook();
             std::panic::set_hook(Box::new(|_| {}));
+            // A decline runs no closure at all, so nothing panics and the outcome
+            // is `Ok` -- the same race `broadcast_retrying` answers for the other
+            // sites. Here the signal is the panic rather than the return value, so
+            // the retry has to live *inside* `catch_unwind` rather than wrap it.
             let caught = catch_unwind(AssertUnwindSafe(|| {
-                try_broadcast(4, &|i| {
-                    if i == 3 {
-                        panic!("worker {i}");
+                for _ in 0..10_000 {
+                    if try_broadcast(4, &|i| {
+                        if i == 3 {
+                            panic!("worker {i}");
+                        }
+                    }) {
+                        return true;
                     }
-                });
+                    std::thread::yield_now();
+                }
+                false
             }));
             std::panic::set_hook(hook);
-            assert!(caught.is_err(), "the panic must not be swallowed");
+            match caught {
+                // The broadcast ran and the panic reached us: what this is for.
+                Err(_) => {}
+                Ok(true) => panic!("the panic must not be swallowed"),
+                Ok(false) => panic!("the pool never came free"),
+            }
 
             let seen = AtomicUsize::new(0);
             assert!(broadcast_retrying(4, &|_| {
@@ -406,7 +421,7 @@ mod tests {
             use std::sync::Mutex as M;
             let ids: M<HashSet<std::thread::ThreadId>> = M::new(HashSet::new());
             for _ in 0..4 {
-                assert!(try_broadcast(4, &|_| {
+                assert!(broadcast_retrying(4, &|_| {
                     ids.lock().unwrap().insert(std::thread::current().id());
                 }));
             }
