@@ -89,8 +89,17 @@ cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STAGE=${1:?usage: scripts/macos-session.sh prep|bench OUTDIR [size] [reps]}
 OUT=${2:?give an output directory, e.g. bench-results/$(hostname -s)-m3max}
 SIZE=${3:-64}
-PREMISE_SIZE=${PREMISE_SIZE:-200}
-REPS=${4:-5}
+REPS=${4:-3}
+
+# `premise` runs at 64 MiB here, **not** the 200 MiB Phase 1 and Phase 3 used.
+#
+# That size was chosen so the rebuilt TBLIS baselines would reproduce the Phase 1
+# numbers and the efficiency-vs-ceiling metric would stay comparable across
+# phases. On this machine it buys nothing: no number measured here may be
+# compared with a number measured on another machine, so matching an x86
+# session's size only costs wall clock. A46 requires measuring at the size you
+# publish at, and 64 MiB is that size for everything in this directory.
+PREMISE_SIZE=${PREMISE_SIZE:-64}
 
 [ "$(uname -s)" = "Darwin" ] || { echo "this driver is for Darwin; on Linux use compare-bench.sh" >&2; exit 1; }
 
@@ -175,8 +184,12 @@ bench)
     run "$BO" orient --size "$SIZE" --csv "$OUT/orient.csv"
 
     # --- correctness on a new architecture ------------------------------------
+    # The method has to be in the banner, not just in the environment: `run` echoes
+    # its arguments, so three identical `verify` headers in the log would leave no
+    # record of which method each one exercised.
     for m in planar 1m 3m; do
-        TENSORCONTRACT_COMPLEX=$m run "$BO" verify --size 32
+        echo -e "\n\n########## verify, TENSORCONTRACT_COMPLEX=$m ##########\n" | tee -a "$LOG"
+        TENSORCONTRACT_COMPLEX=$m "$BO" verify --size 32 2>&1 | tee -a "$LOG" | tail -3
     done
 
     # --- efficiency against a same-shape GEMM ceiling -------------------------
@@ -198,14 +211,20 @@ bench)
     # The warm-up is discarded (A31). The three A arms are identical by
     # construction, so A-vs-A' and A-vs-A'' are this session's floor and the
     # spread between them is what says how readable a per-case ratio is here.
+    # `f64,c64` gets the repeats and `f32,c32` gets one arm. One corpus arm at
+    # these settings is ~15 min here -- the scalar path is the slow engine, and
+    # there are four of them per arm -- so repeating both dtype pairs would put
+    # the session past five hours on a machine that cannot be reserved. The floor
+    # is therefore derived on `f64/c64` and quoted as such; the `f32/c32` arm is
+    # reported without one, which is the honest form rather than borrowing the
+    # other pair's.
     ENGINES=planar,1m,3m,ttgt
     for arm in warm A A2 A3; do
-        for pair in f64,c64 f32,c32; do
-            t=${pair/,/}
-            run "$BO" sweep --size "$SIZE" --reps "$REPS" \
-                --engines "$ENGINES" --dtype "$pair" --csv "$OUT/$arm-$t.csv"
-        done
+        run "$BO" sweep --size "$SIZE" --reps "$REPS" \
+            --engines "$ENGINES" --dtype f64,c64 --csv "$OUT/$arm-f64c64.csv"
     done
+    run "$BO" sweep --size "$SIZE" --reps "$REPS" \
+        --engines "$ENGINES" --dtype f32,c32 --csv "$OUT/A-f32c32.csv"
 
     # --- the only source of irregularity on this machine ----------------------
     #
@@ -227,12 +246,15 @@ bench)
     } | tee -a "$LOG"
 
     # --- this session's floor, from its own repeats ---------------------------
-    echo -e "\n###### floor: A' against A ######" | tee -a "$LOG"
-    scripts/compare-sweeps.py "$OUT/A-f64c64.csv,$OUT/A-f32c32.csv" \
-        "$OUT/A2-f64c64.csv,$OUT/A2-f32c32.csv" | tee "$OUT/floor-A2.txt"
-    echo -e "\n###### floor: A'' against A ######" | tee -a "$LOG"
-    scripts/compare-sweeps.py "$OUT/A-f64c64.csv,$OUT/A-f32c32.csv" \
-        "$OUT/A3-f64c64.csv,$OUT/A3-f32c32.csv" | tee "$OUT/floor-A3.txt"
+    #
+    # Two independent ratios against the same A, so the floor comes with a spread
+    # rather than as a point estimate. On `f64/c64` only, per the note above.
+    echo -e "\n###### floor: A' against A (f64,c64) ######" | tee -a "$LOG"
+    scripts/compare-sweeps.py "$OUT/A-f64c64.csv" "$OUT/A2-f64c64.csv" \
+        | tee "$OUT/floor-A2.txt"
+    echo -e "\n###### floor: A'' against A (f64,c64) ######" | tee -a "$LOG"
+    scripts/compare-sweeps.py "$OUT/A-f64c64.csv" "$OUT/A3-f64c64.csv" \
+        | tee "$OUT/floor-A3.txt"
 
     echo
     echo "Quote no ratio from this session without the floor in floor-A2/A3.txt."

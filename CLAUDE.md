@@ -287,8 +287,29 @@ evidence rather than assumption.
 ## Runtime switches
 
 Every performance-relevant choice is reachable at run time, so an A/B is a
-process restart rather than a rebuild. **None of them affects correctness**, and
-results are bitwise identical across all of them.
+process restart rather than a rebuild. **None of them affects correctness.**
+
+**Bitwise identity holds for the switches that only divide work, and not for the
+two that change the arithmetic.** The blanket claim that used to stand here —
+"results are bitwise identical across all of them" — is false on two rows, and
+nothing in the suite pins it.
+
+* **Bitwise identical:** `THREADS`, `PARTITION`, `POOL`, `AMORTISE`,
+  `L3_DOMAINS`, `WRITEBACK`, `ORIENT`, `ROWBLOCK` and the blocking overrides.
+  These change how the work is split and in what order panels are packed, never
+  what arithmetic is performed on which values: every output element has one
+  owning thread accumulating over the full contracted extent in the original
+  order (`plan.rs:492`, `driver.rs:506`, and `batch.rs`'s bitwise test).
+* **Not bitwise identical:** `TENSORCONTRACT_KERNEL`, because `kernel::scalar`
+  writes `acc += a * b` — two roundings, which LLVM may not contract under IEEE
+  rules — while every `kernel::x86` body uses a true `_mm*_fmadd_*`, which is one.
+  And `TENSORCONTRACT_COMPLEX=3m`, which computes three products where planar
+  computes four; `tests/conformance.rs:416` already says so in as many words.
+
+The consequence for an A/B is small but real: comparing two *kernels* or two
+*complex methods* is comparing two implementations of the same contraction to
+within their rounding, not one implementation twice. It is a correctness
+statement, not a performance one — the timing methodology is unaffected.
 
 | variable | effect |
 |---|---|
