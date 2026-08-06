@@ -1262,3 +1262,82 @@ fn thread_partition_rule() {
     assert_eq!((pm, pn), (4, 16));
     assert!(pm * pn <= 64);
 }
+
+/// A view whose element-wise op differs from the plan's is rejected rather than
+/// silently computing the other contraction.
+///
+/// `Plan::run` used to read only each view's `data`, so a `.conj()` that the
+/// plan did not also carry was dropped on the floor and the caller got the
+/// unconjugated result with no indication. Conjugation is folded into the
+/// packing and write-back traversals, so it genuinely cannot be varied per call
+/// — which leaves rejecting the mismatch as the only honest option.
+#[test]
+fn element_op_must_match_the_plan() {
+    use tensorcontract::{Error, TensorView, TensorViewMut};
+
+    let l = Layout::col_major(&[2, 2]);
+    let (ia, ib, id) = (
+        [b'i' as i64, b'k' as i64],
+        [b'k' as i64, b'j' as i64],
+        [b'i' as i64, b'j' as i64],
+    );
+
+    let a = vec![
+        Complex::new(1.0f64, 2.0),
+        Complex::new(3.0, 4.0),
+        Complex::new(5.0, 6.0),
+        Complex::new(7.0, 8.0),
+    ];
+    let identity = vec![
+        Complex::new(1.0f64, 0.0),
+        Complex::new(0.0, 0.0),
+        Complex::new(0.0, 0.0),
+        Complex::new(1.0, 0.0),
+    ];
+
+    let run = |plan: &Plan, conj_a: bool, d: &mut Vec<Complex<f64>>| {
+        let va = TensorView::new(&a, &l, &ia);
+        plan.run(
+            Complex::new(1.0, 0.0),
+            if conj_a { va.conj() } else { va },
+            TensorView::new(&identity, &l, &ib),
+            Complex::new(0.0, 0.0),
+            None,
+            TensorViewMut::new(d, &l, &id),
+        )
+    };
+
+    let plain = Plan::new(
+        Operand::new(&l, &ia),
+        Operand::new(&l, &ib),
+        None,
+        Operand::new(&l, &id),
+    )
+    .unwrap();
+    let conjugated = Plan::new(
+        Operand::new(&l, &ia).conj(),
+        Operand::new(&l, &ib),
+        None,
+        Operand::new(&l, &id),
+    )
+    .unwrap();
+
+    // Both mismatch directions are errors, and they name the offending operand.
+    let mut d = vec![Complex::new(0.0f64, 0.0); 4];
+    assert_eq!(
+        run(&plain, true, &mut d),
+        Err(Error::ElementOpMismatch { tensor: "A" })
+    );
+    assert_eq!(
+        run(&conjugated, false, &mut d),
+        Err(Error::ElementOpMismatch { tensor: "A" })
+    );
+    // Nothing was written on the rejected paths.
+    assert!(d.iter().all(|z| *z == Complex::new(0.0, 0.0)));
+
+    // And each plan run with the argument it was built for gives its own answer.
+    run(&plain, false, &mut d).unwrap();
+    assert_eq!(d, a);
+    run(&conjugated, true, &mut d).unwrap();
+    assert_eq!(d, a.iter().map(|z| z.conj()).collect::<Vec<_>>());
+}

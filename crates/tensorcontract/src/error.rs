@@ -12,22 +12,28 @@
 //!   [`Error::UnsupportedDatatype`];
 //! * **the shape cannot be addressed at all** —
 //!   [`Error::ExtentProductOverflow`];
-//! * **the data does not back the shape** — [`Error::NullPointer`], the one
-//!   variant raised by [`crate::Plan::run`] rather than by
-//!   [`crate::Plan::new`], because slice lengths are not known until then.
+//! * **the call disagrees with the plan** — [`Error::NullPointer`], when the
+//!   data cannot hold every offset the plan generates, and
+//!   [`Error::ElementOpMismatch`], when a view's conjugation differs from the
+//!   one recorded in the plan. These two are the only variants raised by
+//!   [`crate::Plan::run`] rather than by [`crate::Plan::new`], because neither
+//!   slice lengths nor the views exist until then.
 //!
-//! Consequently a [`crate::Plan`] that exists is a plan that will run: there is
-//! no execution-time failure mode left once the data has been bounds-checked.
+//! So a [`crate::Plan`] that exists describes a contraction that is expressible;
+//! what remains checkable at execution time is only whether the arguments are
+//! the ones it was built for.
 
 use core::fmt;
 
 /// Everything that can go wrong when building or executing a contraction plan.
 ///
-/// Every variant is a rejected *description* of a contraction — a shape, label
-/// or stride inconsistency — caught while planning. There is deliberately no
-/// variant for a failure during execution: once [`crate::Plan::new`] has
-/// returned, the only thing that can still be wrong is the data slices, and
-/// [`crate::Plan::run`] checks those before touching anything.
+/// Most variants are a rejected *description* of a contraction — a shape, label
+/// or stride inconsistency — caught while planning. Two are raised by
+/// [`crate::Plan::run`] instead, and only because their subject does not exist
+/// until then: [`Error::NullPointer`] for data that cannot hold the offsets the
+/// plan generates, and [`Error::ElementOpMismatch`] for arguments that do not
+/// match the plan they are given to. Nothing is reported once the engine starts
+/// computing.
 ///
 /// `#[non_exhaustive]` because the mapping onto TAPP's error codes is the
 /// stable contract, not this enumeration; match with a `_` arm.
@@ -105,6 +111,21 @@ pub enum Error {
         /// Which operand: `"A"`, `"B"`, `"C"` or `"D"`.
         tensor: &'static str,
     },
+    /// An operand handed to [`crate::Plan::run`] carries a different
+    /// [`crate::plan::ElementOp`] than the one the plan was built with.
+    ///
+    /// Conjugation is folded into the packing and write-back traversals, so it
+    /// is fixed when [`crate::Plan::new`] analyses the contraction — a
+    /// conjugated plan and an unconjugated one are different plans. The
+    /// alternative to this error was to ignore the argument silently, which
+    /// returned the unconjugated result to a caller who had asked for the
+    /// conjugated one. Rebuild the plan with [`crate::plan::Operand::conj`], or
+    /// use [`crate::contract`], which derives the plan from the same views it
+    /// executes and so cannot disagree with itself.
+    ElementOpMismatch {
+        /// Which operand: `"A"`, `"B"`, `"C"` or `"D"`.
+        tensor: &'static str,
+    },
 }
 
 impl fmt::Display for Error {
@@ -147,6 +168,11 @@ impl fmt::Display for Error {
             Error::NullPointer { tensor } => {
                 write!(f, "null data pointer for non-empty tensor {tensor}")
             }
+            Error::ElementOpMismatch { tensor } => write!(
+                f,
+                "tensor {tensor} was given a different element-wise op than the \
+                 plan was built with; conjugation is fixed at Plan::new"
+            ),
         }
     }
 }

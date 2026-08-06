@@ -120,7 +120,7 @@
 //! let (ia, ib, id) = parse_einsum("ik,kj->ij").unwrap();
 //! let l = Layout::col_major(&[2, 2]);
 //!
-//! // Conjugation belongs to the *plan*, not to the data handed to `run`.
+//! // Conjugation belongs to the plan; the view handed to `run` must agree.
 //! let plan = Plan::new(
 //!     Operand::new(&l, &ia).conj(),
 //!     Operand::new(&l, &ib),
@@ -138,7 +138,7 @@
 //!
 //! plan.run(
 //!     C64::new(1.0, 0.0),
-//!     TensorView::new(&a, &l, &ia),          // conjugation costs nothing
+//!     TensorView::new(&a, &l, &ia).conj(),   // conjugation costs nothing
 //!     TensorView::new(&b, &l, &ib),
 //!     C64::new(0.0, 0.0),
 //!     None,
@@ -370,8 +370,9 @@ pub struct TensorView<'a, T> {
     pub idx: &'a [i64],
     /// Element-wise operation applied while reading. Set by [`TensorView::conj`].
     ///
-    /// Read by [`contract`], which builds a plan from these views. It is *not*
-    /// read by [`Plan::run`], where the plan's own [`Operand`] carries it.
+    /// [`contract`] takes this as the request, building a plan to match. With an
+    /// existing [`Plan`] the plan is authoritative and this must agree with it,
+    /// or [`Plan::run`] returns [`Error::ElementOpMismatch`].
     pub op: ElementOp,
 }
 
@@ -472,12 +473,15 @@ impl Plan {
     /// The slices are bounds-checked against the plan's scatter vectors before
     /// any unsafe access, so this entry point is safe.
     ///
-    /// Only the `data` of each view is read here. **The views' [`ElementOp`]s
-    /// are ignored**, because conjugation is recorded in the plan and reaches
-    /// the packing routines from there — see [`Operand::conj`]. A view built
-    /// with [`TensorView::conj`] and run against a plan whose `A` was not
-    /// conjugated computes the unconjugated contraction. [`contract`] does not
-    /// have this pitfall: it derives the plan from the same views it executes.
+    /// Each view's [`ElementOp`] must equal the one the plan was built with, or
+    /// this returns [`Error::ElementOpMismatch`]. Conjugation is folded into the
+    /// packing and write-back traversals, so it belongs to the plan (see
+    /// [`Operand::conj`]) and cannot be varied per call; checking is what stops
+    /// a `.conj()`ed view from being silently ignored. `C`'s op is checked only
+    /// when a `C` is supplied, since otherwise it is never read.
+    ///
+    /// [`contract`] cannot hit this: it derives the plan from the same views it
+    /// executes.
     pub fn run<T>(
         &self,
         alpha: T,
@@ -491,6 +495,7 @@ impl Plan {
         T: Element,
         T::Real: KernelSet,
     {
+        self.check_ops(a.op, b.op, c.as_ref().map(|c| c.op), d.op)?;
         self.check_bounds(
             a.data.len(),
             b.data.len(),
@@ -553,6 +558,35 @@ impl Plan {
         T::Real: KernelSet,
     {
         driver::execute(self, alpha, a, b, beta, c, d)
+    }
+
+    /// Each operand's element-wise op must be the one the plan was built with.
+    ///
+    /// `C` is exempt when absent: `beta` is forced to zero and it is never read,
+    /// so a plan built with a conjugated `C` and run without one is consistent.
+    fn check_ops(
+        &self,
+        a: ElementOp,
+        b: ElementOp,
+        c: Option<ElementOp>,
+        d: ElementOp,
+    ) -> Result<()> {
+        let pairs = [
+            (a.is_conj(), self.conj_a, "A"),
+            (b.is_conj(), self.conj_b, "B"),
+            (d.is_conj(), self.conj_d, "D"),
+        ];
+        for (given, planned, tensor) in pairs {
+            if given != planned {
+                return Err(Error::ElementOpMismatch { tensor });
+            }
+        }
+        if let Some(c) = c {
+            if c.is_conj() != self.conj_c {
+                return Err(Error::ElementOpMismatch { tensor: "C" });
+            }
+        }
+        Ok(())
     }
 
     /// Every offset the plan can generate must land inside the slice.

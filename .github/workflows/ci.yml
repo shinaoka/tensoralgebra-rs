@@ -392,10 +392,19 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets
 
-  # Documentation, in the two configurations that matter. The first is what
+  # Documentation, in the three configurations that matter. The first is what
   # docs.rs will build for the published crates — the two publishable packages,
   # all features, one target — so a docs.rs failure shows up here first. The
   # second keeps the unpublished harness's doc comments covered as well.
+  #
+  # The third is the one that was missing, and its absence cost something: with
+  # only the first two arms, a doc comment linking to a `std`-gated item passes
+  # both while breaking `--no-default-features` entirely. `batch` is
+  # `#[cfg(feature = "std")]`, the crate header linked into it, and
+  # `cargo doc --no-default-features` was failing for an unknown number of
+  # commits before anyone built that configuration by hand. Cheap to run, and
+  # nothing else covers it — the `features` job builds without `std` but never
+  # documents.
   #
   # `--workspace --all-features` cannot be used for the docs.rs arm: it would
   # enable `tensorprimitives-bench`'s `tblis` feature, whose build script panics
@@ -409,6 +418,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo doc -p tensorcontract -p tensorprimitives-tapp --no-deps --all-features
       - run: cargo doc --workspace --no-deps
+      - run: cargo doc -p tensorcontract --no-deps --no-default-features
       # Every relative markdown link resolves. The documentation is a graph of
       # about thirty files across docs/, docs/notebook/, bench-results/ and the
       # root, and the citation chain from a claim to its raw data is the

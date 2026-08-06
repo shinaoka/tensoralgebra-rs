@@ -1,9 +1,8 @@
 # tensorprimitives-rs
 
-A native-Rust, transpose-free dense tensor contraction engine with **three
-interchangeable complex methods** (planar, 1m, 3m) behind one switch, plus a
-systematic benchmark of complex-vs-real tensor contraction against TBLIS, TTGT
-and a vendor GEMM ceiling.
+A native-Rust, transpose-free dense tensor contraction engine for real and
+complex tensors of any rank, with **three interchangeable complex methods**
+(planar, 1m, 3m) behind one switch.
 
 ```
 D[idx_D] = alpha * op_A(A[idx_A]) * op_B(B[idx_B]) + beta * op_C(C[idx_C])
@@ -100,7 +99,7 @@ the engine implements three and lets you switch:
 | `ComplexMethod` | A / B reals per complex elt | FMAs per k per tile | accumulator planes |
 |---|---|---|---|
 | `Planar` (default) | 2 / 2 | `4*MR*NR` | 2 |
-| `OneM` — BLIS's 1m, what TBLIS 2.x uses | **4** / 2 | `4*MR*NR` | 2 (as `2*MR x NR` real) |
+| `OneM` — Van Zee's 1m | **4** / 2 | `4*MR*NR` | 2 (as `2*MR x NR` real) |
 | `ThreeM` — Karatsuba | 3 / 3 | **`3*MR*NR`** | 3 |
 
 ```rust
@@ -216,6 +215,18 @@ one keyword:
 Neither it nor its JLL is registered yet.
 
 ## Documentation
+
+**To use the library**, the API documentation is the place to start — it carries
+the index notation, the supported cases, the complex methods and the stability
+tiers, and nothing below is needed to call the engine:
+
+| | |
+|---|---|
+| [`tensorcontract`](https://docs.rs/tensorcontract) | the engine's API documentation |
+| [`tensorprimitives-tapp`](https://docs.rs/tensorprimitives-tapp) | the TAPP C ABI, and its coverage of the specification |
+| [`examples/contract.rs`](crates/tensorcontract/examples/contract.rs) | runnable: a batch index, a reduction, a diagonal, complex with plan reuse |
+
+**To audit the measurements**, or before proposing a performance idea:
 
 | | |
 |---|---|
