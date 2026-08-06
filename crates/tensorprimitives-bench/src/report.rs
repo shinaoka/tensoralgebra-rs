@@ -158,10 +158,18 @@ pub fn print_environment() {
             .collect();
         println!("l3 domains  : {}", spans.join(" "));
     }
+    // Which BLAS, not just whether one. Accelerate's GEMM reaches Apple's AMX
+    // coprocessor and OpenBLAS's does not, so an efficiency ratio against one is
+    // not the same quantity as a ratio against the other, and the difference has
+    // to be legible in the run that produced the number rather than recovered
+    // from a build command later.
+    #[cfg(feature = "blas")]
+    let blas = crate::blas::IMPL;
+    #[cfg(not(feature = "blas"))]
+    let blas = "false";
     println!(
-        "baselines   : tblis={} blas={}",
-        cfg!(feature = "tblis"),
-        cfg!(feature = "blas")
+        "baselines   : tblis={} blas={blas}",
+        cfg!(feature = "tblis")
     );
     #[cfg(feature = "tblis")]
     println!(

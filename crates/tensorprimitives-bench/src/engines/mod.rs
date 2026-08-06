@@ -137,7 +137,9 @@ pub fn pin_single_threaded() {
             std::process::exit(2);
         }
     };
-    #[cfg(feature = "blas")]
+    // Accelerate has no equivalent: it reads `VECLIB_MAXIMUM_THREADS` once at
+    // first use, so pinning it is the caller's job and cannot be done from here.
+    #[cfg(all(feature = "blas", not(feature = "accelerate")))]
     unsafe {
         crate::blas::openblas_set_num_threads(1)
     };

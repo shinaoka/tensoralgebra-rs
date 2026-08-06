@@ -78,8 +78,28 @@ extern "C" {
         c: *mut c_void,
         ldc: c_int,
     );
+}
+
+// OpenBLAS's thread-count setter is **not** part of CBLAS, so it is declared
+// separately and only when OpenBLAS is the linked implementation: Accelerate has
+// no such symbol and referencing it there is a link error. Accelerate is pinned
+// with `VECLIB_MAXIMUM_THREADS=1` in the environment instead — it has no API for
+// this, so a harness cannot do it on the caller's behalf.
+#[cfg(not(feature = "accelerate"))]
+extern "C" {
     pub fn openblas_set_num_threads(n: c_int);
 }
+
+/// Which BLAS this binary is linked against, for the provenance record.
+///
+/// The distinction is load-bearing rather than cosmetic: Accelerate's GEMM
+/// reaches Apple's AMX coprocessor and OpenBLAS's does not, so a ratio against
+/// one is not a ratio against the other. See the `accelerate` feature's note.
+pub const IMPL: &str = if cfg!(feature = "accelerate") {
+    "accelerate"
+} else {
+    "openblas"
+};
 
 /// `C = A * B` with all matrices column-major and no transposition.
 ///

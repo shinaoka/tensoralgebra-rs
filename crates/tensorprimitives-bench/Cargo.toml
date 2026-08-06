@@ -27,6 +27,21 @@ tblis13 = ["tblis"]
 # Link a CBLAS-compatible BLAS for the TTGT (transpose-transpose-GEMM-transpose)
 # baseline. Requires BLAS_ROOT or a system libopenblas.
 blas = []
+# Satisfy `blas` with Apple's Accelerate framework instead of OpenBLAS. macOS
+# only; needs no install and no root variable.
+#
+# **Accelerate is not a like-for-like substitute and must not be quoted as this
+# project's GEMM roofline.** Its GEMM reaches Apple's undocumented AMX matrix
+# coprocessor, which no NEON kernel can target — not this engine's, not
+# OpenBLAS's, not TBLIS's. A3's "same-shape vendor GEMM as the achievable
+# ceiling" therefore measures something different here: against Accelerate the
+# ratio is an *off-ISA* comparison, so OpenBLAS is the roofline and Accelerate is
+# reported beside it and labelled. See D55.
+#
+# It also has no `openblas_set_num_threads`; pin it with the environment variable
+# `VECLIB_MAXIMUM_THREADS=1`, which `pin_single_threaded` cannot do for you
+# because Accelerate reads it once at first use.
+accelerate = ["blas"]
 
 [[bin]]
 name = "tcbench"
