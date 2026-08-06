@@ -54,9 +54,9 @@
 //! 3. **`#[doc(hidden)]` internals**, which are public only because sibling
 //!    crates in this workspace need them. They are outside the semver
 //!    guarantee entirely and may change or vanish without a major bump. Today
-//!    that is `kernel::x86` — the SIMD kernels, whose register-block menus are
-//!    re-measured per machine — and the driver's block-scatter matrix view.
-//!    Neither has a page here, which is the point.
+//!    that is `kernel::x86` alone — the SIMD kernels, whose register-block
+//!    menus are re-measured per machine. It has no page here, which is the
+//!    point.
 //!
 //! [`kernel::scalar`] sits in tier 1 by intent: it is the documented route by
 //! which a foreign scalar type gets a correct, unvectorised engine.

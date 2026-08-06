@@ -11,7 +11,7 @@
 //! bolted on.
 
 use core::fmt;
-use core::ops::{Add, AddAssign, Div, Mul, Neg, Sub};
+use core::ops::{Add, AddAssign, Mul, Neg, Sub};
 
 use num_complex::Complex;
 
@@ -24,9 +24,10 @@ use num_complex::Complex;
 /// [`crate::kernel::scalar`].
 ///
 /// The supertrait list is the whole arithmetic requirement, and it is
-/// deliberately short: the engine never divides in the hot path and never
-/// compares for ordering there either — `Div` and `PartialOrd` are here only
-/// for the test oracle's error metrics. Note in particular that no
+/// deliberately short: the engine never divides and never compares for
+/// ordering, so neither `Div` nor `PartialOrd` is required. That admits types
+/// — fixed-point, intervals, dual numbers for forward-mode AD — which have no
+/// sensible division or no total order. Note in particular that no
 /// floating-point *properties* are assumed. Nothing below requires
 /// associativity, so a type with unusual rounding is admissible; what is
 /// required is that [`Real::ZERO`] is an additive identity, because the
@@ -37,11 +38,9 @@ pub trait Real:
     + Sync
     + fmt::Debug
     + PartialEq
-    + PartialOrd
     + Add<Output = Self>
     + Sub<Output = Self>
     + Mul<Output = Self>
-    + Div<Output = Self>
     + Neg<Output = Self>
     + AddAssign
     + 'static
@@ -60,18 +59,6 @@ pub trait Real:
     /// Lossy for wider types, which is acceptable because nothing computational
     /// depends on it.
     fn to_f64(self) -> f64;
-    /// Magnitude, for error metrics only.
-    fn abs(self) -> Self;
-
-    /// Whether this value is [`Real::ZERO`].
-    ///
-    /// Provided rather than required because the derived definition is right for
-    /// every sane type; override it only if equality with zero is not the test
-    /// you want (a type with a signed zero and no `-0.0 == 0.0`, say).
-    #[inline(always)]
-    fn is_zero(self) -> bool {
-        self == Self::ZERO
-    }
 }
 
 macro_rules! impl_real {
@@ -87,10 +74,6 @@ macro_rules! impl_real {
             #[inline(always)]
             fn to_f64(self) -> f64 {
                 self as f64
-            }
-            #[inline(always)]
-            fn abs(self) -> Self {
-                <$t>::abs(self)
             }
         }
     };
@@ -111,12 +94,9 @@ pub trait Element: Copy + Send + Sync + fmt::Debug + PartialEq + 'static {
 
     /// Whether this element type carries an imaginary part.
     ///
-    /// The engine branches on this rather than on `PLANES` because it is what
-    /// decides *which* trait method supplies the kernel — real element types
-    /// never consult a [`crate::kernel::ComplexMethod`] at all.
+    /// This is what decides *which* trait method supplies the kernel — real
+    /// element types never consult a [`crate::kernel::ComplexMethod`] at all.
     const IS_COMPLEX: bool;
-    /// Number of real planes per element: 1 for real, 2 for complex.
-    const PLANES: usize;
     /// Real flops per multiply-accumulate: 2 for real, 8 for complex.
     ///
     /// Reported so a harness computes throughput the same way the engine
@@ -159,7 +139,6 @@ macro_rules! impl_element_real {
         impl Element for $t {
             type Real = $t;
             const IS_COMPLEX: bool = false;
-            const PLANES: usize = 1;
             const FLOPS_PER_MAC: u64 = 2;
 
             #[inline(always)]
@@ -210,7 +189,6 @@ macro_rules! impl_element_complex {
         impl Element for Complex<$t> {
             type Real = $t;
             const IS_COMPLEX: bool = true;
-            const PLANES: usize = 2;
             const FLOPS_PER_MAC: u64 = 8;
 
             #[inline(always)]
@@ -276,9 +254,8 @@ mod tests {
     }
 
     #[test]
-    fn planes_and_flops() {
-        assert_eq!(<f64 as Element>::PLANES, 1);
-        assert_eq!(<C64 as Element>::PLANES, 2);
+    fn flops_per_mac() {
+        assert_eq!(<f64 as Element>::FLOPS_PER_MAC, 2);
         assert_eq!(<C64 as Element>::FLOPS_PER_MAC, 8);
     }
 }

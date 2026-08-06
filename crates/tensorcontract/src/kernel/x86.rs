@@ -884,6 +884,7 @@ pub enum Isa {
 }
 
 impl Isa {
+    /// The name used in test failure messages and in `tcbench info` output.
     pub fn name(self) -> &'static str {
         match self {
             Isa::Avx512 => "avx512",
