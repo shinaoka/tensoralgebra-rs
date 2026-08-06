@@ -137,35 +137,6 @@ since upstream `error.h` fixes only `TAPP_SUCCESS`.
 |---|---|---|
 | A26 | The TAPP layer is thin enough that the engine's own correctness tests cover it. | **Refuted.** Everything the layer can get wrong — datatype-tag dispatch, `intptr_t` handle casts, label arrays read at a rank the info supplies, `beta` on a null `C`, the `status` and `prec` arguments — is invisible from the Rust API and had no test. Four gaps on first contact, one of which aborted the caller's process. **Test an FFI layer as its caller, not as its callee.** |
 
-#### Still open before publishing
-
-* **Defaults.** Threading and the blocking model are both off, which is honest
-  but means a 64-core machine gets one thread and a foreign cache hierarchy gets
-  constants fitted to `ccqlin038`. Flipping either needs the two pending
-  measurements, not a decision.
-
-  **Superseded, and not in the direction this expected.** Both measurements have
-  since been taken (parts 10 and 11). The blocking model **loses** on the first unseen
-  machine and stays off on evidence rather than for want of it (A33); threading's
-  scaling turned out to be topology-dependent in a way `Plan::partition` does not
-  model, and the one machine measured first would have produced the wrong rule
-  (A36). So "flipping either needs a measurement" was right about the process and
-  wrong about the outcome: the measurements argued for leaving both alone.
-* Publication itself, which is a human step and deliberately not automated.
-
-### Phase 5 part 2: the distribution surface, and a Julia consumer
-
-**Status: complete except for the irreversible steps, which are deliberately not
-taken.** No tag, nothing published to crates.io, no Yggdrasil PR. Prompted by the
-question "could I try this from Julia", which turns out to be the same question as
-"can this be distributed as a binary at all" — and the answer was no, for four
-reasons that had nothing to do with the engine.
-
-Part 1 ended with a list of two open items. This is the list that was actually
-open, and every item on it was found by *doing* the thing rather than by reading
-the code. That is the theme, and it is the same theme as part 1's "a gate nobody
-has watched fail is not a gate".
-
 #### Four gaps between "the ABI is correct" and "a distribution can ship it"
 
 1. **Nothing reported a version.** `TAPP_implementation_name()` returns a
@@ -323,32 +294,6 @@ former as a null `C` operand.
   is read once per process. The Julia wrapper documents that rather than papering
   over it, and deliberately wires nothing to `TAPP_create_executor` — plumbing a
   knob through an inert object would be worse than the absence.
-
-#### Still open before publishing
-
-Unchanged from part 1 on defaults — and see the note added there: both measurements
-have landed and both argued for leaving the defaults alone, so the honest v0.1
-position is "off on evidence" rather than "off pending evidence". Plus:
-
-* The **tag, the crates.io publish and the Yggdrasil PR**, in that order, for the
-  reasons in `RELEASING.md`. All three are human steps.
-* **One known unfixed defect is now release-facing.** A35 found, in committed data
-  and at no machine cost, that `planar` `f32`/`c32` ships the register block `32x6`
-  where the Phase 3 sweep's own output names `32x5`, 7.8% faster at the operating
-  `kc`. It is recorded in the CHANGELOG's confidence table rather than quietly
-  carried, because shipping a known register-block defect under a table that says
-  "measured" is exactly the kind of claim this project has spent two phases learning
-  not to make. Fixing it needs a corpus A/B — kernel margin is not corpus margin —
-  so it is a decision for whoever cuts the tag, not something to slip in.
-* **The repository is private.** Yggdrasil builds only from publicly downloadable
-  sources, so the recipe's `ArchiveSource` cannot resolve until it is public and
-  tagged. Making it public also publishes this file and 9 MB of benchmark CSVs,
-  which is a decision rather than a side effect.
-* **The Apple targets are unverified.** They need the Xcode SDK licence accepted
-  (`BINARYBUILDER_AUTOMATIC_APPLE=true`), which is a legal agreement and therefore
-  not something to accept on someone's behalf. They are also the two targets where
-  the install-name work in D40 actually matters, so they should be the first thing
-  built after that acceptance.
 
 ### Interlude: making the C surface consumable
 

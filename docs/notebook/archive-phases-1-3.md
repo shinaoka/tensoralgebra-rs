@@ -9,21 +9,6 @@ repo; working harness with baselines wired in.
 
 **Status: gate met. Kill/pivot condition triggered.**
 
-#### Delivered
-
-* `DESIGN.md` — literature review (cited), ecosystem survey with per-layer
-  build-vs-reuse calls, full engine design, benchmark/test framework,
-  self-scrutiny.
-* Cargo workspace: `tensorcontract` (core), `tensorprimitives-tapp` (C ABI),
-  `tensorprimitives-bench` (harness). CI (build/test/clippy/fmt/docs/MSRV +
-  a scalar-fallback job), dual MIT/Apache-2.0, MSRV 1.75.
-* Working engine, correct end-to-end (this is the Phase 2 gate, met early — see
-  the Phase 2 report).
-* Harness `tcbench` with `verify` / `premise` / `sweep` / `info`, TBLIS and
-  OpenBLAS-TTGT baselines wired in, CSV output, GEMM roofline annotation, and
-  stride-stress modes.
-* Raw results in `bench-results/`.
-
 #### The premise check
 
 Hypothesis under test, from the brief:
@@ -123,23 +108,6 @@ BLIS's 1m does inflate the packed A panel 2x (four reals per complex element in
 "1e" format versus two in planar). That cost is real but is not on the critical
 path at these shapes, and the intensity advantage swamps it.
 
-#### What this means for the project
-
-The gap the project set out to exploit **exists in the wild today** — anyone
-using the packaged, released TBLIS for complex tensor contraction on modern x86
-is getting roughly a fifth of the achievable throughput. But:
-
-* it is a missing-kernel bug, not an algorithmic opening, so beating it proves
-  nothing about planar packing;
-* it is already closed upstream, and will disappear from the wild the moment
-  2.0 ships;
-* the correct opponent for any new complex method is 2.0/BLIS 1m, and against
-  that opponent there is no complex-specific headroom to take.
-
-So the planar-complex thesis is refuted as a *research* proposition, while the
-practical observation that motivated it is validated as a *packaging* problem.
-Both halves are worth reporting.
-
 #### What the data says the real headroom is
 
 Not complex — **low arithmetic intensity**, in either domain:
@@ -158,79 +126,6 @@ So the defensible target is **small-`k` and skinny tensor contractions**, where
 the best available transpose-free engine leaves 50–65% of the machine on the
 table, in *both* domains. That is a larger and better-evidenced gap than the
 one the project set out to close.
-
-#### Kill/pivot condition
-
-`DESIGN.md` §6 named this as the single most likely failure mode, and the
-Phase 1 gate exists precisely to catch it before implementation is committed
-to. Per the operating rules, this is escalated rather than worked around.
-Options, with the evidence for each:
-
-1. **Re-aim at low arithmetic intensity** (recommended). Keep everything built:
-   the data model, index analysis, block-scatter machinery, TAPP surface,
-   corpus and harness are all domain-agnostic and all still needed. Change the
-   target from "complex vs real" to "small-`k` / skinny shapes", where TBLIS
-   measurably gives up 50–65%. Plausible mechanisms, in order of expected
-   value: fusing the `pc` loop so `C` is touched once instead of `K/KC` times;
-   skipping packing of `A` entirely when the block-scatter is already regular
-   and unit-stride (a "pack-free" fast path); dispatching to a
-   small-`k`-specialised kernel; and the write-back fast path for regular
-   blocks. Planar complex stays in the design because it is *free* and it is
-   what makes `TAPP_CONJUGATE`, mixed real x complex operands and 3m natural —
-   it is simply no longer the headline claim.
-2. **Pursue 3m instead.** Untouched by this result: 3m's advantage is a 25%
-   *flop* reduction, not a bandwidth one, and planar packing makes it cheap to
-   build. Smaller, more speculative, and carries a numerical-stability caveat.
-3. **Wrap TBLIS.** Honest answer if the goal is a usable Rust tensor
-   contraction today, but no research contribution, and it keeps the C++
-   dependency the brief wanted to remove.
-4. **Stop.** The negative result is itself publishable, and the brief says so:
-   there is no public systematic complex tensor-contraction benchmark, this
-   repository now is one, and "complex contraction is not the weak spot; low
-   arithmetic intensity is, and here is why" is a useful correction to
-   circulating folklore.
-
-**Recommendation: option 1**, with the Phase 1 negative result written up as a
-standalone finding.
-
----
-
-### Phase 2 report: a correct, framework-complete engine
-
-**Gate:** numerically correct across the full matrix (shapes, permutations,
-dtypes, traces, degenerate cases) vs oracle, TTGT, TBLIS. Performance measured
-as a baseline, not a goal.
-
-**Status: gate met.** Phase 2 was completed alongside Phase 1 because the
-premise check needed a working engine to sit alongside the baselines.
-
-Implemented: tensor data model; index analysis with folding; scatter and
-block-scatter construction; planar-complex packing with conjugation folded in;
-reference scalar micro-kernel; five-loop driver; scattered write-back with
-`alpha`/`beta`/`op_C`/`op_D`; TAPP C-ABI export.
-
-Correctness evidence:
-
-* 1000 randomised contractions vs the brute-force oracle across
-  `f32`/`f64`/`c32`/`c64`, each run under both tiny `(1,2,1)` blocking and the
-  real blocking, covering free/contracted/Hadamard/isolated indices, repeated
-  labels, random stride permutations, random conjugation masks, and
-  `alpha`/`beta` including zero — all within `1e-11` (f64) / `2e-4` (f32).
-* Targeted degenerate cases: empty contraction extent, zero-sized output,
-  scalar output (full double contraction), negative strides via a reversed
-  axis, all 16 conjugation flag combinations forced through multiple `K` blocks.
-* Large pure-GEMM cases crossing the real `MC`/`KC`/`NC` boundaries with
-  awkward remainders, in all four dtypes.
-* Cross-implementation: all 49 corpus cases x 4 dtypes agree with **both** TBLIS
-  and TTGT to `~2e-16` (f64/c64) and `~1.5e-7` (f32/c32), under `none`,
-  `ragged` and `padded` stride stress.
-* TAPP C ABI exercised end-to-end through the C entry points on a complex case.
-
-Performance baseline: the micro-kernels are the portable scalar fallback
-(Phase 3 was not reached), so the `planar` engine's absolute numbers are not
-meaningful yet and are not reported as a result.
-
----
 
 ### Phase 2b report: three interchangeable complex methods
 
@@ -503,22 +398,15 @@ against the output's layout rather than only against the packed panels.
 | A8 | One register block per method is enough. | **Refuted, and it matters.** The best shape depends on the method, the element type and `kc`, and neighbouring shapes differ by 30–50% across the 32-register cliff. |
 | A9 | Absolute performance is meaningful now that kernels are vectorised. | Adopted. It was explicitly not meaningful before this phase. |
 
-#### What is *not* done
+#### What was not done then, and has been since
 
-* **No AVX2 path.** Dispatch is AVX-512 or the scalar fallback. The macro takes
-  it without restructuring; deferred to Phase 5's multi-arch work, since the
-  reference machine is AVX-512 and the gate is a comparison on it.
-* **Blocking is still the Phase 2 heuristic.** `MC`/`KC`/`NC` come from a fixed
-  cache-budget rule, never swept. Given that the whole Phase 3 result turns on
-  where the `A` sliver lives, `KC` in particular is now known to be a
-  first-order parameter rather than a detail. Phase 4.
-* **Still single-threaded.**
-
-> **All three have since been addressed** and this list is historical: AVX2
-> kernels landed in the Phase 4/5 interlude and their register blocks are
-> measured (part 11); `MC`/`KC`/`NC` were swept on two machines and item 2 is
-> closed with a negative result (part 7); threading is built and measured on seven
-> nodes (parts 8, 8b, 12, 16), though the thread count is still 1 by default.
+Phase 3 closed with no AVX2 path, unswept `MC`/`KC`/`NC`, and no threading. All
+three have been addressed: AVX2 kernels landed in the Phase 4/5 interlude with
+measured register blocks ([`kernels.md`](kernels.md)); the blocking was swept on
+two machines and closed with a negative result
+([`cache-blocking.md`](cache-blocking.md)); threading is built and measured on
+seven nodes ([`threading.md`](threading.md)), though the count is still 1 by
+default.
 
 Raw data: `bench-results/phase3-*.csv`, transcript in
 `bench-results/phase3-log.txt`, kernel sweep in

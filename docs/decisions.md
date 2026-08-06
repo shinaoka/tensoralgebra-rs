@@ -11,9 +11,21 @@ The reports themselves are in [`notebook/`](notebook/README.md).
 
 ## Standing assumptions
 
-One line each, with the chapter holding the full account. **The report row is
-authoritative**; this is an index. Refuted entries with a reopening condition are
-in [`refuted.md`](refuted.md).
+One line each, with the chapter holding the full account. Refuted entries with a
+reopening condition are in [`refuted.md`](refuted.md).
+
+**This table is authoritative for an assumption's *current* status.** The
+per-report tables in [`notebook/`](notebook/README.md) are deliberately a time
+series — an assumption is restated wherever its status changed, so A28 appears
+once as "Open, pre-registered" and again as "Refuted, but not where predicted",
+and each is correct as of its own report. Read a report row as *what was believed
+then*, and this one as *what is believed now*.
+
+The distinction is not decoration: it was recorded the other way round until
+0.1.0, and under that reading A24 sat at "Open, and probably not" in one report
+while this table said "Refuted at the kernel level", with nothing to say which
+was stale. When the two disagree, this table wins and the report row wants a
+banner.
 
 | # | Assumption | Verdict | Full account |
 |---|---|---|---|

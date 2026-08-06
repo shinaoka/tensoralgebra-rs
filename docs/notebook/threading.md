@@ -14,23 +14,6 @@ engine it was designed against.
 > now for a measured reason (D46) rather than for want of data, and the partition
 > gate *is* on by default (D44).
 
-#### Why this got done before item 2 finished
-
-The workstation was needed for other work, which made a seven-hour
-noise-sensitive measurement the wrong thing to be holding the machine for and a
-structural implementation the right one — threading's *design and correctness*
-cost almost no CPU, while its measurement wants more of the machine than the
-blocking grid does (a whole socket, not one core).
-
-There is also an ordering argument, and it is worth recording because it cuts
-one way and not the other. Under this parallelisation the packed `A` block stays
-per-thread in L2, so item 2's `kc` and `mc` conclusions will carry over
-unchanged. The packed `B` panel is **shared**, and `B_BUDGET` currently charges
-3 MiB of a 25 MiB L3 as though one core owned the cache — so `NC` becomes a
-per-socket question the moment threading is on. **Tonight's `nc` arms are
-therefore single-core results and must be labelled as such**; the `kc` and `mc`
-arms are not affected.
-
 #### The scheme
 
 `M` is cut once into `p` contiguous strips of whole `MR` panels. Each thread
@@ -77,34 +60,6 @@ That assertion earned itself immediately: it caught that the strips run along
 the **oriented** row direction, so a `1 x 33` output parallelises into two
 strips along 33. Skinny-`M` is therefore not automatically serial; skinny in
 *both* directions is.
-
-#### What was not known yet, and the three structural limits
-
-*Everything quantitative, at the time.* `scripts/phase4f-threads.sh` measures
-1/2/4/8 threads on physical cores of one socket and refuses a cpuset containing
-hyperthread siblings, since that measures a different question. **The smoke-test
-figure this section originally quoted is removed rather than kept** — one case,
-one rep, on a shared machine, superseded by the measured subsections below, and
-the kind of number that gets quoted later as though it were a result.
-
-Three limits are structural and were known in advance, listed in the order they
-will bite:
-
-1. **Parallelism is capped at `ceil(M / MR)` strips.** A contraction whose
-   oriented row direction is short cannot use the cores however much work it
-   contains. **Now sized, from committed data and at no CPU cost**
-   (`scripts/thread-width.py`): **20 of 392 case-dtype-methods cannot fill 8
-   threads from `M` alone** — four distinct cases, `aqrs-pa-pqrs`,
-   `ij-ikl-ljk`, `ij-kil-lkj` and `ijk-il-jlk`. They are not the slow ones:
-   `ijk-il-jlk` in `c32` runs at 0.86 of the fastest throughput the engine
-   reaches in that dtype, so this is real work, not a corner. **All 20 reach
-   width 8 from `M x N` together**, which needs no accumulators and no
-   reduction, so the fix is a 2-D partition and not a `K` split.
-2. **Threads are spawned per `execute` call** via `std::thread::scope`, not
-   reused from a pool. Irrelevant at corpus sizes, first-order for small
-   repeated contractions — which is exactly the low-arithmetic-intensity
-   population Phase 1 identified as the real headroom.
-3. **`NC`'s L3 budget is still per-core**, as above.
 
 #### `K`-parallelism is not needed, and the reason is structural
 
@@ -601,40 +556,6 @@ gate was not fitted to one, and why `partition-score-rule.py` prints that contro
 first and labels the per-case column as spread rather than as a result. This is
 the same lesson as A31 and A32 in a third form: the floor is a property of the
 measurement's shape, and it has to be re-derived in-session every time.
-
-#### The threading default: recommended on, and not flipped here
-
-D22 is the user's call and this commit does not take it. **The recommendation is
-no longer conditional on topology, because the gate removed the condition** — the
-numbers below are post-measurement:
-
-* **Turn the gate on by default first.** It is a *strictly smaller* decision than
-  turning threads on: measured a no-op on 392 of 392 cases on a one-L3-per-socket
-  machine, and 1.133 corpus geomean (1.433 on the 144 it moves) at 64 threads on
-  a chiplet one. Nothing that runs single-threaded can observe it at all, since
-  `l3_domains(1) == 1`. There is no machine on which it is known to cost anything.
-* **Then turn threads on.** With the gate, Zen2 goes from 5.5–5.8x to
-  **7.5–7.9x** in the real dtypes at 64 cores and stops declining past 16
-  threads; Ice Lake was already 10.5x (`f64`) and 14.2x (`c64` 3m) at 32. The
-  topology-conditional recommendation in part 8 existed because the chiplet case
-  was bad and unfixed. It is fixed.
-
-The older reasoning, kept because the shape of the argument still holds:
-
-* Where one L3 serves the thread set, threading was always worth having: Ice Lake
-  reaches 10.5x (`f64`) and 14.2x (`c64` 3m) on 32 cores and is still climbing.
-* On chiplet machines the shortfall was the partition, and the gate closes most of
-  it: 5.81 -> 7.54 (`f64`) and 5.51 -> 7.88 (`f32`) at 64 Zen2 cores. What remains
-  is occupancy (29–36%), i.e. the per-call thread spawn and the small-contraction
-  work Phase 1 named — not the partition, which is now measured rather than
-  suspected.
-* **Two limits are unchanged and independent of topology**: threads are spawned
-  per `execute` call rather than pooled, and `NC`'s L3 budget is charged per core
-  in the legacy blocking.
-
-Shipping the gate on by default is a separate decision from shipping *threads* on
-by default, and it should be taken first, because it is a no-op on every
-single-domain machine and a large win on the others.
 
 #### The confirmation run, and what would falsify it
 
@@ -1287,24 +1208,6 @@ this item.
   CSV that misstates its own configuration is the provenance error this project has
   had to retract twice.
 
-#### What is not measured
-
-Everything, on a machine. All three answers are scored offline or checked for
-correctness; none has an end-to-end A/B on an exclusive node, which is exactly the
-state `TENSORCONTRACT_DEEPEN` was in when it looked like +3% and then failed (A20).
-The order matters and is cheap: the pool first, since it should be a strict
-improvement wherever threading is used at all, then the guard on top, then a
-threading default. Each is `scripts/ab.sh` with one switch.
-
-*Decisions introduced here: D48, D49, D50, D51 — stated in [Design decisions](#design-decisions).*
-
-| # | Assumption | Status |
-|---|---|---|
-| A43 | Per-call thread spawn is a second-order cost, worth fixing after the partition. | **Refuted, and now worse than part 16 reported.** Per *case* rather than per corpus, the 0.25 MiB worst point runs at **0.022** — 45x slower on 64 threads than on one — and at 1 MiB, where the corpus geomean reads 1.10, **229 of 588 points are still slower than serial**. "Below ~1 MiB" understates it. |
-| A50 | A guard fitted to the sub-megabyte regime will misjudge the saturation above it. | **Confirmed, and the guard is scoped accordingly.** `C = 3e6` caps only 60 of 588 points at 16 MiB and never below 36 threads. Larger constants score *better* at 16 MiB (6.65 at `C = 8e6`) precisely because capping threads helps against a bandwidth ceiling — which is a second mechanism, and fitting one constant to two is how A33's model lost. The constant is chosen on the small-size evidence alone. |
-| A51 | A pool can degrade gracefully when it has fewer workers than the requested width. | **False for this driver, and it would deadlock.** Indices `t` and `t + pn` share a `pm`-way barrier, so folding surplus indices onto one thread waits forever for a participant that has already left. `try_broadcast` therefore declines all-or-nothing and the caller spawns instead. |
-| A52 | Mutex poisoning is a detail in a pool whose state has no invariants a panic can break. | **False in effect, and the test found it.** A worker's panic propagates while the submitter holds the submission mutex, so the next broadcast finds it poisoned and declines — permanently. The pool would silently stop pooling for the life of any process in which one contraction panicked, and `Panel::new` asserts on an unsatisfiable allocation, so that is reachable. Recover from poison; decline only on `WouldBlock`. |
-
 ### Part 18: the pool wins on Zen2, the guard does not, and the joint arm is why
 
 > **Overtaken, 2026-08-05.** This part measured one machine class and recommended
@@ -1513,19 +1416,6 @@ supports building it.
 * **The batched API is unmeasured entirely.** It was built in part 17 and this run did
   not exercise it.
 
-#### A methodological note on the monitoring, since it nearly cost the run's ending
-
-The completion predicate watching this job's log grepped for the `finished :` banner.
-`STAGES=small` takes the sbatch's early-exit path — `echo "outdir $OUT"; cat
-"$SUMMARY"; exit 0` — which never prints that banner, so the predicate could not fire
-on a successful run. What caught it was a quiet-timer: "no new log lines for 15
-minutes" fired 16 minutes after the last write. **A watcher's success path needs the
-same coverage discipline as its failure paths**, and a timeout on silence is what
-makes an incomplete predicate survivable, because silence and success look identical
-from outside.
-
-*Decisions introduced here: D52, D53 — stated in [Design decisions](#design-decisions).*
-
 | # | Assumption | Status |
 |---|---|---|
 | A43 | Per-call thread spawn is a second-order cost. | **Refuted, and now measured directly rather than inferred.** Removing it is worth up to 11.6x at 0.25 MiB and 64 threads, and 2.0–2.8x even at 16 MiB. The 0.25 MiB figure of 37.2 µs/thread, identical in both dtype pairs, independently confirms the 20–36 µs part 16 inferred from a different node. |
@@ -1618,19 +1508,6 @@ Two candidates, and this data cannot separate them:
 
 Both locate the problem in **our implementation rather than in pooling as a concept**,
 which is the reason D49 keeps the pool as a switch rather than deleting it.
-
-#### What did not change
-
-* **The Zen2 result stands**, and was labelled with its machine throughout. The pool
-  really is worth up to 11.6x there. What is withdrawn is the *default*, not the
-  measurement.
-* **D52 stands.** The guard lost on Zen2, where the pool won; nothing here touches it.
-* **A control replicated, and it is now the strongest baseline in this file.** The base
-  arm at 64 MiB reproduces both committed Ice Lake curves to **0.1–1.5%**: `f64`
-  `t8`/`t16`/`t32` = 6.14 / 9.62 / 10.55 against `worker6016`'s 6.17 / 9.67 / 10.59 and
-  `worker6150`'s 6.13 / 9.61 / 10.54, and `c64` 3m `t8` = 6.96 against 6.96. Three
-  nodes, three sessions, two scripts. It also cross-checks `phase4g`'s 64 MiB path
-  against `phase4f`'s `threads` stage for the first time — they measure the same thing.
 
 #### What this run says about the process, twice over
 

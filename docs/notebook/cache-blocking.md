@@ -261,45 +261,18 @@ One account, opposite signs, both machines — and it explains the `mc` arms too
 
 #### What should actually change: the coupled arm, which is stable across machines
 
-Coupling re-derives `mc` at the new depth, holding the `A` footprint constant. That is
-exactly the degree of freedom the pinned arms confound, and it is the only arm that
-agrees on both machines:
+Coupling re-derives `mc` at the new depth, holding the `A` footprint constant, and
+it was the only arm that agreed on both machines — +2.9% on Cascade Lake and +3.1%
+on Zen2, where the *pinned* `kc = 512` arm reads 0.961 and 1.050. That agreement is
+why it was proposed as the change to make.
 
-| arm | Cascade Lake `f64` | Zen2 `f64` |
-|---|---|---|
-| `kc512` (pinned `mc`) | **0.961** | **1.050** |
-| `ck512` (coupled) | **1.029** | **1.031** |
-
-The pinned arm swings 9 points between machines; the coupled arm gives ~+3% on both.
-**So the recommendation is coupled deepening — raise `kc` and re-derive `mc` against
-the same L2 budget — not a bigger `kc` constant.** It is also the change with a
-mechanism behind it rather than a fitted number, which is what makes it plausible on
-a third machine.
-
-**Scoped offline against both grids, which is where it stops being uniform.** `ck512`
-per dtype and method, on each machine:
-
-| dtype / method | Cascade Lake | Zen2 | worse of the two |
-|---|---|---|---|
-| **`f64` real** | **1.029** | **1.031** | **1.029** |
-| `f32` real | 1.014 | 0.988 | 0.988 |
-| `c32` planar / 1m / 3m | 0.999 / 1.034 / 1.009 | 1.006 / 1.007 / 1.004 | 0.999 |
-| `c64` planar | 1.000 | 1.006 | 1.000 |
-| `c64` 1m | **0.945** | 1.006 | **0.945** |
-| `c64` 3m | 0.974 | 0.987 | 0.974 |
-
-So the change is **`f64`-only**: +2.9% and +3.1%, the one column where both machines
-agree on a gain well outside their floors. `f32` and `c32` are neutral, `c64` planar
-is neutral, and **`c64` 1m loses 5.5%** on the reference machine.
-
-The pattern has a mechanism, and it is the same one: coupling *shrinks* `mc` as it
-deepens `kc`, and the methods that lose are exactly those whose derived `mc` is
-already smallest — 1m derives half of planar's by design (see "The three complex
-methods"), so at `kc = 512` its `mc` falls to a handful of `MR` panels and the `ic`
-loop stops amortising anything. That predicts the loss ordering observed (`c64` 1m
-worst, then `c64` 3m) and suggests the general form of the rule: couple only while
-`mc` stays above some small multiple of `MR`. That form is scorable against these two
-grids offline, for free, and has not been done.
+**It did not survive its own A/B** — see the next subsection, and `../refuted.md`.
+Both grids' `base` arm was 1–2% slow, so the two-machine agreement was a shared
+artefact rather than a replication. The recommendation, the per-method table behind
+it and the general form it suggested (couple only while `mc` stays above a small
+multiple of `MR`) are all deleted rather than preserved: they were argued from a
+number that is not real. The mechanism paragraph above them stands, because it is
+about *why* depth trades against `mc`, which the artefact does not touch.
 
 #### The A/B, and it fails: there is no ~3% blocking win on the reference machine
 
@@ -521,15 +494,11 @@ equalised across methods (894–914 KiB against legacy's 512–576), so the
 
 #### Status — superseded by measurement; read the next subsection
 
-The claim as written in this section was: the **portability** problem is solved —
-uniformly decent with no hand tuning on any machine whose cache hierarchy it can
-see — while the **optimality** question on `ccqlin038` was untouched and
-deliberately so. `A13`'s upper bound on `mc` was noted as absent from the model and
-`mc` rising 4–6x flagged as the arm that bound would punish. The model was left as
-a *second arm of the pending grid* rather than a change, to be judged end to end in
-the shipping configuration (A20).
+This section argued that the model solved the **portability** problem while leaving
+**optimality** on `ccqlin038` untouched, and left it as a second arm of a pending
+grid rather than a change, to be judged end to end (A20).
 
-That judgement has now happened, and it went against the model.
+That judgement happened and went against the model.
 
 #### Measured on the first foreign machine, and it loses
 
