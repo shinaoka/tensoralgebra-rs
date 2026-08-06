@@ -9,7 +9,7 @@ so a rule can be scored against it offline as often as you like.
 
     scripts/amortise-score-rule.py bench-results/worker5139-zen2/phase4g
 
-It reproduces the table in `DECISIONS.md` part 17 (D48), which is the point: that
+It reproduces the table in `docs/notebook/` part 17 (D48), which is the point: that
 table was originally produced by an ad-hoc script and so could not be re-derived
 from the repository. If the numbers here stop matching the ones in that part, one of
 the two has drifted and the file is wrong.
@@ -59,7 +59,7 @@ from collections import defaultdict
 
 # The constant the guard was calibrated to (D48). It is **not** in the engine: the
 # guard was refuted (D52) and removed before 0.1.0. Kept so this script still
-# reproduces the calibration table that `REFUTED.md` cites.
+# reproduces the calibration table that `docs/refuted.md` cites.
 SHIPPED_C = 3_000_000
 
 FMAS_PER_MAC = {"real": 1, "planar": 4, "1m": 4, "3m": 3}
@@ -140,7 +140,7 @@ def check_shipped_constant():
     The guard was measured (D52) and does not ship; `TENSORCONTRACT_AMORTISE` and
     `MIN_FMAS_PER_THREAD` were removed from `plan.rs` before 0.1.0. This script is
     kept because it re-derives D48's calibration table from committed data, which
-    is what makes the refutation in `REFUTED.md` checkable. `SHIPPED_C` below is
+    is what makes the refutation in `docs/refuted.md` checkable. `SHIPPED_C` below is
     the value the guard *would* have shipped with, not a value in the engine.
     """
     return

@@ -509,7 +509,7 @@ impl Plan {
     /// each, which below about a megabyte makes 64 threads **1.2–10x slower than
     /// serial**; and the optimal thread count walks 4 → 8 → 16 → 32 → 64 across
     /// 0.25 → 64 MiB, so any *fixed* non-1 default is wrong at every size but one.
-    /// Keeping it at 1 also keeps every single-core number in `DECISIONS.md`
+    /// Keeping it at 1 also keeps every single-core number in `docs/notebook/`
     /// reproducible from a bare checkout.
     ///
     /// What would change it: a thread pool that removes the per-call spawn cost
@@ -567,7 +567,7 @@ impl Plan {
     /// `legacy`, or pins the layout outright.
     ///
     /// The derivation of `PACK_WEIGHT`, the three gate conditions and what each
-    /// one is worth are in `DECISIONS.md` — D29, D41, D42, D44 and A28, with the
+    /// one is worth are in `docs/notebook/` — D29, D41, D42, D44 and A28, with the
     /// measurements in the threading chapter.
     pub fn partition(&self, mr: usize, nr: usize) -> (usize, usize) {
         self.partition_with(mr, nr, self.threads())
@@ -717,7 +717,7 @@ impl Plan {
     /// neither affects correctness. The mirror-family table the rule was derived
     /// from, the scoring against both forced arms of all 392 corpus
     /// case-dtype-methods, and the 21 cases still on the slower arm are in
-    /// `DECISIONS.md` — the write-back chapter, Phase 4.1d.
+    /// `docs/notebook/` — the write-back chapter, Phase 4.1d.
     pub fn transposes_gemm(&self, mr: usize) -> bool {
         match orient_override() {
             Orient::Rule => self.transposes_gemm_rule(mr),
@@ -820,7 +820,7 @@ impl Plan {
     /// scores 0.936 in `f32`. This is a **tier-2** answer: stable signature,
     /// tuning-output value. Both thresholds, what each guard is worth, the
     /// corpus firing count and the gain an oracle leaves on the table are in
-    /// `DECISIONS.md` (the write-back chapter, Phase 4.1c and 4.1d); the grid
+    /// `docs/notebook/` (the write-back chapter, Phase 4.1c and 4.1d); the grid
     /// they were scored against is `bench-results/phase4c`.
     ///
     /// # What `menu` is, and what comes back

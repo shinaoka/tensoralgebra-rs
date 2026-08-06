@@ -51,5 +51,5 @@ Why it matters -- two results, and both are refutations:
 Not comparable to anything measured on ccqlin038, in either direction. Every
 ratio here is within-session against a floor re-derived here.
 
-Read with: DECISIONS.md part 8 ("Ice Lake: the same code scales twice as well"),
+Read with: docs/notebook/ part 8 ("Ice Lake: the same code scales twice as well"),
 part 11 ("The register block is per-microarchitecture, not per-ISA"), A34, A36.

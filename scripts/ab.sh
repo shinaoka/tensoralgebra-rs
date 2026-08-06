@@ -18,7 +18,7 @@
 #     single-core boost and nothing else does, which came back as a uniform 4.4%
 #     "floor" while inflating every ratio measured against A. One arm, thrown away.
 #   * **A' is compared to A explicitly**, and that ratio is the floor every claim
-#     about B is judged against. Do not import ±1.3%/±6% from `DECISIONS.md`; those
+#     about B is judged against. Do not import ±1.3%/±6% from `docs/notebook/`; those
 #     are `ccqlin038`'s from one session and drift is a function of how far apart two
 #     arms are (A32) — 0.02% at a minute, 1–2% at an hour, 4.4% across a cold start.
 #   * **Occupancy for the pinned core, its SMT sibling, and its whole L3 domain** is
@@ -79,5 +79,5 @@ scripts/compare-sweeps.py "$OUT/A-f64c64.csv,$OUT/A-f32c32.csv" \
     "$OUT/B-f64c64.csv,$OUT/B-f32c32.csv" | tee "$OUT/treatment.txt"
 
 echo
-echo "Judge the treatment against floor.txt, not against any number in DECISIONS.md."
+echo "Judge the treatment against floor.txt, not against any number in docs/notebook/."
 echo "The warm-* arms are deliberately not analysed."

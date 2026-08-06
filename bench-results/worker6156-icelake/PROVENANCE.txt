@@ -26,7 +26,7 @@ against a 1.000 floor on the 200 MiB premise shapes. The shapes that produced th
 1.68x read 0.993-1.001. That figure was an artifact of the 8 MiB size it was taken
 at, where BLIS's skinny-GEMM kernels decide the result and the skx-only build has
 none; at 64 and 200 MiB they are irrelevant. Nothing here needs qualifying on that
-account. See DECISIONS.md part 3 and A46.
+account. See docs/notebook/ part 3 and A46.
 
 Quality of the measurement, which is the best in this repo so far:
 

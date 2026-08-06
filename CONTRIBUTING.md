@@ -6,7 +6,7 @@
   performance change must leave `cargo test --workspace --release` passing,
   including under `TENSORCONTRACT_KERNEL=scalar`.
 * **Record decisions.** Anything non-obvious — a build-vs-reuse call, a
-  heuristic, a deviation from a published method — goes in `DECISIONS.md` with
+  heuristic, a deviation from a published method — goes in `docs/notebook/` with
   its rationale.
 * **Negative results count.** A well-characterised "X does not beat Y in regime
   Z" is a valid outcome and should be written up rather than buried.

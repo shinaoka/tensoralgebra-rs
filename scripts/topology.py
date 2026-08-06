@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """What machine is this, and where may a measurement thread be placed?
 
-Every performance number in `DECISIONS.md` is single-core on `ccqlin038`, whose
+Every performance number in `docs/notebook/` is single-core on `ccqlin038`, whose
 topology is written down by hand in the Environment section. Nothing about that
 description transfers to a cluster node, and the *placement* of concurrent arms
 on a many-core node is a hypothesis that has to be stated before it can be

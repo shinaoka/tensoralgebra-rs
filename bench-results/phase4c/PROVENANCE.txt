@@ -20,4 +20,4 @@ free, as many times as you like -- `scripts/rowblock-score-rules.py`. That is
 how the shipped rule and its three guards were settled, and it is the pattern to
 copy for any further discrete tuning decision.
 
-Read with: DECISIONS.md "Phase 4 report, part 5".
+Read with: docs/notebook/ "Phase 4 report, part 5".

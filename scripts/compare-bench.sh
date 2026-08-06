@@ -26,7 +26,7 @@
 #     repeats it at the end of the session, so the drift over a minute and the
 #     drift over the whole run are both measured rather than assumed. Judge a
 #     cross-session claim against `floor-session.txt`, not `floor-near.txt`, and
-#     judge neither against +-1.3%/+-6% from `DECISIONS.md` — those are one
+#     judge neither against +-1.3%/+-6% from `docs/notebook/` — those are one
 #     session's numbers on a different machine.
 #   * **Per-arm L3-domain occupancy**, through `scripts/run-arms.py`, so
 #     co-tenancy is a recorded fact per arm. Two Phase 4 conclusions had to be

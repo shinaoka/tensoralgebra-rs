@@ -22,6 +22,6 @@ Score candidates with `scripts/orient-score-rules.py`.
 
 Still open here: 21 case-dtype-methods take the slower arm, worth up to 1.36x.
 Both arms are already in this directory, so a candidate rule costs no machine
-time -- see DECISIONS.md Resume-here, open item 5.
+time -- see docs/notebook/ Resume-here, open item 5.
 
-Read with: DECISIONS.md "Phase 4 report, part 6".
+Read with: docs/notebook/ "Phase 4 report, part 6".

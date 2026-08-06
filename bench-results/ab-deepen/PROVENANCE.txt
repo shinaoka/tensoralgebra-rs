@@ -30,5 +30,5 @@ correction and the corrected verdict would have to be wrong by 5 points to
 reverse the decision, so a repeat on an idle machine is confirmatory rather than
 necessary.
 
-Read with: DECISIONS.md "Phase 4 report, part 7", subsection "The A/B, and it
+Read with: docs/notebook/ "Phase 4 report, part 7", subsection "The A/B, and it
 fails".

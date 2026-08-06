@@ -1,4 +1,4 @@
-# REFUTED.md — things that were tried and did not work
+# Refuted — things that were tried and did not work
 
 **This file is not part of the per-session reading list.** It is a lookup table.
 **Consult it before proposing any performance idea, any measurement design, or
@@ -8,11 +8,11 @@ lost for a reason that tells you where to look instead.
 
 Negative results are the most valuable content this project produced, and the
 easiest to mistake for clutter. They live here so they stop competing for space
-in `CLAUDE.md` and in the live sections of `DECISIONS.md`, and so each one
+in `CLAUDE.md` and in the live sections of `notebook/`, and so each one
 carries the field that makes it useful rather than discouraging: **what would
 reopen it.**
 
-The full accounts stay in [`DECISIONS.md`](DECISIONS.md); every entry below
+The full accounts stay in [`notebook/`](notebook/README.md); every entry below
 points at one.
 
 ## The confidence ladder
@@ -598,7 +598,7 @@ hardware. Until then, treat 3m as the method that exists to make the comparison
 honest rather than as a candidate default.
 
 **Second lesson, and it is the reason this entry is long:** the answer was in
-committed raw output for two days while `DECISIONS.md` described it as unmeasured and
+committed raw output for two days while `notebook/` described it as unmeasured and
 a to-do list asked for node time to obtain it. That is A35's lesson recurring — check
 what is already on disk before booking a machine.
 
@@ -683,7 +683,7 @@ is a property of threaded measurement here, not of one machine.
 same data at no cost — `scripts/partition-score-rule.py` prints it.
 
 **Rule.** **Name the thread count with every floor.** A floor without one is not
-a floor. `DECISIONS.md`'s measurement-rules section carries the table.
+a floor. `notebook/`'s measurement-rules section carries the table.
 
 **What would reopen it.** A pooled implementation might tighten it, since some of
 the spread is per-call spawn variance. Re-derive it after task 3 item 3 rather

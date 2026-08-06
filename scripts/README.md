@@ -6,7 +6,7 @@ reading five headers, and so that a script kept only because it produced
 committed data is visibly that.
 
 **Nothing here is deleted, and superseded is not the same as dead.**
-`phase4-remeasure.sh` and `phase3-bench.sh` produced data that `DECISIONS.md`
+`phase4-remeasure.sh` and `phase3-bench.sh` produced data that `docs/notebook/`
 cites; they stay, and they are marked.
 
 Shared conventions: the shell scripts refuse to be sourced, `cd` to the repo
@@ -55,7 +55,7 @@ the orientation rule were settled that way, and the grids are still in
 | `ab.sh` | Generic end-to-end A/B on one runtime switch: `warm-up, A, B, A'`. ~2 h | current |
 | `ab-tblis.sh` | A/B the two **TBLIS 2.0 builds** against each other — skx-only against multi-config — over the sweep corpus and then the premise shapes. The treatment is `LD_LIBRARY_PATH` on one binary, and `planar` rides in every arm as a control no TBLIS library can move. ~2.7 h. Needs an **AVX-512** node: the skx build SIGILLs elsewhere | current |
 | `phase3-bench.sh` | The Phase 3 measurement set. Produced `bench-results/phase3-*` | **superseded by `compare-bench.sh`** — it writes flat into `bench-results/` and would overwrite that committed data, it has no warm-up arm (it predates A31), and it compiles *between* measurement groups |
-| `phase4-remeasure.sh` | The Phase 4 A/B with its B arm hardcoded to the write-back experiment. Produced `bench-results/phase4` | **superseded by `ab.sh`**, which adds the discarded warm-up arm and an explicit A-vs-A′ floor. Kept because its output is cited. Note the citation weight is inverted — `DECISIONS.md` mentions the old one far more often, because it is older, not because it is better |
+| `phase4-remeasure.sh` | The Phase 4 A/B with its B arm hardcoded to the write-back experiment. Produced `bench-results/phase4` | **superseded by `ab.sh`**, which adds the discarded warm-up arm and an explicit A-vs-A′ floor. Kept because its output is cited. Note the citation weight is inverted — `docs/notebook/` mentions the old one far more often, because it is older, not because it is better |
 | `phase4c-rowblock.sh` | **Grid.** Every register block, all 392 corpus case-dtype-methods | current |
 | `phase4d-orient.sh` | **Grid.** Both orientation arms, forced, all 392 | current |
 | `phase4e-blocking.sh` | **Grid.** The `MC`/`KC`/`NC` arms. Honours `ARMS_ONLY` | current, but the *item* is closed: see A33 and part 7 before spending a node on it |
@@ -81,7 +81,7 @@ the orientation rule were settled that way, and the grids are still in
 
 | script | what it does |
 |---|---|
-| `compare-sweeps.py` | Two sweep CSVs into the ratio tables used throughout `DECISIONS.md`, with the AB/BA split as a control |
+| `compare-sweeps.py` | Two sweep CSVs into the ratio tables used throughout `docs/notebook/`, with the AB/BA split as a control |
 | `rowblock-score-rules.py` | Score candidate row-block rules against the 1c grid |
 | `amortise-score-rule.py` | Score candidate amortisation-guard constants against a `phase4g` grid. Reproduces D48's table in part 17, and cross-checks the constant against `plan.rs` so the script and the engine cannot drift apart silently |
 | `rowblock-decompose.py` | Split a row-block grid into what the shape *costs* and what it *buys* |
@@ -99,7 +99,7 @@ None supersedes another, which is not obvious from their names:
   Each concurrent replicate against a solo baseline, by slot, L3 and NUMA.
   Called by `validate-placement.sh`.
 * **`placement-verdict.py`** — *the decision.* Implements the accept/reject rule
-  that was pre-registered in `DECISIONS.md` part 10 before any data existed.
+  that was pre-registered in `docs/notebook/` part 10 before any data existed.
   Called by `rusty-phase4.sbatch`.
 * **`grid-placement-audit.py`** — *post-hoc.* Did where each arm ran contaminate
   an already-run grid's `arm/base` ratios? It reports and **corrects nothing**.
@@ -121,7 +121,7 @@ the way they do:
   position in the session, so a hotter or longer warm-up would not remove it.
 * **Derive the floor in session, and know which floor** (A32). Drift is a
   function of how far apart two arms are — 0.02% at a minute, 1–2% at an hour,
-  4.4% across a cold start. Do not import ±1.3%/±6% from `DECISIONS.md`; those
+  4.4% across a cold start. Do not import ±1.3%/±6% from `docs/notebook/`; those
   belong to one session, on one machine, **at one thread count**. At 64 threads a
   per-case ratio is not readable at all — p10 0.885 / p90 1.107 with tails to 1.55
   on repeats of an *identical* partition — so only per-family geomeans mean

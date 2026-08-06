@@ -158,7 +158,7 @@ on a commit, noting the `subdir`:
 ## After
 
 Open a `## X.Y.Z+1 — unreleased` section in `CHANGELOG.md` and record the release
-in `DECISIONS.md`.
+in `docs/notebook/`.
 
 Keep the CHANGELOG's "Confidence" table honest. It is the most useful thing in
 this repository for anyone deciding whether to depend on it, and it is the first

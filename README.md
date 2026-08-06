@@ -46,7 +46,7 @@ algorithm is Matthews' block-scatter-matrix tensor contraction
 > with scatter/gather — did not survive the Phase 1 premise check. The observed
 > weakness is real against the *released* TBLIS but has a much more mundane
 > cause, and is already fixed in TBLIS 2.0. See the headline finding below and
-> [`DECISIONS.md`](DECISIONS.md) for the data.
+> [`docs/`](docs/README.md) for the data.
 
 ## Headline finding
 
@@ -303,7 +303,7 @@ bought end to end is unmeasured**; the corpus-level method ranking on AVX2;
 anything on non-x86 hardware.
 
 **Ideas already measured and refuted** are catalogued in
-[`REFUTED.md`](REFUTED.md), one entry each with its evidence and what would reopen
+[`docs/refuted.md`](docs/refuted.md), one entry each with its evidence and what would reopen
 it. It is the fastest way to find out whether an obvious-looking optimisation here
 has already lost.
 

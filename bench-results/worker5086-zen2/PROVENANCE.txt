@@ -98,5 +98,5 @@ scheduler placement of fresh threads and barrier skew are untested candidates.
 Not comparable to anything measured on ccqlin038, and the absolute speedups are not
 comparable to part 16's -- different node. Every ratio here is within-session.
 
-Read with: DECISIONS.md -> Threading -> "Part 18", and D48, D49, D52, D53,
-A50, A53, A54; and REFUTED.md for the guard.
+Read with: docs/notebook/ -> Threading -> "Part 18", and D48, D49, D52, D53,
+A50, A53, A54; and docs/refuted.md for the guard.

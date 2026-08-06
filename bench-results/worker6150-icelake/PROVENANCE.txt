@@ -29,4 +29,4 @@ here, not of one machine.
 Not comparable to anything measured on ccqlin038, and not comparable to
 worker5479 either.
 
-Read with: DECISIONS.md -> Threading -> "Part 12", and D41, D44, A36, A39, A40.
+Read with: docs/notebook/ -> Threading -> "Part 12", and D41, D44, A36, A39, A40.
