@@ -44,7 +44,6 @@
 //! 2. **Introspection of the engine's own decisions** — [`PlanStats`],
 //!    [`plan::Scatters`], [`Plan::transposes_gemm`], [`Plan::row_block`],
 //!    [`Plan::partition`], [`Plan::partition_with`],
-//!    [`Plan::amortised_threads`], [`Plan::work_fmas`],
 //!    [`kernel::selected_config`], [`kernel::cache`] and
 //!    friends. The *signatures* are semver-stable, and they exist so that a
 //!    benchmark harness or an alternative execution strategy can describe

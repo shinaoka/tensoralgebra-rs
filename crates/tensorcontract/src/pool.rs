@@ -5,9 +5,8 @@
 //! Threading spawns `std::thread`s per [`execute`](crate::driver::execute) call.
 //! That costs **~20–36 µs per thread** and is the entire story below about a
 //! megabyte: a 0.22 ms `f32` contraction takes 2.2 ms on 64 threads, and per case
-//! the damage reaches 45x (A43, D46). The amortisation guard
-//! ([`Plan::amortised_threads`](crate::plan::Plan::amortised_threads)) steers
-//! around that cost; this removes it.
+//! the damage reaches 45x (A43, D46). This removes that cost, where it
+//! transfers -- see the caveat below.
 //!
 //! The shape the driver needs is **SPMD with barriers**: `pn` barriers of width
 //! `pm`, every thread running the same loop nest and rendezvousing twice per

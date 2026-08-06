@@ -72,12 +72,14 @@ added later without breaking existing dependents.
   ground — the driver is SPMD-with-barriers and a task blocking on a barrier inside a
   bounded pool deadlocks — and declined for the batch axis, where it would fit, only
   because ten lines of `std` do the same job.
-* **A thread-count amortisation guard**, `TENSORCONTRACT_AMORTISE=on`, built and
-  **not shipped.** It caps threads so spawn stays a bounded fraction of the work, and
-  measurement made it a *trade* rather than a win: it rescues an over-threaded caller
-  by up to 10.8x and costs a correctly-threaded one 10–39% at 2–8 threads on
-  sub-megabyte work, leaving 12–14% of individual points more than 10% slower there.
-  On top of the pool it is pure loss. Kept as a record of the experiment.
+* **A thread-count amortisation guard** was built, measured and **not shipped**;
+  its switch was removed before this release, and `REFUTED.md` plus
+  `bench-results/worker5086-zen2/phase4g/` is the record. It capped threads so
+  spawn stayed a bounded fraction of the work, and measurement made it a *trade*
+  rather than a win: it rescues an over-threaded caller by up to 10.8x and costs
+  a correctly-threaded one 10–39% at 2–8 threads on sub-megabyte work, leaving
+  12–14% of individual points more than 10% slower there. On top of the pool it
+  is pure loss.
 * **Multi-threading** behind `Plan::with_threads` / `TENSORCONTRACT_THREADS`,
   default **1**. A 2-D `pm x pn` static partition of the *output*: every element
   has one owning thread accumulating over the full `K` in the original order, so
