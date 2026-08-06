@@ -36,8 +36,23 @@ independent; the Apple one is the live one.
 Read **part 20** and the two new Environment subsections, then this.
 
 **Stage A is done and committed. Stage B — the NEON micro-kernel — is BUILT and
-green**, and buys the ~1.9x A58 predicted. What remains is calibration and
-write-up, not construction:
+green.** What remains is calibration and write-up, not construction.
+
+**The only performance evidence for it so far is a one-case probe, and it must
+stay labelled as one.** `ij-ik-kj`, `--size 8`, reps 3, both arms from the same
+binary via `TENSORCONTRACT_KERNEL`: `f64` real 24.4 → 46.5 GF/s (**1.91x**),
+`c64` planar 26.8 → 51.4 (1.92x), 1m 25.8 → 49.5 (1.92x), 3m 36.3 → 67.3 (1.85x).
+The columns the switch cannot touch moved ~2% (TTGT 51.6 → 52.6, TBLIS 53.3 →
+55.1), which is the only noise bound available. A58 predicted ~2x from FMA
+contraction alone, so this is the mechanism confirming itself — and the fusion is
+visible in the binary: `objdump -d` shows 315 `fmla.2d` and 315 `fmla.4s` plus
+`fmls` for planar's negated term, beside the scalar path's unfused `fmul`+`fadd`
+(both paths compile in, since the switch is runtime).
+
+**Two things not to promote until the 64 MiB A/B has run.** At 8 MiB the engine
+passes TBLIS on `c64` with 3m (67.3 against 57.9) having been at 0.46x of it, and
+3m's lead over planar *widens* rather than inverting as A59 guessed. Both are one
+case at one size. A46 is exactly this mistake.
 
 | Stage B step | state |
 |---|---|
@@ -46,14 +61,52 @@ write-up, not construction:
 | provisional register-block menu from the 32-register budget | **done, and still provisional** — `cfg_neon_f64` / `cfg_neon_f32` say so |
 | generalise `examples/kernel_shapes` off x86 | **done** — NEON reuses the AVX-512 candidate grid, because both have 32 registers and the budget counts registers not lanes |
 | **run `kernel_shapes` and replace the menus with its `best per method`** | **NOT DONE.** ~8 min, no baselines. This is what A34 requires and the one thing standing between the shapes and a measurement |
-| the scalar-vs-neon A/B at 64 MiB with its own floor | **run; fold in the result.** `bench-results/CKF6QCDVPD-m3max/neon-ab/` |
-| re-measure the complex-method ranking (A59 expects it to move) | falls out of the A/B above |
+| **the scalar-vs-neon A/B at 64 MiB with its own floor** | **NOT DONE — started and killed, no CSV was written.** The command is below |
+| re-measure the complex-method ranking (A59 expects it to move) | falls out of that A/B |
 | the blocking constants (`kernel/mod.rs:320-333`) | **not started, and now unblocked** — a NEON kernel is no longer instruction-bound, so the cache effects those constants exist for are finally visible. `legacy_blocking_is_unchanged` pins the current values |
 
 **Cross-compile after any change here.** The x86 tests cannot run on this machine,
 and that is not theoretical: `cargo check --target x86_64-unknown-linux-gnu` is
 what caught a missing `KernelForce::Neon` arm in x86's `pick_isa`. Three targets
 are cheap and all pass — `x86_64`, `i686`, `aarch64` linux.
+
+#### The two measurements to run, in this order
+
+Both want the machine quiet, and the user needed it back, which is why neither has
+run. Nothing is blocked on anything else.
+
+```bash
+export TBLIS_ROOT=$(cd ../baselines/tblis-2.0-install && pwd)
+export OPENBLAS_ROOT=$(brew --prefix openblas)
+export TENSORCONTRACT_THREADS=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 TBLIS_NUM_THREADS=1
+
+# 1. Calibrate the shapes. ~8 min, no baselines, no exclusive machine needed.
+#    Put its `best per method` lines into cfg_neon_f64 / cfg_neon_f32 and delete
+#    the "provisional and unmeasured" warnings from both.
+cargo run --release -p tensorcontract --example kernel_shapes \
+    | tee bench-results/CKF6QCDVPD-m3max/kernel-shapes.txt
+
+# 2. THEN the A/B, so it measures the shapes that ship. ~1 h, quiet machine.
+#    Four arms; the two scalar ones bracket the treatment and give the floor.
+cargo build --release -p tensorprimitives-bench --features tblis,blas
+O=bench-results/CKF6QCDVPD-m3max/neon-ab; mkdir -p $O
+for arm in warm A-scalar B-neon A2-scalar; do
+  k=scalar; case $arm in *neon*) k=neon;; esac
+  TENSORCONTRACT_KERNEL=$k ./target/release/tcbench premise --size 64 --reps 3 \
+     --engines planar,1m,3m,ttgt,tblis --dtype f64,c64 --csv $O/$arm.csv
+done
+scripts/compare-sweeps.py $O/A-scalar.csv $O/A2-scalar.csv   # the floor
+scripts/compare-sweeps.py $O/A-scalar.csv $O/B-neon.csv      # the treatment
+```
+
+**The order matters and is not arbitrary.** Calibrating first means the A/B
+measures the shapes that will ship (A20: a rule validated with the other levers
+pinned is validated only there). Doing it the other way round means re-running the
+hour-long arm.
+
+Write a `PROVENANCE.txt` for `neon-ab/` when it exists — every directory under
+`bench-results/` has one, which is why the killed run's stub was deleted rather
+than left behind.
 
 **Do this first: the session is deliberately incomplete and there is no floor.**
 `info`, `orient`, all three `verify` arms and both `premise` arms completed and are

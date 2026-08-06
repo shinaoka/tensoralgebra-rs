@@ -43,18 +43,14 @@
 // It was x86-only until `kernel::aarch64` existed, and the *generic* half never
 // was: `Kind`, `Case`, its cost model, `time` and `sweep` only ever needed a
 // function pointer and a lane count. Widening this was mostly deleting a cfg.
-#[cfg(any(
-    target_arch = "x86",
-    target_arch = "x86_64",
-    target_arch = "aarch64"
-))]
+#[cfg(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64"))]
 mod sweep {
     use std::time::Instant;
 
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    use tensorcontract::kernel::x86::{avx2_f32, avx2_f64, avx512_f32, avx512_f64};
     #[cfg(target_arch = "aarch64")]
     use tensorcontract::kernel::aarch64::{neon_f32, neon_f64};
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    use tensorcontract::kernel::x86::{avx2_f32, avx2_f64, avx512_f32, avx512_f64};
 
     const TRIALS: usize = 5;
 
@@ -467,20 +463,12 @@ mod sweep {
 }
 
 fn main() {
-    #[cfg(any(
-        target_arch = "x86",
-        target_arch = "x86_64",
-        target_arch = "aarch64"
-    ))]
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64"))]
     sweep::run();
     // On a target with no vectorised kernel module the only kernels are the
     // portable scalar ones, whose shapes are const generics chosen by the caller
     // rather than by measurement. There is nothing to sweep, so say so rather
     // than failing to build.
-    #[cfg(not(any(
-        target_arch = "x86",
-        target_arch = "x86_64",
-        target_arch = "aarch64"
-    )))]
+    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")))]
     println!("kernel_shapes measures the vectorised micro-kernels; this target has none.");
 }
