@@ -7,13 +7,13 @@
 #
 # Why this exists rather than a line of `cp` in each place that needs one: the
 # same layout has to come out of a manual site install, of CI, and of the
-# BinaryBuilder recipe under `packaging/yggdrasil`, and three definitions of a
+# BinaryBuilder recipe in Yggdrasil, and three definitions of a
 # layout are three definitions that drift. `examples/c-consumer` has a
 # `TAPP_PREFIX` mode that consumes exactly what this produces, so the layout is
 # tested rather than asserted.
 #
 # It does not build anything and it does not rewrite binaries. The SONAME and the
-# Mach-O install name are set at *link* time -- see `packaging/yggdrasil` and the
+# Mach-O install name are set at *link* time -- see the Yggdrasil recipe and the
 # "Installing" section of `examples/c-consumer/README.md` -- because rustc emits
 # neither for a `cdylib`, and rewriting an ELF afterwards needs `patchelf
 # --page-size 65536` on every 64 KiB-page architecture. This script checks for

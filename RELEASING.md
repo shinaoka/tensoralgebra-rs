@@ -45,7 +45,6 @@ is enforced rather than remembered:
 | `crates/tensorprimitives-tapp/include/tapp.h` | `TAPP_VERSION_MAJOR/MINOR/PATCH` and `TAPP_VERSION_STRING` |
 | `CHANGELOG.md` | a `## X.Y.Z` section, with `— unreleased` removed |
 | `julia/TensorPrimitives/Project.toml` | `version` |
-| `packaging/yggdrasil/build_tarballs.jl` | `version = v"X.Y.Z"` |
 
 `tapp.h` is checked from the Rust side too, by
 `the_header_version_macros_match_the_crate_version` in `abi_layout.rs`, which reads
@@ -99,6 +98,14 @@ cargo publish --locked -p tensorprimitives-tapp
 
 ## 4. The JLL, via Yggdrasil
 
+**The recipe is not in this repository.** It lives where Yggdrasil requires it,
+at `T/tensorprimitives_tapp/build_tarballs.jl` in
+[JuliaPackaging/Yggdrasil](https://github.com/JuliaPackaging/Yggdrasil) — that is
+the only copy that builds anything, and a second one here could only drift from it.
+A working copy was kept in-tree until 0.1.0; the last revision containing it is
+`git show 79d4b9e:packaging/yggdrasil/build_tarballs.jl`, which is the place to
+start from if you need to recreate it rather than edit the Yggdrasil one.
+
 Fill in the source checksum, which needs the tag from step 2 to exist:
 
 ```bash
@@ -106,28 +113,26 @@ curl -sL https://github.com/lkdvos/tensorprimitives-rs/archive/refs/tags/vX.Y.Z.
   | sha256sum
 ```
 
-Put it in `packaging/yggdrasil/build_tarballs.jl`. Then dry-run the recipe locally
-before submitting — the last time this was done it found four defects that reading
-the file did not, including a licence-directory name the auditor rejects:
+Put it in the recipe, together with `version = v"X.Y.Z"`, and dry-run before
+submitting — the last time this was done it found four defects that reading the
+file did not, including a licence-directory name the auditor rejects:
 
 ```bash
 # see julia/TensorPrimitives/README.md for the BBROOT setup
-cd packaging/yggdrasil
+cd <fork>/T/tensorprimitives_tapp
 TAPP_LOCAL_SRC=$BBROOT/src julia --project=$BBROOT/env build_tarballs.jl \
     x86_64-linux-gnu --verbose
 ```
 
+`TAPP_LOCAL_SRC` builds from an export of an untagged tree rather than from the
+tagged tarball, so the recipe can be tested before the tag it pins exists. It is
+inert without the variable, so it does not need removing before the PR.
+
 Read the audit log for the two things a Yggdrasil reviewer greps for: a missing
 licence file, and "could not be resolved and could not be auto-mapped". One
 unresolved-library warning is **expected** — `libgcc_s.so.1`, which Julia ships —
-and the recipe explains why in a comment. Then:
-
-```bash
-# fork JuliaPackaging/Yggdrasil, on a branch that is not `master`
-cp packaging/yggdrasil/build_tarballs.jl \
-   <fork>/T/tensorprimitives_tapp/build_tarballs.jl
-# remove nothing: the TAPP_LOCAL_SRC switch is inert without the variable
-```
+and the recipe explains why in a comment. Then open the PR from a branch that is
+not `master`.
 
 PR title: `[tensorprimitives_tapp] Build vX.Y.Z`.
 

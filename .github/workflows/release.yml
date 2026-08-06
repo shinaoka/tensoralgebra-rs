@@ -63,21 +63,7 @@ jobs:
           test "$jv" = "$manifest" \
             || { echo "julia/TensorPrimitives is $jv, not $manifest"; exit 1; }
 
-          # The recipe builds the version being released.
-          grep -q "^version = v\"${manifest}\"" packaging/yggdrasil/build_tarballs.jl \
-            || { echo "the Yggdrasil recipe does not name ${manifest}"; exit 1; }
-
           echo "all version statements agree on ${manifest}"
-
-      - name: The recipe does not still point at a placeholder checksum
-        if: github.ref_type == 'tag'
-        run: |
-          if grep -q '"0\{64\}"' packaging/yggdrasil/build_tarballs.jl; then
-            echo "packaging/yggdrasil/build_tarballs.jl still has the placeholder sha256."
-            echo "Fill it in with:"
-            echo "  curl -sL https://github.com/lkdvos/tensorprimitives-rs/archive/refs/tags/${GITHUB_REF_NAME}.tar.gz | sha256sum"
-            exit 1
-          fi
 
   # `cargo publish` without publishing. Only the engine can be checked: the TAPP
   # crate depends on it by path *and* version, so packaging it fails at "failed to
