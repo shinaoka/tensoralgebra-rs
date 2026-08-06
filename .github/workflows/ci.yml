@@ -409,3 +409,29 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo doc -p tensorcontract -p tensorprimitives-tapp --no-deps --all-features
       - run: cargo doc --workspace --no-deps
+      # Every relative markdown link resolves. The documentation is a graph of
+      # about thirty files across docs/, docs/notebook/, bench-results/ and the
+      # root, and the citation chain from a claim to its raw data is the
+      # project's actual product -- a dead link in it is a defect, not a typo.
+      # Nothing else catches this: rustdoc sees intra-doc links only, and the
+      # PROVENANCE.txt "read with" lines are prose.
+      - name: relative markdown links resolve
+        run: |
+          python3 - <<'PY'
+          import re, pathlib, sys
+          bad = []
+          for md in pathlib.Path('.').rglob('*.md'):
+              if 'target' in md.parts:
+                  continue
+              for m in re.finditer(r'\[[^\]]*\]\(([^)#\s]+)(?:#[^)]*)?\)',
+                                   md.read_text(errors='replace')):
+                  link = m.group(1)
+                  if link.startswith(('http', 'mailto:')):
+                      continue
+                  if not (md.parent / link).exists():
+                      bad.append(f'{md} -> {link}')
+          if bad:
+              print('broken relative links:', *bad, sep='\n  ')
+              sys.exit(1)
+          print('all relative markdown links resolve')
+          PY

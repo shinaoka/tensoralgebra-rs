@@ -3,18 +3,21 @@
 How to operate in this repository. Re-read at the start of every session.
 
 **This file is state and rules, not history.** Everything historical lives in
-`DECISIONS.md`. If you find yourself appending a paragraph here about something
+`docs/`. If you find yourself appending a paragraph here about something
 that was measured, it belongs there instead.
 
 ## Read next
 
 | when | read |
 |---|---|
-| **every session, in this order** | `DECISIONS.md` → "Resume here" (state, the open question, what to do next), then `DESIGN.md` |
-| **before proposing any performance idea** | `REFUTED.md`. Roughly half the obvious ideas here have already been measured and lost, and each entry says what would reopen it |
-| before designing a measurement | `DECISIONS.md` → "Measurement rules" |
-| before quoting a number | the `PROVENANCE.txt` next to its CSV in `bench-results/` |
+| **every session, in this order** | `docs/open-questions.md` (what is unmeasured and what would settle it), then `docs/README.md` |
+| **before proposing any performance idea** | `docs/refuted.md`. Roughly half the obvious ideas here have already been measured and lost, and each entry says what would reopen it |
+| before quoting any number | `docs/results.md`, and the `PROVENANCE.txt` next to its CSV in `bench-results/` |
+| before designing a measurement | `docs/measurement-rules.md` |
+| for the full account behind any `A<n>` or `D<n>` | `docs/decisions.md`, then the `docs/notebook/` chapter its last column names |
+| the architecture | `docs/design.md` |
 | before running anything on a cluster | `scripts/README.md` |
+
 
 ## What this project is
 
@@ -31,59 +34,23 @@ compared with each other and with TBLIS on equal footing.
 
 ## Current state
 
-**As of 2026-08-05.** Tests green (9 suites), `cargo clippy --workspace
---all-targets` silent, `fmt` clean, everything builds warning-free. Workspace
-MSRV **1.89** (AVX-512 intrinsics stabilised there).
+**Deliberately not recorded here.** It used to be, and it rotted weekly: a phase
+table, plus five bullets that duplicated the results, the open questions and the
+CHANGELOG. `docs/open-questions.md` is the live version and is the first thing to
+read each session.
 
-| phase | state |
-|---|---|
-| 1 — exploration and design | **complete** |
-| 2 / 2b — correct engine, three complex methods | **complete** |
-| 3 — micro-kernels | **complete.** AVX-512 and AVX2, `f32`/`f64` and all three complex methods, one macro body per method per ISA, runtime-dispatched, scalar path retained. All register blocks measured |
-| 4 — profiling and improvement | **in progress.** Items 1, 1c, 1d closed with wins; item 2 closed with a **negative result**; **item 3 dropped**; item 4 built and measured on seven nodes |
-| 5 — packaging | **in progress.** C header and consumer, prefix install, eleven cross targets, a BinaryBuilder recipe, a Julia package with a `TensorOperations.jl` backend. **Nothing published, nothing tagged**, on purpose |
+The one thing worth repeating, because it governs what you may *say*: **anything
+touching threads or caches is a per-microarchitecture claim until shown
+otherwise** (A56). Four have now failed to transfer — register blocks, the thread
+partition, the complex-method ranking, and the thread pool. Two machine classes
+is the minimum for a recommendation, and this project has been wrong on one class
+twice.
 
-Five things that decide what you may say and do:
-
-* **The default configuration is: 1 thread, no amortisation guard, no thread
-  pool, `legacy` blocking constants, the `domain` partition rule, the
-  antisymmetric orientation rule, the guarded row-block rule, planar complex.**
-  The domain-aware partition gate is the default (D44); the *thread count* is not,
-  and now for a measured reason (D46).
-* **Three answers to the per-call spawn cost are built; two are measured, and
-  neither ships** (parts 17–19). The **thread pool is topology-conditional**: up to
-  **11.6x** on Zen2 at 0.25 MiB / 64 threads, and up to **2.5x slower** on Ice Lake,
-  where 32 cores share one 48 MiB L3 (jobs 6760092, 6762432). D53 recommended it as a
-  default on the Zen2 half and **that recommendation is withdrawn** — do not flip it.
-  The **amortisation guard does not ship** (D52): a trade that costs a
-  correctly-threaded caller 10–39%, and pure loss on top of the pool. **The batched API
-  is unmeasured**, and block-sparse — its second half — is not built.
-* **A pool is an allocation-locality change, not just a thread-lifetime change**
-  (A55). Reusing a thread reuses its allocator arena, so each worker gets the same
-  packed-`A` buffer address back every call where a fresh thread gets a well-spread
-  one. That is the suspected reason it loses where one L3 serves all the threads, and
-  the cheap test is to offset each worker's buffer. It is also why "it touches where
-  threads come from, not what they read" was a wrong argument.
-* **Anything touching threads or caches is a per-microarchitecture claim until
-  shown otherwise** (A56). Four now fail to transfer: register blocks (A34), the
-  thread partition (A36), the complex-method ranking (A44) and the thread pool (A56).
-  Two machine classes is the minimum for a recommendation, and this project has been
-  wrong on one class twice.
-* **The engine-vs-baseline numbers in `README.md` are Ice Lake**
-  (`worker6156`, jobs 6753260 / 6754877, 2026-08-04/05): 1.31–1.78x TBLIS
-  2.0-dev, 1.95–2.20x TTGT. They are **not** differenceable against the Phase 3
-  Cascade Lake table, so **what Phase 4 bought end to end is still unmeasured.**
-  That is the one substantive open engine question; `scripts/compare-bench.sh` on
-  `ccqlin038` is the only thing that answers it.
-* **The complex-method ranking and the memory-bound inversion are Cascade Lake
-  results and do not transfer** (A44). Planar wins the corpus on both AVX-512
-  machines measured; the ordering below it does not survive a change of
-  microarchitecture, and Phase 4 item 3 was dropped because of it.
 
 ## Operating mode
 
 Run **autonomously.** Do not wait for approval at routine phase boundaries; at
-each boundary write a report to `DECISIONS.md` and continue. Prefer stating an
+each boundary write a report to the right `docs/notebook/` chapter and continue. Prefer stating an
 assumption and proceeding over asking. Escalate only on a kill/pivot condition or
 a genuine blocker you cannot resolve after a documented attempt.
 
@@ -96,9 +63,10 @@ question is closed.
 ## Standing rules
 
 * **Keep the test suite green at every stage.** Never trade correctness for speed.
-* **Maintain `DECISIONS.md`.** Every material decision, assumption and phase
-  report goes there. A decision goes in the decisions table and nowhere else.
-* **A refutation gets a `REFUTED.md` entry in the same commit as the
+* **Maintain `docs/`.** A report goes in the `docs/notebook/` chapter it belongs
+  to; a decision or an assumption goes in `docs/decisions.md` and nowhere else;
+  a number quoted anywhere goes in `docs/results.md` and is cited from there.
+* **A refutation gets a `docs/refuted.md` entry in the same commit as the
   measurement**, with a confidence level, evidence, and what would reopen it.
 * **Name the TBLIS version** in any statement about TBLIS performance. v1.3.0 and
   2.0-dev differ by ~5x on complex and swap the `TYPE_DOUBLE` / `TYPE_SCOMPLEX`
@@ -118,7 +86,7 @@ question is closed.
   what `--stress ragged` is for.
 * **Hold shapes fixed across dtypes** when comparing real and complex.
 * **Every noise floor names its session and its thread count.** There is no
-  project-wide floor; see `DECISIONS.md` → "Measurement rules". A per-case ratio
+  project-wide floor; see `docs/measurement-rules.md`. A per-case ratio
   at 64 threads is not readable at all (A39).
 * **Every new fast path gets a runtime switch**, so both arms interleave in one
   process-restart A/B. A build-to-build diff has already produced a wrong sign
@@ -137,7 +105,7 @@ question is closed.
 * Core is native Rust, **no FFI in the hot path.** FFI only for benchmark
   baselines.
 * Prefer maintained crates over reinvention where they fit; justify every
-  build-vs-reuse call in `DECISIONS.md`.
+  build-vs-reuse call in `docs/decisions.md`.
 * **Primary integration surface: TAPP**, in `crates/tensorprimitives-tapp`,
   verified against the real headers from `TAPPorg/reference-implementation`.
   Despite the TAPP paper's claim, TBLIS has **no in-tree TAPP support**, so the
@@ -146,7 +114,7 @@ question is closed.
   driver.
 * Benchmark baselines: TBLIS (both v1.3.0 and 2.0-dev), TTGT via OpenBLAS, and a
   same-shape vendor GEMM as the roofline ceiling.
-* Benchmark corpus: TCCG. **49 cases, not 48** — see `DESIGN.md` §5.2.
+* Benchmark corpus: TCCG. **49 cases, not 48** — see `docs/design.md` §5.2.
 
 ## The three complex methods
 
@@ -194,7 +162,7 @@ a question as unmeasured while its answer sat in committed output.
 Reference machine: `ccqlin038` (Flatiron CCQ), Xeon Gold 6244, Cascade Lake,
 AVX-512, 2x8 cores, 1 MiB L2/core, 25 MiB L3. **Shared during working hours** —
 run long benchmarks off-hours and do the zero-CPU analyses during the day. Full
-details, and the cluster nodes, in `DECISIONS.md` → "Environment".
+details, and the cluster nodes, in `docs/measurement-rules.md`.
 
 ```bash
 module load gcc/13.3.0 openblas          # cmake/3.31.6 for TBLIS 2.x
@@ -211,7 +179,7 @@ Both TBLIS baselines live outside the repo at
 `scripts/env.sh` has the recipe). **TBLIS 2.0's install is ISA-specific and this
 is a trap** — the `auto`-configured build is skx-only and SIGILLs without
 AVX-512; `../baselines/tblis-2.0-x86_64-install` is the multi-config sibling a
-non-AVX-512 node needs. Keep both, and see `DECISIONS.md` → "Environment" for why.
+non-AVX-512 node needs. Keep both, and see `docs/measurement-rules.md` for why.
 
 `scripts/README.md` is the index of all 32 scripts, including which are
 superseded. The entry points that matter:
@@ -242,7 +210,7 @@ scripts/partition-score-rule.py -p 64 -d 16 bench-results/worker5137-zen2
 
 # No CPU cost, no data touched, exactly reproducible. Safe while a benchmark is
 # in flight, and the right way to decide which measurements are worth making.
-scripts/compare-sweeps.py BASE_CSVS NEW_CSVS    # the ratio tables in DECISIONS.md
+scripts/compare-sweeps.py BASE_CSVS NEW_CSVS    # the ratio tables in docs/notebook/
 ./target/release/tcbench shapes --csv out.csv   # what each MR does to write-back
 ./target/release/tcbench orient --csv out.csv   # both arms' structural features
 
