@@ -73,11 +73,38 @@ use crate::element::Real;
 pub mod cache;
 pub mod scalar;
 
+// The shared micro-kernel bodies. **Must be declared before the ISA modules
+// that invoke them**: `#[macro_use]` makes `macro_rules!` visible to items that
+// follow it textually, not to the module graph, so moving this line below
+// `mod x86` breaks the build with a bare "cannot find macro".
+//
+// Not `pub`: the macros are an implementation detail of the ISA modules, and
+// `#[macro_use]` already puts them where they are needed.
+#[macro_use]
+mod simd;
+
 // The x86-64 SIMD kernels: public for `examples/kernel_shapes`, `doc(hidden)`
 // and outside the semver guarantee. See the module's own docs.
 #[doc(hidden)]
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub mod x86;
+
+// The AArch64/NEON kernels, on the same terms.
+#[doc(hidden)]
+#[cfg(target_arch = "aarch64")]
+pub mod aarch64;
+
+#[cfg(target_arch = "aarch64")]
+use aarch64 as simd_isa;
+/// The vectorised kernel module for this target, under one name.
+///
+/// Exists so `impl_kernel_set!` and the dead-code guards name *a* SIMD module
+/// rather than enumerating architectures at every site. Both modules expose the
+/// same ten entry points by construction — that is what `dispatch!` in each of
+/// them generates — so the alias is total, and adding a third ISA means adding
+/// one arm here rather than editing six `#[cfg]`s.
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use x86 as simd_isa;
 
 /// How to induce complex arithmetic from real micro-kernels.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -596,7 +623,10 @@ pub trait KernelSet: Real + Sized {
 /// answer. `not(all(std, x86))` is exactly that pair.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[cfg_attr(
-    not(all(feature = "std", any(target_arch = "x86", target_arch = "x86_64"))),
+    not(all(
+        feature = "std",
+        any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")
+    )),
     allow(dead_code)
 )]
 pub(crate) enum KernelForce {
@@ -608,15 +638,25 @@ pub(crate) enum KernelForce {
     Avx2,
     /// The AVX-512 kernels, on a CPU that has them.
     Avx512,
+    /// The AArch64 NEON kernels. Unlike the x86 arms this pins nothing the CPU
+    /// might lack — NEON is architecturally guaranteed on aarch64 — so it is
+    /// only ever a way to say "not scalar" explicitly.
+    Neon,
 }
 
-/// `TENSORCONTRACT_KERNEL=scalar|avx2|avx512|auto`, read once per process.
+/// `TENSORCONTRACT_KERNEL=scalar|avx2|avx512|neon|auto`, read once per process.
 ///
 /// An unrecognised value is [`KernelForce::Auto`], and a pinned instruction set
 /// the CPU does not have falls back to scalar rather than faulting — see
-/// `x86::selected_isa`.
+/// `x86::selected_isa`. The names are not gated by architecture: `avx512` on an
+/// Apple machine is a request the dispatch declines, which is the same answer it
+/// gives on an AVX2-only x86 box, and keeping the parse total means a sweep
+/// script can pass the same arm list to every machine.
 #[cfg_attr(
-    not(all(feature = "std", any(target_arch = "x86", target_arch = "x86_64"))),
+    not(all(
+        feature = "std",
+        any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")
+    )),
     allow(dead_code)
 )]
 pub(crate) fn kernel_force() -> KernelForce {
@@ -628,6 +668,7 @@ pub(crate) fn kernel_force() -> KernelForce {
             Ok(v) if v.eq_ignore_ascii_case("scalar") => KernelForce::Scalar,
             Ok(v) if v.eq_ignore_ascii_case("avx2") => KernelForce::Avx2,
             Ok(v) if v.eq_ignore_ascii_case("avx512") => KernelForce::Avx512,
+            Ok(v) if v.eq_ignore_ascii_case("neon") => KernelForce::Neon,
             _ => KernelForce::Auto,
         })
     }
@@ -641,21 +682,32 @@ pub(crate) fn kernel_force() -> KernelForce {
 /// Set `TENSORCONTRACT_KERNEL=scalar` to compare against the reference path.
 /// Only the x86 dispatch asks; off x86 every kernel is already the scalar one.
 #[cfg_attr(
-    not(all(feature = "std", any(target_arch = "x86", target_arch = "x86_64"))),
+    not(all(
+        feature = "std",
+        any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")
+    )),
     allow(dead_code)
 )]
 fn force_scalar() -> bool {
     kernel_force() == KernelForce::Scalar
 }
 
+/// Wire one real type's [`KernelSet`] to the vectorised module when the target
+/// has one, and to [`scalar`] otherwise.
+///
+/// The paths are `simd_isa::*`, so this is architecture-agnostic and the `#[cfg]`
+/// asks only "is there a SIMD module at all". Off both families every arm below
+/// compiles out and the scalar fallthrough is the whole body, which is why the
+/// `unreachable_code`/`dead_code` allowances are needed on some targets and not
+/// others.
 macro_rules! impl_kernel_set {
-    ($t:ty, $real_x86:path, $cplx_x86:path, $rows_x86:path,
-     $real_at_x86:path, $cplx_at_x86:path, $mr:literal, $nr:literal) => {
+    ($t:ty, $real_simd:path, $cplx_simd:path, $rows_simd:path,
+     $real_at_simd:path, $cplx_at_simd:path, $mr:literal, $nr:literal) => {
         impl KernelSet for $t {
             fn config_real() -> KernelConfig<Self> {
-                #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+                #[cfg(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64"))]
                 if !force_scalar() {
-                    if let Some(c) = $real_x86() {
+                    if let Some(c) = $real_simd() {
                         return c.normalise();
                     }
                 }
@@ -663,9 +715,9 @@ macro_rules! impl_kernel_set {
             }
 
             fn config_cplx(method: ComplexMethod) -> KernelConfig<Self> {
-                #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+                #[cfg(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64"))]
                 if !force_scalar() {
-                    if let Some(c) = $cplx_x86(method) {
+                    if let Some(c) = $cplx_simd(method) {
                         return c.normalise();
                     }
                 }
@@ -673,9 +725,9 @@ macro_rules! impl_kernel_set {
             }
 
             fn row_blocks(complex: bool, method: ComplexMethod) -> &'static [(usize, usize)] {
-                #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+                #[cfg(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64"))]
                 if !force_scalar() {
-                    return $rows_x86(complex, method);
+                    return $rows_simd(complex, method);
                 }
                 // The portable path has one shape per method and no menu.
                 #[allow(unreachable_code)]
@@ -690,12 +742,12 @@ macro_rules! impl_kernel_set {
                 method: ComplexMethod,
                 i: usize,
             ) -> Option<KernelConfig<Self>> {
-                #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+                #[cfg(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64"))]
                 if !force_scalar() {
                     let c = if complex {
-                        $cplx_at_x86(method, i)
+                        $cplx_at_simd(method, i)
                     } else {
-                        $real_at_x86(i)
+                        $real_at_simd(i)
                     };
                     return c.map(KernelConfig::normalise);
                 }
@@ -711,21 +763,21 @@ macro_rules! impl_kernel_set {
 
 impl_kernel_set!(
     f64,
-    x86::config_real_f64,
-    x86::config_cplx_f64,
-    x86::row_blocks_f64,
-    x86::config_real_f64_at,
-    x86::config_cplx_f64_at,
+    simd_isa::config_real_f64,
+    simd_isa::config_cplx_f64,
+    simd_isa::row_blocks_f64,
+    simd_isa::config_real_f64_at,
+    simd_isa::config_cplx_f64_at,
     4,
     4
 );
 impl_kernel_set!(
     f32,
-    x86::config_real_f32,
-    x86::config_cplx_f32,
-    x86::row_blocks_f32,
-    x86::config_real_f32_at,
-    x86::config_cplx_f32_at,
+    simd_isa::config_real_f32,
+    simd_isa::config_cplx_f32,
+    simd_isa::row_blocks_f32,
+    simd_isa::config_real_f32_at,
+    simd_isa::config_cplx_f32_at,
     4,
     4
 );
