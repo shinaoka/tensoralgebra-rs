@@ -85,6 +85,32 @@ pub fn print_environment() {
         );
         println!();
     }
+    // The aarch64 counterpart. `neon` is architecturally guaranteed on aarch64
+    // rather than detected, and is printed anyway: the line's job is to say what
+    // a kernel *could* use on this machine, and a missing line reads as "nothing
+    // was checked". The rest are optional extensions.
+    #[cfg(target_arch = "aarch64")]
+    {
+        let f = |n: &str, v: bool| if v { format!("{n} ") } else { String::new() };
+        print!("cpu features: ");
+        print!(
+            "{}",
+            f("neon", std::arch::is_aarch64_feature_detected!("neon"))
+        );
+        print!(
+            "{}",
+            f("fp16", std::arch::is_aarch64_feature_detected!("fp16"))
+        );
+        print!(
+            "{}",
+            f("bf16", std::arch::is_aarch64_feature_detected!("bf16"))
+        );
+        print!(
+            "{}",
+            f("sve", std::arch::is_aarch64_feature_detected!("sve"))
+        );
+        println!();
+    }
     // The cache geometry the analytical blocking model reads, and which source
     // answered. A blocking parameter that came out of a probe should be
     // traceable to it, and a fallback to the built-in defaults — which would
@@ -145,10 +171,47 @@ pub fn print_environment() {
     );
 }
 
+/// This machine's name, for the `PROVENANCE.txt` convention every directory
+/// under `bench-results/` keys on.
+///
+/// Linux's `/proc` file first, so the string is byte-identical to what every
+/// committed run recorded, then `gethostname(2)` — which is what makes this work
+/// on Darwin, where the `/proc` read fails and the host used to print as
+/// `unknown`. A run labelled `unknown` is a run whose numbers cannot be traced
+/// to a machine, and this project's first rule is that no number from one
+/// machine may be compared with a number from another.
 fn hostname() -> String {
-    fs::read_to_string("/proc/sys/kernel/hostname")
-        .map(|s| s.trim().to_string())
-        .unwrap_or_else(|_| "unknown".into())
+    if let Ok(s) = fs::read_to_string("/proc/sys/kernel/hostname") {
+        let s = s.trim();
+        if !s.is_empty() {
+            return s.to_string();
+        }
+    }
+    posix_hostname().unwrap_or_else(|| "unknown".into())
+}
+
+/// `gethostname(2)`, declared rather than pulled in with a `libc` dependency —
+/// the same call this crate's BLAS and TBLIS bindings are written as.
+fn posix_hostname() -> Option<String> {
+    use std::ffi::c_char;
+
+    extern "C" {
+        fn gethostname(name: *mut c_char, len: usize) -> i32;
+    }
+
+    // `_POSIX_HOST_NAME_MAX` is 255; the extra byte is the terminator the call
+    // is not required to write when the name exactly fills the buffer.
+    let mut buf = [0u8; 256];
+    // SAFETY: `buf` is 256 writable bytes and the length passed is 255, leaving
+    // the final byte zero so the result is NUL-terminated however much of the
+    // buffer the call fills.
+    let rc = unsafe { gethostname(buf.as_mut_ptr().cast::<c_char>(), buf.len() - 1) };
+    if rc != 0 {
+        return None;
+    }
+    let end = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
+    let name = String::from_utf8_lossy(&buf[..end]).trim().to_string();
+    (!name.is_empty()).then_some(name)
 }
 
 /// Right-aligned fixed-width table printer.

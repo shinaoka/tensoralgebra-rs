@@ -17,14 +17,33 @@
 # is the one this was lifted from) and in `scripts/node-session.sh` (which is
 # weaker -- it labels every EPYC `zen`). They are left alone because they have
 # produced committed data; this is the authoritative one for anything new.
+# Darwin has no `/proc/cpuinfo`, so the model name comes from `sysctl` there.
+# Apple parts are labelled by *part*, not by core name: `m3max`, not `everest`.
+# The core names are Apple's internal ones, they are not in any datasheet, and
+# the P-core/E-core split means one part has two of them -- whereas the cache
+# hierarchy a measurement turns on is a property of the part.
 set -e
 exec python3 -c "
-import re
+import platform, re, subprocess
 m = ''
-for line in open('/proc/cpuinfo'):
-    if line.startswith('model name'):
-        m = line.split(':', 1)[1].strip().lower()
-        break
+try:
+    for line in open('/proc/cpuinfo'):
+        if line.startswith('model name'):
+            m = line.split(':', 1)[1].strip().lower()
+            break
+except OSError:
+    try:
+        m = subprocess.run(['sysctl', '-n', 'machdep.cpu.brand_string'],
+                           capture_output=True, text=True,
+                           check=True).stdout.strip().lower()
+    except (OSError, subprocess.CalledProcessError):
+        pass
+# Apple Silicon first: an Intel Mac reports an Intel brand string and falls
+# through to the x86 table below, which is what it should do.
+apple = re.search(r'apple m([0-9]+)\s*(pro|max|ultra)?', m)
+if apple:
+    print('m' + apple.group(1) + (apple.group(2) or ''))
+    raise SystemExit
 for pat, tag in (('epyc 7[0-9]*2', 'zen2'), ('epyc 9', 'zen4'), ('epyc', 'zen'),
                  ('platinum 83', 'icelake'), ('gold 63', 'skylake'),
                  ('gold 62', 'cascadelake'), ('xeon', 'intel')):
@@ -32,5 +51,5 @@ for pat, tag in (('epyc 7[0-9]*2', 'zen2'), ('epyc 9', 'zen4'), ('epyc', 'zen'),
         print(tag)
         break
 else:
-    print(re.sub(r'[^a-z0-9]+', '-', m)[:16] or 'x86')
+    print(re.sub(r'[^a-z0-9]+', '-', m)[:16] or platform.machine().lower() or 'unknown')
 "

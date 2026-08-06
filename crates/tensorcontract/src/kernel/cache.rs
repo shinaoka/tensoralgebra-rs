@@ -127,16 +127,20 @@ pub enum CacheSource {
     Sysfs,
     /// x86 `CPUID` leaf 4, or `0x8000001D` on AMD.
     Cpuid,
+    /// Darwin `sysctl`. Reports sizes, the line and L2 sharing, but **no
+    /// associativity and no set count** — see [`from_sysctl`].
+    Sysctl,
     /// The conservative built-in fallback.
     Builtin,
 }
 
 impl CacheSource {
-    /// Short name for reports: `"sysfs"`, `"cpuid"` or `"builtin"`.
+    /// Short name for reports: `"sysfs"`, `"cpuid"`, `"sysctl"` or `"builtin"`.
     pub fn name(self) -> &'static str {
         match self {
             CacheSource::Sysfs => "sysfs",
             CacheSource::Cpuid => "cpuid",
+            CacheSource::Sysctl => "sysctl",
             CacheSource::Builtin => "builtin",
         }
     }
@@ -293,6 +297,13 @@ fn probe() -> CacheHierarchy {
     }
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     if let Some(h) = probe_cpuid() {
+        return h;
+    }
+    // After `CPUID`, not before: an Intel Mac has both, and `CPUID` reports the
+    // associativity and set count that `sysctl` does not. This arm is what an
+    // Apple Silicon machine reaches.
+    #[cfg(all(feature = "std", target_os = "macos"))]
+    if let Some(h) = probe_sysctl() {
         return h;
     }
     BUILTIN
@@ -568,6 +579,177 @@ fn probe_cpuid() -> Option<CacheHierarchy> {
         }
     }
     None
+}
+
+// ---------------------------------------------------------------------------
+// Source 3: Darwin sysctl
+// ---------------------------------------------------------------------------
+
+/// Associativity assumed for a `sysctl`-probed level.
+///
+/// **This is not a probe result, and it is the one field here that is invented.**
+/// Darwin exports no associativity and no set count for any cache at any
+/// perflevel, so the geometry the analytical model reasons in — `sets * line`
+/// bytes per way — cannot be read off the machine. 8 is assumed and the sets
+/// derived from it, which preserves `bytes_per_way * ways == size`, the
+/// invariant every other source maintains and every level of the sysfs fixture
+/// is asserted against.
+///
+/// The consequence is bounded, which is why assuming is preferable to declining
+/// the whole probe: `size`, `line` and `shared_by` are all real, and those are
+/// the only fields the **default** (`legacy`) path consults. `ways` and `sets`
+/// reach only [`analytical`], which is not the default and is refuted as a
+/// portability fix on two machines (A33).
+#[cfg(all(feature = "std", target_os = "macos"))]
+const ASSUMED_WAYS: usize = 8;
+
+/// What `sysctl` reports about this machine's data caches, in bytes.
+///
+/// Assembly is expressed against this rather than against `sysctlbyname` so it
+/// can be tested on a fixture, the same way [`from_sysfs`] is — the layout of a
+/// heterogeneous Apple part is not something a unit test should need that part
+/// to exercise.
+#[cfg(all(feature = "std", target_os = "macos"))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct SysctlCaches {
+    /// `hw.cachelinesize`. 128 on Apple Silicon, 64 on an Intel Mac.
+    pub line: Option<usize>,
+    /// L1 data cache of one core.
+    pub l1d: Option<usize>,
+    /// L2 of one core cluster.
+    pub l2: Option<usize>,
+    /// How many CPUs share that L2 (`hw.perflevelN.cpusperl2`).
+    pub cpus_per_l2: Option<usize>,
+}
+
+/// Assemble a hierarchy from `sysctl` numbers. `None` without a usable L1d.
+///
+/// **`l3` is always `None`, and that is a modelling decision rather than a gap
+/// in the probe.** Darwin reports no L3 on Apple Silicon because there is no
+/// conventional one: a P-core cluster's L2 is the last level the OS names, and
+/// the ~48 MiB system level cache behind it is not exported at all. Reporting
+/// the cluster L2 as both L2 *and* L3 would double-count it in every budget the
+/// model computes, so the L2 is reported as what it is — an L2 shared by
+/// `cpus_per_l2` cores — and the L3 is absent.
+///
+/// The consequence lands on [`CacheHierarchy::l3_domains`], which treats a
+/// machine with no L3 as one domain per thread. That is the documented
+/// behaviour for a no-L3 part, but on Apple Silicon it *over-counts*: six cores
+/// really do share 16 MiB, so a 12-thread run spans two hardware domains and
+/// this reports twelve. Nothing single-threaded can observe it — `l3_domains(1)`
+/// is 1 and D44's gate never fires — and `TENSORCONTRACT_L3_DOMAINS` expresses
+/// the physical count for anyone who threads. Which of the two is the right
+/// input to the partition rule on this topology is unmeasured, and picking one
+/// on a guess is what the override is for.
+#[cfg(all(feature = "std", target_os = "macos"))]
+pub(crate) fn from_sysctl(raw: &SysctlCaches) -> Option<CacheHierarchy> {
+    let line = raw.line.filter(|&l| l > 0)?;
+    let level = |level: u8, size: usize, shared_by: usize| -> Option<CacheLevel> {
+        let ways = ASSUMED_WAYS;
+        let sets = size / (line * ways);
+        (sets > 0).then_some(CacheLevel {
+            level,
+            // Round down to what the assumed geometry can express exactly, so
+            // `bytes_per_way() * ways == size` holds rather than nearly holds.
+            // Every real cache size here is a power of two and divides cleanly;
+            // the rounding exists so a machine reporting something odd cannot
+            // put the model into an inconsistent state.
+            size: sets * ways * line,
+            line,
+            ways,
+            sets,
+            shared_by: shared_by.max(1),
+        })
+    };
+    // L1d is private to a core, and Apple Silicon has no SMT, so one CPU shares
+    // it. That makes `threads_per_core()` 1, which is correct here and is what
+    // `cores_sharing` divides by.
+    let l1d = level(1, raw.l1d.filter(|&s| s > 0)?, 1)?;
+    let l2 = raw
+        .l2
+        .filter(|&s| s > 0)
+        .and_then(|s| level(2, s, raw.cpus_per_l2.unwrap_or(1)));
+    Some(CacheHierarchy {
+        l1d,
+        l2,
+        l3: None,
+        source: CacheSource::Sysctl,
+    })
+}
+
+/// Read one integer `sysctl` by name, or `None` if the key does not exist.
+#[cfg(all(feature = "std", target_os = "macos"))]
+fn sysctl_usize(name: &str) -> Option<usize> {
+    use core::ffi::{c_char, c_int, c_void};
+
+    // Declared rather than taken from `libc`: `tensorcontract` has one
+    // dependency (`num-complex`) and adding a second for four cache sizes is the
+    // wrong trade. `sysctlbyname` is in libSystem, which every Darwin target
+    // links unconditionally, and the bench crate already binds its C baselines
+    // this way.
+    extern "C" {
+        fn sysctlbyname(
+            name: *const c_char,
+            oldp: *mut c_void,
+            oldlenp: *mut usize,
+            newp: *const c_void,
+            newlen: usize,
+        ) -> c_int;
+    }
+
+    // The key must be NUL-terminated. Built here rather than with `CString` so
+    // this stays allocation-simple and cannot fail on an interior NUL: a
+    // caller-supplied name with one would just miss the key and return `None`.
+    let mut key = String::with_capacity(name.len() + 1);
+    key.push_str(name);
+    key.push('\0');
+
+    // Zero-initialised and read as 8 bytes: these keys are a mix of 32- and
+    // 64-bit, the kernel writes only as many as it has and reports the count in
+    // `len`, and the untouched high bytes stay zero on a little-endian target.
+    // Darwin is little-endian on every architecture it ships on.
+    let mut value = 0u64;
+    let mut len = core::mem::size_of::<u64>();
+
+    // SAFETY: `key` is NUL-terminated and outlives the call. `oldp` points at
+    // `value`, an 8-byte object, and `oldlenp` says so, which is the contract
+    // `sysctlbyname` checks before writing — it writes at most `len` bytes and
+    // fails with ENOMEM rather than overrunning. `newp`/`newlen` are the
+    // documented null pair for a read.
+    let rc = unsafe {
+        sysctlbyname(
+            key.as_ptr().cast::<c_char>(),
+            core::ptr::addr_of_mut!(value).cast::<c_void>(),
+            &mut len,
+            core::ptr::null(),
+            0,
+        )
+    };
+    if rc != 0 || !(len == 4 || len == 8) {
+        return None;
+    }
+    usize::try_from(value).ok()
+}
+
+#[cfg(all(feature = "std", target_os = "macos"))]
+fn probe_sysctl() -> Option<CacheHierarchy> {
+    // **Prefer `perflevel0`, and this is the trap the naive read falls into.**
+    // On a heterogeneous Apple part the unprefixed `hw.l1dcachesize` and
+    // `hw.l2cachesize` report the *last* perflevel — the efficiency cores. On an
+    // M3 Max they answer 64 KiB and 4 MiB for a machine whose P-cores have
+    // 128 KiB and 16 MiB, so reading them would under-block by 2x and 4x while
+    // looking like a successful probe. `perflevel0` is the performance cores,
+    // which is where a contraction runs unless something has deliberately put it
+    // elsewhere; the unprefixed keys remain as the fallback for a single-perflevel
+    // Mac, where they are the same numbers.
+    let first = |a: &str, b: &str| sysctl_usize(a).or_else(|| sysctl_usize(b));
+    let raw = SysctlCaches {
+        line: sysctl_usize("hw.cachelinesize"),
+        l1d: first("hw.perflevel0.l1dcachesize", "hw.l1dcachesize"),
+        l2: first("hw.perflevel0.l2cachesize", "hw.l2cachesize"),
+        cpus_per_l2: sysctl_usize("hw.perflevel0.cpusperl2"),
+    };
+    from_sysctl(&raw)
 }
 
 // ---------------------------------------------------------------------------
@@ -927,6 +1109,112 @@ mod tests {
         ];
         let h = from_sysfs(&as_indices(&raw)).unwrap();
         assert!(h.l2.is_none() && h.l3.is_none());
+    }
+
+    /// What this machine's `sysctl` reports, verbatim, for the *performance*
+    /// cores: `hw.cachelinesize`, `hw.perflevel0.l1dcachesize`,
+    /// `hw.perflevel0.l2cachesize`, `hw.perflevel0.cpusperl2` on an Apple M3 Max.
+    #[cfg(all(feature = "std", target_os = "macos"))]
+    fn m3_max_fixture() -> SysctlCaches {
+        SysctlCaches {
+            line: Some(128),
+            l1d: Some(128 * 1024),
+            l2: Some(16 * 1024 * 1024),
+            cpus_per_l2: Some(6),
+        }
+    }
+
+    #[cfg(all(feature = "std", target_os = "macos"))]
+    #[test]
+    fn sysctl_fixture_parses() {
+        let h = from_sysctl(&m3_max_fixture()).expect("fixture has an L1d");
+        assert_eq!(h.source, CacheSource::Sysctl);
+        assert_eq!(h.l1d.size, 128 * 1024);
+        assert_eq!(h.l1d.line, 128);
+        assert_eq!(h.l1d.shared_by, 1);
+        let l2 = h.l2.expect("the fixture has an L2");
+        assert_eq!(l2.size, 16 * 1024 * 1024);
+        assert_eq!(l2.shared_by, 6);
+        // No L3, on purpose: the cluster L2 is the last level Darwin names, and
+        // reporting it twice would double-count it. See `from_sysctl`.
+        assert!(h.l3.is_none());
+        // The same self-consistency the sysfs fixture is held to, which is what
+        // makes the assumed associativity safe to feed the model.
+        for lvl in [Some(h.l1d), h.l2].into_iter().flatten() {
+            assert_eq!(lvl.bytes_per_way() * lvl.ways, lvl.size);
+        }
+        // No SMT, so one thread per core and the L2 belongs to the six cores
+        // that share it rather than to twelve hyperthreads.
+        assert_eq!(h.threads_per_core(), 1);
+        assert_eq!(h.cores_sharing(&l2), 6);
+        // And the documented over-count: twelve threads span two hardware
+        // domains, this reports twelve, and only a threaded run can see it.
+        assert_eq!(h.l3_domains(1), 1);
+        assert_eq!(h.l3_domains(12), 12);
+    }
+
+    #[cfg(all(feature = "std", target_os = "macos"))]
+    #[test]
+    fn sysctl_declines_rather_than_inventing() {
+        // No line size: nothing downstream can be derived, so decline.
+        let raw = SysctlCaches {
+            line: None,
+            ..m3_max_fixture()
+        };
+        assert!(from_sysctl(&raw).is_none());
+        // No L1d: there is no model without one, same rule as sysfs.
+        let raw = SysctlCaches {
+            l1d: None,
+            ..m3_max_fixture()
+        };
+        assert!(from_sysctl(&raw).is_none());
+        // A missing L2 is not fatal — the model degrades level by level.
+        let raw = SysctlCaches {
+            l2: None,
+            ..m3_max_fixture()
+        };
+        let h = from_sysctl(&raw).expect("an L1d is enough");
+        assert!(h.l2.is_none());
+        // An L2 smaller than one way cannot be expressed and is dropped rather
+        // than rounded to zero sets.
+        let raw = SysctlCaches {
+            l2: Some(64),
+            ..m3_max_fixture()
+        };
+        assert!(from_sysctl(&raw).unwrap().l2.is_none());
+        // Unknown sharing degrades to private, never to zero.
+        let raw = SysctlCaches {
+            cpus_per_l2: None,
+            ..m3_max_fixture()
+        };
+        assert_eq!(from_sysctl(&raw).unwrap().l2.unwrap().shared_by, 1);
+    }
+
+    /// The probe must agree with the machine it is running on, which is the one
+    /// thing a fixture cannot check. Asserts only what is true of every Apple
+    /// part rather than of this one, so it does not become an M3-Max-only test.
+    #[cfg(all(feature = "std", target_os = "macos"))]
+    #[test]
+    fn sysctl_probe_reads_this_machine() {
+        let h = super::probe_sysctl().expect("every Darwin machine reports a line and an L1d");
+        assert!(h.l1d.size >= 32 * 1024, "implausible L1d: {}", h.l1d.size);
+        assert!(
+            h.l1d.line == 64 || h.l1d.line == 128,
+            "implausible line: {}",
+            h.l1d.line
+        );
+        assert!(h.l3.is_none());
+        // The perflevel0 preference, stated as a property rather than a number:
+        // whatever the P-core L1d is, it is at least as large as the value the
+        // unprefixed key reports, because that key answers for the *last*
+        // perflevel — the efficiency cores on a heterogeneous part.
+        if let Some(legacy) = super::sysctl_usize("hw.l1dcachesize") {
+            assert!(
+                h.l1d.size >= legacy,
+                "probe took the efficiency cores' L1d: {} < {legacy}",
+                h.l1d.size
+            );
+        }
     }
 
     #[cfg(feature = "std")]
