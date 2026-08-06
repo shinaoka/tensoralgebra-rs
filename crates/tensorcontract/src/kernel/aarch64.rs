@@ -49,15 +49,21 @@
 //! the budget arithmetic is right, from a library that measured it; it is *not* a
 //! measurement of this engine's kernels.
 //!
-//! # These shapes are PROVISIONAL and UNMEASURED
+//! # The shipped shapes are MEASURED, and the budget did not pick them
 //!
-//! Exactly as the AVX2 shapes were when they were first committed, and for the
-//! same reason: they are picked from the register budget, and A34 says register
-//! blocks are a property of the **microarchitecture**, not the instruction set.
-//! `cargo run --release -p tensorcontract --example kernel_shapes` is the
-//! calibration path, and the `best per method` lines it prints are what belongs
-//! in [`cfg_neon_f64`] / [`cfg_neon_f32`] — replacing a model with a
-//! measurement. Do not quote a NEON ranking until that has run.
+//! Three arms of `examples/kernel_shapes` on an M3 Max
+//! (`bench-results/CKF6QCDVPD-m3max/kernel-shapes*.txt`, `DECISIONS.md` part
+//! 21). The menus in [`cfg_neon_f64`] / [`cfg_neon_f32`] are that measurement,
+//! ordered by it, and each carries its own margin against the session floor.
+//!
+//! **The budget was a good filter and a bad chooser**, which is A34 restated
+//! rather than a new finding: it eliminated the shapes that collapse, and then
+//! picked the wrong winner in three of the eight columns. `f64` real is the
+//! sharp case — the budget proposed `6x8`, BLIS's own shape, and the machine
+//! prefers `16x3` by 4.9%, a shape the budget calls *over* its limit.
+//!
+//! Register blocks are per-microarchitecture, so this is an M3 Max result and
+//! not a NEON one. Re-run the sweep on any other Apple part before quoting it.
 
 use super::{Blocking, ComplexMethod, KernelConfig, PackFormat, TileFormat, Ukr};
 
@@ -164,59 +170,70 @@ simd_kernels!(
 // Configuration builders
 // ---------------------------------------------------------------------------
 
-/// NEON shapes for `f64` / `c64` (`L = 2`). **Provisional and unmeasured** —
-/// see the module docs. Derived from the 32-register budget alone.
+/// NEON shapes for `f64` / `c64` (`L = 2`). **Measured on an M3 Max**, three
+/// arms, `kc = 256` — the depth [`Blocking::derive`] actually uses for 8-byte
+/// reals, so these are the shapes the driver runs and not a nearby regime.
 ///
-/// | kernel | `MV x NR` | `MR x NR` (logical) | acc | live |
+/// | kernel | `MV x NR` | `MR x NR` (logical) | GF/s | over the runner-up |
 /// |---|---|---|---|---|
-/// | real | `3 x 8` | `6 x 8` | 24 | 28 |
-/// | planar | `2 x 6` | `4 x 6` | 24 | 30 |
-/// | 1m | `3 x 8` | `3 x 8` | 24 | 28 |
-/// | 3m | `1 x 8` | `2 x 8` | 24 | 26 |
+/// | real | `8 x 3` | `16 x 3` | 58.3 | +4.9%, 2.6x the floor |
+/// | planar | `2 x 6` | `4 x 6` | 56.2 | +0.2%, a tie with `4x5` and `2x12` |
+/// | 1m | `2 x 8` | `2 x 8` | 55.9 | +1.1%, a tie with `4x6` and `3x8` |
+/// | 3m | `1 x 8` | `2 x 8` | 79.3 | +7.6%, 4.0x the floor |
 ///
-/// The default `real` shape is BLIS's `armv8a_asm_6x8`. `planar` and `3m` are
-/// held well under 32 because the cliff above it costs 30–50% on every ISA
-/// measured so far and there is no measurement here yet to say where it lands.
+/// Two of the four are **ties inside the session floor** (p90 1.89%), so their
+/// order below the first entry is not a measured ranking and the incumbent
+/// budget-derived shape was kept where it tied. The two that are not ties are
+/// `real` and `3m`.
+///
+/// `real`'s winner is the surprise and it is worth stating plainly: `16 x 3` is
+/// **over the register budget** (`live = 33`), which every other ISA here
+/// punishes by 30–50%, and it wins anyway at the shipping depth. It is also the
+/// one shape whose two regimes disagree — perfectly reproducible at `kc = 64`
+/// and `256` (0.0% across three arms) and bimodal at `kc = 16` (51.5 / 51.5 /
+/// 40.9). The engine never runs it at 16. See `DECISIONS.md` part 21.
 pub mod cfg_neon_f64 {
     use super::*;
     configs!(
         f64,
         neon_f64,
         "neon",
-        real = [(3, 8), (4, 6), (2, 10)],
-        planar = [(2, 6), (3, 4), (1, 12)],
-        onem = [(3, 8), (4, 6), (2, 8)],
-        threem = [(1, 8), (2, 4), (3, 3)],
+        real = [(8, 3), (2, 8), (4, 6), (3, 8)],
+        planar = [(2, 6), (2, 5), (1, 12)],
+        onem = [(2, 8), (4, 6), (3, 8)],
+        threem = [(1, 8), (2, 3), (2, 4)],
     );
 }
 
-/// NEON shapes for `f32` / `c32` (`L = 4`). **Provisional and unmeasured.**
+/// NEON shapes for `f32` / `c32` (`L = 4`). **Measured on an M3 Max**, three
+/// arms, `kc = 384`.
 ///
-/// | kernel | `MV x NR` | `MR x NR` (logical) | acc | live |
+/// | kernel | `MV x NR` | `MR x NR` (logical) | GF/s | over the runner-up |
 /// |---|---|---|---|---|
-/// | real | `3 x 8` | `12 x 8` | 24 | 28 |
-/// | planar | `2 x 6` | `8 x 6` | 24 | 30 |
-/// | 1m | `3 x 8` | `6 x 8` | 24 | 28 |
-/// | 3m | `1 x 8` | `4 x 8` | 24 | 26 |
+/// | real | `2 x 8` | `8 x 8` | 111.5 | +0.5%, a tie six ways |
+/// | planar | `2 x 6` | `8 x 6` | 112.1 | +0.1%, a tie with `8x5` and `4x12` |
+/// | 1m | `4 x 6` | `8 x 6` | 111.2 | +1.4%, a tie with `6x8` and `12x4` |
+/// | 3m | `1 x 8` | `4 x 8` | 159.1 | +7.1%, 2.0x the floor |
 ///
-/// Same `MV x NR` grid as `f64` — the register budget counts *registers*, not
-/// lanes, so doubling the lane count doubles `MR` and changes nothing else.
-/// `real`'s default is BLIS's `armv8a_asm_12x8r`.
+/// The `MV x NR` grid is the same one `f64` is swept over — the budget counts
+/// *registers*, not lanes — but **the winners are not the same shapes**, which
+/// is the point of measuring each. `real` moves from BLIS's `12x8r` to `8x8`,
+/// and `1m` prefers `NR = 6` where `f64` prefers `NR = 8`.
 ///
-/// One thing to watch when this is measured: at `L = 4` the logical `MR` values
-/// are 12, 8 and 16, and the corpus rounds every stride-1 extent up to a
-/// multiple of **24**. 12 and 8 both divide 24 and 16 does not, so unlike on
-/// AVX-512 the write-back stays on its unit-stride path for the default shape.
+/// Three of the four are ties inside a wider floor than `f64`'s (p90 3.64%),
+/// and the wider floor is itself a finding: at `L = 4` the same shapes run at
+/// twice the throughput and are correspondingly more exposed to this laptop's
+/// clock. Only `3m` clears it, and only just.
 pub mod cfg_neon_f32 {
     use super::*;
     configs!(
         f32,
         neon_f32,
         "neon",
-        real = [(3, 8), (4, 6), (2, 10)],
-        planar = [(2, 6), (3, 4), (1, 12)],
-        onem = [(3, 8), (4, 6), (2, 8)],
-        threem = [(1, 8), (2, 4), (3, 3)],
+        real = [(2, 8), (4, 6), (6, 4), (3, 8)],
+        planar = [(2, 6), (2, 5), (1, 12)],
+        onem = [(4, 6), (3, 8), (6, 4)],
+        threem = [(1, 8), (2, 3), (2, 4)],
     );
 }
 
@@ -233,7 +250,8 @@ pub mod cfg_neon_f32 {
 /// exist), so it is not speculated about.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Isa {
-    /// NEON / AdvSIMD. **Provisional register blocks** — see [`cfg_neon_f64`].
+    /// NEON / AdvSIMD. Register blocks measured on an M3 Max — see
+    /// [`cfg_neon_f64`].
     Neon,
 }
 

@@ -1,0 +1,126 @@
+Micro-kernel register-block sweep, packed panels hot.
+Useful flops: 2*MR*NR*kc real, 8*MR*NR*kc complex (so 3m's saving shows up as GF/s).
+kc is swept because it decides where the A sliver lives: at kc=16 both panels are
+L1-resident and the kernel is purely issue-limited; at kc=256 the A sliver is an L2
+stream, which is what the driver actually does. The gap between the two columns is
+the kernel's exposure to L2 bandwidth, and it is what the `B/flop` column predicts.
+
+=== NEON f64 / c64 (L = 2 lanes/register, 32 registers) ===
+
+`live` is accumulators + A plane(s) + broadcasts; `!` marks a shape over budget,
+which is `live >= regs`, not `live > regs`: **measured on AVX2** (Phase 4 part 11,
+A30) every `live == 16` shape collapses to 21-33 GF/s beside a 48-53 GF/s sibling
+at `live <= 15`, so one register is not available to the shape. Verified on AVX2
+only -- the AVX-512 sweep predates this column -- and flagged the conservative way.
+
+method      MRxNR  acc  live  load  fma    f/l B/flop   GF/s kc=16   GF/s kc=64  GF/s kc=256
+real        4x8     16   19     10   16   1.60  1.500         53.5         55.8         55.6
+real        2x8      8   10      9    8   0.89  2.500         46.7         36.9         31.2
+real        2x10    10   12     11   10   0.91  2.400         49.1         40.8         37.7
+real        2x12    12   14     13   12   0.92  2.333         48.6         46.3         45.3
+real        6x8     24   28     11   24   2.18  1.167         51.7         54.9         54.9
+real        6x9     27   31     12   27   2.25  1.111         51.2         53.3         54.2
+real        6x10    30   34!    13   30   2.31  1.067         52.6         54.9         54.8
+real        8x6     24   29     10   24   2.40  1.167         53.1         55.2         55.4
+real        8x7     28   33!    11   28   2.55  1.071         44.9         38.1         35.5
+real       10x5     25   31     10   25   2.50  1.200         51.7         54.1         54.1
+real       10x6     30   36!    11   30   2.73  1.067         42.4         39.7         38.0
+real       12x4     24   31     10   24   2.40  1.333         51.6         55.0         54.4
+real       16x3     24   33!    11   24   2.18  1.583         40.9         57.4         58.3
+
+planar      2x8     16   20     18   32   1.78  1.250         52.4         52.1         52.0
+planar      2x12    24   28     26   48   1.85  1.167         55.0         55.4         56.0
+planar      4x4     16   22     12   32   2.67  1.000         53.1         52.2         51.5
+planar      4x5     20   26     14   40   2.86  0.900         55.6         55.8         55.5
+planar      4x6     24   30     16   48   3.00  0.833         54.6         55.8         56.2
+planar      4x7     28   34!    18   56   3.11  0.786         42.2         43.4         43.4
+planar      6x3     18   26     12   36   3.00  1.000         54.4         54.4         54.4
+planar      6x4     24   32!    14   48   3.43  0.833         47.8         42.9         41.1
+planar      6x5     30   38!    16   60   3.75  0.733         46.8         48.3         48.5
+planar      8x3     24   34!    14   48   3.43  0.917         47.7         46.1         45.0
+
+1m          1x8      8   10     18   16   0.89  2.500         40.2         32.4         30.6
+1m          1x10    10   12     22   20   0.91  2.400         45.0         38.6         37.7
+1m          1x12    12   14     26   24   0.92  2.333         48.1         45.0         44.8
+1m          2x8     16   19     20   32   1.60  1.500         55.0         54.9         56.0
+1m          3x8     24   28     22   48   2.18  1.167         54.2         54.7         55.0
+1m          3x10    30   34!    26   60   2.31  1.067         54.2         54.5         54.8
+1m          4x6     24   29     20   48   2.40  1.167         54.6         55.1         54.8
+1m          4x7     28   33!    22   56   2.55  1.071         41.6         36.0         35.0
+1m          5x6     30   36!    22   60   2.73  1.067         41.8         38.3         37.0
+1m          6x4     24   31     20   48   2.40  1.333         53.6         54.0         54.2
+
+3m          2x8     24   26     27   24   0.89  1.875         73.2         77.5         79.2
+3m          2x10    30   32!    33   30   0.91  1.800         42.5         44.4         45.0
+3m          4x3     18   21     15   18   1.20  1.750         70.9         72.7         73.6
+3m          4x4     24   27     18   24   1.33  1.500         67.2         72.6         72.7
+3m          4x5     30   33!    21   30   1.43  1.350         42.1         44.9         45.2
+3m          6x3     27   31     18   27   1.50  1.500         66.1         68.7         70.9
+3m          6x4     36   40!    21   36   1.71  1.250         48.5         51.5         52.0
+3m          8x2     24   29     18   24   1.33  1.875         67.8         72.0         72.7
+
+best per method at kc = 256:
+  real     MV=8 NR=3      58.3 GF/s
+  planar   MV=2 NR=6      56.2 GF/s
+  1m       MV=2 NR=8      56.0 GF/s
+  3m       MV=1 NR=8      79.2 GF/s
+
+=== NEON f32 / c32 (L = 4 lanes/register, 32 registers) ===
+
+`live` is accumulators + A plane(s) + broadcasts; `!` marks a shape over budget,
+which is `live >= regs`, not `live > regs`: **measured on AVX2** (Phase 4 part 11,
+A30) every `live == 16` shape collapses to 21-33 GF/s beside a 48-53 GF/s sibling
+at `live <= 15`, so one register is not available to the shape. Verified on AVX2
+only -- the AVX-512 sweep predates this column -- and flagged the conservative way.
+
+method      MRxNR  acc  live  load  fma    f/l B/flop   GF/s kc=16   GF/s kc=64  GF/s kc=384
+real        8x8     16   19     10   16   1.60  0.500        107.1        111.6        111.0
+real        4x8      8   10      9    8   0.89  0.750         93.1         76.2         64.3
+real        4x10    10   12     11   10   0.91  0.700         98.5         83.6         78.1
+real        4x12    12   14     13   12   0.92  0.667        107.3         97.6         91.5
+real       12x8     24   28     11   24   2.18  0.417        106.4        110.2        110.3
+real       12x9     27   31     12   27   2.25  0.389        106.2        107.3        109.0
+real       12x10    30   34!    13   30   2.31  0.367        105.8        109.7        110.1
+real       16x6     24   29     10   24   2.40  0.458        105.9        110.6        110.9
+real       16x7     28   33!    11   28   2.55  0.411         89.7         76.2         70.6
+real       20x5     25   31     10   25   2.50  0.500        103.5        108.4        108.1
+real       20x6     30   36!    11   30   2.73  0.433         84.5         79.1         75.2
+real       24x4     24   31     10   24   2.40  0.583        103.1        108.7        109.8
+real       32x3     24   33!    11   24   2.18  0.729         83.3         67.8         60.6
+
+planar      4x8     16   20     18   32   1.78  0.375        104.7        105.4        105.4
+planar      4x12    24   28     26   48   1.85  0.333        110.1        111.2        112.0
+planar      8x4     16   22     12   32   2.67  0.375        106.9        105.8        105.9
+planar      8x5     20   26     14   40   2.86  0.325        111.1        111.4        112.0
+planar      8x6     24   30     16   48   3.00  0.292        110.0        112.5        112.5
+planar      8x7     28   34!    18   56   3.11  0.268         83.6         86.4         86.6
+planar     12x3     18   26     12   36   3.00  0.417        109.1        109.7        109.9
+planar     12x4     24   32!    14   48   3.43  0.333        100.8         88.4         89.5
+planar     12x5     30   38!    16   60   3.75  0.283         91.4         94.4         95.6
+planar     16x3     24   34!    14   48   3.43  0.396         94.6         92.8         90.3
+
+1m          2x8      8   10     18   16   0.89  0.750         83.0         67.9         64.5
+1m          2x10    10   12     22   20   0.91  0.700         91.4         79.7         77.9
+1m          2x12    12   14     26   24   0.92  0.667        102.3         92.5         91.1
+1m          4x8     16   19     20   32   1.60  0.500        109.9        109.9        111.8
+1m          6x8     24   28     22   48   2.18  0.417        108.9        109.7        110.1
+1m          6x10    30   34!    26   60   2.31  0.367        108.9        107.8        109.8
+1m          8x6     24   29     20   48   2.40  0.458        109.3        110.3        111.2
+1m          8x7     28   33!    22   56   2.55  0.411         83.2         72.2         70.2
+1m         10x6     30   36!    22   60   2.73  0.433         84.4         76.8         75.2
+1m         12x4     24   31     20   48   2.40  0.583        107.4        109.4        109.6
+
+3m          4x8     24   26     27   24   0.89  0.562        147.8        142.2        152.9
+3m          4x10    30   32!    33   30   0.91  0.525         85.6         89.6         90.8
+3m          8x3     18   21     15   18   1.20  0.688        142.2        147.9        148.5
+3m          8x4     24   27     18   24   1.33  0.562        138.4        146.9        147.4
+3m          8x5     30   33!    21   30   1.43  0.487         85.6         90.0         90.8
+3m         12x3     27   31     18   27   1.50  0.625        133.3        134.2        139.2
+3m         12x4     36   40!    21   36   1.71  0.500         96.3        101.2        104.4
+3m         16x2     24   29     18   24   1.33  0.844        135.6        145.5        147.1
+
+best per method at kc = 384:
+  real     MV=2 NR=8     111.0 GF/s
+  planar   MV=2 NR=6     112.5 GF/s
+  1m       MV=2 NR=8     111.8 GF/s
+  3m       MV=1 NR=8     152.9 GF/s

@@ -23,4 +23,7 @@ __pycache__/
 # unanchored `slurm-*.out` excluded those copies too, which is how job 6753261's
 # SIGILL transcript went missing from the commit that documented it.
 /slurm-*.out
-bench-results/*/bin/
+# Prebuilt measurement binaries. `**` and not `*`, because a run directory may
+# be nested one deeper -- `bench-results/<host>/<run>/bin/` -- and the
+# single-star form silently staged a 1 MB executable from `neon-ab/bin/`.
+bench-results/**/bin/

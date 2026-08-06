@@ -58,55 +58,43 @@ case at one size. A46 is exactly this mistake.
 |---|---|
 | extract `simd_kernels!` / `configs!` into `kernel::simd` | **done.** Bodies unchanged; `#[macro_use] mod simd;` must stay declared before the ISA modules |
 | `kernel::aarch64`, `Isa::Neon`, `TENSORCONTRACT_KERNEL=neon` | **done.** All four kernels, `f64` and `f32` |
-| provisional register-block menu from the 32-register budget | **done, and still provisional** — `cfg_neon_f64` / `cfg_neon_f32` say so |
 | generalise `examples/kernel_shapes` off x86 | **done** — NEON reuses the AVX-512 candidate grid, because both have 32 registers and the budget counts registers not lanes |
-| **run `kernel_shapes` and replace the menus with its `best per method`** | **NOT DONE.** ~8 min, no baselines. This is what A34 requires and the one thing standing between the shapes and a measurement |
-| **the scalar-vs-neon A/B at 64 MiB with its own floor** | **NOT DONE — started and killed, no CSV was written.** The command is below |
+| **run `kernel_shapes` and replace the budget-derived menus with the measurement** | **DONE, three arms, part 21.** The menus in `cfg_neon_f64` / `cfg_neon_f32` are measured and each carries its margin against the session floor. Six of the eight winners are **ties** and say so; the budget got three of eight wrong (A60) |
+| **the scalar-vs-neon A/B at 64 MiB with its own floor** | see below — this is the live item |
 | re-measure the complex-method ranking (A59 expects it to move) | falls out of that A/B |
-| the blocking constants (`kernel/mod.rs:320-333`) | **not started, and now unblocked** — a NEON kernel is no longer instruction-bound, so the cache effects those constants exist for are finally visible. `legacy_blocking_is_unchanged` pins the current values |
+| the blocking constants (`kernel/mod.rs:320-333`) | **not started, and now unblocked** — a NEON kernel is no longer instruction-bound, so the cache effects those constants exist for are finally visible. `legacy_blocking_is_unchanged` pins the current values. Note it would also re-open `f64` real `16x3`, whose kernel-level win is measured at `kc = 256` and which is **bimodal at `kc = 16`** |
 
 **Cross-compile after any change here.** The x86 tests cannot run on this machine,
 and that is not theoretical: `cargo check --target x86_64-unknown-linux-gnu` is
 what caught a missing `KernelForce::Neon` arm in x86's `pick_isa`. Three targets
 are cheap and all pass — `x86_64`, `i686`, `aarch64` linux.
 
-#### The two measurements to run, in this order
+#### The live measurement: the scalar-vs-NEON A/B
 
-Both want the machine quiet, and the user needed it back, which is why neither has
-run. Nothing is blocked on anything else.
+**Calibration is done** (part 21), and doing it first was not arbitrary: the A/B
+now measures the shapes that actually ship (A20 — a lever validated with the
+others pinned is validated only there). Doing it the other way round would have
+meant re-running the hour-long arm.
 
 ```bash
 export TBLIS_ROOT=$(cd ../baselines/tblis-2.0-install && pwd)
 export OPENBLAS_ROOT=$(brew --prefix openblas)
-export TENSORCONTRACT_THREADS=1 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 TBLIS_NUM_THREADS=1
+export DYLD_LIBRARY_PATH=$TBLIS_ROOT/lib:$OPENBLAS_ROOT/lib
 
-# 1. Calibrate the shapes. ~8 min, no baselines, no exclusive machine needed.
-#    Put its `best per method` lines into cfg_neon_f64 / cfg_neon_f32 and delete
-#    the "provisional and unmeasured" warnings from both.
-cargo run --release -p tensorcontract --example kernel_shapes \
-    | tee bench-results/CKF6QCDVPD-m3max/kernel-shapes.txt
-
-# 2. THEN the A/B, so it measures the shapes that ship. ~1 h, quiet machine.
-#    Four arms; the two scalar ones bracket the treatment and give the floor.
-cargo build --release -p tensorprimitives-bench --features tblis,blas
-O=bench-results/CKF6QCDVPD-m3max/neon-ab; mkdir -p $O
-for arm in warm A-scalar B-neon A2-scalar; do
-  k=scalar; case $arm in *neon*) k=neon;; esac
-  TENSORCONTRACT_KERNEL=$k ./target/release/tcbench premise --size 64 --reps 3 \
-     --engines planar,1m,3m,ttgt,tblis --dtype f64,c64 --csv $O/$arm.csv
-done
-scripts/compare-sweeps.py $O/A-scalar.csv $O/A2-scalar.csv   # the floor
-scripts/compare-sweeps.py $O/A-scalar.csv $O/B-neon.csv      # the treatment
+O=bench-results/CKF6QCDVPD-m3max/neon-ab
+cargo build --release -p tensorprimitives-bench --features tblis,blas   # the ONLY compile
+mkdir -p $O/bin && cp target/release/tcbench $O/bin/tcbench-tblis       # then freeze it
+scripts/macos-neon-ab.sh $O                                             # ~1 h, quiet machine
 ```
 
-**The order matters and is not arbitrary.** Calibrating first means the A/B
-measures the shapes that will ship (A20: a rule validated with the other levers
-pinned is validated only there). Doing it the other way round means re-running the
-hour-long arm.
+Four arms — `warm, A-scalar, B-neon, A2-scalar` — one binary, the treatment is
+`TENSORCONTRACT_KERNEL`, and **A against A2 is this session's floor**. `ttgt` and
+`tblis` ride along as columns the switch cannot reach. The script prints both
+tables at the end and writes `floor.txt` and `treatment.txt`.
 
-Write a `PROVENANCE.txt` for `neon-ab/` when it exists — every directory under
-`bench-results/` has one, which is why the killed run's stub was deleted rather
-than left behind.
+Write a `PROVENANCE.txt` for `neon-ab/` — every directory under
+`bench-results/` has one, which is why the earlier killed run's stub was deleted
+rather than left behind.
 
 **Do this first: the session is deliberately incomplete and there is no floor.**
 `info`, `orient`, all three `verify` arms and both `premise` arms completed and are
@@ -118,9 +106,13 @@ files were never written** — one arm costs ~50 min here and five plus extras i
 scripts/macos-session.sh bench bench-results/CKF6QCDVPD-m3max 64 3   # ~5 h
 ```
 
-`prep` is **already done** and its three binaries are in that directory's `bin/`,
-so this compiles nothing. **Do not compile while it runs** — the arms invoke those
-binaries (D51). Consider `SIZE=32` or dropping `1m`/`3m` from `ENGINES` if 5 h is
+**`prep` must be re-run first, and this changed on 2026-08-06.** The three
+binaries in that directory's `bin/` were built at 09:29, before the NEON kernel
+existed — `strings` finds no `neon-real` in any of them — so running `bench`
+against them would measure the portable path and label it as the current engine.
+That is D51's hazard arriving from the other side: not a build racing a running
+job, but a stale build outliving its source. After `prep`, **do not compile while
+it runs** — the arms invoke those binaries. Consider `SIZE=32` or dropping `1m`/`3m` from `ENGINES` if 5 h is
 too long; either is fine as long as the write-up says which.
 
 Until it exists, **every ratio in part 20 is provisional**, because this session
@@ -190,10 +182,10 @@ plan's out-of-scope section; A33 and A57 cover the last one.
 |---|---|
 | 1 — exploration and design | **complete.** Premise resolved with data; the founding thesis is refuted and the displaced finding is better (see `REFUTED.md`) |
 | 2 / 2b — correct engine, three complex methods | **complete** |
-| 3 — micro-kernels | **complete on x86.** AVX-512 for `f32`/`f64` and all three complex methods; AVX2 added later, both measured. **No NEON path** — that is Stage B above, and part 20 says what it is worth |
+| 3 — micro-kernels | **complete.** AVX-512 for `f32`/`f64` and all three complex methods; AVX2 added later; **NEON added 2026-08-06 and its register blocks measured** (part 21). AVX-512 and NEON blocks are measured, AVX2's are still budget-derived |
 | 4 — profiling and improvement | **in progress.** Items 1, 1c, 1d closed with wins; item 2 closed with a negative result; **item 3 dropped** (below); item 4 built and measured on seven nodes, and its three answers to the per-call spawn cost — the amortisation guard, the thread pool, the batched API — are built and measured (parts 17–19): **the pool's recommendation is WITHDRAWN and both switches stay off (D53), the guard does not ship (D52), the batched API is unmeasured.** Threads still default to 1 |
 | 5 — packaging | **in progress.** C surface, distribution surface, Julia consumer all exist. **Nothing published, nothing tagged**, on purpose |
-| — Apple Silicon | **Stage A complete** (part 20): honest environment reporting, three baselines, the portable path measured at 0.46x of TBLIS. **Stage B not started** |
+| — Apple Silicon | **Stage A complete** (part 20): honest environment reporting, three baselines, the portable path at 0.65x of OpenBLAS-TTGT. **Stage B: the kernel is built and green and its register blocks are measured** (part 21); the end-to-end A/B and the cut-short corpus session are what remain |
 
 ### The one open engine question
 
@@ -364,6 +356,7 @@ Reports, by topic. Live chapters first, closed phases last:
 | [Threading](#threading) | parts 8, 8b, 12, 14, 15, 16, 17, 18, 19 | the scheme and its scaling on seven nodes; the 2-D partition; the domain-aware gate; load imbalance; what TBLIS does; the two experiments that decide the default; three answers to the spawn cost and the batch axis |
 | [Packaging and distribution](#packaging-and-distribution) | Phase 5 parts 1, 2, C-surface interlude | quality gates, the API tiers, the TAPP conformance suite, the C header and consumer, cross-compilation, the JLL and the Julia package |
 | [The baseline comparison](#the-baseline-comparison) | Phase 5 part 3 | the engine against TBLIS and TTGT, re-measured; A44–A46 |
+| [Apple Silicon](#part-20--apple-silicon-and-what-the-portable-path-actually-costs) | parts 20, 21 | the portable path's real cost and the one instruction behind it; three honest-reporting fixes; the NEON register blocks measured, and the budget that filtered well and chose badly |
 | [Archive: phases 1–3](#archive-phases-13) | Phase 1, 2, 2b, 3 | closed and unlikely to be reopened: the premise check, the correct engine, the three methods, the AVX-512 kernels and the three-way comparison |
 
 **Part number → chapter**, for citations written before this file was
@@ -381,6 +374,7 @@ reorganised:
 | 12 | threading |
 | 13 | the write-back and the two shape rules |
 | 14, 15, 16, 17, 18, 19 | threading |
+| 20, 21 | Apple Silicon |
 | Phase 5 parts 1, 2, and the C-surface interlude | packaging and distribution |
 | Phase 5 part 3 | the baseline comparison |
 
@@ -659,6 +653,9 @@ in [`REFUTED.md`](REFUTED.md).
 | A57 | The L2 is private to a core, so the analytical model may budget all of it to one thread. | **False on Apple Silicon, and it had been invisible because every x86 machine measured makes it true.** `model_mc` reads `l2.ways` and `l2.bytes_per_way()` and never divides by `cores_sharing(l2)`; on Cascade Lake, Zen2 and Ice Lake the L2 is per-core (`shared_by` ≤ 2, SMT siblings) so the omission cannot be seen. Six M3 Max P-cores share one 16 MiB L2, so the model hands each the whole thing — a 6x over-allocation, and it derives a **12 MB packed `A` block** for `f64`. A **third, structural** reason A33 stands, not a reopening. | Apple Silicon (part 20) |
 | A58 | "The portable scalar path is not competitive" is a statement about vectorisation. | **False, and it understated the path by an order of magnitude.** LLVM vectorises `real_ukr` to NEON unasked — eight `float64x2_t` accumulators, `ld1r.2d` broadcasts, even the lane-indexed `fmul.2d v, v, v[0]`. What it will not do is contract `acc += a * b` into `fmla`, because that is two roundings and IEEE forbids it. So the path runs at two instructions per MAC where the machine offers one, **halving the ceiling available to it to 32.4 GF/s**, and on its best shape it reaches **80.5% of that** — against OpenBLAS's 87.1% of the full 64.8. The gap is **one instruction form, not a missing kernel**: **0.65x of OpenBLAS-TTGT** in `f64` over 12 shapes at 64 MiB, not 0.05x. A NEON kernel is worth ~2x, not 10x. | Apple Silicon (part 20) |
 | A59 | The complex-method ranking is decided by bytes moved per useful flop, everywhere. | **Incomplete, not refuted — it depends on which resource binds.** On the portable path 3m leads planar by **1.229** (`c64`, premise, 64 MiB), a third ordering after Cascade Lake's and Ice Lake's. Mechanism: with no FMA the kernel is *instruction-throughput*-bound, so 3m's 25% saving in products is a 25% saving in the binding resource, and the bytes-per-flop accounting that decides it on x86 is not what binds. **This is a fact about the crippled kernel, not about Apple Silicon**, and it may invert once a NEON FMA kernel exists. Re-measure in Stage B; do not carry it forward. | Apple Silicon (part 20) |
+| A60 | The register budget that correctly rejects bad shapes can also choose the good one. | **False, and the two halves are separate skills.** The budget filters well — the `!` over-budget flag tracks collapse closely — and then names the wrong winner in **three of eight** columns on an M3 Max. The sharp case: it proposed `f64` real `6x8`, which is BLIS's own `armv8a_asm_6x8`, and that agreement was recorded as corroboration; the machine prefers `16x3` by 4.9% (2.6x the floor), a shape the budget calls **over** its limit at `live = 33`. A34 on a fourth ISA. A library's chosen shape agreeing with a model is not evidence about this engine's kernels. | Apple Silicon (part 21) |
+| A61 | A rule fitted on one microarchitecture's register blocks will not hold for another ISA's. | **False here, and worth naming because so little transfers.** The guarded row-block rule was derived on Cascade Lake, on AVX-512, for `MR` in {16, 32, 48}. On NEON `f64` the measured shape `16x3` costs write-back regularity on 12 of 49 cases (`wb` 1.00 → 0.67, the whole `abcijk` family, since 16 does not divide TCCG's 24) and **the unmodified rule demotes exactly those 12** — all have `k = 24` against its `k <= 32` guard. 0 of 392 left with no regular shape. Against A56's four non-transferring choices, this one transfers. | Apple Silicon (part 21) |
+| A62 | A `best per method` line from a register-block sweep is a result. | **False without a floor: six of eight were ties.** One arm prints eight confident winners; three arms on the same quiet machine put six of them inside the session's own p90 spread (1.89% `f64`, 3.64% `f32`), and expose three shapes that are **unstable rather than noisy** — 1m `3x10` reads 37.8 / 54.9 / 54.8, a 45% swing, which is a shape doing two different things and not a bad measurement of one. A register block may not be changed on one arm; `scripts/kernel-shapes-compare.py` is the gate. | Apple Silicon (part 21) |
 
 ---
 
@@ -679,7 +676,7 @@ in [`REFUTED.md`](REFUTED.md).
 
 ## Design decisions
 
-D1–D47, complete and in one place. A report names the numbers it introduced and
+D1–D56, complete and in one place. A report names the numbers it introduced and
 does not restate them.
 
 | # | Decision | Rationale |
@@ -738,6 +735,8 @@ does not restate them.
 | D52 | **The amortisation guard does not ship.** `TENSORCONTRACT_AMORTISE` stays reachable as an off-by-default record of the experiment, like `TENSORCONTRACT_DEEPEN`. | Measured on `worker5086` (part 18): it is a *trade*, not a win — it rescues an over-threaded caller by up to 10.8x and costs a correctly-threaded one 10–39% at 2–8 threads on sub-megabyte work, and which side a caller lands on is something a library cannot know. Per case it leaves **12–14% of points more than 10% slower** at those widths, far outside A39's floor. On top of the pool it is pure loss, reaching **0.32**, because it rations a spawn cost the pool has removed. And the form is wrong, not just the constant: a fixed spawn-*fraction* threshold caps at 2 threads where measurement says 4 is optimal, because the real trade is marginal rather than fractional — and fitting a marginal model is where A33 died. Its calibration was sound and validated at one value of the caller's thread count, which is A20 in a third form (A54). |
 | D53 | **`TENSORCONTRACT_POOL=on` was recommended as the default on 2026-08-05 and the recommendation is WITHDRAWN the same day.** The pool stays a switch, off by default (D49); it is **topology-conditional at best**. | Recommended on Zen2 evidence — no per-family cell below 0.99 at any size or width, up to 11.6x, 2.0–2.8x at 16 MiB (part 18) — with the flip deliberately left to the user pending a second machine class. That second machine class **reversed it**: on Ice Lake, 32 cores over one 48 MiB L3, the pool costs up to **2.5x** (46 of 60 per-family cells below 0.97, worst 0.403, 36–48% of individual points below 0.90 at 64 MiB), and at the pre-registered decision cell — 64 MiB, `t32` — it reads **0.80** against the `< 0.97` threshold written down as "a real surprise" (part 19). The Zen2 measurement stands and was always labelled with its machine; what is withdrawn is the default. The a-priori argument that a pool could not be topology-dependent is itself refuted (A55): reusing a thread reuses its allocator arena, so a pool is an allocation-locality change and not merely a thread-lifetime one. **Do not flip this default.** What would revive it: fixing the suspected cause — 32 long-lived buffers at repeating addresses contending in one shared L3 — by offsetting each worker's buffer, then re-running both nodes' arms. |
 | D54 | **A third cache source, Darwin `sysctl`, tried *after* `CPUID`; it reports the **performance** cores and reports **no L3**.** `CacheSource::Sysctl`, `hw.perflevel0.{l1dcachesize,l2cachesize,cpusperl2}` and `hw.cachelinesize`. Associativity is **assumed** (`ASSUMED_WAYS = 8`) because Darwin exports none, and the sets are derived from it so `bytes_per_way * ways == size` still holds. | Off x86 the probe fell to `BUILTIN` — 32 KiB L1d, 256 KiB L2, an 8 MiB L3 shared by 4 — on a machine with 128 KiB, a 16 MiB cluster L2 and no L3 at all. Every descriptor was wrong and `tcbench info` reported them as if probed, which is worse than a blank: `l3_domains` was being derived from a fabricated `shared_by = 4`. Three specifics decided the shape. **After `CPUID`, not before**, because an Intel Mac has both and only `CPUID` reports associativity and sets. **`perflevel0`, not the unprefixed keys**, because on a heterogeneous part `hw.l1dcachesize`/`hw.l2cachesize` answer for the *last* perflevel — the efficiency cores — so the naive read returns 64 KiB and 4 MiB for an M3 Max whose P-cores have 128 KiB and 16 MiB, a silent 2x/4x under-block that looks like a successful probe. **`l3: None`**, because a P-cluster's L2 is the last level Darwin names and the ~48 MiB SLC behind it is not exported; reporting the cluster L2 as both L2 and L3 would double-count it in every budget. Assuming the associativity rather than declining the probe is the right trade because `size`, `line` and `shared_by` are all real and are the only fields the **default** `legacy` path consults — `ways`/`sets` reach only `analytical`, which is not the default and is refuted (A33). **The consequence to know:** `l3_domains` treats a no-L3 part as one domain per thread, so on Apple Silicon it *over-counts* — six cores really share 16 MiB, so 12 threads span two hardware domains and this reports twelve. Nothing single-threaded can see it (`l3_domains(1) == 1`, D44's gate never fires) and `TENSORCONTRACT_L3_DOMAINS=2` expresses the physical count. Which of the two is the right input to the partition rule on a cluster-L2 topology is **unmeasured**, and that is what the override is for. |
+| D55 | **The NEON register-block menus are the measured ones**, three arms of `examples/kernel_shapes` on an M3 Max, ordered by measurement, with the budget-derived incumbent kept wherever the methods tied. `f64` real `16x3`, planar `4x6`, 1m `2x8`, 3m `2x8`; `f32` real `8x8`, planar `8x6`, 1m `8x6`, 3m `4x8`. | A34 requires it: register blocks are per-microarchitecture, and a menu picked from a register budget is a model. The budget got three of eight wrong (A60). Six of the eight winners are **ties inside the session floor** and are labelled as such rather than promoted, which is the whole reason three arms were run (A62). Three shapes are excluded outright as *unstable* — 1m `3x10` swings 45% between arms — which is a stronger disqualification than measuring slower. **`f64` real `16x3` is the one that needed a second decision:** it is a real 4.9% kernel win at 2.6x the floor, and `MR = 16` costs write-back regularity on 12 of 49 `f64` cases because 16 does not divide TCCG's 24. It ships because the guarded row-block rule already demotes exactly those 12 to `4x8` on its `k <= 32` guard, leaving 0 of 392 without a regular shape (A61) — not because 12 cases were judged tolerable. |
+| D56 | **`scripts/kernel-shapes-compare.py`, and the rule that a register block may not be changed on one sweep arm.** Two or more arms, scored on the per-cell median, floor as a p90, `>5%` arm-to-arm spread reclassified as *unstable* rather than noisy. | The sweep's `best per method` footer is the thing that gets copied into a `cfg_*` menu, and it is a single number with no error bar — exactly the shape of the mistake A46 records. Building the floor into the tool rather than the procedure is what makes it survive a handoff. The `>5%` reclassification earns its place separately: a bimodal cell is not a noisy measurement to be averaged, it is a shape that must not ship at any mean, and averaging would have hidden all three found here. |
 
 ---
 
@@ -5083,6 +5082,112 @@ which emits a header and no rows because `row_blocks` returns `&[]` off x86.
 and does **not** print command lines, so the exclusivity guard in five drivers
 cannot filter its own subshell and refuses to start — silently, and looking exactly
 like a real co-tenant. `pgrep -fl`. `date -Is` also fails where `-Iseconds` works.
+
+---
+
+## Part 21 — The NEON register blocks, measured
+
+**2026-08-06, `CKF6QCDVPD` (Apple M3 Max),
+`bench-results/CKF6QCDVPD-m3max/kernel-shapes*.txt`.** Stage B's calibration
+step. The NEON menus shipped a few hours earlier were derived from the
+32-register budget alone and said so; this replaces them with three arms of
+`examples/kernel_shapes` and a floor.
+
+### Three arms, because one has no floor
+
+~8 min each, no baselines, machine quiet, AC power. Scored with the new
+`scripts/kernel-shapes-compare.py`, which is what converts three arms into a
+floor, a list of unstable shapes and a per-method margin. **Scored at the
+deepest `kc` column only** — 256 for `f64`, 384 for `f32` — and that is not a
+preference: it is what `Blocking::derive` gives those element sizes, so these
+are the shapes the driver runs. The `kc = 16` column is a regime the engine
+never enters.
+
+| | floor, median | floor, p90 | stable shapes |
+|---|---|---|---|
+| `f64` / `c64` | 0.73% | **1.89%** | 38 of 41 |
+| `f32` / `c32` | 1.24% | **3.64%** | 41 of 41 |
+
+Leads are scored against the p90. That the `f32` floor is double the `f64` one
+is itself a small finding: the same shapes run at twice the throughput at
+`L = 4` and are correspondingly more exposed to a laptop's clock.
+
+**Three shapes are unstable rather than noisy** — an arm-to-arm disagreement
+this size is a shape doing two different things, not a bad measurement of one
+number. They are excluded from the floor and are not shippable at any mean:
+
+| | arms | spread | |
+|---|---|---|---|
+| 1m `3x10` | 37.8 / 54.9 / 54.8 | **45.2%** | over the register budget |
+| 3m `8x2` | 63.1 / 73.3 / 72.7 | 16.2% | |
+| 3m `6x3` | 70.7 / 62.6 / 70.9 | 13.3% | |
+
+### What shipped, and six of eight are ties
+
+| | shape | GF/s | margin | |
+|---|---|---|---|---|
+| `f64` real | **`16x3`** | 58.3 | +4.9% over `4x8` | 2.6x floor — **measured** |
+| `f64` planar | `4x6` | 56.2 | +0.2% | a tie with `4x5`, `2x12` |
+| `f64` 1m | `2x8` | 55.9 | +1.1% | a tie with `4x6`, `3x8` |
+| `f64` 3m | **`2x8`** | 79.3 | +7.6% over `4x3` | 4.0x floor — **measured** |
+| `f32` real | `8x8` | 111.5 | +0.5% | a tie, six ways |
+| `f32` planar | `8x6` | 112.1 | +0.1% | a tie with `8x5`, `4x12` |
+| `f32` 1m | `8x6` | 111.2 | +1.4% | a tie with `6x8`, `12x4` |
+| `f32` 3m | **`4x8`** | 159.1 | +7.1% over `8x3` | 2.0x floor — borderline |
+
+**Saying "tie" is the deliverable, not a hedge.** A single arm would have
+printed eight confident winners; six of them are inside this session's own
+spread. Where a method tied, the budget-derived incumbent was kept and the menu
+below the first entry is ordered by measurement without any claim that the order
+is resolved.
+
+### The budget was a good filter and a bad chooser
+
+It eliminated every shape that collapses — the correlation between the `!`
+over-budget flag and a bad number is strong — and then named the wrong winner in
+**three of eight** columns. `f64` real is the sharp case. The budget proposed
+`6x8`, which is `bli_dgemm_armv8a_asm_6x8`, BLIS's own AArch64 shape, and that
+agreement was recorded as corroboration. The machine prefers `16x3` by 4.9%,
+2.6x the floor — and `16x3` is a shape the budget calls **over** its 32-register
+limit at `live = 33`.
+
+This is A34 restated on a fourth ISA rather than a new finding, and it is
+recorded as A60 because the specific form matters: *the model that correctly
+rejects is not thereby a model that correctly selects*, and a well-known
+library's chosen shape agreeing with the model is not evidence about this
+engine's kernels.
+
+`16x3` is also the one shape whose two regimes disagree: 0.0% spread across
+three arms at `kc = 64` and `256`, and bimodal at `kc = 16` (51.5 / 51.5 /
+40.9). The engine never runs it at 16, so it ships — but a future change to
+`Blocking::derive` that shallows `kc` for `f64` would need to re-check this,
+and that is exactly the change item 6 of the Stage B list contemplates.
+
+### The interaction the sweep cannot see, and why the default is safe anyway
+
+`kernel_shapes` measures one kernel on hot packed panels. It knows nothing about
+write-back, and `MR` is not only a kernel constant — it is the granularity at
+which the *output's* row scatter is blocked.
+
+`tcbench shapes`, which works here now that the NEON menus give `row_blocks`
+something to return, says what that costs: **`MR = 16` drops write-back
+regularity on 12 of 49 `f64` cases**, the whole `abcijk` family, `wb` 1.00 →
+0.67 and `reg_a` → 0.67 on six of them. 16 does not divide the 24 that TCCG
+rounds every stride-1 extent up to; 4, 6, 8 and 12 do. This is the first time
+the corpus has been anything but perfectly regular on this machine — part 20
+recorded `reg_a = 1.000` on 784 of 784 rows, at the scalar path's `MR = 4`.
+
+**It ships as the default anyway, and the reason is a measurement, not a
+tolerance:** the guarded row-block rule already demotes exactly those 12 to
+`4x8`. Every one of them has `k = 24`, and the rule's first guard is `k <= 32`.
+So `tcbench shapes` reports 12 of 392 case-dtype-methods changing shape, **0**
+left with no regular shape on their menu, and **0** moved onto a majority-gather
+path.
+
+That rule was derived on Cascade Lake, on AVX-512, for `MR` in {16, 32, 48}, and
+it transfers to NEON `f64` unmodified. Given A56 — four threading or kernel
+choices that fail to transfer — a rule that does transfer is worth naming.
+Recorded as A61.
 
 ---
 

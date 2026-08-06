@@ -1,6 +1,6 @@
 # `scripts/` — what each one is for
 
-Thirty-three files, and the overlaps are real but mostly not accidental. This
+Thirty-five files, and the overlaps are real but mostly not accidental. This
 index exists so that "which script do I use" is answered here rather than by
 reading five headers, and so that a script kept only because it produced
 committed data is visibly that.
@@ -37,7 +37,9 @@ into it instead, because they never compile.
 | decide between N discrete options | sweep the **whole grid** once (`phase4c`/`phase4d`/`phase4e-blocking.sh`), then score rules offline — see below |
 | run a whole session on a cluster node | **`rusty-compare.sbatch`** or **`rusty-phase4.sbatch`**, or `node-session.sh` by hand |
 | know if this machine can host concurrent arms | `validate-placement.sh`, then `placement-verdict.py` |
-| analyse committed data, costing no CPU | `compare-sweeps.py`, the five `*-score-rule*.py`, `thread-width.py` |
+| analyse committed data, costing no CPU | `compare-sweeps.py`, `kernel-shapes-compare.py`, the five `*-score-rule*.py`, `thread-width.py` |
+| pick register blocks from a `kernel_shapes` sweep | run it **two or three times**, then `kernel-shapes-compare.py` — one arm has no floor and cannot say which winner is real |
+| A/B a runtime switch **on macOS** | **`macos-neon-ab.sh`** (`ab.sh` cannot run there) |
 
 **The grid pattern is the most valuable thing in this directory.** When the
 choice is discrete, measure every option once and score candidate rules against
@@ -62,6 +64,7 @@ the orientation rule were settled that way, and the grids are still in
 | `phase4f-threads.sh` | Thread scaling, physical cores of one socket, `t1` brackets, a `--cross-socket` arm. Wants a whole socket. ~1 h | current |
 | `ccq-blocking-night.sh` | The blocking grid on the **reference machine**, overnight: warm-up, grid, audit, score. ~7 h | current. Not superseded by `phase4e-blocking.sh` — it *calls* it twice. The real duplication is with `node-session.sh`, which implements the same warm-up/topology/grid orchestration independently |
 | `validate-placement.sh` | The pre-registered test: can arms run one-per-L3-domain without changing what is measured? `solo1`/`solo2`/`placed` plus memory-bound variants | current |
+| `macos-neon-ab.sh` | The scalar-vs-NEON A/B: `warm, A-scalar, B-neon, A2-scalar`, one binary, `TENSORCONTRACT_KERNEL` as the treatment, `ttgt` and `tblis` riding along as columns the switch cannot reach. Derives its own floor from A/A2 and prints both tables. ~1 h. **Does not compile** — it refuses to start unless `$OUT/bin/tcbench-tblis` is already there | current. This is `ab.sh` for Darwin, and it is a separate file rather than a flag because `ab.sh` pins with `taskset` and pinning does not exist here |
 | `macos-session.sh` | **The only driver that runs on Darwin.** `prep` builds the three baseline variants (OpenBLAS, Accelerate, TBLIS) and is the only thing that compiles; `bench` runs `info`, `orient`, `verify` in all three methods, `premise` against *both* OpenBLAS and Accelerate, a discarded warm-up plus **three identical** corpus arms, and `ragged`. Its header carries the recipe for all three baselines | current. Not a substitute for `compare-bench.sh` and not comparable with it: no CPU pinning exists on Darwin, so this cannot be a pinned single-core measurement the way every other number here is. It exists because 17 scripts in this directory cannot run on macOS at all — `taskset`, `/proc/stat`, sysfs, `os.sched_getaffinity` — and because BSD `pgrep -a` silently fails to print command lines, which makes every other driver's exclusivity guard refuse to start |
 
 ## Orchestration
@@ -82,6 +85,7 @@ the orientation rule were settled that way, and the grids are still in
 | script | what it does |
 |---|---|
 | `compare-sweeps.py` | Two sweep CSVs into the ratio tables used throughout `DECISIONS.md`, with the AB/BA split as a control |
+| `kernel-shapes-compare.py` | Two or more `examples/kernel_shapes` runs into a floor, a list of **unstable** shapes (arms disagreeing by >5% — a shape doing two different things, not a noisy number), and each method's winning margin in units of that floor. Scores on the per-cell median, so one wild arm cannot crown a shape. Use it before copying a `best per method` line into a `cfg_*` menu: on the M3 Max it demoted six of eight winners to ties |
 | `rowblock-score-rules.py` | Score candidate row-block rules against the 1c grid |
 | `amortise-score-rule.py` | Score candidate amortisation-guard constants against a `phase4g` grid. Reproduces D48's table in part 17, and cross-checks the constant against `plan.rs` so the script and the engine cannot drift apart silently |
 | `rowblock-decompose.py` | Split a row-block grid into what the shape *costs* and what it *buys* |

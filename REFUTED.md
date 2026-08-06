@@ -986,6 +986,74 @@ and barrier skew, whose count grows with `N/NC` x `K/KC`. A microbenchmark separ
 spawn from placement from barrier count would settle it, and needs no corpus and no
 exclusive node.
 
+## A register budget that rejects the bad shapes also picks the good one (A60)
+
+**Was assumed.** `live = accumulators + A planes + broadcasts <= regs` filters
+the shapes that spill, so the survivor it ranks highest is the shape to ship.
+The NEON menus were seeded that way, and the seeding looked corroborated: its
+two leading `f64` real candidates were `bli_dgemm_armv8a_asm_6x8` and `8x6r`,
+BLIS's own hand-tuned AArch64 shapes.
+
+**Refuted on the M3 Max.** The filter half holds — the over-budget `!` flag
+tracks collapse closely — and the choosing half is wrong in **three of eight**
+columns. `f64` real is the sharp case: the budget proposed `6x8` and the machine
+prefers **`16x3` by 4.9%**, 2.6x the session floor, and `16x3` is a shape the
+budget calls *over* its limit at `live = 33`. `f32` real moves off BLIS's `12x8r`
+to `8x8`, and `f32` 1m prefers `NR = 6` where `f64` 1m prefers `NR = 8` on the
+identical `MV x NR` grid.
+
+**Confidence.** `measured once` — one machine, three arms, floor derived
+in-session, and the direction is what matters here rather than the magnitude.
+This is A34 (register blocks are per-microarchitecture) arriving on a fourth
+ISA, so the direction has four machines behind it even though this magnitude has
+one. **No Apple number is a pinned measurement** — Darwin has no CPU affinity
+API.
+
+**Evidence.** `bench-results/CKF6QCDVPD-m3max/kernel-shapes{,-repeat,-arm3}.txt`;
+`scripts/kernel-shapes-compare.py`; `DECISIONS.md` part 21; A60, D55.
+
+**Rule.** Seed a menu from the budget, then **measure it**. A well-known
+library's chosen shape agreeing with your model is evidence about the model, not
+about your kernels — the two libraries do not share a micro-kernel body, a
+packing format, or a write-back.
+
+**What would reopen it.** Nothing reopens the general claim; what is open is
+**AVX2, whose shapes are still budget-derived** and now have a measured reason to
+be doubted. `examples/kernel_shapes` on a Haswell or Zen box is ~8 min and settles
+it.
+
+## A sweep's `best per method` line is a result (A62)
+
+**Was assumed.** `examples/kernel_shapes` prints a winner per method; copy it
+into the `cfg_*` menu. Every AVX-512 and AVX2 shape in this repository was chosen
+from a single run of it.
+
+**Refuted, and cheaply.** Three arms on a quiet machine put **six of eight**
+winners inside the session's own p90 spread (1.89% `f64`, 3.64% `f32`) — they are
+ties, and a single arm reports them as decisions. Worse, three cells are
+**unstable rather than noisy**: 1m `3x10` reads 37.8 / 54.9 / 54.8 across arms, a
+45% swing, and 3m `8x2` and `6x3` swing 16% and 13%. A bimodal cell is not a bad
+measurement of one number; it is a shape doing two different things, and
+averaging it — which is what a "more reps" answer does — would have hidden all
+three. Two of the three are over the register budget, which is a plausible
+mechanism (spilling that flips) and not a measured one.
+
+**Confidence.** `measured once` for the magnitudes; `structural` for the claim
+that one arm cannot produce a floor.
+
+**Evidence.** The three `kernel-shapes*.txt` files above;
+`scripts/kernel-shapes-compare.py` prints the floor, the unstable list and each
+margin in units of the floor. `DECISIONS.md` part 21; D56.
+
+**Rule.** **A register block may not be changed on one sweep arm.** Run two or
+three, score with `kernel-shapes-compare.py`, keep the incumbent wherever the
+result is a tie, and never ship a shape flagged unstable regardless of its mean.
+
+**What would reopen it.** Nothing about the rule. But the *existing* AVX-512 and
+AVX2 menus were each chosen from one arm, so their winners have the same unknown
+error bar — re-scoring them costs 8 min per arm on the relevant machine and no
+baselines.
+
 ## A baseline built from the right source at the right commit is the right baseline (A45)
 
 **Was assumed.** Version plus commit identifies a baseline.
