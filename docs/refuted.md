@@ -13,7 +13,12 @@ carries the field that makes it useful rather than discouraging: **what would
 reopen it.**
 
 The full accounts stay in [`notebook/`](notebook/README.md); every entry below
-points at one.
+points at one. For what *did* survive measurement, see
+[`results.md`](results.md).
+
+Thirty entries, each with a confidence level, an evidence field naming a job id,
+a CSV path or a `file:line`, and a reopening condition. **An entry without
+evidence is a rumour and does not belong here.**
 
 ## The confidence ladder
 
