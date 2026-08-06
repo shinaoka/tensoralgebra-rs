@@ -238,7 +238,24 @@ see `DECISIONS.md` A21.
 ### Not included
 
 * No AArch64/NEON, RISC-V or GPU kernels. Off x86 the engine runs the portable
-  scalar path, which is correct but not competitive.
+  scalar path. **On Apple Silicon that path is now measured, and it costs about
+  1.5x rather than the order of magnitude this entry used to imply.** On an M3 Max,
+  single-threaded, over the 12 premise shapes at 64 MiB: **0.65x of an
+  OpenBLAS-TTGT baseline in `f64`** (19.84 against 30.68 GF/s geomean) and 0.69x
+  in `c64` (24.20 against 35.02).
+  The reason is one instruction form, not a missing kernel. LLVM vectorises the
+  scalar micro-kernel to NEON unasked, but will not contract `acc += a * b` into
+  `fmla` because that is two roundings and IEEE forbids it, so the path runs at
+  two instructions per multiply-accumulate where the machine offers one. That
+  halves the ceiling available to it from 64.8 to 32.4 GF/s — and on its best
+  premise shape it reaches **80.5%** of that, where OpenBLAS reaches **87.1%** of
+  the full one. A NEON kernel is worth roughly 2x here, not 10x.
+  A separate single-case probe at 8 MiB put it at **0.46x of TBLIS 2.0-dev**;
+  that figure is one case at one size and the corpus sweep that would confirm it
+  at 64 MiB has not been run.
+  **Not measured on any other aarch64 part**, nothing about it transfers to
+  RISC-V or to an aarch64 core with different vector issue width, and **none of
+  these is a pinned measurement** — Darwin has no CPU affinity API.
 * No dispatch of the complex method by shape, and it is **not planned**. The
   inversion that would have justified it is a Cascade Lake result, absent on Ice
   Lake, where the same rule would be a pessimisation — and not explained by the

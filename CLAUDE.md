@@ -35,6 +35,12 @@ compared with each other and with TBLIS on equal footing.
 --all-targets` silent, `fmt` clean, everything builds warning-free. Workspace
 MSRV **1.89** (AVX-512 intrinsics stabilised there).
 
+**Apple Silicon work is live, and it is where the last session stopped.** Stage A
+is complete and committed (`DECISIONS.md` part 20); **Stage B — a NEON
+micro-kernel — is not started**, and a measurement session may need finishing.
+`DECISIONS.md` → "Resume here" → "START HERE if you are picking up the Apple
+Silicon work" has the exact state and the ordered next steps.
+
 | phase | state |
 |---|---|
 | 1 — exploration and design | **complete** |
@@ -69,6 +75,17 @@ Five things that decide what you may say and do:
   thread partition (A36), the complex-method ranking (A44) and the thread pool (A56).
   Two machine classes is the minimum for a recommendation, and this project has been
   wrong on one class twice.
+* **Off x86 there is no NEON kernel, and the portable path costs about 1.5x — not
+  the order of magnitude this file used to imply** (A58). On an M3 Max it runs at
+  **0.65x of OpenBLAS-TTGT** in `f64` over 12 shapes at 64 MiB. (A one-case
+  `--size 8` probe read 0.46x of TBLIS; that is provisional and A46 is why.)
+  LLVM vectorises `kernel::scalar` to NEON
+  unasked but cannot contract `acc += a * b` into `fmla`, so it spends two
+  instructions per multiply-accumulate, which halves its ceiling; it then reaches
+  80% of that. **Do not quote any Apple number as a pinned measurement** — Darwin
+  has no CPU affinity API, so none of them is one — and **do not quote Accelerate
+  as a roofline**: its GEMM reaches Apple's AMX coprocessor at 5.2x the NEON FMA
+  peak, so OpenBLAS is the roofline there (part 20).
 * **The engine-vs-baseline numbers in `README.md` are Ice Lake**
   (`worker6156`, jobs 6753260 / 6754877, 2026-08-04/05): 1.31–1.78x TBLIS
   2.0-dev, 1.95–2.20x TTGT. They are **not** differenceable against the Phase 3
@@ -113,6 +130,10 @@ question is closed.
   and the rest at 0.667 / 0.889 / 0.963. Both qualifiers are part of the claim:
   it is 11.7% on an AVX2 node, where `MR = 8` for `f64` does divide 24, and 40.6%
   at `tcbench orient`'s default size, because the extents scale with it.
+  **And it is 0% on aarch64**, where the scalar path's `MR = 4` *does* divide 24:
+  `reg_a = reg_b = 1.000` on 784 of 784 rows at `--size 64`. So the figure is an
+  x86 **register-block** artefact, and on the portable path `--stress ragged` is
+  the only source of irregularity there is.
   Any awkward-stride claim must name its `--stress` mode and quote the observed
   `reg_a`. What the corpus cannot produce is *aperiodic* irregularity; that is
   what `--stress ragged` is for.
@@ -260,6 +281,29 @@ sbatch scripts/rusty-phase4.sbatch                        # rome, exclusive, 12 
 **Submitting is a human step — never automate it.** Only `squeue`, `sacct`,
 `sinfo` and `scontrol show` may be executed here at all, scoped and one-shot.
 Write out the `sbatch` line and ask.
+
+### On an Apple Silicon machine
+
+**Almost none of the above applies.** 17 drivers cannot run — `taskset`,
+`/proc/stat`, sysfs, `os.sched_getaffinity` — `examples/kernel_shapes` is x86-only
+by construction, and `tcbench shapes` emits a header and no rows. One driver works:
+
+```bash
+brew install openblas cmake
+export OPENBLAS_ROOT=$(brew --prefix openblas)
+export TBLIS_ROOT=../baselines/tblis-2.0-install   # recipe in the script header
+scripts/macos-session.sh prep  bench-results/$(hostname -s)-$(scripts/arch-label.sh)
+scripts/macos-session.sh bench bench-results/$(hostname -s)-$(scripts/arch-label.sh)
+```
+
+`prep` is the only thing that compiles; `bench` is ~2.5 h. Three things to know
+before reading anything it produces: **there is no CPU pinning on Darwin**, so
+nothing measured is the pinned single-core measurement the rest of this file
+assumes; **Accelerate is not a roofline** (AMX, 5.2x the NEON peak — OpenBLAS is);
+and the offline `scripts/*.py` are pure stdlib and all work here, so the grid
+scoring workflow is fully available. Two BSD traps that each look like something
+else: `pgrep -a` does not print command lines, so five drivers' exclusivity guards
+silently refuse to start, and `date -Is` fails where `-Iseconds` works.
 
 `rusty-phase4.sbatch` runs `prep, shapes, threads, validate, grid`, decides the
 grid's placement with `scripts/placement-verdict.py` (the rule pre-registered in

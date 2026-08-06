@@ -23,3 +23,4 @@ __pycache__/
 # unanchored `slurm-*.out` excluded those copies too, which is how job 6753261's
 # SIGILL transcript went missing from the commit that documented it.
 /slurm-*.out
+bench-results/*/bin/

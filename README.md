@@ -25,7 +25,8 @@ algorithm is Matthews' block-scatter-matrix tensor contraction
 > |---|---|---|
 > | x86-64 with AVX-512F | AVX-512, per method | register blocks **measured on Cascade Lake**, and they do not transfer — an Ice Lake machine runs three of the eight shipped shapes 9–13% off its own optimum. Cache blocking is fitted to the same Cascade Lake workstation and has now been swept: it is near optimal there |
 > | x86-64 with AVX2+FMA | AVX2, per method | register blocks **measured on Zen2**, and all eight shipped shapes were confirmed as the winners |
-> | anything else | portable scalar | correct; slow by design |
+> | aarch64 (Apple Silicon) | portable scalar — **there is no NEON kernel** | untuned, and now **measured**: `0.65x` of OpenBLAS-TTGT in `f64` on an M3 Max, single-threaded, 12 premise shapes at 64 MiB. Not the order of magnitude "slow by design" suggests — LLVM vectorises the scalar kernel to NEON on its own but cannot fuse `acc += a*b` into `fmla`, so it spends two instructions per multiply-accumulate and reaches 80.5% of the halved ceiling that leaves it, against OpenBLAS's 87.1% of the full one. Not a pinned measurement: Darwin has no CPU affinity API |
+> | anything else | portable scalar | correct; slow by design, and unmeasured |
 >
 > Threading and an analytical cache-blocking model are implemented and **off by
 > default**, and both have now been measured — see [Switches](#switches).

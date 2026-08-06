@@ -31,6 +31,53 @@ An entry without one is a rumour and does not belong here.
 
 # Engine and performance
 
+## "The portable scalar path is not competitive" (A58)
+
+**Tried.** Nothing — this is a claim that stood unmeasured in `CHANGELOG.md`, the
+`README.md` hardware table and the Julia package's confidence section for as long
+as an aarch64 target existed, and it steered the whole framing of what a NEON
+kernel would be worth.
+
+**Expected / what happened.** Expected the portable path to be an order of
+magnitude off a tuned baseline, because it has no vectorised kernel. On an M3 Max
+it is **0.65x of an OpenBLAS-TTGT baseline** in `f64` and 0.69x in `c64` — geomean
+19.84 against 30.68 GF/s, and 24.20 against 35.02, over the 12 premise shapes at
+64 MiB, single-threaded. The disassembly says why: **LLVM vectorises
+`kernel::scalar::real_ukr` to NEON without being asked** — eight `float64x2_t`
+accumulators for the 4x4 tile, `ld1r.2d` broadcasts, and even the lane-indexed
+`fmul.2d v20, v16, v18[0]`. What it will not emit is `fmla`, because
+`acc += a * b` is two roundings and IEEE forbids the contraction. So the path
+spends two instructions per multiply-accumulate where the machine offers one,
+which **halves the ceiling available to it from 64.8 to 32.4 GF/s** — and on its
+best shape it reaches **80.5%** of that, where OpenBLAS reaches 87.1% of the full
+one.
+
+A separate one-case probe at `--size 8` read **0.46x of TBLIS 2.0-dev**. Treat
+that as provisional: it is one case at one size, and per A46 a small-size one-shot
+is exactly the measurement that has misled here before.
+
+**"No vectorised kernel" was true of the source and false of the binary.** The
+gap is one instruction form, not a missing kernel, and the scalar kernel is not
+badly written.
+
+**Confidence.** `provisional` — one machine, one Apple part, and not a pinned
+measurement (Darwin has no CPU affinity API). The efficiency arithmetic is what
+makes it more than a single number: two independently measured efficiencies, 80.5%
+and 87.1%, agree under one frequency assumption. What is missing is the 49-case
+corpus sweep and this session's own floor; both were cut off.
+
+**Consequence.** A NEON micro-kernel is worth roughly **2x**, not 10x. Budget
+Stage B accordingly, and do not justify it with the old claim.
+
+**Evidence.** `bench-results/CKF6QCDVPD-m3max/` and its `PROVENANCE.txt`;
+DECISIONS.md part 20; A58.
+
+**What would reopen it.** A second aarch64 part with different vector issue width,
+or an `f32` measurement — `L = 4` there, so the register pressure and the
+instruction mix both change and the 80% may not hold. Also: if a future toolchain
+contracts the multiply-add (a `-ffp-contract`-equivalent default change), the
+premise disappears and the gap should close on its own.
+
 ## The complex-weakness thesis
 
 **Tried.** The project's founding hypothesis: existing engines underperform on

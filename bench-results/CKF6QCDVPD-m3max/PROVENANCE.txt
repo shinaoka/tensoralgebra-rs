@@ -1,0 +1,150 @@
+The portable path on Apple Silicon, and the first non-x86 measurement here.
+
+  machine : CKF6QCDVPD (a laptop, not a cluster node), Apple M3 Max (T6031)
+            aarch64-apple-darwin, macOS 25.5, 12 P-cores (2 clusters of 6)
+            + 4 E-cores, no SMT
+            P-core: 128 KiB L1d private, 16 MiB L2 shared by 6 cores,
+            NO L3 that Darwin names (a ~48 MiB SLC exists, unexported),
+            128-byte lines, 16 KiB pages, 4.05 GHz turbo on AC power
+  date    : 2026-08-06
+  script  : scripts/macos-session.sh prep|bench, size 64, reps 3
+  engine  : kernel::scalar at MR x NR = 4 x 4 real / 2 x 4 complex.
+            THERE IS NO NEON KERNEL. `TENSORCONTRACT_KERNEL` is a no-op here.
+  full    : DECISIONS.md part 20
+
+WHAT THIS DATA IS GOOD FOR
+
+  The cost of the portable path, the three complex methods compared under an
+  identical kernel, the corpus's structural features at MR = 4, and correctness
+  on a new architecture. That is all.
+
+WHAT IT CANNOT SUPPORT, AND THIS IS NOT BOILERPLATE
+
+  * **These are not pinned single-core measurements.** Every other number in
+    this repository is. Darwin has no CPU affinity API and
+    `thread_policy_set(THREAD_AFFINITY_POLICY)` is a no-op on Apple Silicon, so
+    there is no `taskset` equivalent and none can be written. Add a laptop's
+    DVFS and thermal envelope, and 12 P-cores beside 4 E-cores the scheduler may
+    migrate between. Compensations applied: AC power (the turbo needs it), a
+    quiesced machine, thermal level recorded at both ends of the session,
+    everything pinned single-threaded, and three identical arms instead of one.
+    None of them is a substitute. The one thing better here than on a cluster
+    node: no SMT, so the sibling-shares-L1d hazard does not exist.
+  * **No number here may be compared with a number from another machine.**
+    Different architecture as well as a different hierarchy.
+  * **Nothing here is evidence about Apple Silicon as hardware.** It is evidence
+    about the portable path on Apple Silicon. The two differ by about 2x (A58).
+
+THE ACCELERATE FILE IS NOT A ROOFLINE. DO NOT MERGE IT WITH THE OPENBLAS ONE.
+
+  premise-openblas-f64c64.csv     <- the roofline. OpenBLAS 0.3.34, NEON
+  premise-accelerate-f64c64.csv   <- OFF-ISA. Apple AMX. A ceiling nothing
+                                     NEON can reach, this engine included
+
+  The measurement proves it rather than assuming it. Accelerate's TTGT reaches a
+  geomean 79.2 GF/s in f64 and 99.4 in c64 and PEAKS AT 334.8, against a P-core
+  NEON f64 FMA peak of 64.8 GF/s. 5.2x the peak is not NEON. OpenBLAS on the
+  same shapes reads 30.7 and 35.0. So A3's "same-shape vendor GEMM as the
+  achievable ceiling" is a different quantity against the two, and a ratio
+  against Accelerate is not an efficiency number in the sense used everywhere
+  else in this repository.
+
+  A free control fell out of running premise twice: the engine columns cannot be
+  touched by a BLAS swap, and they moved <=0.5% (f64 19.84 -> 19.74 GF/s,
+  c64 24.20 -> 24.01). Rule 4, and the only floor figure this file had at the
+  time the session was interrupted.
+
+HEADLINE NUMBERS — AND EACH ONE COMES WITH ITS SIZE
+
+  A46 exists because a one-shot small-size run produced a 1.68x that vanished at
+  the published size. So: the numbers to quote are the premise ones, at 64 MiB.
+
+  premise-openblas-f64c64.csv, 12 shapes, 64 MiB, reps 3, 1 thread, geomean GF/s:
+
+                              f64                  c64
+    engine (scalar)          19.84       planar 24.20 / 1m 23.32 / 3m 29.74
+    OpenBLAS TTGT (NEON)     30.68                    35.02
+    engine / OpenBLAS         0.65            0.69 planar, 0.85 3m
+
+  In f64 all three methods read 19.84 EXACTLY, because they select the same real
+  kernel. That is a control on the harness, not a coincidence.
+
+  Best-shape efficiency, which is what identifies the mechanism:
+
+    engine   26.07 of 32.4 GF/s  = 80.5%   <- ceiling HALVED by the missing FMA
+    OpenBLAS 56.44 of 64.8 GF/s  = 87.1%   <- the full NEON FMA ceiling
+
+  Two independently measured efficiencies agreeing under one frequency
+  assumption (4.05 GHz P-core turbo, AC power). That agreement is the evidence,
+  more than either number alone. Do NOT apply the 32.4 ceiling to the complex
+  columns: c64 3m reads 36.94, i.e. 114% of it, because useful flops for 3m
+  exceed the products it issues. That is 3m working, not an error.
+
+  The gap is ONE INSTRUCTION FORM, not a missing kernel: LLVM vectorises
+  real_ukr to NEON unasked, but will not contract `acc += a * b` into `fmla`
+  because that is two roundings and IEEE forbids it. See A58.
+
+  PROVISIONAL, AND LABELLED: a separate probe -- one case (ij-ik-kj), --size 8,
+  reps 1 -- read engine 25.9, OpenBLAS-TTGT 54.5, TBLIS 2.0-dev 55.8 in f64,
+  i.e. 0.46x of TBLIS. It is one case at one size and there is no TBLIS number
+  at 64 MiB, because the TBLIS sweep did not run. Do not promote 0.46 to the
+  headline until a 64 MiB sweep says so.
+
+  Complex methods, premise geomean over 12 cases, c64, 64 MiB:
+
+    3m      29.74 GF/s      <- leads planar by 1.229
+    planar  24.20
+    1m      23.32
+
+  A THIRD ordering, after Cascade Lake's and Ice Lake's. It is a fact about the
+  crippled kernel, not about the machine: with no FMA the kernel is
+  instruction-throughput-bound, so 3m's 25% saving in products is a saving in
+  the binding resource, and the bytes-per-useful-flop accounting that decides it
+  on x86 is not what binds. EXPECT THIS TO MOVE once a NEON FMA kernel exists.
+  See A59. In f64 all three methods read 19.84 exactly, because they select the
+  same real kernel — a control on the harness, not a coincidence.
+
+STRUCTURAL
+
+  orient.csv: reg_a = 1.000 and reg_b = 1.000 on 784 of 784 rows. The corpus
+  really is fully regular here, because MR = 4 divides the 24 that TCCG rounds
+  every stride-1 extent up to. CLAUDE.md's 42.9%-below-1.0 is an x86
+  register-block artefact needing MR in {16, 32, 48}. So `--stress ragged` is
+  the ONLY source of irregularity on this machine, and any gather-path or
+  write-back claim taken here without it is a claim about the regular case.
+
+  `tcbench shapes` is absent on purpose: it emits a header and no rows off x86,
+  because `row_blocks` returns `&[]`. `TENSORCONTRACT_ROWBLOCK` is inert too.
+
+SESSION STATUS — INCOMPLETE ON PURPOSE, AND A MISSING FILE MEANS CUT OFF
+
+  The session was STOPPED before the corpus sweeps finished. What is here is
+  complete and trustworthy:
+
+    info, orient  (784 rows)
+    verify x3     all 49 cases x 4 dtypes within tolerance, in planar, 1m and
+                  3m, against OpenBLAS-TTGT, Accelerate-TTGT and TBLIS
+    premise x2    one per BLAS, 12 shapes, 64 MiB, reps 3
+
+  What is NOT here, and was never written:
+
+    warm/A/A2/A3-f64c64.csv, A-f32c32.csv   the 49-case corpus arms
+    ragged-c64.csv                          the only irregularity source here
+    tblis-f64c64.csv                        the only 64 MiB TBLIS number
+    floor-A2.txt, floor-A3.txt              THIS SESSION HAS NO FLOOR
+
+  Why it was stopped: one corpus arm costs ~50 min here (four engines, the
+  scalar one slow), so five arms plus ragged plus TBLIS is ~5 h, and the session
+  could not be carried across a handoff. `prep` IS done -- its three binaries are
+  in bin/ -- so re-running costs no compile:
+
+    scripts/macos-session.sh bench bench-results/CKF6QCDVPD-m3max 64 3
+
+  DO NOT COMPILE WHILE IT RUNS: the arms invoke the binaries in bin/.
+
+  THE CONSEQUENCE FOR EVERY NUMBER ABOVE: there is no in-session floor, so
+  nothing here has an error bar derived the way this project requires. The one
+  substitute available is the premise control -- the engine columns cannot be
+  moved by a BLAS swap and they moved <=0.5% -- which bounds drift between two
+  adjacent arms and says nothing about per-case readability. Treat every ratio
+  above as provisional until the corpus arms and their floor exist.
