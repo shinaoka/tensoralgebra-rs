@@ -139,8 +139,11 @@ is a separate confound from time (A46).
   memory-bound shapes where 3m's flop saving pays, are **Cascade Lake results that
   do not transfer**: on Ice Lake 3m is last in every column and wins 0 of 49 cases
   (0.694 `c64`, 0.744 `c32` against planar, where Cascade Lake had 0.956 and
-  0.921), and the inversion is absent (A44). Partly confounded with the register
-  blocks being wrong there (A34). The ranking also depends on the instruction set:
+  0.921), and the inversion is absent (A44). This was first recorded as partly
+  confounded with the register blocks being wrong there (A34); **it is not.** The
+  kernel sweep that settles it was already committed, and 3m ships the shape that
+  sweep names as its own Ice Lake best, so there is no better shape to give it.
+  The ranking also depends on the instruction set:
   at the kernel level on **AVX2**, 3m comes first in `f32`/`c32`, the opposite of
   AVX-512 (A24). Do not treat the ranking as a property of the engine.
 * **Against the baselines on Ice Lake** — median over the 12-case premise set at

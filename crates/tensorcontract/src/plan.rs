@@ -968,10 +968,11 @@ impl Plan {
     ///
     /// [`IRREGULAR`]: crate::scatter::IRREGULAR
     ///
-    /// # The rule, and the three guards it needs
+    /// # The rule, and the two guards it needs
     ///
     /// Take the first shape on the menu that makes *every* output row block a
-    /// single run, but only when all three of these hold. Each guard is there
+    /// single run, but only when both of these hold. (A third guard existed and
+    /// was removed in Phase 4.1d; see below.) Each guard is there
     /// because the grid in `bench-results/phase4c` measured what happens
     /// without it; none is a plausibility argument.
     ///
@@ -1253,9 +1254,11 @@ enum PartitionMode {
 
 /// `TENSORCONTRACT_PARTITION=legacy|domain|m|n|<pm>x<pn>` selects the partition
 /// rule, or pins the layout outright instead of deriving it from the shape.
-/// `legacy` (the default) and `domain` are *rules*; `m`, `n` and `<pm>x<pn>` are
-/// pins. Read once per process; for measurement only, and none of it affects
-/// correctness — every partition gives bitwise identical results.
+/// `domain` (**the default since D44**) and `legacy` are *rules*; `m`, `n` and
+/// `<pm>x<pn>` are pins. `legacy` names the ungated pre-2026-08-04 rule, which is
+/// what every threaded number committed before that date was measured with. Read
+/// once per process; for measurement only, and none of it affects correctness —
+/// every partition gives bitwise identical results.
 fn partition_override() -> PartitionMode {
     #[cfg(feature = "std")]
     {

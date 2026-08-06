@@ -213,7 +213,7 @@ is a trap** — the `auto`-configured build is skx-only and SIGILLs without
 AVX-512; `../baselines/tblis-2.0-x86_64-install` is the multi-config sibling a
 non-AVX-512 node needs. Keep both, and see `DECISIONS.md` → "Environment" for why.
 
-`scripts/README.md` is the index of all 31 scripts, including which are
+`scripts/README.md` is the index of all 32 scripts, including which are
 superseded. The entry points that matter:
 
 ```bash

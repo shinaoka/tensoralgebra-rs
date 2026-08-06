@@ -90,8 +90,11 @@ the bottleneck.
 `(float, double, scomplex, dcomplex)`, and **Sandy Bridge is the only
 configuration that fills the complex slots**. On Haswell, Zen, Skylake-X and
 KNL, TBLIS 1.x runs complex on the generic templated fallback while real gets
-hand-tuned BLIS assembly. Block scatter is fully regular (`regA = 1.00`) in
-every case measured, so the gather path is not involved at all.
+hand-tuned BLIS assembly. At TBLIS's own register blocks, which divide the
+corpus's multiples of 24, block scatter is regular (`regA = 1.00`) in every case
+measured, so the gather path is not what separates the two. That is a statement
+about TBLIS's blocks, not about the corpus: at this engine's `f32`/`c32` blocks
+the same cases are irregular 42.9% of the time.
 
 TBLIS 2.0 fixes this by adopting BLIS as its core framework, which brings the
 1m induced method. Complex immediately regains full shape sensitivity
@@ -324,7 +327,7 @@ Plus the levers that exist so a fast path can be A/B-tested at run time rather
 than as a diff between two builds — `TENSORCONTRACT_ORIENT` (`none` | `swap` |
 `legacy`, the row/column orientation), `_ROWBLOCK` (`base` | `auto` | `mr=<n>` |
 `idx=<i>`, the micro-tile row block — `idx=3` reaches the `32x5` shape the known
-defect below is about), `_WRITEBACK` (`gather` forces the general scatter path),
+defect above is about), `_WRITEBACK` (`gather` forces the general scatter path),
 and `_MC`/`_KC`/`_NC` with their `_MC_PCT`/`_NC_PCT`/`_KC_COUPLE` relatives for
 cache blocking. None of them affects correctness; they exist for measurement, and
 a build-to-build diff already produced one wrong sign here.
@@ -360,7 +363,7 @@ Complex contraction can be induced from real arithmetic in several ways, and
 which one wins depends on shape, element type and machine. Rather than pick
 one, the engine implements three and lets you switch:
 
-| [`ComplexMethod`] | A / B reals per complex elt | FMAs per k per tile | accumulator planes |
+| `ComplexMethod` | A / B reals per complex elt | FMAs per k per tile | accumulator planes |
 |---|---|---|---|
 | `Planar` (default) | 2 / 2 | `4*MR*NR` | 2 |
 | `OneM` — BLIS's 1m, what TBLIS 2.x uses | **4** / 2 | `4*MR*NR` | 2 (as `2*MR x NR` real) |

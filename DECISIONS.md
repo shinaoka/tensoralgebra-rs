@@ -35,7 +35,7 @@ silent, `fmt` clean. Workspace MSRV 1.89.
 | 1 — exploration and design | **complete.** Premise resolved with data; the founding thesis is refuted and the displaced finding is better (see `REFUTED.md`) |
 | 2 / 2b — correct engine, three complex methods | **complete** |
 | 3 — micro-kernels | **complete.** AVX-512 for `f32`/`f64` and all three complex methods; AVX2 added later, both measured |
-| 4 — profiling and improvement | **in progress.** Items 1, 1c, 1d closed with wins; item 2 closed with a negative result; **item 3 dropped** (below); item 4 built and measured on seven nodes, and its three answers to the per-call spawn cost — the amortisation guard, the thread pool, the batched API — are built and measured (parts 17, 18): **the pool is recommended on and the flip is yours (D53), the guard does not ship (D52), the batched API is unmeasured.** Threads still default to 1 |
+| 4 — profiling and improvement | **in progress.** Items 1, 1c, 1d closed with wins; item 2 closed with a negative result; **item 3 dropped** (below); item 4 built and measured on seven nodes, and its three answers to the per-call spawn cost — the amortisation guard, the thread pool, the batched API — are built and two are measured (parts 17–19): **the pool is topology-conditional and D53's recommendation is withdrawn, the guard does not ship (D52), the batched API is unmeasured.** Threads still default to 1 |
 | 5 — packaging | **in progress.** C surface, distribution surface, Julia consumer all exist. **Nothing published, nothing tagged**, on purpose |
 
 ### The one open engine question
@@ -194,7 +194,7 @@ Reference sections, kept current:
 | [Measurement rules](#measurement-rules) | the noise floors, each with its session and thread count, and the rules that produced them |
 | [Standing assumptions](#standing-assumptions) | A1–A56, one line each, with where the full account is |
 | [Build-vs-reuse decisions](#build-vs-reuse-decisions) | every dependency taken or declined |
-| [Design decisions](#design-decisions) | D1–D47, complete, in one place |
+| [Design decisions](#design-decisions) | D1–D53, complete, in one place |
 
 Reports, by topic. Live chapters first, closed phases last:
 
@@ -472,7 +472,7 @@ in [`REFUTED.md`](REFUTED.md).
 
 ## Design decisions
 
-D1–D47, complete and in one place. A report names the numbers it introduced and
+D1–D53, complete and in one place. A report names the numbers it introduced and
 does not restate them.
 
 | # | Decision | Rationale |
@@ -495,7 +495,7 @@ does not restate them.
 | D16 | Kernels take the *logical* `kc` and know their own panel layout. | 1m internally runs `2*kc` real steps. Exposing that to the driver would leak the method into the loop nest. |
 | D17 | Micro-kernels are macro-generated over `(MV, NR)` const generics from one body per method, not hand-written per shape. | A comparison between three methods must not also be a comparison between three hand-tunings. One body per method, one shape parameterisation, and the shape is then chosen by measurement. It also made the shape sweep possible at all. |
 | D18 | `#[target_feature]` kernels are reached through one-line plain-`fn` trampolines. | A `#[target_feature]` function cannot be coerced to a function pointer, which the `Ukr` contract requires. Cost is one `call` per micro-tile against `kc*MR*NR` FMAs — unmeasurable. |
-| D19 | Register blocks were chosen by measured throughput at the `kc` the engine actually uses, per method and per element type. | The uop model gets the *cliffs* right (spills above 32 live vector registers) but the *ranking* wrong: it predicts 3m fastest, and 3m is fastest only when the panels are L1-resident. See the Phase 3 report. |
+| D19 | Register blocks were chosen by measured throughput at the `kc` the engine actually uses, per method and per element type. | The uop model gets the *cliffs* right (spills above 32 live vector registers) but the *ranking* wrong: it predicts 3m fastest, and 3m is not. Phase 3 read the exception as "fastest when the panels are L1-resident"; A44 shows that is a Cascade Lake result which does not transfer, so the model's ranking is simply wrong rather than conditionally right. See the Phase 3 report and part 3 of the comparison chapter. |
 | D20 | Workspace MSRV raised `1.75` → `1.89`. | AVX-512 intrinsics and `is_x86_feature_detected!("avx512f")` were stabilised in Rust 1.89. The alternative — feature-gating the AVX-512 path so 1.75 still builds — would make the project's headline measurement an opt-in extra. 1.89 is a year old. |
 | D21 | Threading parallelises the `M` direction only, into contiguous strips of whole `MR` panels, with a per-thread packed `A` and a **shared** packed `B`. | The `pc` loop accumulates into `D` in place, so parallelising it would need a per-thread temporary or atomics; `M` instead gives every output element one owning thread. That makes the result **bitwise identical to serial at every thread count** — a stronger invariant than agreeing with the oracle, and one a test can assert directly. Strips of whole panels keep each thread's row blocks aligned with the block scatter, so the write-back fast path and the orientation rule are unaffected. `B` is shared because `NC` is sized for L3, which is a per-socket resource. |
 | D22 | The default thread count stays **1** until scaling is measured on the reference machine. | Every performance number in this file is a single-core measurement, and the item 2 blocking grid is designed against the serial engine. A default that changed with the machine's core count would make committed numbers irreproducible from a bare checkout. `TENSORCONTRACT_THREADS` and `Plan::with_threads` opt in; flipping the default is one line in `Plan::threads`. |
@@ -1853,9 +1853,11 @@ measured rather than leaving it a free choice:
 
 1. **`KC` is first-order, not a tuning knob.** Phase 3 traced the entire
    complex-method ranking to whether the `A` sliver is an L1 resident or an L2
-   stream at the operating `kc` — 3m is the *fastest* of the three when panels
-   are L1-resident and third when they are not. `kc` is the parameter that
-   decides which regime the engine is in.
+   stream at the operating `kc`, reporting 3m as the *fastest* of the three when
+   panels are L1-resident and third when they are not. (**That reading is since
+   refuted — A44:** it holds on Cascade Lake and reverses on Ice Lake. `kc` is
+   still the parameter that decides which regime the engine is in, which is all
+   this section needs from it.)
 2. **`MC` is bounded from both sides (A13).** Below by packed-`A` residency in
    L2, above by the strip of `D` that one `jr` pass touches and the next
    revisits. A sweep that varies the two together sees only their sum, and
@@ -2134,7 +2136,7 @@ hardware, only its forced equivalent.
 
 | # | Assumption | Status |
 |---|---|---|
-| A24 | The AVX-512 method ranking (planar > 1m > 3m at the operating `kc`) carries over to AVX2. | **Open, and probably not.** 16 ymm forces `MR` down to 4 complex rows in `f64`, which is the L1-resident regime where Phase 3 measured 3m *fastest*. AVX2's ranking is a separate experiment, not a re-run — and note the analytical model (part 9) pushes in the same direction on AVX-512. |
+| A24 | The AVX-512 method ranking (planar > 1m > 3m at the operating `kc`) carries over to AVX2. | **Refuted at the kernel level** (see the master table). When this was written the reasoning was that 16 ymm forces `MR` down to 4 complex rows in `f64`, which is the regime where Phase 3 measured 3m fastest — but A44 has since shown that measurement to be a Cascade Lake result that does not transfer, so the premise no longer supports the conclusion. AVX2's ranking is a separate experiment, not a re-run. |
 | A25 | Smaller register blocks are purely a cost. | **Refuted, at zero CPU cost.** They are worse for the kernel and better for the write-back, and on AVX2 the write-back side of the trade is simply won: 81 of 392 case-dtype-methods have no AVX-512 menu shape that clears the gather path, against none on AVX2. |
 
 ### Part 11: the AVX2 register blocks, measured
@@ -2227,11 +2229,17 @@ A24 guessed "open, and probably not". At the kernel level it is now measurably
 | `f32`/`c32` | planar > 1m > 3m | **3m 112.6** > 1m 107.0 ≈ real 106.6 > planar 104.6 | 3m 110.7 > 1m 107.2 > real 105.6 > planar 88.5 |
 
 3m is **first in single precision at the depth the driver uses**, where on
-AVX-512 it was last by 8% over the corpus. The mechanism is the one Phase 3
-identified and needs no revision: 16 ymm forces `MR` down to 4 complex rows in
-`f64`, which is the L1-resident regime where 3m's 25% flop saving is not consumed
-by extra plane traffic. Note also that 3m is fastest of all four at `kc = 16` in
-*both* precisions, which is Phase 3's finding reproduced on a different ISA.
+AVX-512 it was last by 8% over the corpus. The mechanism proposed at the time was
+Phase 3's: 16 ymm forces `MR` down to 4 complex rows in `f64`, which is the
+L1-resident regime where 3m's 25% flop saving was thought not to be consumed by
+extra plane traffic; 3m being fastest of all four at `kc = 16` in *both*
+precisions read as Phase 3's finding reproduced on a different ISA.
+
+> **Overtaken, 2026-08-05.** A44 refutes the premise: the L1-resident advantage is
+> a Cascade Lake result and 3m does not win at `kc = 16` on Ice Lake in either
+> precision. The AVX2 numbers below stand as measurements on that Zen2 node; the
+> *explanation* borrowed from Phase 3 does not, and the ranking is per
+> microarchitecture rather than per ISA (A34, A56).
 
 **What this does not settle.** These are *kernel* numbers: packed panels hot, no
 packing, no write-back, no cache blocking, which is exactly what the rest of the
@@ -3674,7 +3682,13 @@ threading default. Each is `scripts/ab.sh` with one switch.
 | A51 | A pool can degrade gracefully when it has fewer workers than the requested width. | **False for this driver, and it would deadlock.** Indices `t` and `t + pn` share a `pm`-way barrier, so folding surplus indices onto one thread waits forever for a participant that has already left. `try_broadcast` therefore declines all-or-nothing and the caller spawns instead. |
 | A52 | Mutex poisoning is a detail in a pool whose state has no invariants a panic can break. | **False in effect, and the test found it.** A worker's panic propagates while the submitter holds the submission mutex, so the next broadcast finds it poisoned and declines — permanently. The pool would silently stop pooling for the life of any process in which one contraction panicked, and `Panel::new` asserts on an unsatisfiable allocation, so that is reachable. Recover from poison; decline only on `WouldBlock`. |
 
-### Part 18: the pool ships, the guard does not, and the joint arm is why
+### Part 18: the pool wins on Zen2, the guard does not, and the joint arm is why
+
+> **Overtaken, 2026-08-05.** This part measured one machine class and recommended
+> the pool as a default on that evidence. Part 19 measured the other and found the
+> same switch costs up to 2.5x on Ice Lake, so **D53's recommendation is withdrawn**
+> and the pool stays off. The Zen2 numbers below stand; the recommendation drawn
+> from them does not. Read part 19 before quoting anything here.
 
 Job **6760092**, `worker5086` (Zen2 `rome`, 64 cores of one socket, 16 L3 domains),
 2026-08-05, 107 min, `--exclusive`, `OverSubscribe=NO`, engine at commit `a2f425f`.
@@ -3741,8 +3755,10 @@ produces on *identical* configurations — so it is not evidence of a systematic
 and it is not proof of none. The guard's is **12–14% of points**, far outside that
 floor, which is.
 
-**So: `TENSORCONTRACT_POOL` is recommended on (D53, a user decision, not taken here);
-`TENSORCONTRACT_AMORTISE` does not ship (D52).**
+**So, on this machine class: `TENSORCONTRACT_POOL` wins and `TENSORCONTRACT_AMORTISE`
+does not ship (D52).** The recommendation to default the pool on (D53) was drawn here
+and **withdrawn in part 19**, which measured the other machine class; both switches
+stay off.
 
 #### Two controls that were not the point, and both replicate
 
@@ -5109,9 +5125,12 @@ stream (`bench-results/phase3-kernel-shapes.txt`, `f64`):
 So:
 
 1. **3m's 25% flop saving is real and it is not free.** With both panels
-   L1-resident 3m is the fastest of the three, by roughly the margin the flop
-   count predicts. At the `kc = 256` the engine actually uses, it is the
-   slowest. 3m loads *three* planes of both operands to save one of four
+   L1-resident 3m is the fastest of the three *on this machine*, by roughly the
+   margin the flop count predicts. At the `kc = 256` the engine actually uses, it
+   is the slowest. (**Overtaken:** A44 shows the L1-resident half of this is a
+   Cascade Lake property, absent on Ice Lake. The bytes-per-flop account in the
+   next sentence is the part that generalises.) 3m loads *three* planes of both
+   operands to save one of four
    products, so per useful flop it moves 1.5x planar's bytes; once the kernel
    stops being FMA-issue-bound that is what decides it.
 2. **Planar wins on bytes, not on shuffles.** Its advantage over 1m is that
@@ -5230,7 +5249,7 @@ against the output's layout rather than only against the packed panels.
 
 | # | Assumption | Status |
 |---|---|---|
-| A7 | The three complex methods differ mainly in flop count. | **Refuted.** They differ mainly in bytes moved per useful flop, and that is what decides the ranking at realistic `kc`. Flop count decides it only when the panels are L1-resident or the contraction is memory-bound. |
+| A7 | The three complex methods differ mainly in flop count. | **Refuted.** They differ mainly in bytes moved per useful flop, and that is what decides the ranking at realistic `kc`. Phase 3 added "flop count decides it only when the panels are L1-resident or the contraction is memory-bound"; **A44 has since refuted that qualifier too** — both halves of it are Cascade Lake results that do not transfer. The bytes-per-flop account is the part that survives. |
 | A8 | One register block per method is enough. | **Refuted, and it matters.** The best shape depends on the method, the element type and `kc`, and neighbouring shapes differ by 30–50% across the 32-register cliff. |
 | A9 | Absolute performance is meaningful now that kernels are vectorised. | Adopted. It was explicitly not meaningful before this phase. |
 

@@ -60,6 +60,7 @@ the orientation rule were settled that way, and the grids are still in
 | `phase4d-orient.sh` | **Grid.** Both orientation arms, forced, all 392 | current |
 | `phase4e-blocking.sh` | **Grid.** The `MC`/`KC`/`NC` arms. Honours `ARMS_ONLY` | current, but the *item* is closed: see A33 and part 7 before spending a node on it |
 | `phase4f-threads.sh` | Thread scaling, physical cores of one socket, `t1` brackets, a `--cross-socket` arm. Wants a whole socket. ~1 h | current |
+| `phase4g-small.sh` | **Grid.** The small-size regime across thread widths, over arbitrary `ARMS` (`base;pool:TENSORCONTRACT_POOL=on;…`), sizes and widths. Produced `worker5086-zen2/phase4g` and `worker6194-icelake/phase4g` — the 2x2 that measured the pool and the guard on the two machine classes | current |
 | `ccq-blocking-night.sh` | The blocking grid on the **reference machine**, overnight: warm-up, grid, audit, score. ~7 h | current. Not superseded by `phase4e-blocking.sh` — it *calls* it twice. The real duplication is with `node-session.sh`, which implements the same warm-up/topology/grid orchestration independently |
 | `validate-placement.sh` | The pre-registered test: can arms run one-per-L3-domain without changing what is measured? `solo1`/`solo2`/`placed` plus memory-bound variants | current |
 
@@ -85,7 +86,8 @@ the orientation rule were settled that way, and the grids are still in
 | `amortise-score-rule.py` | Score candidate amortisation-guard constants against a `phase4g` grid. Reproduces D48's table in part 17, and cross-checks the constant against `plan.rs` so the script and the engine cannot drift apart silently |
 | `rowblock-decompose.py` | Split a row-block grid into what the shape *costs* and what it *buys* |
 | `orient-score-rules.py` | Score candidate orientation rules against the 1d grid |
-| `blocking-score-rules.py` | Score `MC`/`KC`/`NC` rules against the item-2 grid. The most evolved of the four — it adds `arms` and `noise` sections the earlier ones lack |
+| `blocking-score-rules.py` | Score `MC`/`KC`/`NC` rules against the item-2 grid. The most evolved of the five — it adds `arms` and `noise` sections the earlier ones lack |
+| `partition-score-rule.py` | Score the domain-aware partition rule against a thread grid, and re-derive D44's pre-registered prediction from another node's committed data. Takes `-p <threads>` and `-d <domains>` |
 | `thread-width.py` | How much parallel width the corpus has, and where, for any thread count — from committed data |
 | `topology.py` | What machine is this, and where may a measurement thread go: L3 domains, SMT siblings, NUMA. JSON out. Imported by `run-arms.py` and called by most of the drivers |
 
