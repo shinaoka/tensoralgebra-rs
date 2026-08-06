@@ -33,9 +33,27 @@ independent; the Apple one is the live one.
 
 ### START HERE if you are picking up the Apple Silicon work
 
-Read **part 20** and the two new Environment subsections, then this. Stage A of the
-plan is **done and committed**; Stage B — the NEON micro-kernel — is **not
-started.**
+Read **part 20** and the two new Environment subsections, then this.
+
+**Stage A is done and committed. Stage B — the NEON micro-kernel — is BUILT and
+green**, and buys the ~1.9x A58 predicted. What remains is calibration and
+write-up, not construction:
+
+| Stage B step | state |
+|---|---|
+| extract `simd_kernels!` / `configs!` into `kernel::simd` | **done.** Bodies unchanged; `#[macro_use] mod simd;` must stay declared before the ISA modules |
+| `kernel::aarch64`, `Isa::Neon`, `TENSORCONTRACT_KERNEL=neon` | **done.** All four kernels, `f64` and `f32` |
+| provisional register-block menu from the 32-register budget | **done, and still provisional** — `cfg_neon_f64` / `cfg_neon_f32` say so |
+| generalise `examples/kernel_shapes` off x86 | **done** — NEON reuses the AVX-512 candidate grid, because both have 32 registers and the budget counts registers not lanes |
+| **run `kernel_shapes` and replace the menus with its `best per method`** | **NOT DONE.** ~8 min, no baselines. This is what A34 requires and the one thing standing between the shapes and a measurement |
+| the scalar-vs-neon A/B at 64 MiB with its own floor | **run; fold in the result.** `bench-results/CKF6QCDVPD-m3max/neon-ab/` |
+| re-measure the complex-method ranking (A59 expects it to move) | falls out of the A/B above |
+| the blocking constants (`kernel/mod.rs:320-333`) | **not started, and now unblocked** — a NEON kernel is no longer instruction-bound, so the cache effects those constants exist for are finally visible. `legacy_blocking_is_unchanged` pins the current values |
+
+**Cross-compile after any change here.** The x86 tests cannot run on this machine,
+and that is not theoretical: `cargo check --target x86_64-unknown-linux-gnu` is
+what caught a missing `KernelForce::Neon` arm in x86's `pick_isa`. Three targets
+are cheap and all pass — `x86_64`, `i686`, `aarch64` linux.
 
 **Do this first: the session is deliberately incomplete and there is no floor.**
 `info`, `orient`, all three `verify` arms and both `premise` arms completed and are

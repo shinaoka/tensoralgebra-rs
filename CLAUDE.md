@@ -206,9 +206,12 @@ and the AVX2 kernel-level ordering is different again (A24). Re-measure before
 quoting any ranking number.
 
 **On new hardware, run `examples/kernel_shapes` as a matter of course** — eight
-minutes, no baselines. It is what would tell you whether Cascade Lake's 3m
-behaviour is a family trait or one machine's, and this project has twice described
-a question as unmeasured while its answer sat in committed output.
+minutes, no baselines, and it now covers **NEON as well as AVX-512 and AVX2**. It
+is what would tell you whether Cascade Lake's 3m behaviour is a family trait or
+one machine's, and this project has twice described a question as unmeasured while
+its answer sat in committed output. Two of the three kernel families still have
+**provisional, budget-derived shapes** — AVX2 and NEON — and this is the only
+thing that fixes that.
 
 ## Environment and build recipes
 

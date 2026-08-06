@@ -12,27 +12,49 @@
 //! therefore shows its 25% flop saving as extra throughput, which is the honest
 //! way to compare it against planar and 1m.
 //!
-//! It sweeps whichever instruction sets the CPU has. The AVX-512 grid is the
-//! one Phase 3 chose the shipped AVX-512 shapes from; the **AVX2 grid is the
-//! calibration path for the AVX2 shapes, which were never measured** — they were
-//! picked from the register budget and the uop model on an AVX-512-only
-//! reference machine. Run this on a Haswell/Zen box and the `best per method`
-//! lines at the bottom are exactly what belongs in `cfg_avx2_f64` /
-//! `cfg_avx2_f32`, replacing a model with a measurement.
+//! It sweeps whichever instruction sets this target has: AVX-512 and AVX2 on
+//! x86, NEON on aarch64. The AVX-512 grid is the one Phase 3 chose the shipped
+//! AVX-512 shapes from. **Two of the three families are still unmeasured, and
+//! this is their calibration path** — the `best per method` lines at the bottom
+//! are exactly what belongs in the corresponding `cfg_*` menu, replacing a model
+//! with a measurement:
+//!
+//! * **AVX2** — picked from the register budget and the uop model on an
+//!   AVX-512-only reference machine. Run this on a Haswell/Zen box.
+//! * **NEON** — picked from the register budget alone. Run this on the Apple
+//!   machine; it is the only thing that makes `cfg_neon_f64` / `cfg_neon_f32`
+//!   more than a model, and A34 says register blocks are per-microarchitecture
+//!   rather than per-ISA, so the budget agreeing with BLIS's chosen ARM shapes is
+//!   corroboration and not evidence about this engine.
+//!
+//! NEON and AVX-512 share the candidate grid because both have 32 vector
+//! registers and the budget counts registers, not lanes — see `cases!`. Their
+//! rankings have no reason to agree.
 //!
 //! ```text
 //! cargo run --release -p tensorcontract --example kernel_shapes
 //! ```
 
-// The sweep measures `kernel::x86`, so it is x86-only *by construction* — there
-// is no NEON path whose shapes could be swept. It still has to *compile*
-// everywhere, because `cargo test` builds examples, and an example that fails to
-// build fails the suite for every aarch64 user.
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+// The sweep measures whichever vectorised kernel module this target has, so it
+// is gated on there being one at all. It still has to *compile* everywhere,
+// because `cargo test` builds examples and an example that fails to build fails
+// the suite for every user of that target.
+//
+// It was x86-only until `kernel::aarch64` existed, and the *generic* half never
+// was: `Kind`, `Case`, its cost model, `time` and `sweep` only ever needed a
+// function pointer and a lane count. Widening this was mostly deleting a cfg.
+#[cfg(any(
+    target_arch = "x86",
+    target_arch = "x86_64",
+    target_arch = "aarch64"
+))]
 mod sweep {
     use std::time::Instant;
 
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     use tensorcontract::kernel::x86::{avx2_f32, avx2_f64, avx512_f32, avx512_f64};
+    #[cfg(target_arch = "aarch64")]
+    use tensorcontract::kernel::aarch64::{neon_f32, neon_f64};
 
     const TRIALS: usize = 5;
 
@@ -149,11 +171,19 @@ mod sweep {
         (c.flops_per_k(lanes) * kc * reps) as f64 / best / 1e9
     }
 
-    /// Build the AVX-512 candidate list for one element type. The `$m` module
-    /// supplies the kernels; the shapes are the same for both types so that the
-    /// `f32`/`f64` comparison is a comparison of the hardware, not of two shape
+    /// Build the **32-register** candidate list for one element type. The `$m`
+    /// module supplies the kernels; the shapes are the same for both types so that
+    /// the `f32`/`f64` comparison is a comparison of the hardware, not of two shape
     /// choices. Some candidates are deliberately over the 32-register budget, so
     /// that the cliff shows up in the output rather than having to be believed.
+    ///
+    /// **Used for NEON as well as AVX-512, and that is not a shortcut.** The
+    /// budget is counted in *registers* — accumulators plus A planes plus
+    /// broadcasts — and both files have 32, so the candidate `(MV, NR)` grid is
+    /// the same problem. What differs is `$lanes`, which turns each `MV` into a
+    /// different logical `MR`: `(3, 8)` is `24x8` on AVX-512 `f64` and `6x8` on
+    /// NEON `f64`. The *rankings* have no reason to agree, which is the whole
+    /// point of running it (A34).
     macro_rules! cases {
         ($m:ident, $t:ty) => {
             vec![
@@ -216,6 +246,7 @@ mod sweep {
     /// that the sweep is more about confirming the register bound than exploring.
     /// A handful of over-budget shapes are included on purpose, for the same reason
     /// as in `cases!`.
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     macro_rules! cases_avx2 {
         ($m:ident, $t:ty) => {
             vec![
@@ -334,13 +365,9 @@ mod sweep {
         }
     }
 
-    pub fn run() {
-        let have_avx512 = is_x86_feature_detected!("avx512f");
-        let have_avx2 = is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma");
-        if !have_avx512 && !have_avx2 {
-            eprintln!("no AVX-512 and no AVX2+FMA on this CPU; nothing to sweep");
-            return;
-        }
+    /// The shared preamble, so the two `run`s cannot describe the metric
+    /// differently.
+    fn preamble() {
         println!("Micro-kernel register-block sweep, packed panels hot.");
         println!(
             "Useful flops: 2*MR*NR*kc real, 8*MR*NR*kc complex (so 3m's saving shows up as GF/s)."
@@ -351,6 +378,17 @@ mod sweep {
          stream, which is what the driver actually does. The gap between the two columns is\n\
          the kernel's exposure to L2 bandwidth, and it is what the `B/flop` column predicts."
         );
+    }
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    pub fn run() {
+        let have_avx512 = is_x86_feature_detected!("avx512f");
+        let have_avx2 = is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma");
+        if !have_avx512 && !have_avx2 {
+            eprintln!("no AVX-512 and no AVX2+FMA on this CPU; nothing to sweep");
+            return;
+        }
+        preamble();
 
         // The last column is the `kc` `Blocking::derive` actually picks for that
         // element size, so the "best per method" line selects at the operating
@@ -396,14 +434,53 @@ mod sweep {
             );
         }
     }
+
+    /// NEON needs no feature detection: it is mandatory in the AArch64 base
+    /// architecture, so there is exactly one kernel family and it is always
+    /// present. `regs` is 32, the same file AVX-512 has — which is why this
+    /// reuses `cases!` rather than needing a grid of its own; see that macro.
+    ///
+    /// **This is the run that turns `cfg_neon_f64` / `cfg_neon_f32` from a
+    /// register-budget model into a measurement**, which is what A34 requires and
+    /// what the AVX2 shapes are still waiting for. The `best per method` lines are
+    /// what belongs in those two menus.
+    #[cfg(target_arch = "aarch64")]
+    pub fn run() {
+        preamble();
+        sweep(
+            "NEON f64 / c64",
+            2,
+            32,
+            &[16, 64, 256],
+            cases!(neon_f64, f64),
+            |i| ((i % 17) as f64 - 8.0) / 9.0,
+        );
+        sweep(
+            "NEON f32 / c32",
+            4,
+            32,
+            &[16, 64, 384],
+            cases!(neon_f32, f32),
+            |i| ((i % 17) as f32 - 8.0) / 9.0,
+        );
+    }
 }
 
 fn main() {
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(any(
+        target_arch = "x86",
+        target_arch = "x86_64",
+        target_arch = "aarch64"
+    ))]
     sweep::run();
-    // Off x86 the only kernels are the portable scalar ones, whose shapes are
-    // const generics chosen by the caller rather than by measurement. There is
-    // nothing to sweep, so say so rather than failing to build.
-    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
-    println!("kernel_shapes measures the x86 micro-kernels; this target has none.");
+    // On a target with no vectorised kernel module the only kernels are the
+    // portable scalar ones, whose shapes are const generics chosen by the caller
+    // rather than by measurement. There is nothing to sweep, so say so rather
+    // than failing to build.
+    #[cfg(not(any(
+        target_arch = "x86",
+        target_arch = "x86_64",
+        target_arch = "aarch64"
+    )))]
+    println!("kernel_shapes measures the vectorised micro-kernels; this target has none.");
 }

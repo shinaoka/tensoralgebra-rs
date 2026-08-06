@@ -15,3 +15,4 @@ premise check: 12 cases at 64 MiB nominal tensor size, 3 reps, stress=none
   abcijk-ikmb-mjac : m=6144 n=6144 k=24 macs=9.060e8
   abrs-qb-aqrs : m=52 n=194688 k=72 macs=7.289e8
   ij-ikl-ljk : m=216 n=204 k=44064 macs=1.942e9
+  ijkl-imjn-nlmk : m=3744 n=2704 k=3744 macs=3.790e10
