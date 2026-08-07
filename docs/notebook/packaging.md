@@ -423,3 +423,41 @@ code at `plan.rs:1165`. Confirmed by running it first. One buffer of length
 **This release changed what the code does, not what is known.** The Confidence
 table is unchanged and was checked rather than assumed: every row concerns
 measurement, and no measurement was taken here.
+
+#### The JLL source pin, and two things checked rather than carried over
+
+`v0.1.0` source checksum for the Yggdrasil recipe:
+`7fb56aebc6baca50b7aacdef6eb12abbba47c080e5f3583510d334dace2f7a84`, over
+`https://github.com/lkdvos/tensorprimitives-rs/archive/refs/tags/v0.1.0.tar.gz`.
+
+**That URL and no other.** `gh api /repos/.../tarball/<tag>` looks like the same
+artifact and is not: it prefixes entries `lkdvos-tensorprimitives-rs-<sha>/` where
+the archive URL prefixes `tensorprimitives-rs-0.1.0/`. Different bytes, different
+checksum, *and* a prefix the recipe's `cd ${WORKSPACE}/srcdir/tensorprimitives-rs-*/`
+would not match — so pinning it would have failed the build in two independent
+ways. The recipe now carries a comment saying so.
+
+The **platform exclusions were re-verified rather than assumed**, which
+`RELEASING.md` step 4 asks for because they are a property of the shard list and
+not of this code. Against BinaryBuilderBase 1.44.0, `choose_shards` at
+`preferred_rust_version = v"1.94.0"` fails for exactly `riscv64-linux-gnu` and
+`aarch64-unknown-freebsd` out of 18 supported platforms — the same two the recipe
+filters, unchanged from when the comment was written against BinaryBuilder 0.6.6's
+older base. Caveat on that check: it resolved BinaryBuilderBase standalone, not the
+version BinaryBuilder itself pins, so the dry-run is still the authority. The risk
+direction is benign either way — a filtered platform that gained a shard is a
+missed platform, whereas an *unfiltered* platform without one is a hard
+`choose_shards` error, and there are none of those.
+
+**The recipe's script logic was pre-flighted on the host** from an extraction of
+that exact tarball, which needs no BinaryBuilder: the `--locked` build succeeds
+(so `Cargo.lock` is committed and current, and `tensorprimitives-bench` never
+builds), `install.sh` writes `lib/`, `include/` and `lib/pkgconfig/`, `--no-licenses`
+correctly leaves `share/licenses` to `install_license`, and the SONAME is set from
+`RUSTFLAGS`.
+
+One thing left as-is and worth a decision later: **the source tarball is 92%
+benchmark data** — 42.5 MB of 46.4 MB uncompressed is `bench-results/` across 2,558
+files, against 816 KB of crates. It builds, but every JLL build and rebuild fetches
+it. Slimming it means pinning a purpose-built source asset instead of the GitHub
+archive, which changes the recipe's source strategy rather than a constant.
