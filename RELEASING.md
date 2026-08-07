@@ -62,21 +62,42 @@ The clause that does the work: for tier-2 introspection, **signatures are
 semver-stable and values are not**. Without that, every tuning change would be a
 breaking change.
 
-## 2. Tag, and cut a GitHub release
+## 2. Tag and cut the GitHub release — in one command
 
 ```bash
 git commit -am "Release vX.Y.Z"
-git tag -a vX.Y.Z -m "vX.Y.Z"
-git push origin main
-git push origin vX.Y.Z
+git push origin main            # let CI go green before the next command
 
-# NEVER `git push --tags`, and note this is not `--follow-tags` either.
-# `backup/pre-split-2026-08-03` is a local safety net pointing at c1229e6,
-# which is NOT an ancestor of main -- pushing it would publish two orphaned
-# commits, and deleting it locally would strand them. Push the release tag by
-# name.
-gh release create vX.Y.Z --title "vX.Y.Z" --notes-file <(...)   # from CHANGELOG.md
+# Write the notes to a file first; see "the notes are not the changelog" below.
+gh release create vX.Y.Z --target "$(git rev-parse HEAD)" \
+  --title "vX.Y.Z" --notes-file path/to/notes.md
 ```
+
+**Do not push the tag separately.** `release.yml`'s `artifacts` job triggers on the
+tag and immediately runs `gh release upload`; if the tag exists before the release
+does, that job fails with `release not found` within about thirty seconds, and no
+human can create the release faster. This is not a hazard to be careful about, it
+is a race that is always lost — it happened on v0.1.0. `gh release create --target`
+creates the tag and the release together, so the upload has somewhere to go.
+
+Two consequences of doing it this way, both accepted deliberately:
+
+* **The tag is lightweight, not annotated.** No tagger name, date or message, and
+  `git describe` needs `--tags` to see it. That is the price of atomicity. The
+  Yggdrasil checksum in step 4 is unaffected: it hashes the source tarball, not
+  the tag object.
+* **`git push --tags` and `--follow-tags` remain forbidden**, now for their own
+  reason rather than as part of this step. `backup/pre-split-2026-08-03` is a local
+  safety net pointing at c1229e6, which is NOT an ancestor of main — pushing it
+  would publish two orphaned commits, and deleting it locally would strand them.
+
+**The notes are not the changelog.** Extracting the version's CHANGELOG section
+verbatim gives a 300-line release body written for a maintainer, and on v0.1.0 it
+also advertised the Julia package, which cannot be installed until steps 4 and 5
+have run. Write the body for someone deciding whether to install *today*: what it
+is, how to depend on it, what is measured and what is not, what is not yet
+available, and links into the repository pinned at the tag rather than relative
+paths, which do not resolve in a release body.
 
 This is the one revocable step, and it is what the Yggdrasil recipe pins by
 checksum, so do it before step 4.
