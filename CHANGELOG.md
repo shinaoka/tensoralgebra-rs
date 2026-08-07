@@ -105,7 +105,12 @@ added later without breaking existing dependents.
   correctness.
 * **`no-std`-adjacent feature gating**: the `std` feature (on by default) gates
   every environment-variable read, and the crate compiles without it. It is not
-  a `#![no_std]` crate.
+  a `#![no_std]` crate. Turning the feature off costs no capability: in
+  particular `Error` implements `core::error::Error` unconditionally, so it still
+  goes into a `Box<dyn Error>` or an `anyhow::Error`. That last part is newly
+  true — the impl used to be gated on `std` itself, which withheld it from the
+  one configuration this bullet is about while buying no `no_std` support in
+  return, since there is none to buy.
 
 ### Added — `tensorprimitives-tapp`
 
@@ -282,10 +287,18 @@ is a separate confound from time (A46).
   baselines, the GEMM roofline and the stride-stress modes) is in the repository
   but `publish = false`.
 
-### Fixed before first release
+### Fixed against the TAPP specification
 
 Found by the new TAPP conformance suite, which was written because the C ABI had
-one test. All four were behaviour a C caller could observe:
+one test.
+
+These are listed as *fixes* even though there is no earlier release to have
+regressed from, because each is a divergence from a **published external
+contract** — `<tapp.h>` and arXiv:2601.07827 — that a C caller could already have
+coded against. That is the bar for this section, and it is why ordinary
+pre-release polish does not belong in it: with no prior version and no external
+spec, a change is simply part of what 0.1.0 *is*. Five of the six are behaviour a
+C caller could observe; the last is the shipped header's prose.
 
 * Extents whose product overflows are now a `TAPP_ERROR_SHAPE` error. Previously
   the product wrapped: a release build reported success and computed nothing, and

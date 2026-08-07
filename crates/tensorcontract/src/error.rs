@@ -200,10 +200,22 @@ impl fmt::Display for Error {
 /// `core::error::Error`, not `std::error::Error`, and unconditionally.
 ///
 /// The two are the same trait — `std` has re-exported `core`'s since Rust 1.81,
-/// well under this crate's MSRV — so nothing is lost by naming the `core` one,
-/// and the `#[cfg(feature = "std")]` this replaces was a real hole: without it a
-/// `--no-default-features` build could not so much as `?` an [`Error`] into a
-/// `Box<dyn Error>`, in a crate whose whole point is that it needs no `std`.
+/// well under this crate's MSRV — so naming the `core` one costs nothing and
+/// removes a `#[cfg(feature = "std")]` that only ever subtracted.
+///
+/// What the gate did was leave a `--no-default-features` build with an [`Error`]
+/// that could not be `?`'d into a `Box<dyn Error>`, handed to `anyhow`, or used
+/// as a `#[source]` — the impl is what makes an error type interoperable, and
+/// without it this one was merely printable. What the gate bought in exchange was
+/// **nothing**: this crate is not `no_std` (see the `std` feature's own note in
+/// `Cargo.toml` — no `#![no_std]`, and `Vec` in the scatter vectors), so the
+/// trait was always reachable and only the impl was withheld. The cost fell on
+/// exactly the callers the feature is *for*, the ones turning it off to be rid of
+/// the `TENSORCONTRACT_*` reads.
+///
+/// It survived because CI builds `--no-default-features` and building is not
+/// using: a missing impl is not a compile error until something needs it, and
+/// nothing did until `tests/traits.rs`.
 impl core::error::Error for Error {}
 
 /// `Result` with this crate's [`Error`].
