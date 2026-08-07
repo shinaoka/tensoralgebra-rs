@@ -24,15 +24,22 @@ TENSORCONTRACT_KERNEL=scalar cargo test --workspace --release
 TENSORCONTRACT_THREADS=4 cargo test --workspace --release
 ```
 
-and the Julia side, against a locally built JLL (see
-`julia/TensorPrimitives/README.md` for how to make one):
-
-```bash
-julia --project=julia/TensorPrimitives -e 'using Pkg; Pkg.test()'
-```
-
 CI covers all of this plus the eleven cross-compilation targets, the three C link
 modes and the vendored offline build. Do not release off a red CI.
+
+**Note what "CI" means here.** The workflow triggers on `push` to `main` and on
+`pull_request` only, so commits on a topic branch get *no* CI at all. Running the
+block above locally is not a substitute: it does not cover the cross-compilation
+matrix, the C link modes, the musl `cdylib` check or the offline build. Get the
+work onto `main`, or open a PR, and let CI go green *before* step 2.
+
+**The Julia suite is deliberately not a gate here.** It used to be, and it could
+not be satisfied: `julia/TensorPrimitives` depends on `tensorprimitives_tapp_jll`,
+the JLL is built in step 4 from the tag created in step 2, and step 2 is what this
+section is supposed to gate. Testing the Julia side therefore belongs to step 4,
+where the recipe dry-run already builds a JLL from an untagged tree via
+`TAPP_LOCAL_SRC`, and to step 5, which cannot run before the JLL is registered.
+Do not reinstate it above.
 
 ## 1. Bump the version — in five places, which CI then checks
 
