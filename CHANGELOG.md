@@ -11,7 +11,7 @@ The two crates share a version. `tensorprimitives-bench` is not published.
 enforces. It is deliberately not Keep a Changelog: the *Confidence* section is
 the part a prospective dependant most needs, and it has no KaC category.
 
-## 0.1.0 — unreleased
+## 0.1.0 — 2026-08-07
 
 First public prerelease. The engine is correct and framework-complete, the
 x86 micro-kernels are real, and performance work is partly done and
