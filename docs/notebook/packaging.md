@@ -344,3 +344,82 @@ since a test step is the only thing that keeps the dev-dependency half honest.
 |---|---|---|
 | A47 | The shipped header agrees with the library it describes. | **Now tested rather than assumed.** `examples/c-consumer` compiles the header with a C compiler, links the built library and checks numerical results in `f64` and `c64`; CI runs it in both the corrosion and prebuilt modes. Previously no C compiler saw the header at any point. |
 | A48 | A Rust panic reaching the C boundary is acceptable because it is memory-safe. | **Rejected as a policy.** Memory-safe but process-fatal, and the engine panics on allocation conditions a caller can hit. D38 converts it to an error code on the three entry points that can raise it. |
+
+### Releasing v0.1.0, and what running the procedure found
+
+Published 2026-08-07: `tensorcontract` 0.1.0 and `tensorprimitives-tapp` 0.1.0 on
+crates.io, tag `v0.1.0` at `ca916fa`, GitHub release with the
+`x86_64-linux-gnu` tarball attached. Verified after the fact rather than assumed:
+a fresh crate depending on `tensorcontract = "0.1"` resolved from the registry
+(checksum `98ffea44…`) computes a batched contraction correctly, and docs.rs
+rendered all eight modules with the crate reporting 100% documented.
+
+#### The release procedure had two defects, in series, and the first hid the second
+
+Neither was findable by reading. `RELEASING.md` step 2 said to push the tag and
+then create the release; `release.yml`'s `artifacts` job triggers on the tag and
+runs `gh release upload` about thirty seconds later. That is not a hazard to be
+careful about, it is a race no human can win, and it failed as
+`release not found`.
+
+Fixing it exposed the second: `HTTP 403: Resource not accessible by integration`.
+The repository's default workflow token is `contents: read` and `release.yml`
+declared no `permissions:` block, so the job could locate the release and then not
+write to it. **The permission had been missing since the workflow was written and
+had produced no symptom**, because the upload never got far enough to be refused.
+
+Both are fixed and both are now *demonstrated* — the "Attach to the release" step
+has run to completion exactly once, on the third tag push. The lesson is narrow
+and worth keeping: a release procedure that has never been executed end to end is
+untested code, and its failures stack rather than queue.
+
+The tag moved twice during this. That was free only because nothing consumed it
+yet — no crates.io publish, no Yggdrasil submission pinning the source-tarball
+checksum, no asset downloads. That window closes at the first `cargo publish`,
+which is the argument for doing the cheap fixes before the irreversible step
+rather than after.
+
+#### A gate that could never have been satisfied
+
+Step 0 required `Pkg.test()` on `julia/TensorPrimitives` against a locally built
+JLL. The package depends on `tensorprimitives_tapp_jll`, the JLL is built in step
+4 from the tag created in step 2, and step 0 exists to gate step 2. The check now
+lives in step 4, where it already happens via `TAPP_LOCAL_SRC`.
+
+#### The same overclaim three times in one session
+
+The pattern is worth naming because it recurred in three unrelated places and was
+caught three different ways: **advertising a capability that the configuration
+being advertised does not actually have.**
+
+* `error.rs` gated `impl std::error::Error` on `feature = "std"`. The crate is not
+  `no_std` and never was, so the gate bought nothing and cost the error type its
+  interoperability in exactly the configuration the feature exists for. Found by
+  the API-guidelines pass; the counterfactual was verified by reinstating the gate
+  and watching `Box<dyn Error + Send + Sync>` refuse an `Error`.
+* The CHANGELOG's `no-std`-adjacent bullet advertised that the crate compiles
+  without the feature, omitting that the error type was degraded when it did.
+* The v0.1.0 release notes, drafted from the CHANGELOG, described the Julia
+  package as present when it cannot be installed until steps 4 and 5 have run.
+  Caught by the maintainer asking whether a `tensorcontract` release should be
+  mentioning Julia at all.
+
+Two of the three were written *while removing* the first, which is the part to
+remember: the fix and the overclaim came from the same hand in the same hour.
+
+#### What the API-guidelines pass changed, and what it did not
+
+All 54 items of the Rust API Guidelines checklist, before first publication
+because every breaking change was free then: 12 fixed, 21 already passing, 21 not
+applicable. The deliberate deviations are D59–D63 rather than left to look like
+oversights — unsealed traits, no serde, bare `i64` labels, selective
+`#[non_exhaustive]`, terse BLIS-domain names.
+
+One real defect, D58: `Layout`'s two public `Vec` fields let a caller build a rank
+mismatch that `Layout::new` existed to reject, reaching an index panic in safe
+code at `plan.rs:1165`. Confirmed by running it first. One buffer of length
+`2 * ndim` makes it unrepresentable rather than detected.
+
+**This release changed what the code does, not what is known.** The Confidence
+table is unchanged and was checked rather than assumed: every row concerns
+measurement, and no measurement was taken here.
