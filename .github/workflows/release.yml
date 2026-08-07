@@ -82,6 +82,17 @@ jobs:
   # from these files.
   artifacts:
     runs-on: ubuntu-latest
+    # `gh release upload` writes to the release, and this repository's default
+    # workflow token is read-only, so the write must be asked for. Declared on
+    # this job alone rather than at workflow level: `consistency` and `package`
+    # only read, and a token that can rewrite releases should not be handed to
+    # jobs that have no use for it.
+    #
+    # Its absence was invisible until the "release not found" race was fixed,
+    # because the upload could not get far enough to be refused. Two faults in
+    # series, and the first one hid the second.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
