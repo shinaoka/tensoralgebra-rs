@@ -59,7 +59,7 @@ pub fn contract_reference<T: Element>(
             });
         }
         for (k, &l) in idx.iter().enumerate() {
-            let e = layout.extents[k];
+            let e = layout.extents()[k];
             match labels.iter().find(|x| x.0 == l) {
                 Some(&(_, e0)) if e0 != e => {
                     return Err(Error::ExtentMismatch {
@@ -96,7 +96,7 @@ pub fn contract_reference<T: Element>(
     let offset = |idx: &[i64], layout: &Layout, assign: &dyn Fn(i64) -> i64| -> i64 {
         idx.iter()
             .enumerate()
-            .map(|(k, &l)| assign(l) * layout.strides[k])
+            .map(|(k, &l)| assign(l) * layout.strides()[k])
             .sum()
     };
 

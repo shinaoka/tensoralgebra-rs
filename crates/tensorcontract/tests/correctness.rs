@@ -97,10 +97,7 @@ fn random_layout(extents: &[i64], rng: &mut ChaCha8Rng) -> Layout {
         strides[d] = acc;
         acc *= extents[d];
     }
-    Layout {
-        extents: extents.to_vec(),
-        strides,
-    }
+    Layout::new(extents.to_vec(), strides).expect("built with one stride per extent")
 }
 
 fn shuffled<T: Clone>(v: &[T], rng: &mut ChaCha8Rng) -> Vec<T> {

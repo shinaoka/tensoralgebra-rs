@@ -249,9 +249,9 @@ where
     #[cfg(feature = "tblis")]
     if opts.engine("tblis") {
         use crate::tblis as tb;
-        let mut oa = tb::Operand::new(&s.la.extents, &s.la.strides, s.case.a);
-        let mut ob = tb::Operand::new(&s.lb.extents, &s.lb.strides, s.case.b);
-        let mut oc = tb::Operand::new(&s.lc.extents, &s.lc.strides, s.case.c);
+        let mut oa = tb::Operand::new(s.la.extents(), s.la.strides(), s.case.a);
+        let mut ob = tb::Operand::new(s.lb.extents(), s.lb.strides(), s.case.b);
+        let mut oc = tb::Operand::new(s.lc.extents(), s.lc.strides(), s.case.c);
         let mut dt: Vec<T> = vec![T::zero(); s.elems_c()];
         let ta = oa.tensor(
             T::TBLIS_TYPE,

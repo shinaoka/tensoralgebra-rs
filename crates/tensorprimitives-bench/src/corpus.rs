@@ -404,10 +404,7 @@ pub fn size_case_stressed(case: &Case, tensor_bytes: f64, stress: Stress) -> Siz
                     strides.push(acc);
                     acc *= if d == 0 { e + 1 } else { e };
                 }
-                Layout {
-                    extents: sh,
-                    strides,
-                }
+                Layout::new(sh, strides).expect("one stride pushed per extent")
             }
             _ => Layout::col_major(&sh),
         }

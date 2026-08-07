@@ -582,8 +582,7 @@ pub unsafe extern "C" fn TAPP_set_nmodes(info: isize, nmodes: c_int) -> c_int {
     if nmodes < 0 {
         return TAPP_ERROR_SHAPE;
     }
-    t.layout.extents.resize(nmodes as usize, 1);
-    t.layout.strides.resize(nmodes as usize, 0);
+    t.layout.resize(nmodes as usize);
     TAPP_SUCCESS
 }
 
@@ -597,7 +596,7 @@ pub unsafe extern "C" fn TAPP_set_nmodes(info: isize, nmodes: c_int) -> c_int {
 pub unsafe extern "C" fn TAPP_get_extents(info: isize, extents: *mut i64) {
     if let Some(t) = (info as *const TensorInfo).as_ref() {
         if !extents.is_null() {
-            std::ptr::copy_nonoverlapping(t.layout.extents.as_ptr(), extents, t.layout.ndim());
+            std::ptr::copy_nonoverlapping(t.layout.extents().as_ptr(), extents, t.layout.ndim());
         }
     }
 }
@@ -617,7 +616,7 @@ pub unsafe extern "C" fn TAPP_set_extents(info: isize, extents: *const i64) -> c
     }
     let n = t.layout.ndim();
     t.layout
-        .extents
+        .extents_mut()
         .copy_from_slice(std::slice::from_raw_parts(extents, n));
     TAPP_SUCCESS
 }
@@ -632,7 +631,7 @@ pub unsafe extern "C" fn TAPP_set_extents(info: isize, extents: *const i64) -> c
 pub unsafe extern "C" fn TAPP_get_strides(info: isize, strides: *mut i64) {
     if let Some(t) = (info as *const TensorInfo).as_ref() {
         if !strides.is_null() {
-            std::ptr::copy_nonoverlapping(t.layout.strides.as_ptr(), strides, t.layout.ndim());
+            std::ptr::copy_nonoverlapping(t.layout.strides().as_ptr(), strides, t.layout.ndim());
         }
     }
 }
@@ -652,7 +651,7 @@ pub unsafe extern "C" fn TAPP_set_strides(info: isize, strides: *const i64) -> c
     }
     let n = t.layout.ndim();
     t.layout
-        .strides
+        .strides_mut()
         .copy_from_slice(std::slice::from_raw_parts(strides, n));
     TAPP_SUCCESS
 }

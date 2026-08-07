@@ -1161,8 +1161,8 @@ fn reduce_tensor(name: &'static str, layout: &Layout, idx: &[i64]) -> Result<Vec
     }
     let mut out: Vec<(i64, i64, i64)> = Vec::with_capacity(idx.len());
     for (k, &l) in idx.iter().enumerate() {
-        let e = layout.extents[k];
-        let s = layout.strides[k];
+        let e = layout.extents()[k];
+        let s = layout.strides()[k];
         if e < 0 {
             return Err(Error::NegativeExtent {
                 label: l,

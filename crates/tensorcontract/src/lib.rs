@@ -358,7 +358,7 @@ pub use plan::{ElementOp, Operand, Plan, PlanStats};
 /// long as the layout needs — only long enough, which [`Plan::run`] checks.
 #[derive(Clone, Copy, Debug)]
 pub struct TensorView<'a, T> {
-    /// The backing allocation. Indexed at `sum_k i_k * layout.strides[k]`, so
+    /// The backing allocation. Indexed at `sum_k i_k * layout.strides()[k]`, so
     /// its length is checked against the largest offset the plan can generate
     /// rather than against `layout.len()`.
     pub data: &'a [T],
