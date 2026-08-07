@@ -18,6 +18,10 @@ edition = "2021"
 rust-version = "1.89"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/lkdvos/tensorprimitives-rs"
+# The same URL as `repository`, because the project has no separate site. It is
+# set rather than omitted because it is the one field on the API guidelines'
+# C-METADATA list that was missing, and crates.io renders it as its own link.
+homepage = "https://github.com/lkdvos/tensorprimitives-rs"
 authors = ["Lukas Devos <ldevos@flatironinstitute.org>"]
 
 [workspace.dependencies]

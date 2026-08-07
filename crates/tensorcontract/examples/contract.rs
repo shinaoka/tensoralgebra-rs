@@ -17,19 +17,22 @@ use tensorcontract::kernel::ComplexMethod;
 use tensorcontract::plan::Operand;
 use tensorcontract::{contract, parse_einsum, Layout, Plan, TensorView, TensorViewMut, C64};
 
-fn main() {
-    batch_index();
-    reduction();
-    diagonal();
-    complex_with_plan_reuse();
+// Every fallible call below is `?`, not `.unwrap()`, because this file is read
+// as an example of how to call the crate and the difference is visible.
+fn main() -> tensorcontract::Result<()> {
+    batch_index()?;
+    reduction()?;
+    diagonal()?;
+    complex_with_plan_reuse()?;
     println!("\nall four contractions matched their expected values");
+    Ok(())
 }
 
 /// A label in `A`, `B` *and* `D` is a batch index: the contraction runs
 /// independently for each of its values, with no reshaping and no loop here.
-fn batch_index() {
+fn batch_index() -> tensorcontract::Result<()> {
     // D[h,i,j] = sum_k A[h,i,k] * B[h,k,j], for each h.
-    let (ia, ib, id) = parse_einsum("hik,hkj->hij").unwrap();
+    let (ia, ib, id) = parse_einsum("hik,hkj->hij")?;
     let l = Layout::col_major(&[2, 2, 2]);
 
     // A[h,i,k] = h + 2i + 4k + 1, since the layout is column-major over (h,i,k).
@@ -45,21 +48,21 @@ fn batch_index() {
         0.0,
         None,
         TensorViewMut::new(&mut d, &l, &id),
-    )
-    .unwrap();
+    )?;
 
     // B being diagonal means only k=j contributes, so D[h,i,j] = B[h,j,j]*A[h,i,j]:
     // the j=0 half of D (offsets 0..4) doubles, and the j=1 half passes through.
     assert_eq!(d, vec![2.0, 4.0, 6.0, 8.0, 5.0, 6.0, 7.0, 8.0]);
     report("batch index", "hik,hkj->hij", &d);
+    Ok(())
 }
 
 /// A label in one input only is summed over, and needs no temporary: it becomes
 /// a contraction index with stride 0 in the other operand, which the
 /// block-scatter machinery treats as a perfectly regular access.
-fn reduction() {
+fn reduction() -> tensorcontract::Result<()> {
     // D[i,j] = sum_{k,l} A[i,k,l] * B[k,j] — `l` appears nowhere else.
-    let (ia, ib, id) = parse_einsum("ikl,kj->ij").unwrap();
+    let (ia, ib, id) = parse_einsum("ikl,kj->ij")?;
     let la = Layout::col_major(&[2, 2, 3]);
     let lb = Layout::col_major(&[2, 2]);
     let ld = Layout::col_major(&[2, 2]);
@@ -76,16 +79,16 @@ fn reduction() {
         0.0,
         None,
         TensorViewMut::new(&mut d, &ld, &id),
-    )
-    .unwrap();
+    )?;
 
     assert_eq!(d, vec![3.0, 3.0, 3.0, 3.0]);
     report("reduction", "ikl,kj->ij", &d);
+    Ok(())
 }
 
 /// A label repeated *within one operand* selects that operand's diagonal, again
 /// with no copy: the two modes' strides are simply summed.
-fn diagonal() {
+fn diagonal() -> tensorcontract::Result<()> {
     // D[i] = sum_j A[i,j,j] * B[i] — `j` twice in A takes its diagonal.
     let la = Layout::col_major(&[2, 2, 2]);
     let lv = Layout::col_major(&[2]);
@@ -103,18 +106,18 @@ fn diagonal() {
         0.0,
         None,
         TensorViewMut::new(&mut d, &lv, &[i]),
-    )
-    .unwrap();
+    )?;
 
     // i=0: A[0,0,0] + A[0,1,1] = 0 + 6. i=1: A[1,0,0] + A[1,1,1] = 1 + 7.
     assert_eq!(d, vec![6.0, 8.0]);
     report("diagonal", "ijj,i->i", &d);
+    Ok(())
 }
 
 /// Complex contraction, conjugation, and the reason to build a [`Plan`] by hand:
 /// planning is `O(M + N + K)`, so a repeated shape should pay it once.
-fn complex_with_plan_reuse() {
-    let (ia, ib, id) = parse_einsum("ik,kj->ij").unwrap();
+fn complex_with_plan_reuse() -> tensorcontract::Result<()> {
+    let (ia, ib, id) = parse_einsum("ik,kj->ij")?;
     let l = Layout::col_major(&[2, 2]);
 
     // Conjugation is folded into packing, so it is fixed when the plan is built.
@@ -124,8 +127,7 @@ fn complex_with_plan_reuse() {
         Operand::new(&l, &ib),
         None,
         Operand::new(&l, &id),
-    )
-    .unwrap()
+    )?
     .with_complex_method(ComplexMethod::Planar);
 
     let identity = vec![
@@ -149,8 +151,7 @@ fn complex_with_plan_reuse() {
             C64::new(0.0, 0.0),
             None,
             TensorViewMut::new(&mut d, &l, &id),
-        )
-        .unwrap();
+        )?;
 
         let want: Vec<C64> = a.iter().map(|z| z.conj()).collect();
         assert_eq!(d, want);
@@ -178,6 +179,7 @@ fn complex_with_plan_reuse() {
         )
         .unwrap_err();
     println!("mismatched op rejected: {err}");
+    Ok(())
 }
 
 fn report(what: &str, spec: &str, d: &[f64]) {

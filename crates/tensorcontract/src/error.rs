@@ -1,8 +1,8 @@
 //! Error type.
 //!
-//! Everything here describes a contraction that was rejected while being
-//! *planned*, which is the only place this crate reports failure. The variants
-//! fall into four groups:
+//! Almost everything here describes a contraction that was rejected while being
+//! *planned*, which is the only place the engine itself reports failure. The
+//! variants fall into five groups:
 //!
 //! * **the description is internally inconsistent** — [`Error::RankMismatch`],
 //!   [`Error::LabelCountMismatch`], [`Error::ExtentMismatch`],
@@ -17,7 +17,10 @@
 //!   [`Error::ElementOpMismatch`], when a view's conjugation differs from the
 //!   one recorded in the plan. These two are the only variants raised by
 //!   [`crate::Plan::run`] rather than by [`crate::Plan::new`], because neither
-//!   slice lengths nor the views exist until then.
+//!   slice lengths nor the views exist until then;
+//! * **there was never a contraction to reject** — [`Error::EinsumSyntax`], the
+//!   one variant raised before planning starts, by [`crate::parse_einsum`]
+//!   failing on the *notation* rather than on anything the labels mean.
 //!
 //! So a [`crate::Plan`] that exists describes a contraction that is expressible;
 //! what remains checkable at execution time is only whether the arguments are
@@ -33,7 +36,8 @@ use core::fmt;
 /// until then: [`Error::NullPointer`] for data that cannot hold the offsets the
 /// plan generates, and [`Error::ElementOpMismatch`] for arguments that do not
 /// match the plan they are given to. Nothing is reported once the engine starts
-/// computing.
+/// computing. [`Error::EinsumSyntax`] is the outlier and comes from the string
+/// convenience helper, before any of that.
 ///
 /// `#[non_exhaustive]` because the mapping onto TAPP's error codes is the
 /// stable contract, not this enumeration; match with a `_` arm.
@@ -126,6 +130,19 @@ pub enum Error {
         /// Which operand: `"A"`, `"B"`, `"C"` or `"D"`.
         tensor: &'static str,
     },
+    /// A spec handed to [`crate::parse_einsum`] is not in the notation it
+    /// accepts: `"ab,bc->ac"`, exactly one `->` and one `,`.
+    ///
+    /// The offending spec is deliberately not carried. Every other variant here
+    /// holds only `Copy` or `'static` data, which is what keeps `Error` cheap to
+    /// clone and usable without an allocator; a `String` for this one variant
+    /// would cost that for the whole enum. The caller still has the spec it
+    /// passed, so `reason` is the part it does not.
+    EinsumSyntax {
+        /// Which piece of the notation was missing. A short static phrase — the
+        /// set is closed and matching on it is not supported.
+        reason: &'static str,
+    },
 }
 
 impl fmt::Display for Error {
@@ -173,12 +190,21 @@ impl fmt::Display for Error {
                 "tensor {tensor} was given a different element-wise op than the \
                  plan was built with; conjugation is fixed at Plan::new"
             ),
+            Error::EinsumSyntax { reason } => {
+                write!(f, "cannot parse einsum spec: {reason}")
+            }
         }
     }
 }
 
-#[cfg(feature = "std")]
-impl std::error::Error for Error {}
+/// `core::error::Error`, not `std::error::Error`, and unconditionally.
+///
+/// The two are the same trait — `std` has re-exported `core`'s since Rust 1.81,
+/// well under this crate's MSRV — so nothing is lost by naming the `core` one,
+/// and the `#[cfg(feature = "std")]` this replaces was a real hole: without it a
+/// `--no-default-features` build could not so much as `?` an [`Error`] into a
+/// `Box<dyn Error>`, in a crate whose whole point is that it needs no `std`.
+impl core::error::Error for Error {}
 
 /// `Result` with this crate's [`Error`].
 pub type Result<T> = core::result::Result<T, Error>;

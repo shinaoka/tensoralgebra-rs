@@ -114,7 +114,56 @@ use aarch64 as simd_isa;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use x86 as simd_isa;
 
+/// Why a string was not the name of one of this module's settings.
+///
+/// The [`FromStr`](core::str::FromStr) error for [`ComplexMethod`] and
+/// [`cache::BlockModel`] — the two settings a caller ever spells out, in a
+/// `TENSORCONTRACT_*` variable, a sweep script's arm list or a CSV column. One
+/// type for both, because the failure is the same one ("that is not a spelling
+/// I know") and only the accepted list differs; and deliberately *not*
+/// [`crate::Error`], which is `#[non_exhaustive]` and enumerates the ways a
+/// *contraction* is ill-formed. A misspelled method name is not one of those.
+///
+/// Keeps no copy of the offending string, so it stays `Copy` and
+/// allocation-free. The caller still has its input; what it does not have, and
+/// what the message supplies, is the list of spellings that would have worked.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ParseError {
+    setting: &'static str,
+    accepted: &'static str,
+}
+
+impl ParseError {
+    pub(crate) const fn new(setting: &'static str, accepted: &'static str) -> ParseError {
+        ParseError { setting, accepted }
+    }
+}
+
+impl core::fmt::Display for ParseError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "unrecognised {}: expected {}",
+            self.setting, self.accepted
+        )
+    }
+}
+
+// `core::error::Error`, not `std::error::Error`: the same trait since Rust 1.81,
+// and this way the impl does not reach for `std` on a path that has no other
+// need of it — the parsers themselves work with the `std` feature off.
+impl core::error::Error for ParseError {}
+
 /// How to induce complex arithmetic from real micro-kernels.
+///
+/// Deliberately **not** `#[non_exhaustive]`, unlike [`cache::BlockModel`] and
+/// [`cache::CacheSource`]. A downstream [`KernelSet`] implementor must match on
+/// this to hand back a kernel per method, and a variant it cannot name is one it
+/// cannot service: the catch-all arm that `#[non_exhaustive]` would force could
+/// only panic or return a kernel in the wrong packed format, which the driver
+/// then trusts. So a fourth method is a breaking change on purpose. [`PackFormat`]
+/// and [`TileFormat`] are open for the same reason — the same implementors read
+/// them to describe what their kernel produces.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum ComplexMethod {
     /// Planar / split-complex packing with a fused complex micro-kernel.
@@ -170,8 +219,33 @@ impl ComplexMethod {
     }
 }
 
+/// [`ComplexMethod::name`]'s spelling, which [`FromStr`](core::str::FromStr)
+/// round-trips.
+impl core::fmt::Display for ComplexMethod {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        // `pad` rather than `write_str`, so a width in the format string is
+        // honoured: these names are column headings as often as they are prose.
+        f.pad(self.name())
+    }
+}
+
+/// [`ComplexMethod::parse`] as the standard trait. The inherent method stays
+/// because the `TENSORCONTRACT_COMPLEX` plumbing wants the `Option` — it falls
+/// back to the default rather than reporting anything — and because it can be
+/// called where a trait method's error type would only be discarded.
+impl core::str::FromStr for ComplexMethod {
+    type Err = ParseError;
+
+    fn from_str(s: &str) -> Result<ComplexMethod, ParseError> {
+        ComplexMethod::parse(s).ok_or(ParseError::new(
+            "complex method",
+            "planar | 1m | 3m (also split, onem, threem, karatsuba)",
+        ))
+    }
+}
+
 /// What packing should emit for one operand.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum PackFormat {
     /// One real value per element.
     Real,
@@ -200,7 +274,7 @@ impl PackFormat {
 }
 
 /// How the write-back should read a micro-kernel's accumulator tile.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum TileFormat {
     /// `ab[j*MR + i]`, imaginary part zero.
     Real,
@@ -277,7 +351,16 @@ impl<T> core::fmt::Debug for Ukr<T> {
 /// `mc` and `nc` are always whole multiples of the micro-tile's `mr` and `nr`
 /// respectively; the driver's loop arithmetic relies on it, and
 /// [`KernelConfig::with_blocking`] re-imposes it after any change.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+///
+/// **No `Default`**, deliberately. There is no blocking that is right without
+/// knowing the element size and the packed footprint — that is what
+/// [`Blocking::derive`] is — and the zero value a derived `Default` would give
+/// is not merely useless, it is silently *valid*: every consumer clamps rather
+/// than rejects, so `Plan::with_blocking(Blocking::default())` would run the
+/// whole contraction correctly at `mc = mr`, `kc = 1`, `nc = nr`, which is one
+/// k-step per pass over one micro-tile. Use [`Blocking::derive`],
+/// [`Blocking::model`], or write the three numbers out.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Blocking {
     /// Rows of the packed `A` block, sized so `mc x kc` reals fit the L2.
     /// Also bounds the strip of `D` that one pass over the `jr` loop revisits,
@@ -458,6 +541,7 @@ impl<T> KernelConfig<T> {
 
     /// Replace the blocking parameters, re-imposing the register-block
     /// alignment invariant.
+    #[must_use = "with_blocking returns a new configuration; the receiver is unchanged"]
     pub fn with_blocking(mut self, blk: Blocking) -> Self {
         self.blk.mc = blk.mc.next_multiple_of(self.ukr.mr).max(self.ukr.mr);
         self.blk.nc = blk.nc.next_multiple_of(self.ukr.nr).max(self.ukr.nr);
@@ -527,9 +611,12 @@ fn env_usize(_key: &str) -> Option<usize> {
 /// CPU has it, else AVX2+FMA, else the portable path in [`scalar`].
 /// `TENSORCONTRACT_KERNEL` pins one (`scalar` | `avx2` | `avx512`).
 ///
-/// Any other [`Real`] type can opt in by returning the generic scalar kernels:
+/// Any other [`Real`] type can opt in by returning the generic scalar kernels.
+/// In sketch — this is the shape of the impl, not a compiling example:
 ///
 /// ```ignore
+/// // `MyDual` stands for a type that already implements `Real` and `Element`;
+/// // those two impls, not this one, are the bulk of the work.
 /// impl KernelSet for MyDual {
 ///     fn config_real() -> KernelConfig<Self> { scalar::config_real::<Self, 4, 4>() }
 ///     fn config_cplx(m: ComplexMethod) -> KernelConfig<Self> {
@@ -538,9 +625,14 @@ fn env_usize(_key: &str) -> Option<usize> {
 /// }
 /// ```
 ///
+/// **[`scalar`]'s module docs have the real thing**: the same two methods over a
+/// concrete element type, as a doctest that compiles and runs a contraction.
+/// This block stays `ignore`d because making it compile means carrying that
+/// type's `Real` and `Element` impls a second time, which would bury the two
+/// lines it is here to show.
+///
 /// The two `row_block`-related methods are optional and exist only for kernel
-/// sets that have more than one shape to offer. See [`scalar`] for a complete
-/// worked example, compiled and run as a doctest.
+/// sets that have more than one shape to offer.
 pub trait KernelSet: Real + Sized {
     /// The kernel to use when the element type is this real type itself.
     fn config_real() -> KernelConfig<Self>;
@@ -1293,7 +1385,13 @@ mod tests {
     fn method_parsing_roundtrips() {
         for m in ComplexMethod::ALL {
             assert_eq!(ComplexMethod::parse(m.name()), Some(m));
+            // The trait impls must be the inherent pair, not a second spelling
+            // of it: a CSV column written by one and read by the other is the
+            // normal case here.
+            assert_eq!(m.to_string(), m.name());
+            assert_eq!(m.to_string().parse::<ComplexMethod>(), Ok(m));
         }
         assert_eq!(ComplexMethod::parse("nope"), None);
+        assert!("nope".parse::<ComplexMethod>().is_err());
     }
 }

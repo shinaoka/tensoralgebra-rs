@@ -322,6 +322,16 @@ pub struct IsaConfigs<T> {
     pub config_at: fn(bool, ComplexMethod, usize) -> Option<KernelConfig<T>>,
 }
 
+/// As x86's, written by hand: the derive would demand `T: Debug` for a struct
+/// that never stores a `T`, and function-pointer addresses are not information.
+impl<T> core::fmt::Debug for IsaConfigs<T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("IsaConfigs")
+            .field("isa", &self.isa)
+            .finish()
+    }
+}
+
 /// The five entry points the [`super::KernelSet`] impls call, per type. Mirrors
 /// `x86`'s `dispatch!` and yields `None`/`&[]` under
 /// `TENSORCONTRACT_KERNEL=scalar`, which sends the caller to the portable path.

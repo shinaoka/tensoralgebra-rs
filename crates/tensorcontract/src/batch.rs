@@ -54,6 +54,13 @@ use crate::{TensorView, TensorViewMut};
 /// `&mut` borrow, so the borrow checker has already proved the outputs disjoint.
 /// The plans are shared references and may all be the *same* plan, which is the
 /// common case — a batch of identically shaped contractions.
+///
+/// The derived [`Debug`](core::fmt::Debug) carries a `T: Debug` bound, which
+/// constrains nothing that can occur: [`Element`] requires `Debug` as a
+/// supertrait, so every `T` that reaches [`contract_batched`] already has it.
+/// There is deliberately no `Clone` or `Copy` — `d` is an exclusive borrow, and
+/// that borrow is the whole soundness argument above.
+#[derive(Debug)]
 pub struct BatchItem<'a, T> {
     /// The plan. Built once and shared across items where the shape allows.
     pub plan: &'a Plan,

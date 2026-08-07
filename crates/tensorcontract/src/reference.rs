@@ -16,6 +16,7 @@ use crate::plan::ElementOp;
 /// type: the oracle must not be able to borrow any of the engine's
 /// convenience, or it would stop being an independent statement of the
 /// semantics.
+#[derive(Clone, Copy, Debug)]
 pub struct RefOperand<'a, T> {
     /// The backing allocation.
     pub data: &'a [T],

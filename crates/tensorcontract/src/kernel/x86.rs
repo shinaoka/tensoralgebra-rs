@@ -523,6 +523,18 @@ pub struct IsaConfigs<T> {
     pub config_at: fn(bool, ComplexMethod, usize) -> Option<KernelConfig<T>>,
 }
 
+/// Written by hand for two reasons: the derive would demand `T: Debug` for a
+/// struct that never stores a `T`, and the other five fields are function
+/// pointers whose addresses tell a reader nothing. The `isa` *is* the identity of
+/// the table.
+impl<T> core::fmt::Debug for IsaConfigs<T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("IsaConfigs")
+            .field("isa", &self.isa)
+            .finish()
+    }
+}
+
 /// The five entry points the [`super::KernelSet`] impls call, per type: the
 /// default shape, the menu of row blocks, and the config at a chosen one, each
 /// resolved through [`selected_isa`]. All yield `None`/`&[]` when no vectorised

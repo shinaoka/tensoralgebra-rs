@@ -21,7 +21,7 @@
 //! use tensorcontract::{contract, parse_einsum, Layout, TensorView, TensorViewMut};
 //!
 //! // D[h,i,j] = sum_k A[h,i,k] * B[h,k,j]   — `h` batches, `k` contracts.
-//! let (ia, ib, id) = parse_einsum("hik,hkj->hij").unwrap();
+//! let (ia, ib, id) = parse_einsum("hik,hkj->hij")?;
 //! let (la, lb, ld) = (
 //!     Layout::col_major(&[2, 2, 2]),
 //!     Layout::col_major(&[2, 2, 2]),
@@ -40,9 +40,9 @@
 //!     0.0,
 //!     None,
 //!     TensorViewMut::new(&mut d, &ld, &id),
-//! )
-//! .unwrap();
+//! )?;
 //! assert_eq!(d, a);
+//! # Ok::<(), tensorcontract::Error>(())
 //! ```
 //!
 //! # Expressing a contraction
@@ -117,7 +117,7 @@
 //! use tensorcontract::{Plan, TensorView, TensorViewMut, C64};
 //!
 //! // D[i,j] = sum_k conj(A[i,k]) * B[k,j], with B the identity.
-//! let (ia, ib, id) = parse_einsum("ik,kj->ij").unwrap();
+//! let (ia, ib, id) = parse_einsum("ik,kj->ij")?;
 //! let l = Layout::col_major(&[2, 2]);
 //!
 //! // Conjugation belongs to the plan; the view handed to `run` must agree.
@@ -126,8 +126,7 @@
 //!     Operand::new(&l, &ib),
 //!     None,
 //!     Operand::new(&l, &id),
-//! )
-//! .unwrap()
+//! )?
 //! .with_complex_method(ComplexMethod::Planar);
 //!
 //! let a = vec![C64::new(1.0, 2.0), C64::new(3.0, 4.0),
@@ -143,9 +142,9 @@
 //!     C64::new(0.0, 0.0),
 //!     None,
 //!     TensorViewMut::new(&mut d, &l, &id),
-//! )
-//! .unwrap();
+//! )?;
 //! assert_eq!(d, a.iter().map(|z| z.conj()).collect::<Vec<_>>());
+//! # Ok::<(), tensorcontract::Error>(())
 //! ```
 //!
 //! [`kernel`] has the packed panel formats, the micro-kernel contract, and the
@@ -161,15 +160,14 @@
 //! ```
 //! use tensorcontract::{parse_einsum, Layout, Operand, Plan, TensorView, TensorViewMut};
 //!
-//! let (ia, ib, id) = parse_einsum("ik,kj->ij").unwrap();
+//! let (ia, ib, id) = parse_einsum("ik,kj->ij")?;
 //! let l = Layout::col_major(&[2, 2]);
 //! let plan = Plan::new(
 //!     Operand::new(&l, &ia),
 //!     Operand::new(&l, &ib),
 //!     None,
 //!     Operand::new(&l, &id),
-//! )
-//! .unwrap();
+//! )?;
 //!
 //! let identity = vec![1.0f64, 0.0, 0.0, 1.0];
 //! for a in [vec![1.0f64, 2.0, 3.0, 4.0], vec![5.0f64, 6.0, 7.0, 8.0]] {
@@ -181,10 +179,10 @@
 //!         0.0,
 //!         None,
 //!         TensorViewMut::new(&mut d, &l, &id),
-//!     )
-//!     .unwrap();
+//!     )?;
 //!     assert_eq!(d, a);       // same plan, different data
 //! }
+//! # Ok::<(), tensorcontract::Error>(())
 //! ```
 //!
 //! **Threading is off by default** — one thread unless [`Plan::with_threads`]
@@ -294,6 +292,10 @@ regime where per-call threading loses."
 //! [results]: https://github.com/lkdvos/tensorprimitives-rs/blob/main/docs/results.md
 
 #![warn(missing_docs)]
+// CI builds with `-D warnings`, so this is what keeps "every public type is
+// `Debug`" true by construction instead of by review. Two types had already
+// slipped through.
+#![warn(missing_debug_implementations)]
 
 /// Read one `TENSORCONTRACT_*` variable once per process, or fall back.
 ///
@@ -345,7 +347,7 @@ pub mod scatter;
 
 pub use element::{Element, Real, C32, C64};
 pub use error::{Error, Result};
-pub use kernel::{ComplexMethod, KernelSet};
+pub use kernel::{Blocking, ComplexMethod, KernelSet};
 pub use layout::Layout;
 pub use plan::{ElementOp, Operand, Plan, PlanStats};
 
@@ -387,6 +389,10 @@ impl<'a, T> TensorView<'a, T> {
         }
     }
     /// Apply complex conjugation to this operand.
+    ///
+    /// Consumes the view and returns a new one, so dropping the result is a
+    /// silent no-op — the conjugation simply does not happen. Hence `must_use`.
+    #[must_use]
     pub fn conj(mut self) -> Self {
         self.op = ElementOp::Conjugate;
         self
@@ -431,6 +437,10 @@ impl<'a, T> TensorViewMut<'a, T> {
         }
     }
     /// Conjugate the result before storing it.
+    ///
+    /// Consumes the view and returns a new one, so dropping the result is a
+    /// silent no-op — the conjugation simply does not happen. Hence `must_use`.
+    #[must_use]
     pub fn conj(mut self) -> Self {
         self.op = ElementOp::Conjugate;
         self
@@ -446,6 +456,18 @@ impl<'a, T> TensorViewMut<'a, T> {
 /// Unlike [`Plan::run`], this reads the conjugation off the views themselves,
 /// because it builds the plan from them — so [`TensorView::conj`] takes effect
 /// here with nothing else to keep in sync.
+///
+/// # Errors
+///
+/// Everything [`Plan::new`] rejects — an inconsistent description
+/// ([`Error::RankMismatch`], [`Error::LabelCountMismatch`],
+/// [`Error::ExtentMismatch`], [`Error::NegativeExtent`],
+/// [`Error::OutputLabelMismatch`]), a contraction out of scope
+/// ([`Error::BroadcastIndexUnsupported`]) or a shape too large to address
+/// ([`Error::ExtentProductOverflow`]) — plus [`Error::NullPointer`] from
+/// [`Plan::run`] if a slice is shorter than the offsets the plan generates.
+/// [`Error::ElementOpMismatch`] cannot occur here: the plan is derived from
+/// these very views.
 ///
 /// ```
 /// use tensorcontract::{contract, Layout, TensorView, TensorViewMut};
@@ -467,9 +489,9 @@ impl<'a, T> TensorViewMut<'a, T> {
 ///     0.0,
 ///     None,
 ///     TensorViewMut::new(&mut d, &ld, &[i]),
-/// )
-/// .unwrap();
+/// )?;
 /// assert_eq!(d, vec![1.0 + 3.0 + 5.0, 2.0 + 4.0 + 6.0]);
+/// # Ok::<(), tensorcontract::Error>(())
 /// ```
 pub fn contract<T>(
     alpha: T,
@@ -511,6 +533,14 @@ impl Plan {
     ///
     /// [`contract`] cannot hit this: it derives the plan from the same views it
     /// executes.
+    ///
+    /// # Errors
+    ///
+    /// Only the two things a plan cannot know until it is handed arguments:
+    /// [`Error::ElementOpMismatch`] if a view's [`ElementOp`] differs from the
+    /// plan's, and [`Error::NullPointer`] if a slice is empty or too short to
+    /// hold every offset the plan's scatter vectors generate. Nothing about the
+    /// contraction *itself* is rechecked — [`Plan::new`] settled all of it.
     pub fn run<T>(
         &self,
         alpha: T,
@@ -649,14 +679,22 @@ impl Plan {
 /// Turn einsum-style label strings into the `i64` label arrays the engine
 /// takes, using each character's Unicode scalar value as the label.
 ///
+/// Any iterable of string-likes will do, so a caller holding `String`s does not
+/// have to build a `Vec<&str>` to be allowed to call this:
+///
 /// ```
-/// let l = tensorcontract::einsum_labels(&["ik", "kj", "ij"]);
+/// use tensorcontract::einsum_labels;
+///
+/// let l = einsum_labels(&["ik", "kj", "ij"]);
 /// assert_eq!(l[0], vec!['i' as i64, 'k' as i64]);
+///
+/// let owned: Vec<String> = vec!["ik".into(), "kj".into(), "ij".into()];
+/// assert_eq!(einsum_labels(owned), l);
 /// ```
-pub fn einsum_labels(specs: &[&str]) -> Vec<Vec<i64>> {
+pub fn einsum_labels(specs: impl IntoIterator<Item = impl AsRef<str>>) -> Vec<Vec<i64>> {
     specs
-        .iter()
-        .map(|s| s.chars().map(|c| c as i64).collect())
+        .into_iter()
+        .map(|s| s.as_ref().chars().map(|c| c as i64).collect())
         .collect()
 }
 
@@ -664,25 +702,38 @@ pub fn einsum_labels(specs: &[&str]) -> Vec<Vec<i64>> {
 ///
 /// A convenience for tests and examples, not a general einsum front end: it
 /// splits on `->` and one `,`, and every label is a single character. There is no
-/// `C` operand in the notation, and no validation — a spec the engine will
-/// reject still parses.
+/// `C` operand in the notation, and no validation of what the labels *mean* — a
+/// spec the engine will reject still parses.
+///
+/// # Errors
+///
+/// [`Error::EinsumSyntax`], and only that, for the two shapes of spec this
+/// notation cannot read: one with no `->`, and one whose left-hand side has no
+/// `,` separating `A` from `B`. Its `reason` says which. Everything else is
+/// somebody else's error — an unusable set of labels is [`Plan::new`]'s to
+/// reject, not this function's.
 ///
 /// ```
 /// use tensorcontract::parse_einsum;
 ///
-/// let (a, b, d) = parse_einsum("ik,kj->ij").unwrap();
+/// let (a, b, d) = parse_einsum("ik,kj->ij")?;
 /// assert_eq!(a, vec!['i' as i64, 'k' as i64]);
 /// assert_eq!(b, vec!['k' as i64, 'j' as i64]);
 /// assert_eq!(d, vec!['i' as i64, 'j' as i64]);
 ///
 /// // An output-only label parses; `Plan::new` is what rejects it.
-/// assert!(parse_einsum("i,j->ijk").is_some());
+/// assert!(parse_einsum("i,j->ijk").is_ok());
 /// // Missing the second operand or the arrow does not.
-/// assert!(parse_einsum("ik->i").is_none());
+/// assert!(parse_einsum("ik->i").is_err());
+/// # Ok::<(), tensorcontract::Error>(())
 /// ```
-pub fn parse_einsum(spec: &str) -> Option<(Vec<i64>, Vec<i64>, Vec<i64>)> {
-    let (lhs, rhs) = spec.split_once("->")?;
-    let (a, b) = lhs.split_once(',')?;
+pub fn parse_einsum(spec: &str) -> Result<(Vec<i64>, Vec<i64>, Vec<i64>)> {
+    let (lhs, rhs) = spec.split_once("->").ok_or(Error::EinsumSyntax {
+        reason: "no `->`; the output labels are not optional",
+    })?;
+    let (a, b) = lhs.split_once(',').ok_or(Error::EinsumSyntax {
+        reason: "no `,` before `->`; two input operands are required",
+    })?;
     let lab = |s: &str| s.trim().chars().map(|c| c as i64).collect();
-    Some((lab(a), lab(b), lab(rhs)))
+    Ok((lab(a), lab(b), lab(rhs)))
 }

@@ -86,7 +86,7 @@
 //! not model at all. A pending measurement (Phase 4 report part 7) is designed
 //! to separate the two, so no attempt is made to guess the upper bound here.
 
-use super::Blocking;
+use super::{Blocking, ParseError};
 
 // ---------------------------------------------------------------------------
 // Descriptors
@@ -120,7 +120,14 @@ impl CacheLevel {
 
 /// Where the descriptors came from. Reported by `tcbench info` so a number can
 /// be traced to a probe rather than to a guess.
+///
+/// `#[non_exhaustive]`: the set of probes grows with the targets this runs on —
+/// a BSD `sysctl`, a hypervisor's topology table, a `/proc/cpuinfo` reader for
+/// a machine whose sysfs is unmounted — and nothing downstream has to *service*
+/// a source, only report it, so a catch-all arm is a legitimate answer here in a
+/// way it is not for [`super::ComplexMethod`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum CacheSource {
     /// Linux `/sys/devices/system/cpu/cpu0/cache`. The only source that
     /// reports cache *sharing* directly, and it needs no `unsafe`.
@@ -143,6 +150,15 @@ impl CacheSource {
             CacheSource::Sysctl => "sysctl",
             CacheSource::Builtin => "builtin",
         }
+    }
+}
+
+/// [`CacheSource::name`]'s spelling. No [`FromStr`](core::str::FromStr) to pair
+/// with it: the source is something the probe reports, never something a caller
+/// asks for.
+impl core::fmt::Display for CacheSource {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.pad(self.name())
     }
 }
 
@@ -762,7 +778,13 @@ fn probe_sysctl() -> Option<CacheHierarchy> {
 // ---------------------------------------------------------------------------
 
 /// Which blocking derivation is in force.
+///
+/// `#[non_exhaustive]`: a third derivation is a plausible outcome of the pending
+/// `MC`/`KC`/`NC` grid — a per-microarchitecture table, or the model with a
+/// measured correction — and every consumer of this enum is inside the engine,
+/// choosing what to compute rather than being told what to supply.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[non_exhaustive]
 pub enum BlockModel {
     /// The hardcoded Phase 2 constants: today's shipping behaviour.
     #[default]
@@ -791,6 +813,29 @@ impl BlockModel {
             BlockModel::Legacy => "legacy",
             BlockModel::Analytical => "model",
         }
+    }
+}
+
+/// [`BlockModel::name`]'s spelling, which [`FromStr`](core::str::FromStr)
+/// round-trips.
+impl core::fmt::Display for BlockModel {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.pad(self.name())
+    }
+}
+
+/// [`BlockModel::parse`] as the standard trait. The inherent method stays: the
+/// `TENSORCONTRACT_BLOCKMODEL` plumbing wants the `Option`, because an
+/// unrecognised value there falls back to the default rather than failing a
+/// contraction.
+impl core::str::FromStr for BlockModel {
+    type Err = ParseError;
+
+    fn from_str(s: &str) -> Result<BlockModel, ParseError> {
+        BlockModel::parse(s).ok_or(ParseError::new(
+            "blocking model",
+            "legacy | model (also phase2, const, off; analytic, analytical, blis, on)",
+        ))
     }
 }
 
@@ -1539,6 +1584,27 @@ mod tests {
         assert_eq!(BlockModel::parse("maybe"), None);
         for m in [BlockModel::Legacy, BlockModel::Analytical] {
             assert_eq!(BlockModel::parse(m.name()), Some(m));
+            // `Display`/`FromStr` must agree with the inherent pair: two arms of
+            // a sweep are only comparable if they name the same derivation, so
+            // the spelling written into a report and the one read back from a
+            // script's arm list have to be the same string.
+            assert_eq!(m.to_string(), m.name());
+            assert_eq!(m.to_string().parse::<BlockModel>(), Ok(m));
+        }
+        assert!("maybe".parse::<BlockModel>().is_err());
+    }
+
+    /// The source label a report prints must be the one `name()` reports,
+    /// whichever of the two a caller reaches for.
+    #[test]
+    fn cache_source_displays_its_name() {
+        for s in [
+            CacheSource::Sysfs,
+            CacheSource::Cpuid,
+            CacheSource::Sysctl,
+            CacheSource::Builtin,
+        ] {
+            assert_eq!(s.to_string(), s.name());
         }
     }
 

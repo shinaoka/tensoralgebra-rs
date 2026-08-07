@@ -47,7 +47,7 @@ operation crate you need.
 ```rust
 use tensorcontract::{contract, parse_einsum, Layout, TensorView, TensorViewMut};
 
-let (ia, ib, id) = parse_einsum("ik,kj->ij").unwrap();
+let (ia, ib, id) = parse_einsum("ik,kj->ij")?;
 let la = Layout::col_major(&[2, 3]);
 let lb = Layout::col_major(&[3, 2]);
 let ld = Layout::col_major(&[2, 2]);

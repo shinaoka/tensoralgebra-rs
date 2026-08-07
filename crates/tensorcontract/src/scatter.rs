@@ -50,6 +50,15 @@ pub const IRREGULAR: i64 = i64::MIN;
 /// has length `extents.iter().product()` (1 for an empty group, i.e. a single
 /// zero offset).
 ///
+/// # Panics
+///
+/// Panics if `extents` and `strides` have different lengths — but only as a
+/// `debug_assert_eq!`, because inside the crate both always come from one
+/// [`crate::Layout`]. In a release build a *short* `strides` still panics, on
+/// the index rather than the assertion, while a long one has its tail silently
+/// ignored; a caller assembling the two slices separately should check the
+/// lengths itself.
+///
 /// ```
 /// use tensorcontract::scatter::build_scatter;
 ///
@@ -103,6 +112,11 @@ pub fn build_scatter(extents: &[i64], strides: &[i64]) -> Vec<i64> {
 /// scatter vector is fully regular at one block size and fully irregular at
 /// another, which is why `MR` is a performance decision and not just a tile
 /// shape.
+///
+/// # Panics
+///
+/// Panics if `blk` is 0. There is no block structure to describe at a block
+/// size of zero, and the block count below would divide by it.
 ///
 /// ```
 /// use tensorcontract::scatter::{build_block_scatter, build_scatter, IRREGULAR};

@@ -80,7 +80,7 @@ pub(crate) enum Class {
 /// *every* operand at once, so the test has to see them side by side. An axis
 /// absent from an operand has stride 0 there, which is not a special case —
 /// see the module docs on isolated indices.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Axis {
     /// Length of the axis after folding, i.e. the product of the extents that
     /// were merged into it.
@@ -115,7 +115,7 @@ struct LabelInfo {
 /// packing has to make anyway, and on the output side into the write-back, so
 /// there is never a separate traversal for it. That is why the engine offers no
 /// way to *not* apply it lazily.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub enum ElementOp {
     /// Use the values as stored. The default, and the only option that means
     /// anything for a real element type.
@@ -160,6 +160,7 @@ impl<'a> Operand<'a> {
         }
     }
     /// The same operand, complex-conjugated.
+    #[must_use]
     pub fn conj(mut self) -> Self {
         self.op = ElementOp::Conjugate;
         self
@@ -174,7 +175,7 @@ impl<'a> Operand<'a> {
 /// axes are folded — so they are what the engine works on rather than what the
 /// caller wrote. Reading them is the cheapest way to see whether folding did
 /// what you expected.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PlanStats {
     /// Rows of the matrix view: the product of the `M` extents.
     pub m: usize,
@@ -212,6 +213,14 @@ impl PlanStats {
     /// counts *useful* work — the padding the engine does on edge blocks is
     /// deliberately not included, so throughput computed from it is comparable
     /// against another library's.
+    ///
+    /// # Panics
+    ///
+    /// In a debug build, if the product exceeds `u64::MAX`; in release it wraps.
+    /// Reaching that needs all four dimensions near `10^5`, which is only a few
+    /// megabytes of scatter vectors and therefore a plan that builds fine even
+    /// though nothing could execute it — so it is a real edge, not an
+    /// unreachable one.
     pub fn macs(&self) -> u64 {
         (self.batch as u64) * (self.m as u64) * (self.n as u64) * (self.k as u64)
     }
@@ -410,6 +419,15 @@ impl Plan {
                 (false, false, true) => {
                     return Err(Error::BroadcastIndexUnsupported { label: l.id })
                 }
+                // Two facts make this unreachable, and it takes both. Every
+                // `LabelInfo` is created inside `merge_into`, whose only
+                // constructing branch runs `set` immediately, and each of the
+                // four `set` closures above turns on exactly one `in_*` flag —
+                // so no label is in no operand at all. That leaves one way to
+                // read `(false, false, false)`: a label in `C` alone. The
+                // `in_c != in_d` check above has already rejected that as
+                // `OutputLabelMismatch`, which is why `in_c` is absent from this
+                // match rather than overlooked by it.
                 (false, false, false) => unreachable!("label present in no operand"),
             };
             // Extent-1 axes contribute nothing; dropping them improves folding.
@@ -519,6 +537,7 @@ impl Plan {
     /// .with_complex_method(ComplexMethod::ThreeM);
     /// # Ok::<(), tensorcontract::Error>(())
     /// ```
+    #[must_use]
     pub fn with_complex_method(mut self, method: crate::kernel::ComplexMethod) -> Self {
         self.method = Some(method);
         self
@@ -535,6 +554,7 @@ impl Plan {
     /// Mainly for parameter sweeps and for driving every level of the loop
     /// nest on small test problems; the defaults are derived from the element
     /// type and the target's cache sizes.
+    #[must_use]
     pub fn with_blocking(mut self, blk: crate::kernel::Blocking) -> Self {
         self.blocking = Some(blk);
         self
@@ -545,7 +565,15 @@ impl Plan {
     /// Parallelism is a 2-D partition of the output, `ceil(M / MR)` row panels
     /// by `ceil(N / NR)` column blocks, so it is capped at their product — see
     /// [`Plan::partition`] for how the two axes are apportioned. A thread count
-    /// above the cap is silently reduced; `0` is treated as `1`.
+    /// above the cap is silently reduced.
+    ///
+    /// **`n == 0` is clamped to 1, not rejected.** One is the floor because
+    /// there is no zero-thread execution to name: at `n == 1` the driver runs
+    /// the whole contraction on the calling thread, so `0` and `1` would have to
+    /// mean the same thing whatever the signature. Clamping keeps this a
+    /// `Self`-returning builder rather than a `Result` for an argument no caller
+    /// passes deliberately. [`Plan::threads`] reports what will actually be
+    /// used, and is the way to read back a clamp.
     ///
     /// Each thread owns a disjoint set of output blocks and its own packed `A`,
     /// and no reduction is parallelised, so the summation order over `k` is the
@@ -553,6 +581,7 @@ impl Plan {
     ///
     /// Results are **bitwise identical** for every thread count, so this is
     /// never a numerical decision.
+    #[must_use]
     pub fn with_threads(mut self, n: usize) -> Self {
         self.threads = Some(n.max(1));
         self
@@ -1418,6 +1447,27 @@ mod tests {
         )
         .unwrap_err();
         assert!(matches!(e, Error::BroadcastIndexUnsupported { label: 8 }));
+    }
+
+    /// A label in `C` alone is the one input that would reach the
+    /// `unreachable!` in the classification match, which reads only
+    /// `(in_a, in_b, in_d)`. The `in_c != in_d` check is the whole reason that
+    /// arm is dead, so it is pinned here rather than left as an argument in a
+    /// comment.
+    #[test]
+    fn label_only_in_c_is_rejected_before_classification() {
+        let a = lay(&[4, 5]);
+        let b = lay(&[5, 6]);
+        let d = lay(&[4, 6]);
+        let c = lay(&[4, 6, 2]);
+        let e = Plan::new(
+            Operand::new(&a, &[0, 2]),
+            Operand::new(&b, &[2, 1]),
+            Some(Operand::new(&c, &[0, 1, 8])),
+            Operand::new(&d, &[0, 1]),
+        )
+        .unwrap_err();
+        assert_eq!(e, Error::OutputLabelMismatch);
     }
 
     /// `D[i,j] = A[i,k] B[k,j]` with `D` stored in the given strides.
