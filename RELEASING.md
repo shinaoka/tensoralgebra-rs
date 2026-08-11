@@ -160,6 +160,15 @@ from step 2 has to exist first. Add `--deploy=local` to get a develop-able JLL i
 `$BBROOT/depot/dev` and test `julia/TensorPrimitives` against it — that is where
 the Julia suite is gated, per step 0.
 
+**If you regenerate the recipe with `BinaryBuilder.run_wizard()`** — which is worth
+doing, its output is the house style a reviewer expects — keep
+`CARGO_TARGET_DIR=${WORKSPACE}/target` in the script. The wizard's interactive build
+mounts an overlay over `srcdir`, and on this kernel a copy-up inside it fails with
+`Cross-device link (os error 18)` the moment cargo creates `target/`. `build_tarballs.jl`
+creates no such overlay, so a dry-run will never show you this.
+`docs/notebook/packaging.md` has the four things the wizard's printer cannot emit
+and must be added back by hand.
+
 Read the audit log for the two things a Yggdrasil reviewer greps for: a missing
 licence file, and "could not be resolved and could not be auto-mapped". Exactly two
 unresolved-library warnings are **expected** — `libgcc_s.so.1`, which Julia ships,

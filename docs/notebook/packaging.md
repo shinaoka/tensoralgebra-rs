@@ -529,3 +529,70 @@ and both would have misled the *next* release rather than a reader: it still tol
 you to compute a sha256 over `.../archive/refs/tags/vX.Y.Z.tar.gz`, which
 BinaryBuilder rejects outright, and it still described the Julia-suite gate as
 running from an untagged export via a variable that no longer exists.
+
+#### Regenerating the recipe with the wizard, and a machine-specific trap
+
+The trimmed recipe was thrown away and regenerated with `BinaryBuilder.run_wizard()`
+rather than hand-edited, on the grounds that the review comment was about house
+style and the wizard *is* the house style: its output carries six template
+comments and nothing else. 52 lines, 17 comment-only, 11 of those the template's.
+
+**The wizard cannot express four things this recipe needs**, all verified against
+BinaryBuilder 0.6.6 rather than guessed:
+
+* `preferred_rust_version`. `print_build_tarballs`' `kwargs_vec` handles
+  `julia_compat`, `compilers`, `preferred_gcc_version` and `preferred_llvm_version`
+  and nothing else, and step 2 prompts only for GCC and LLVM. Dropped rather than
+  restored: `choose_shards` defaults it to `maximum(getversion.(Rust_builds))`,
+  so the old pin was a no-op at 1.94.0 anyway.
+* A `LibraryProduct` with two names — the printer emits one, `normalize_name` of
+  the file it found.
+* `FileProduct("include/tapp.h", …)`. Step 4 offers only what `readmeta` can open,
+  so a header is never a candidate.
+* `supported_platforms()` **minus** a filter. The printer prints either
+  `supported_platforms()`, when the selection equals all of it, or a literal list.
+  The filter form is worth restoring on its own merits: a literal list has nowhere
+  to say *why* a platform is excluded, which is exactly what the reviewer asked to
+  keep, and it silently stops tracking a 19th platform if one is ever added.
+
+**The wizard does not run on this machine without one change to the recipe.** Its
+interactive build mounts an overlay over `srcdir` to turn source modifications
+into patches — `lowerdir=/workspace/srcdir, upperdir=/meta/upper` — and on RHEL 8's
+4.18 kernel, inside a user namespace, the copy-up needed to create a directory
+there fails:
+
+```
+error: failed to create directory `/workspace/srcdir/tensorprimitives-rs/target`
+Caused by: Cross-device link (os error 18)
+```
+
+`cargo` is the first thing in the session that writes inside `srcdir`. The fix is
+`export CARGO_TARGET_DIR=${WORKSPACE}/target`, which is outside the overlay —
+`/workspace` is a plain bind mount — and it stays in the submitted recipe, coupled
+to `install.sh --artifacts` through the same variable so the two cannot drift.
+This is why the 2026-08-07 dry-run never saw it: `build_tarballs.jl` creates no
+such overlay, only `Wizard.interactive_build` does, and `srcdir_overlay` is not
+reachable from `run_wizard()`.
+
+**12 of the 15 platforms were validated in the session**, read out of the saved
+wizard state rather than off the screen: all 11 Linux targets plus
+`x86_64-unknown-freebsd`. The other three:
+
+* `x86_64-w64-mingw32` failed, **spuriously**. `match_files` compares
+  `normalize_name` of the prefix contents against the products recorded on Linux:
+  `libtensorprimitives_tapp` against mingw's `tensorprimitives_tapp.dll`. The file
+  that would match, the import library `libtensorprimitives_tapp.dll.a`, is
+  filtered out first because ObjectFile reads ELF, MachO and COFF and has no `ar`
+  reader. The platform built and audited fine on 2026-08-07 with the two-name
+  product, which is the thing the wizard's check cannot express. Disabled at step
+  6 to reach deployment, then restored by hand.
+* Both Apple targets were never attempted — the Xcode SDK licence was declined at
+  step 1, and macOS is dropped silently at that point rather than at build time.
+
+Two smaller wizard behaviours worth knowing next time: step 5a is dead code now —
+its candidate filter is `plat isa typeof(p)` and every platform is a `Platform`
+since BinaryPlatforms replaced the per-OS types, so it always finds zero
+candidates and is skipped. And editing the script mid-session goes through
+`change_script!`, which does `empty!(state.validated_platforms)`, so one late edit
+re-validates every platform that had already passed. Type the whole script,
+conditionals included, in step 3.
