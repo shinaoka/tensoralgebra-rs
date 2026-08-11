@@ -37,9 +37,8 @@ work onto `main`, or open a PR, and let CI go green *before* step 2.
 not be satisfied: `julia/TensorPrimitives` depends on `tensorprimitives_tapp_jll`,
 the JLL is built in step 4 from the tag created in step 2, and step 2 is what this
 section is supposed to gate. Testing the Julia side therefore belongs to step 4,
-where the recipe dry-run already builds a JLL from an untagged tree via
-`TAPP_LOCAL_SRC`, and to step 5, which cannot run before the JLL is registered.
-Do not reinstate it above.
+where the recipe dry-run builds a local JLL from the tagged commit, and to step 5,
+which cannot run before the JLL is registered. Do not reinstate it above.
 
 ## 1. Bump the version — in five places, which CI then checks
 
@@ -134,33 +133,39 @@ A working copy was kept in-tree until 0.1.0; the last revision containing it is
 `git show 79d4b9e:packaging/yggdrasil/build_tarballs.jl`, which is the place to
 start from if you need to recreate it rather than edit the Yggdrasil one.
 
-Fill in the source checksum, which needs the tag from step 2 to exist:
+Update `version = v"X.Y.Z"` and the `GitSource` commit — **the commit the tag
+points at, not the tag**, because a tag can be moved under a pin and this one was,
+twice. The source is a `GitSource` and not an archive over
+`.../archive/refs/tags/vX.Y.Z.tar.gz` **for a reason no checksum can address**:
+BinaryBuilder rejects auto-generated GitHub archives outright, since GitHub does
+not guarantee they are byte-stable. Do not reintroduce the URL and do not try to
+fix the resulting error by recomputing the digest.
 
 ```bash
-curl -sL https://github.com/lkdvos/tensorprimitives-rs/archive/refs/tags/vX.Y.Z.tar.gz \
-  | sha256sum
+git rev-parse vX.Y.Z^{commit}
 ```
 
-Put it in the recipe, together with `version = v"X.Y.Z"`, and dry-run before
-submitting — the last time this was done it found four defects that reading the
-file did not, including a licence-directory name the auditor rejects:
+Then dry-run before submitting — the last time this was done it found four defects
+that reading the file did not, including a licence-directory name the auditor
+rejects:
 
 ```bash
 # see julia/TensorPrimitives/README.md for the BBROOT setup
 cd <fork>/T/tensorprimitives_tapp
-TAPP_LOCAL_SRC=$BBROOT/src julia --project=$BBROOT/env build_tarballs.jl \
-    x86_64-linux-gnu --verbose
+julia --project=$BBROOT/env build_tarballs.jl x86_64-linux-gnu --verbose
 ```
 
-`TAPP_LOCAL_SRC` builds from an export of an untagged tree rather than from the
-tagged tarball, so the recipe can be tested before the tag it pins exists. It is
-inert without the variable, so it does not need removing before the PR.
+This builds the recipe exactly as submitted, from the pinned commit, so the tag
+from step 2 has to exist first. Add `--deploy=local` to get a develop-able JLL in
+`$BBROOT/depot/dev` and test `julia/TensorPrimitives` against it — that is where
+the Julia suite is gated, per step 0.
 
 Read the audit log for the two things a Yggdrasil reviewer greps for: a missing
-licence file, and "could not be resolved and could not be auto-mapped". One
-unresolved-library warning is **expected** — `libgcc_s.so.1`, which Julia ships —
-and the recipe explains why in a comment. Then open the PR from a branch that is
-not `master`.
+licence file, and "could not be resolved and could not be auto-mapped". Exactly two
+unresolved-library warnings are **expected** — `libgcc_s.so.1`, which Julia ships,
+and `bcryptprimitives.dll` on Windows — and the recipe explains both in a comment.
+A third would be a real finding. Then open the PR from a branch that is not
+`master`.
 
 PR title: `[tensorprimitives_tapp] Build vX.Y.Z`.
 

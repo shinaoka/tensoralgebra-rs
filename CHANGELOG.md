@@ -236,8 +236,7 @@ is a separate confound from time (A46).
   `T/tensorprimitives_tapp/build_tarballs.jl`, producing
   `tensorprimitives_tapp_jll` over 15 platforms. It calls the same `install.sh` a
   site install does, so the layout a JLL presents is the layout CI tests. It carries
-  a `TAPP_LOCAL_SRC` switch so the file that gets submitted is the file that was
-  dry-run. **13 of the 15 have been built and audited**, each producing an identical
+  **13 of the 15 have been built and audited**, each producing an identical
   layout containing a real shared library; the two Apple targets are unbuilt because
   they require accepting the Xcode SDK licence. `riscv64-linux-gnu` and
   `aarch64-unknown-freebsd` are excluded — no Rust toolchain shard exists for them —

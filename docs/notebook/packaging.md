@@ -498,3 +498,34 @@ numbers — **the whole repository is 8.6 MB of git**, because committed CSVs
 compress well and the history is short, so a `GitSource` clone costs about what the
 6.6 MB archive did. Nothing to fix, and the tidier-looking option would have added
 a hand-built artifact to every release for no measured gain.
+
+#### Review feedback: the recipe was mostly comments
+
+The first Yggdrasil review of #14374 asked for one thing, and it was not technical:
+
+> Please don't leave a whole bunch of LLM-generated comments that describe the
+> code. Only comment the important things (e.g., why a platform is disabled, what
+> patches are for).
+
+The submitted file was **230 lines, 158 of them comment-only** — more prose than
+recipe, and most of it re-explaining what the next line said. It is now 91 lines
+with 27 comment lines, and the surviving comments are exactly the ones a reader
+cannot recover from the code: the two platform filters, the `crt-static` and
+SONAME / `LC_ID_DYLIB` link flags, the two-name `LibraryProduct`, the licence
+directory that `install.sh` and the auditor disagree about, the two expected
+unresolved-library warnings, and why the Rust pin cannot be raised optimistically.
+Everything cut is either in this chapter or in `RELEASING.md` step 4, which is
+where it belonged in the first place.
+
+The `TAPP_LOCAL_SRC` switch went with it, deliberately: an `ENV`-conditional
+`sources` is a second non-idiomatic thing to defend in review, and it earns nothing
+now — its purpose was dry-running before a tag existed, and the release procedure
+tags in step 2, before the recipe work in step 4. A dry-run from the pinned
+`GitSource` also tests the submitted form exactly, which the `DirectorySource` path
+never did.
+
+Two live-document defects fell out of the same pass, both in `RELEASING.md` step 4,
+and both would have misled the *next* release rather than a reader: it still told
+you to compute a sha256 over `.../archive/refs/tags/vX.Y.Z.tar.gz`, which
+BinaryBuilder rejects outright, and it still described the Julia-suite gate as
+running from an untagged export via a variable that no longer exists.
