@@ -596,3 +596,49 @@ candidates and is skipped. And editing the script mid-session goes through
 `change_script!`, which does `empty!(state.validated_platforms)`, so one late edit
 re-validates every platform that had already passed. Type the whole script,
 conditionals included, in step 3.
+
+#### Two exclusions re-checked on review, and one of them was already stale
+
+A second reviewer asked, on the platform filter, whether the missing toolchains
+weren't already available as of Yggdrasil#14189. They were. That PR — "[RootFS]
+Update Rust to 1.97.0 and enable more platforms", merged 2026-07-31 — added both
+`aarch64-unknown-freebsd` and `riscv64-linux-gnu` as Rust targets, the latter under
+the renamed target triple `riscv64gc-unknown-linux-gnu`.
+
+**The reason the exclusion looked permanent is worth keeping, because it will
+recur.** The check `RELEASING.md` prescribed was run against a standalone
+`Pkg.add("BinaryBuilder")`, which resolves the released BinaryBuilderBase. That is
+not what builds the merged recipe. Yggdrasil's `Project.toml` pins both
+BinaryBuilder and BinaryBuilderBase to `master` through `[sources]`, and the gap
+between released and master is measured in whole Rust toolchains:
+
+| stack | Rust shards | `choose_shards` with `[:c, :rust]` |
+|---|---|---|
+| BinaryBuilderBase 1.44.0, released | 1.57.0 … 1.94.0 | fails for exactly those two |
+| BinaryBuilderBase 1.47.0, what Yggdrasil master pins | 1.57.0 … **1.97.0** | fails for none of the 18 |
+
+So a local dry-run against the released stack cannot see a platform CI can build,
+and reports it in a form that reads as a property of the shard list rather than of
+the version being resolved. The procedure now instantiates an environment from
+Yggdrasil's own `Project.toml` and `Manifest.toml`, and that environment is what
+future dry-runs should use.
+
+**Both platforms were then built rather than assumed**, since shard availability is
+not a build and both were new ground for this crate — riscv64 takes the scalar path,
+and `aarch64-unknown-freebsd` is the first non-Linux entry into `kernel::aarch64`.
+Each produced a tarball with one library and the header, one expected
+`libgcc_s.so.1` warning, both licences, and `already has SONAME
+"libtensorprimitives_tapp.so"` — so the link-time SONAME holds on FreeBSD and on
+riscv64, and D40's `patchelf --page-size 65536` hazard never arises on either
+64 KiB-page target because nothing rewrites the ELF. Build times were 10.5 s and
+8.7 s against setup times of 1m 45s and 2m 17s, which is the usual shape here.
+
+**The `i686-w64-mingw32` exclusion still stands** and was checked the same way, not
+carried over: BinaryBuilder's `docs/src/build_tips.md` on master still says in as
+many words that its Rust toolchain does not work on that platform.
+
+One consequence for the recipe: the two new platforms exist **only** at Rust 1.97.0,
+so `preferred_rust_version = v"1.94.0"` — the pin this recipe carried until the
+wizard rewrite dropped it, because `print_build_tarballs` cannot emit it — would now
+silently cost two platforms. Dropping it was right for a reason that had nothing to
+do with why it was dropped. The platform count goes 15 → 17.

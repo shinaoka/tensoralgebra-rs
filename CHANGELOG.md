@@ -234,13 +234,14 @@ is a separate confound from time (A46).
 
 * **A BinaryBuilder recipe**, maintained in Yggdrasil at
   `T/tensorprimitives_tapp/build_tarballs.jl`, producing
-  `tensorprimitives_tapp_jll` over 15 platforms. It calls the same `install.sh` a
-  site install does, so the layout a JLL presents is the layout CI tests. It carries
-  **13 of the 15 have been built and audited**, each producing an identical
-  layout containing a real shared library; the two Apple targets are unbuilt because
-  they require accepting the Xcode SDK licence. `riscv64-linux-gnu` and
-  `aarch64-unknown-freebsd` are excluded — no Rust toolchain shard exists for them —
-  as is `i686-w64-mingw32`, per BinaryBuilder's own documentation.
+  `tensorprimitives_tapp_jll` over 17 platforms. It calls the same `install.sh` a
+  site install does, so the layout a JLL presents is the layout CI tests.
+  **14 of the 17 have been built and audited against this recipe**, each producing an
+  identical layout containing a real shared library, plus `x86_64-w64-mingw32` against
+  its predecessor. The two Apple targets are unbuilt because they require accepting
+  the Xcode SDK licence. Only `i686-w64-mingw32` is excluded, per BinaryBuilder's own
+  documentation; `riscv64-linux-gnu` and `aarch64-unknown-freebsd` were excluded until
+  Yggdrasil enabled Rust 1.97.0 for them on 2026-07-31, and both now build.
 * **`julia/TensorPrimitives`**, a Julia package in two layers: `LibTAPP`, a
   complete `ccall` wrapper over `<tapp.h>` with handles as distinct Julia types and
   finalizers; and `TAPPBackend`, a `TensorOperations.jl` backend. The contraction

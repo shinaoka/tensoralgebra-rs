@@ -178,23 +178,45 @@ A third would be a real finding. Then open the PR from a branch that is not
 
 PR title: `[tensorprimitives_tapp] Build vX.Y.Z`.
 
-**Note the two platform exclusions and check whether they still hold.**
-`i686-w64-mingw32` is excluded because BinaryBuilder's Rust toolchain does not work
-there; `riscv64-linux-gnu` and `aarch64-unknown-freebsd` are excluded because no
-Rust toolchain shard exists for them at any available version. Re-check the second
-one against the BinaryBuilderBase in play — it is a property of the shard list, not
-of this code:
+**One platform is excluded: check whether it still holds.** `i686-w64-mingw32`,
+because BinaryBuilder's Rust toolchain does not work there — a claim that still
+stands verbatim in its own `docs/src/build_tips.md`. `riscv64-linux-gnu` and
+`aarch64-unknown-freebsd` *used* to be excluded too, and stopped needing to be on
+2026-07-31.
+
+**Run that check in an environment resolved from Yggdrasil's own manifest, not from
+a `Pkg.add("BinaryBuilder")`.** This is the trap that kept the stale exclusion
+alive: Yggdrasil's `Project.toml` pins BinaryBuilder *and* BinaryBuilderBase to
+`master` via `[sources]`, and the released BinaryBuilderBase lags it by whole Rust
+toolchains — 1.44.0 stops at Rust 1.94.0, where those two platforms have no shard
+and `choose_shards` errors, while the 1.47.0 that CI resolves has 1.97.0, where
+they build. A local dry-run against the released stack cannot see a platform that
+CI can build, and says so in a way that looks permanent.
+
+```bash
+D=$BBROOT/env-ygg && mkdir -p $D
+for f in Project.toml Manifest.toml; do
+  gh api repos/JuliaPackaging/Yggdrasil/contents/$f?ref=master --jq .content \
+    | base64 -d > $D/$f
+done
+julia --project=$D -e 'using Pkg; Pkg.instantiate()'
+```
 
 ```julia
+# in that environment
+using BinaryBuilder, BinaryBuilderBase
 for p in supported_platforms()
     try
-        BinaryBuilderBase.choose_shards(p; preferred_rust_version = v"1.94.0",
-                                        compilers = [:c, :rust])
+        BinaryBuilderBase.choose_shards(p; compilers = [:c, :rust])
     catch
         @info "no shard" triplet(p)
     end
 end
 ```
+
+Omit `preferred_rust_version` there, deliberately: it defaults to the newest shard,
+and the two platforms enabled in 2026 exist **only** at 1.97.0 — pinning 1.94.0
+puts them back out of reach. Do not reintroduce a Rust pin below that.
 
 The Apple targets need you to accept the Xcode SDK licence
 (`BINARYBUILDER_AUTOMATIC_APPLE=true`). That is a legal agreement; read it first.
