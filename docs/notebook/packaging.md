@@ -692,3 +692,13 @@ The `crt-static` branch stays, and the same question has the opposite answer the
 with the musl default, cargo drops the `cdylib` and exits 0, so there is no library
 in the prefix for any audit pass to inspect or repair. That failure surfaces as a
 missing `LibraryProduct`, which is D39's silent-failure mode one step later.
+
+**Re-checked rather than assumed**, since the flag has been in the recipe since
+before the toolchain moved: on rustc 1.97.1 — one patch above the 1.97.0 that
+`choose_shards` now picks — both `x86_64-unknown-linux-musl` and
+`aarch64-unknown-linux-musl` still warn that they are dropping the unsupported
+`cdylib` crate type without the flag, and are silent with it. Upstream's position is
+unchanged: the musl specs set `crt_static_default = true` and
+`crt_static_allows_dylibs = false`, and rust-lang/rust#110509 and
+rust-lang/cargo#8607 are both still open. The `cross-musl` job's negative control
+is what will notice the day this changes.
