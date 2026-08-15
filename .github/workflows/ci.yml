@@ -264,9 +264,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      # Prebuilt: cargo first, then CMake links what is already there. The
-      # SONAME flag is the one the Yggdrasil recipe sets -- rustc emits no
-      # DT_SONAME for a cdylib -- so what CI links is what a distribution ships.
+      # Prebuilt: cargo first, then CMake links what is already there. rustc
+      # emits no DT_SONAME for a cdylib, so without this flag what CI links is
+      # not what a site install ships. The Yggdrasil recipe does *not* set it --
+      # BinaryBuilder's audit patchelfs the same value in (D40) -- so this job
+      # is the only place the link-time route is exercised.
       - run: cargo build --release -p tensorprimitives-tapp
         env:
           RUSTFLAGS: -D warnings -C link-arg=-Wl,-soname,libtensorprimitives_tapp.so

@@ -227,8 +227,9 @@ is a separate confound from time (A46).
   the absolute build-tree path. `RUSTFLAGS='-C link-arg=-Wl,-soname,…'` (and the
   `-install_name,@rpath/…` counterpart) fix both without rewriting binaries, which
   matters because `patchelf` needs `--page-size 65536` on every 64 KiB-page
-  architecture. Documented for hand-building sites, used by CI and by the recipe,
-  and `install.sh` warns when they are missing.
+  architecture. Documented for hand-building sites, used by CI, and `install.sh`
+  warns when they are missing. The JLL is the one build that needs neither: the
+  BinaryBuilder audit sets both itself (D40, corrected 2026-08-15).
 
 ### Added — Julia and a binary distribution
 

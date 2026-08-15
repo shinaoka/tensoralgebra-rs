@@ -153,9 +153,12 @@ since upstream `error.h` fixes only `TAPP_SUCCESS`.
 2. **The `cdylib` had no SONAME, and on macOS something worse than none.** rustc
    emits `-soname` only for the `dylib` crate type, never for `cdylib`, so every
    consumer recorded a bare filename. On Mach-O, ld64 defaults `LC_ID_DYLIB` to the
-   `-o` path — an absolute build-tree path — and BinaryBuilder's `ensure_soname`
-   autofix *returns early whenever an ID is present without inspecting its value*.
-   So a macOS build would have shipped unrelocatable with a clean audit. See D40.
+   `-o` path — an absolute build-tree path — so a plain `cargo build` produces a
+   library that is not relocatable at all. Both are set at link time via `RUSTFLAGS`
+   (D40). **The claim that stood here — that a macOS build "would have shipped
+   unrelocatable with a clean audit" — was wrong**, and is corrected in
+   "The audit was already doing two of these" below: inside BinaryBuilder the audit
+   sets both, and the flags were only ever load-bearing everywhere else.
 3. **Eight of the 23 prototypes in `tapp.h` had never been seen by a C compiler
    or a linker.** `main.c` called the ones that do work; the setters,
    `TAPP_get_strides`, the batched product, `TAPP_destroy_status` and two attribute
@@ -629,7 +632,9 @@ and `aarch64-unknown-freebsd` is the first non-Linux entry into `kernel::aarch64
 Each produced a tarball with one library and the header, one expected
 `libgcc_s.so.1` warning, both licences, and `already has SONAME
 "libtensorprimitives_tapp.so"` — so the link-time SONAME holds on FreeBSD and on
-riscv64, and D40's `patchelf --page-size 65536` hazard never arises on either
+riscv64. (That log line is `ensure_soname`'s **early return**, and was read at the
+time as evidence that the flag was doing something necessary. It is not: see the
+next section.) D40's `patchelf --page-size 65536` hazard never arises on either
 64 KiB-page target because nothing rewrites the ELF. Build times were 10.5 s and
 8.7 s against setup times of 1m 45s and 2m 17s, which is the usual shape here.
 
@@ -642,3 +647,48 @@ so `preferred_rust_version = v"1.94.0"` — the pin this recipe carried until th
 wizard rewrite dropped it, because `print_build_tarballs` cannot emit it — would now
 silently cost two platforms. Dropping it was right for a reason that had nothing to
 do with why it was dropped. The platform count goes 15 → 17.
+
+#### The audit was already doing two of these
+
+A third review comment, on the two link-flag branches of the build script:
+*"Isn't this done automatically by the audit?"* It is — both of them, by **two
+different passes**, which is why reading the one function whose name matches read
+like a complete answer and was not. Verified against BinaryBuilder `master` on
+2026-08-15 rather than from the version the dry-runs used.
+
+| what the recipe set | what sets it anyway | where |
+|---|---|---|
+| ELF `-Wl,-soname,libtensorprimitives_tapp.so` | `ensure_soname` finds no `DT_SONAME`, runs `patchelf --set-soname $(basename(path))`, reads it back and verifies | `src/auditor/soname_matching.jl:43`, from `Auditor.jl:231` |
+| Mach-O `-Wl,-install_name,@rpath/libtensorprimitives_tapp.dylib` | `fix_identity_mismatch` runs `install_name_tool -id @rpath/$(basename(old_id))` | `src/auditor/dynamic_linkage.jl:404`, from `Auditor.jl:515` |
+
+Both are gated on `autofix`, which `build_tarballs` defaults to `true`
+(`AutoBuild.jl:764`) and Yggdrasil does not turn off. `basename` of ld64's default
+ID is the library's own filename, so the value the audit writes is the value the
+flag was writing — identical, not merely equivalent.
+
+**What made the error durable is worth more than the four lines it cost.** D40 was
+written from `ensure_soname` alone, and that function *is* a dead end on Mach-O:
+ld64 always emits an `LC_ID_DYLIB`, so `get_soname` returns non-`nothing` and it
+returns `true` without looking at the value. The conclusion drawn — "the audit says
+nothing" — required a second premise nobody stated, that no other pass touches the
+ID. Nothing was measured wrong and nothing shipped wrong; the flags were redundant
+rather than harmful, since both routes produce the same bytes.
+
+And the confirming evidence was in the audit logs from the first dry-run, reading
+as its own opposite: `already has SONAME "libtensorprimitives_tapp.so"` is the
+early return, printed **because** the link flag had already done the job. Had the
+flag been absent the log would have said `Set SONAME of … to …` and the tarball
+would have been identical. **A passing audit does not distinguish a check that
+fixed something from a check that skipped it**, so a log line is not evidence about
+which of the two happened (A63).
+
+What survives, and is unchanged: every build site the audit never sees still needs
+the flags — `install.sh`'s warning, the `c-consumer` job in `ci.yml`, the
+`artifacts` job in `release.yml`, and the hand-build recipe in
+`examples/c-consumer/README.md`. rustc's omission is real; it is repaired for free
+in exactly one place.
+
+The `crt-static` branch stays, and the same question has the opposite answer there:
+with the musl default, cargo drops the `cdylib` and exits 0, so there is no library
+in the prefix for any audit pass to inspect or repair. That failure surfaces as a
+missing `LibraryProduct`, which is D39's silent-failure mode one step later.
