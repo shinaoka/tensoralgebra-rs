@@ -208,7 +208,7 @@ ABI over `tensorprimitives_tapp_jll`, and a `TensorOperations.jl` extension rout
 existing `@tensor` expression through this engine by adding one keyword:
 
 ```julia
-@tensor backend = TAPPBackend() C[i, j] := conj(A[i, k, l]) * B[l, k, j]
+@tensor backend = TensorOperations.TAPPBackend() C[i, j] := conj(A[i, k, l]) * B[l, k, j]
 ```
 
 It is a separate repository with its own version, bounded by a `[compat]` on the JLL.
