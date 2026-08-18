@@ -17,7 +17,6 @@ algorithm is Matthews' block-scatter-matrix tensor contraction
 | [`tensorcontract`](crates/tensorcontract) | the contraction engine |
 | [`tensorprimitives-tapp`](crates/tensorprimitives-tapp) | TAPP C-ABI front end (`lib` / `cdylib` / `staticlib`) |
 | [`tensorprimitives-bench`](crates/tensorprimitives-bench) | `tcbench`: the correctness and benchmark harness (not published) |
-| [`julia/TensorPrimitives`](julia/TensorPrimitives) | Julia wrapper, with a `TensorOperations.jl` backend |
 
 `tensorprimitives` is the project and the repository, not a crate. Depend on the
 operation crate you need.
@@ -204,15 +203,16 @@ cc myprog.c $(PKG_CONFIG_PATH=/opt/tapp/lib/pkgconfig \
 
 ### From Julia
 
-`julia/TensorPrimitives` wraps the same ABI, including a `TensorOperations.jl`
-backend, so an existing `@tensor` expression routes through this engine by adding
-one keyword:
+[TensorPrimitives.jl](https://github.com/lkdvos/TensorPrimitives.jl) wraps the same
+ABI over `tensorprimitives_tapp_jll`, and a `TensorOperations.jl` extension routes an
+existing `@tensor` expression through this engine by adding one keyword:
 
 ```julia
 @tensor backend = TAPPBackend() C[i, j] := conj(A[i, k, l]) * B[l, k, j]
 ```
 
-Neither it nor its JLL is registered yet.
+It is a separate repository with its own version, bounded by a `[compat]` on the JLL.
+Neither it nor the JLL is registered yet.
 
 ## Documentation
 

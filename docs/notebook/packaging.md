@@ -257,7 +257,10 @@ promised that, so CI asserts it.
 
 `julia/TensorPrimitives` is two layers: `LibTAPP`, a complete `ccall` wrapper with
 handles as distinct Julia types and finalizers; and `TAPPBackend`, a
-`TensorOperations.jl` backend. The second is the one that matters, for a reason
+`TensorOperations.jl` backend. (It has since moved to its own repository and the
+backend to an extension in `TensorOperations.jl` itself — see "The wrapper leaves
+the tree" below. Everything in this section about the *mapping* still holds; one
+sentence about `tensoradd!` did not.) The second is the one that matters, for a reason
 that is about this engine specifically rather than about convenience.
 
 `TensorOperations.tensorcontract!(C, A, pA, conjA, B, pB, conjB, pAB, α, β, ...)`
@@ -270,11 +273,15 @@ puts this engine on the same footing as `TensorOperationsTBLIS.jl` for compariso
 which is the shape the eventual three-way benchmark wants.
 
 The backend is opt-in and deliberately **not** registered with `select_backend`:
-loading the package changes nothing for code that does not ask. `tensoradd!` and
-`tensortrace!` fall through to TensorOperations' own backends. TAPP can express
-both — a trace is a repeated label, an add is a contraction against a rank-0
-operand — but each is a correctness surface, and acquiring one for free is how a
-wrong answer gets shipped.
+loading the package changes nothing for code that does not ask. Only
+`tensorcontract!` is implemented. TAPP can express `tensoradd!` and `tensortrace!`
+too — a trace is a repeated label, an add is a contraction against a rank-0 operand —
+but each is a correctness surface, and acquiring one for free is how a wrong answer
+gets shipped.
+
+> **Correction, 2026-08-18.** This paragraph used to end "`tensoradd!` and
+> `tensortrace!` fall through to TensorOperations' own backends." **They do not.**
+> They throw. See "The wrapper leaves the tree" below, and A64.
 
 64 tests, every one checked against TensorOperations' own backend on the same
 inputs rather than against a rewritten expectation. The two that were worth
@@ -702,3 +709,66 @@ unchanged: the musl specs set `crt_static_default = true` and
 `crt_static_allows_dylibs = false`, and rust-lang/rust#110509 and
 rust-lang/cargo#8607 are both still open. The `cross-musl` job's negative control
 is what will notice the day this changes.
+
+#### The wrapper leaves the tree, and a claim about it that was never true
+
+`julia/TensorPrimitives` is now
+[TensorPrimitives.jl](https://github.com/lkdvos/TensorPrimitives.jl), with the five
+commits that ever touched it replayed at the root so the `file:line` citations above
+still resolve to something. Two facts about the ecosystem decided the shape, and both
+postdate everything written above:
+
+* **TBLIS.jl v0.3.0** (`QuantumKitHub/TBLIS.jl`, 2026-08-03) is a *pure* `tblis_jll`
+  wrapper — one hard dependency, Clang.jl-generated bindings committed per target
+  triple under `src/lib/`, a `gen/` harness that pins the generator, and **no `ext/`
+  at all.** It knows nothing about TensorOperations.
+* **The bridge moved upstream.** `ext/TensorOperationsTBLISExt.jl` now lives inside
+  TensorOperations (PR #290, shipped in v5.8.0), with `TBLISBackend <: AbstractBackend`
+  declared in TensorOperations' own `src/backends.jl`. The dependency points
+  TensorOperations → TBLIS.jl, and the standalone `TensorOperationsTBLIS.jl` is
+  superseded.
+
+So "a wrapper in TBLIS.jl's style with a TensorOperations extension" is **three
+repositories**, not one package: the wrapper, this engine's JLL, and an extension in
+TensorOperations. It is also a strictly ordered release chain — the JLL must be in
+General before the wrapper can resolve, and the wrapper must be registered before
+TensorOperations can name it as a weak dependency. Worth knowing before promising
+anyone a date.
+
+The one design consequence for the wrapper: the extension lives in another package,
+so `_handle()` and `_executor()` cannot stay private-by-underscore. An extension
+cannot reach into another package's internals, so the process-wide context becomes
+documented API — which is also the name the plan-once-execute-many path never had.
+
+**The claim that was never true.** This chapter said `tensoradd!` and `tensortrace!`
+"fall through to TensorOperations' own backends". They throw. `interface.jl:40-59`
+routes any backend that is not `DefaultBackend` or `NoBackend` to a catch-all whose
+`else` branch is `throw(ArgumentError("Unknown backend $backend …"))`, so
+`@tensor backend = TAPPBackend() C[i, j] := A[j, i]` — a permutation, which is a
+`tensoradd!` — has never worked, and neither has any expression containing a trace or
+a partial trace. Nothing in the suite noticed because **every one of the nine backend
+testsets drives `tensorcontract!`**, which is the one method that exists. A backend is
+all-or-nothing unless it delegates explicitly; the fix is three-line `tensoradd!` and
+`tensortrace!` methods that forward to `select_backend`'s choice, which makes the
+sentence true rather than deleting it.
+
+That is A64, and it is the same shape as A15 and A20 one domain further out: the
+capability was described, the description was plausible, and the test that would have
+falsified it was the one test nobody wrote. Reading TensorOperations' own dispatch
+chain is what settled it — not reading our backend, which is correct as far as it goes.
+
+**Two smaller things this pass tidied.** The version lockstep is gone: the wrapper had
+been pinned to the Rust workspace version by a `consistency` step that read
+`julia/TensorPrimitives/Project.toml`, which would now fail on a path that does not
+exist, so the release checks four version statements rather than five. And the record
+disagreed with itself about the size of the Julia suite — 64 tests in this chapter,
+76 in the CHANGELOG. Neither is re-derivable at the moment, because the suite cannot
+run until there is a JLL to run it against, so no third number is invented here; it
+will be restated from a run.
+
+**And the JLL is not actually available.** Yggdrasil#14374 merged 2026-08-15, but three
+days later `JuliaBinaryWrappers/tensorprimitives_tapp_jll.jl` does not exist, General
+has no `jll/T/tensorprimitives_tapp_jll`, and the merge commit's only check-run reads
+"This check was skipped" against a commit status still `pending`. A merged recipe is
+not a published JLL, which is worth writing down because every downstream step in this
+section waits on it.

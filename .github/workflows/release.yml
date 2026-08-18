@@ -58,11 +58,6 @@ jobs:
               && { echo "CHANGELOG.md still says 'unreleased'"; exit 1; }
           fi
 
-          # The Julia package tracks the same version.
-          jv=$(sed -n 's/^version = "\(.*\)"$/\1/p' julia/TensorPrimitives/Project.toml | head -n1)
-          test "$jv" = "$manifest" \
-            || { echo "julia/TensorPrimitives is $jv, not $manifest"; exit 1; }
-
           echo "all version statements agree on ${manifest}"
 
   # `cargo publish` without publishing. Only the engine can be checked: the TAPP

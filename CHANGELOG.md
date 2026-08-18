@@ -13,7 +13,18 @@ the part a prospective dependant most needs, and it has no KaC category.
 
 ## 0.1.1 — unreleased
 
-Nothing yet. Note for whoever opens this section: the release procedure changed
+### Changed
+
+* **The Julia wrapper moved out**, to
+  [TensorPrimitives.jl](https://github.com/lkdvos/TensorPrimitives.jl), with its
+  history. It versions independently now, bounded by a `[compat]` entry on
+  `tensorprimitives_tapp_jll` rather than pinned to this repository's version, so a
+  wrapper fix no longer needs an engine release. Its `TensorOperations` backend
+  became an extension **in `TensorOperations.jl`**, which is where that ecosystem
+  put the equivalent TBLIS bridge in v5.8.0. Nothing in the engine or the ABI
+  changed. The `consistency` job therefore checks four version statements, not five.
+
+Note for whoever opens this section: the release procedure changed
 after 0.1.0 shipped — `RELEASING.md` step 2 is now a single
 `gh release create --target`, because pushing the tag first loses an unwinnable
 race against the workflow that uploads to the release.

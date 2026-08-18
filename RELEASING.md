@@ -33,14 +33,15 @@ block above locally is not a substitute: it does not cover the cross-compilation
 matrix, the C link modes, the musl `cdylib` check or the offline build. Get the
 work onto `main`, or open a PR, and let CI go green *before* step 2.
 
-**The Julia suite is deliberately not a gate here.** It used to be, and it could
-not be satisfied: `julia/TensorPrimitives` depends on `tensorprimitives_tapp_jll`,
-the JLL is built in step 4 from the tag created in step 2, and step 2 is what this
-section is supposed to gate. Testing the Julia side therefore belongs to step 4,
-where the recipe dry-run builds a local JLL from the tagged commit, and to step 5,
-which cannot run before the JLL is registered. Do not reinstate it above.
+**The Julia suite is not a gate here, and no longer can be:** the wrapper lives in
+its own repository, [TensorPrimitives.jl](https://github.com/lkdvos/TensorPrimitives.jl),
+and versions independently of this one. It used to be a gate *and could not be
+satisfied even in-tree* — the wrapper depends on `tensorprimitives_tapp_jll`, the JLL
+is built in step 4 from the tag created in step 2, and step 2 is what this section is
+supposed to gate. Do not reinstate it above. What step 4 still owes the Julia side is
+a local JLL to test against.
 
-## 1. Bump the version — in five places, which CI then checks
+## 1. Bump the version — in four places, which CI then checks
 
 The `consistency` job in `release.yml` fails if any of these disagree, so this list
 is enforced rather than remembered:
@@ -50,7 +51,6 @@ is enforced rather than remembered:
 | `Cargo.toml` | `[workspace.package] version` — the source of truth |
 | `crates/tensorprimitives-tapp/include/tapp.h` | `TAPP_VERSION_MAJOR/MINOR/PATCH` and `TAPP_VERSION_STRING` |
 | `CHANGELOG.md` | a `## X.Y.Z` section, with `— unreleased` removed |
-| `julia/TensorPrimitives/Project.toml` | `version` |
 
 `tapp.h` is checked from the Rust side too, by
 `the_header_version_macros_match_the_crate_version` in `abi_layout.rs`, which reads
@@ -150,15 +150,17 @@ that reading the file did not, including a licence-directory name the auditor
 rejects:
 
 ```bash
-# see julia/TensorPrimitives/README.md for the BBROOT setup
+# see the BBROOT setup in TensorPrimitives.jl's gen/README.md
 cd <fork>/T/tensorprimitives_tapp
 julia --project=$BBROOT/env build_tarballs.jl x86_64-linux-gnu --verbose
 ```
 
 This builds the recipe exactly as submitted, from the pinned commit, so the tag
 from step 2 has to exist first. Add `--deploy=local` to get a develop-able JLL in
-`$BBROOT/depot/dev` and test `julia/TensorPrimitives` against it — that is where
-the Julia suite is gated, per step 0.
+`$BBROOT/depot/dev`, which is what
+[TensorPrimitives.jl](https://github.com/lkdvos/TensorPrimitives.jl) is tested
+against before the JLL reaches the registry — including regenerating its raw
+bindings, since the header is a product of that artifact.
 
 **If you regenerate the recipe with `BinaryBuilder.run_wizard()`** — which is worth
 doing, its output is the house style a reviewer expects — keep
@@ -221,15 +223,17 @@ puts them back out of reach. Do not reintroduce a Rust pin below that.
 The Apple targets need you to accept the Xcode SDK licence
 (`BINARYBUILDER_AUTOMATIC_APPLE=true`). That is a legal agreement; read it first.
 
-## 5. The Julia package, via the General registry
+## 5. The Julia wrapper — not this repository's release
 
-Only after the JLL is registered — `julia/TensorPrimitives/Project.toml` depends on
-it, so the package cannot resolve before then. Then register with `@JuliaRegistrator`
-on a commit, noting the `subdir`:
+[TensorPrimitives.jl](https://github.com/lkdvos/TensorPrimitives.jl) has its own
+version and its own release procedure. It is bounded by a `[compat]` entry on
+`tensorprimitives_tapp_jll`, so a wrapper fix no longer needs an engine release and
+an engine release does not oblige a wrapper one.
 
-```
-@JuliaRegistrator register subdir=julia/TensorPrimitives
-```
+What this repository still owes it, in order and each blocking the next: the tag from
+step 2, the JLL from step 4 reaching the General registry, and only then a wrapper
+release that can resolve. A `TensorOperations` extension keyed on the wrapper is a
+third step after that, in `TensorOperations.jl` itself.
 
 ## After
 
