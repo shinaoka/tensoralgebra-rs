@@ -762,9 +762,12 @@ been pinned to the Rust workspace version by a `consistency` step that read
 `julia/TensorPrimitives/Project.toml`, which would now fail on a path that does not
 exist, so the release checks four version statements rather than five. And the record
 disagreed with itself about the size of the Julia suite — 64 tests in this chapter,
-76 in the CHANGELOG. Neither is re-derivable at the moment, because the suite cannot
-run until there is a JLL to run it against, so no third number is invented here; it
-will be restated from a run.
+76 in the CHANGELOG. Neither number survives the split, and both are now moot: the
+suite is **52 tests in the wrapper and 117 in the extension**, from a run against a
+locally built library rather than from a count of `@test` lines. The extension's are
+all against `StridedNative()` on the same inputs, and they include the two delegated
+operations and a network mixing all three, which is what the old suite could not have
+covered because those paths threw.
 
 **And the JLL is not actually available.** Yggdrasil#14374 merged 2026-08-15, but three
 days later `JuliaBinaryWrappers/tensorprimitives_tapp_jll.jl` does not exist, General
