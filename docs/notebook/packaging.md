@@ -763,15 +763,31 @@ been pinned to the Rust workspace version by a `consistency` step that read
 exist, so the release checks four version statements rather than five. And the record
 disagreed with itself about the size of the Julia suite — 64 tests in this chapter,
 76 in the CHANGELOG. Neither number survives the split, and both are now moot: the
-suite is **52 tests in the wrapper and 117 in the extension**, from a run against a
-locally built library rather than from a count of `@test` lines. The extension's are
+suite is **52 tests in the wrapper and 117 in the extension**, from a run against the
+registered JLL rather than from a count of `@test` lines. Aqua is 11 of 11, including
+the `persistent_tasks` check that could not resolve an unregistered JLL. The extension's are
 all against `StridedNative()` on the same inputs, and they include the two delegated
 operations and a network mixing all three, which is what the old suite could not have
 covered because those paths threw.
 
-**And the JLL is not actually available.** Yggdrasil#14374 merged 2026-08-15, but three
-days later `JuliaBinaryWrappers/tensorprimitives_tapp_jll.jl` does not exist, General
-has no `jll/T/tensorprimitives_tapp_jll`, and the merge commit's only check-run reads
-"This check was skipped" against a commit status still `pending`. A merged recipe is
-not a published JLL, which is worth writing down because every downstream step in this
-section waits on it.
+**A merged recipe is not a published JLL, and the reason was in the commit message.**
+Yggdrasil#14374 merged 2026-08-15 and nothing appeared: nine days later
+`JuliaBinaryWrappers/tensorprimitives_tapp_jll.jl` did not exist, General had no
+`jll/T/tensorprimitives_tapp_jll`, and the merge commit carried **zero** Buildkite
+statuses against an overall status still `pending` — not a failed build, no build at
+all.
+
+The cause was the squash-merge body. GitHub concatenates a branch's commit messages
+into it, one of ours was `code review [skip ci]`, and Buildkite honours a skip token
+**anywhere in the commit message, body included**. So the entire post-merge build was
+skipped. The control group makes it unambiguous: three contemporaneous merges without
+a token carry 15 Buildkite statuses each and `success`, while both master commits that
+do carry one — ours and an unrelated `GAP_pkg` merge eight days later — carry 0 and
+`pending`.
+
+Two things worth keeping. **A skip token belongs only in a commit that will never be
+squashed onto a branch whose CI matters**, and the PR author is not the one who
+controls the squash body — the merger is. And **"the recipe is merged" is not the
+milestone; a Buildkite status is.** The recipe content was never in question: it was
+byte-identical to what finally built. Registered 2026-08-24 as
+`tensorprimitives_tapp_jll` **0.1.0+0**, 17 platforms.

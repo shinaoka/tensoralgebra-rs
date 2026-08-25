@@ -212,7 +212,8 @@ existing `@tensor` expression through this engine by adding one keyword:
 ```
 
 It is a separate repository with its own version, bounded by a `[compat]` on the JLL.
-Neither it nor the JLL is registered yet.
+`tensorprimitives_tapp_jll` 0.1.0+0 is in the General registry; the wrapper is not
+registered yet.
 
 ## Documentation
 

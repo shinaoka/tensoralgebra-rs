@@ -180,6 +180,25 @@ A third would be a real finding. Then open the PR from a branch that is not
 
 PR title: `[tensorprimitives_tapp] Build vX.Y.Z`.
 
+**Never put `[skip ci]` in a commit on that branch.** Yggdrasil builds on Buildkite,
+which honours a skip token *anywhere in the commit message including the body*, and
+GitHub's squash merge concatenates the branch's commit messages into that body. v0.1.0
+was merged with a stray `code review [skip ci]` five commits back and **no build was
+ever created** — zero Buildkite statuses, an overall status stuck at `pending`, and
+nine days of nothing. It cost a second PR to re-trigger.
+
+So after the merge, **check that the merge commit has Buildkite statuses**, because a
+merged recipe is not a published JLL:
+
+```bash
+gh api repos/JuliaPackaging/Yggdrasil/commits/<merge-sha>/status \
+  -q '.state, (.statuses|length)'      # want: success, ~15 -- not pending, 0
+```
+
+Zero statuses means the build was skipped rather than failed. The fix is a follow-up PR
+touching the recipe with a clean single-commit message; a maintainer with Buildkite
+access can also start a build by hand, since manually created builds ignore skip tokens.
+
 **One platform is excluded: check whether it still holds.** `i686-w64-mingw32`,
 because BinaryBuilder's Rust toolchain does not work there — a claim that still
 stands verbatim in its own `docs/src/build_tips.md`. `riscv64-linux-gnu` and
