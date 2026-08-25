@@ -257,9 +257,8 @@ promised that, so CI asserts it.
 
 `julia/TensorPrimitives` is two layers: `LibTAPP`, a complete `ccall` wrapper with
 handles as distinct Julia types and finalizers; and `TAPPBackend`, a
-`TensorOperations.jl` backend. (It has since moved to its own repository and the
-backend to an extension in `TensorOperations.jl` itself — see "The wrapper leaves
-the tree" below. Everything in this section about the *mapping* still holds; one
+`TensorOperations.jl` backend. (It has since moved to its own repository, which
+still owns this backend — see "The wrapper leaves the tree" below. Everything in this section about the *mapping* still holds; one
 sentence about `tensoradd!` did not.) The second is the one that matters, for a reason
 that is about this engine specifically rather than about convenience.
 
@@ -728,17 +727,54 @@ postdate everything written above:
   TensorOperations → TBLIS.jl, and the standalone `TensorOperationsTBLIS.jl` is
   superseded.
 
-So "a wrapper in TBLIS.jl's style with a TensorOperations extension" is **three
-repositories**, not one package: the wrapper, this engine's JLL, and an extension in
-TensorOperations. It is also a strictly ordered release chain — the JLL must be in
-General before the wrapper can resolve, and the wrapper must be registered before
-TensorOperations can name it as a weak dependency. Worth knowing before promising
-anyone a date.
+So "a wrapper in TBLIS.jl's style with a TensorOperations extension" reads as **three
+repositories**, and that is how it was first built: the wrapper, this engine's JLL, and
+an extension in TensorOperations with `TAPPBackend` declared in its `src/backends.jl`.
+It was written, tested at 117 cases, and then **thrown away in favour of a hard
+dependency**, which is the more interesting result.
 
-The one design consequence for the wrapper: the extension lives in another package,
-so `_handle()` and `_executor()` cannot stay private-by-underscore. An extension
-cannot reach into another package's internals, so the process-wide context becomes
-documented API — which is also the name the plan-once-execute-many path never had.
+#### Why a package extension cannot hold a backend cleanly
+
+The obstacle is a name/type split, and it is not visible until you try to build it. A
+backend **type** must subtype `TensorOperations.AbstractBackend`, which requires
+TensorOperations to be loaded at definition time. The backend **name** must be
+reachable *without* TensorOperations loaded, or the wrapper cannot export it. An
+extension module is not a namespace users can reach — `Base.get_extension` is the only
+route — so those two requirements cannot both be met inside one package by a weak
+dependency. Four arrangements exist and all four were built and run, not reasoned
+about:
+
+| | works | subtypes `AbstractBackend` | `TAPPBackend` is a | cost |
+|---|---|---|---|---|
+| ext in TensorOperations | yes | yes | type | a release chain; TensorOperations weak-depends on a package registered yesterday |
+| ext in the wrapper, plain struct in the parent | yes | **no** | type | off-contract |
+| ext in the wrapper, `function TAPPBackend end` + struct in the ext | yes | yes | **function** | internal type name leaks into `show` and errors; unusable in type position |
+| **hard dependency** (shipped) | yes | yes | type | ~0.3 s of load, ten pure-Julia packages |
+
+The second row works *today* only because TensorOperations annotates
+`::AbstractBackend` nowhere in `src/` outside `backends.jl` — the interface functions
+take `backend` untyped and the macro splices the value in positionally — while
+`docs/src/man/backends.md` states the contract as "a subtype of `AbstractBackend`". So
+it is relying on an annotation never being added. The third row is sound but sells the
+type name to buy the weak dependency.
+
+Measured cost of the row that shipped: **0.45 s to load the wrapper and
+TensorOperations together against 0.12 s for the wrapper alone**, and ten pure-Julia
+dependencies with no binaries. Paid only by someone who wants the raw ABI and nothing
+else. That is cheaper than any of the three workarounds, and it collapses the release
+chain to one gate — the JLL — instead of three.
+
+**The lesson worth keeping is about the framing, not the answer.** "In the style of
+TBLIS.jl" was taken as settling this, and TBLIS.jl is a pure wrapper only because
+TensorOperations owns the TBLIS backend upstream; copying its *shape* without its
+*counterpart* would have meant copying neither. A precedent is only a precedent for
+the whole arrangement.
+
+One consequence reversed itself. While the extension lived upstream, `_handle()` and
+`_executor()` had to become public API, because an extension cannot reach into another
+package's internals. With the backend in the same module they are private again, and
+the plan-once-execute-many path is documented in terms of `Handle()` and `Executor()`
+directly, which is what a caller wanting their own lifetimes should use anyway.
 
 **The claim that was never true.** This chapter said `tensoradd!` and `tensortrace!`
 "fall through to TensorOperations' own backends". They throw. `interface.jl:40-59`

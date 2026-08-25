@@ -19,10 +19,12 @@ the part a prospective dependant most needs, and it has no KaC category.
   [TensorPrimitives.jl](https://github.com/lkdvos/TensorPrimitives.jl), with its
   history. It versions independently now, bounded by a `[compat]` entry on
   `tensorprimitives_tapp_jll` rather than pinned to this repository's version, so a
-  wrapper fix no longer needs an engine release. Its `TensorOperations` backend
-  became an extension **in `TensorOperations.jl`**, which is where that ecosystem
-  put the equivalent TBLIS bridge in v5.8.0. Nothing in the engine or the ABI
-  changed. The `consistency` job therefore checks four version statements, not five.
+  wrapper fix no longer needs an engine release. It keeps its `TensorOperations`
+  backend and exports it, having taken `TensorOperations` as an ordinary dependency
+  rather than a weak one — a backend type has to subtype
+  `TensorOperations.AbstractBackend`, and no weak-dependency arrangement holds that
+  cleanly. Nothing in the engine or the ABI changed. The `consistency` job therefore
+  checks four version statements, not five.
 
 Note for whoever opens this section: the release procedure changed
 after 0.1.0 shipped — `RELEASING.md` step 2 is now a single

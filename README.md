@@ -204,11 +204,11 @@ cc myprog.c $(PKG_CONFIG_PATH=/opt/tapp/lib/pkgconfig \
 ### From Julia
 
 [TensorPrimitives.jl](https://github.com/lkdvos/TensorPrimitives.jl) wraps the same
-ABI over `tensorprimitives_tapp_jll`, and a `TensorOperations.jl` extension routes an
-existing `@tensor` expression through this engine by adding one keyword:
+ABI over `tensorprimitives_tapp_jll` and exports a `TensorOperations.jl` backend, so an
+existing `@tensor` expression routes through this engine by adding one keyword:
 
 ```julia
-@tensor backend = TensorOperations.TAPPBackend() C[i, j] := conj(A[i, k, l]) * B[l, k, j]
+@tensor backend = TAPPBackend() C[i, j] := conj(A[i, k, l]) * B[l, k, j]
 ```
 
 It is a separate repository with its own version, bounded by a `[compat]` on the JLL.

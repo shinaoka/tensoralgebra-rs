@@ -251,8 +251,8 @@ an engine release does not oblige a wrapper one.
 
 What this repository still owes it, in order and each blocking the next: the tag from
 step 2, the JLL from step 4 reaching the General registry, and only then a wrapper
-release that can resolve. A `TensorOperations` extension keyed on the wrapper is a
-third step after that, in `TensorOperations.jl` itself.
+release that can resolve. Nothing further: the wrapper owns its `TensorOperations`
+backend, so no third repository is in the chain.
 
 ## After
 
