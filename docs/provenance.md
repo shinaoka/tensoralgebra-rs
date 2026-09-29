@@ -10,6 +10,11 @@ history and authorship are preserved:
 | `tensorprimitives/` | [lkdvos/tensorprimitives-rs](https://github.com/lkdvos/tensorprimitives-rs) (Lukas Devos) | `8cda75e` | MIT OR Apache-2.0 | `tensorprimitives/LICENSE-*`, per-crate `LICENSE-*` |
 | `benchmarks/` | [tensor4all/strided-rs-benchmark-suite](https://github.com/tensor4all/strided-rs-benchmark-suite) | `0550611` | MIT | `benchmarks/LICENSE` |
 
+`crates/tprims-core/include/dlpack/dlpack.h` is DLPack v1.1
+(<https://github.com/dmlc/dlpack>, tag `v1.1`), copied verbatim under the
+Apache License 2.0 (`crates/tprims-core/include/dlpack/LICENSE`); the Rust
+`#[repr(C)]` mirror in `tprims-core/src/dlpack.rs` follows it.
+
 The history of an imported file is reachable through the import merge
 commit's second parent (for example `git log 6a84228^2 -- strided-perm/src/lib.rs`).
 

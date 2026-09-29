@@ -1,0 +1,6 @@
+# threads: requested=1 exec=1
+case,variant,threads,median_ns,samples
+empty_call,c,1,2.9,101
+gemm_8,c,1,430.5,101
+contract_2x2x2,c,1,661.2,101
+# close: status=0 0.2 us

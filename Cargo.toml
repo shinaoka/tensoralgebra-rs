@@ -2,6 +2,10 @@
 resolver = "2"
 members = [
     "crates/tprims-exec",
+    "crates/tprims-core",
+    "crates/tprims-blas-capi",
+    "crates/tprims-contract-capi",
+    "crates/tprims-bundle",
     "crates/tprims-blas",
     "crates/tprims-linalg",
     "crates/tprims-contract",
@@ -33,6 +37,9 @@ strided-perm = { version = "0.4.4", path = "strided/strided-perm" }
 strided-kernel = { version = "0.4.4", path = "strided/strided-kernel" }
 tensorcontract = { version = "0.1.0", path = "tensorprimitives/crates/tensorcontract" }
 tprims-exec = { version = "0.1.0", path = "crates/tprims-exec" }
+tprims-core = { version = "0.1.0", path = "crates/tprims-core" }
+tprims-blas-capi = { version = "0.1.0", path = "crates/tprims-blas-capi" }
+tprims-contract-capi = { version = "0.1.0", path = "crates/tprims-contract-capi" }
 tprims-blas = { version = "0.1.0", path = "crates/tprims-blas" }
 tprims-linalg = { version = "0.1.0", path = "crates/tprims-linalg" }
 tprims-contract = { version = "0.1.0", path = "crates/tprims-contract" }

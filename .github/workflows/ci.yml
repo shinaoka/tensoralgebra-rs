@@ -34,6 +34,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      # The C ABI test links a C program to libtprims.so, which `cargo test`
+      # does not build (it only builds the rlib the harness needs).
+      - run: cargo build -j 16 --profile ci -p tprims-bundle
       - run: cargo test -j 16 --profile ci --workspace --no-fail-fast
       - run: cargo test -j 16 --profile ci -p strided-basic -p strided-kernel -p strided-perm --features parallel --no-fail-fast
       # tprims-bench enables strided-basic/tprims-exec, so the workspace run
@@ -48,6 +51,20 @@ jobs:
       # and the `std` feature seam still builds without it.
       - run: cargo package -j 16 -p tensorcontract --list --allow-dirty
       - run: cargo build -j 16 -p tensorcontract --no-default-features
+
+  capi:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      # The C test (tests/c_abi.rs) compiles and runs a C program against the
+      # built libtprims.so; a blas-only bundle must not export contract symbols.
+      - run: cargo build -j 16 -p tprims-bundle
+      - run: cargo test -j 16 -p tprims-bundle
+      - run: |
+          cargo build -j 16 -p tprims-bundle --no-default-features --features blas
+          nm -D --defined-only target/debug/libtprims.so | grep -q ' tprims_blas_gemm$'
+          ! nm -D --defined-only target/debug/libtprims.so | grep -q ' tprims_contract_'
 
   msrv:
     runs-on: ubuntu-latest

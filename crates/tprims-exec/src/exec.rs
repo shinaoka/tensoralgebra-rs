@@ -122,7 +122,7 @@ impl<'a> Exec<'a> {
                     op(Par::Threads(n))
                 } else {
                     pool.count_entry();
-                    pool.pool.install(|| op(Par::Threads(n)))
+                    pool.tp().install(|| op(Par::Threads(n)))
                 }
             }
             _ => op(Par::Seq),
@@ -236,7 +236,7 @@ impl<'a> Exec<'a> {
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
                 pool.count_broadcast();
-                pool.pool.broadcast(|ctx| {
+                pool.tp().broadcast(|ctx| {
                     let t = ctx.index();
                     if t < width {
                         f(t)
