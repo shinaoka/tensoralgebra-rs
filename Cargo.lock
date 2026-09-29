@@ -1392,6 +1392,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "tprims-contract"
+version = "0.1.0"
+dependencies = [
+ "num-complex",
+ "rayon",
+ "strided-basic",
+ "strided-view",
+ "tensorcontract",
+ "thiserror",
+ "tprims-blas",
+ "tprims-exec",
+]
+
+[[package]]
 name = "tprims-exec"
 version = "0.1.0"
 dependencies = [
