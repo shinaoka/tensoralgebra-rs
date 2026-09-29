@@ -155,13 +155,30 @@ fn os_thread_count_does_not_grow_after_partitions() {
     let p = Pool::borrow(&tp);
     let exec = Exec::rayon(&p).with_budget(2).unwrap();
     exec.for_each_partition(64, &|_| {});
-    exec.broadcast(4, &|_| {}).unwrap();
+    exec.broadcast(2, &|_| {}).unwrap();
     let before = os_threads();
     for _ in 0..20 {
         exec.for_each_partition(64, &|_| {});
-        exec.broadcast(4, &|_| {}).unwrap();
+        exec.broadcast(2, &|_| {}).unwrap();
     }
     if before > 0 {
         assert_eq!(os_threads(), before);
     }
+}
+
+#[test]
+fn broadcast_width_is_capped_by_the_budget() {
+    let _serial = lock();
+    let tp = pool(4);
+    let p = Pool::borrow(&tp);
+    let exec = Exec::rayon(&p).with_budget(2).unwrap();
+    assert_eq!(
+        exec.broadcast(3, &|_| {}),
+        Err(ExecError::WidthExceedsBudget {
+            width: 3,
+            budget: 2
+        })
+    );
+    assert_eq!(p.stats().broadcasts, 0);
+    exec.broadcast(2, &|_| {}).unwrap();
 }

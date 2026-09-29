@@ -35,3 +35,17 @@ fn threads_flag_parses_and_rejects_zero() {
     assert!(parse_threads(&a("bin --threads 0")).is_err());
     assert!(parse_threads(&a("bin --threads")).is_err());
 }
+
+#[test]
+fn partition_and_pool_overrides_are_rejected() {
+    use super::forbidden_env;
+    assert_eq!(
+        forbidden_env(env(&[("TENSORCONTRACT_PARTITION", "4x2")])),
+        Some(("TENSORCONTRACT_PARTITION".into(), "4x2".into()))
+    );
+    assert_eq!(
+        forbidden_env(env(&[("TENSORCONTRACT_POOL", "on")])).map(|x| x.0),
+        Some("TENSORCONTRACT_POOL".into())
+    );
+    assert_eq!(forbidden_env(env(&[])), None);
+}

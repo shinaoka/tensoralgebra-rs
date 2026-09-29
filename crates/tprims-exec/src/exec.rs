@@ -173,8 +173,12 @@ impl<'a> Exec<'a> {
     ///
     /// Width one runs `f(0)` inline. On a pool the whole pool is dispatched
     /// (Rayon `broadcast`); workers with index `>= width` return at once.
-    /// Broadcasts on one pool are serialized. A panic in `f` propagates to
-    /// the caller after every participant has finished.
+    /// Broadcasts through one [`Pool`] wrapper are serialized (use one
+    /// wrapper per `ThreadPool`). A broadcast waits until every worker reaches
+    /// a scheduling point, so a worker busy in another host's long job delays
+    /// it. A panic in a barrier-free `f` propagates to the caller after every
+    /// participant has finished; if `f` panics before a barrier the other
+    /// participants wait at it forever, so barrier-bearing `f` must not panic.
     ///
     /// # Errors
     ///
@@ -182,7 +186,10 @@ impl<'a> Exec<'a> {
     /// (`Serial` with `width > 1`, or the caller is already a worker of the
     /// pool, where an outer job may hold workers at a barrier); nothing runs
     /// then, and the caller uses its barrier-free variant.
-    /// [`ExecError::WidthExceedsPool`] when `width` exceeds the pool.
+    /// [`ExecError::WidthExceedsPool`] when `width` exceeds the pool, and
+    /// [`ExecError::WidthExceedsBudget`] when it exceeds the budget (the
+    /// active width is capped by the budget even though the whole pool is
+    /// dispatched).
     ///
     /// # Examples
     ///
@@ -203,10 +210,16 @@ impl<'a> Exec<'a> {
                     Err(ExecError::Unavailable)
                 }
             }
-            Exec::Rayon { pool, .. } => {
+            Exec::Rayon { pool, budget } => {
                 let size = pool.size();
                 if width > size {
                     return Err(ExecError::WidthExceedsPool { width, pool: size });
+                }
+                if width > budget.get() {
+                    return Err(ExecError::WidthExceedsBudget {
+                        width,
+                        budget: budget.get(),
+                    });
                 }
                 if pool.is_worker() {
                     return Err(ExecError::Unavailable);

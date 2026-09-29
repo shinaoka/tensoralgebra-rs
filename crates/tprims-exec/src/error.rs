@@ -13,6 +13,14 @@ pub enum ExecError {
         /// Workers in the pool.
         pool: usize,
     },
+    /// An SPMD width larger than the context's thread budget was requested.
+    #[error("SPMD width {width} exceeds thread budget {budget}")]
+    WidthExceedsBudget {
+        /// Requested width.
+        width: usize,
+        /// The context's budget.
+        budget: usize,
+    },
     /// Co-scheduled execution cannot be guaranteed here (serial context, or
     /// the caller is already a worker of the pool).
     #[error("co-scheduled execution unavailable in this context")]

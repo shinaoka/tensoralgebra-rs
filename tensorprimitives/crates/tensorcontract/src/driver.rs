@@ -282,6 +282,18 @@ pub unsafe fn execute<T>(
     unsafe { execute_capped(plan, alpha, a, b, beta, c, d, usize::MAX, None) }
 }
 
+/// The serial seam: width one, never asked to broadcast.
+struct Inline;
+
+impl crate::spmd::Spmd for Inline {
+    fn width(&self) -> usize {
+        1
+    }
+    fn broadcast(&self, _p: usize, _f: &(dyn Fn(usize) + Sync)) -> bool {
+        false
+    }
+}
+
 /// [`execute`] with host-supplied co-scheduled threads (tprims addition).
 ///
 /// # Safety
@@ -452,7 +464,18 @@ pub(crate) unsafe fn execute_capped<T>(
     }
     .min(max_threads)
     .max(1);
-    let (pm, pn) = plan.partition_with(mr, nr, want);
+    let (mut pm, mut pn) = plan.partition_with(mr, nr, want);
+    // A host-supplied `Spmd` promises `p <= width`; a pinned partition
+    // (`TENSORCONTRACT_PARTITION`) ignores the thread count, so shrink it.
+    if spmd.is_some() {
+        while pm * pn > want {
+            if pn > 1 {
+                pn -= 1;
+            } else {
+                pm -= 1;
+            }
+        }
+    }
     let p = pm * pn;
 
     // Panel sizes come from the kernel's declared per-k sliver widths, so a
@@ -566,8 +589,9 @@ pub(crate) unsafe fn execute_capped<T>(
         }
         // Declined: nothing ran, so rerunning serially is safe. Never fall
         // back to spawning threads behind the host's back.
-        // SAFETY: forwarded unchanged from this call's contract.
-        unsafe { execute_capped(plan, alpha, a, b, beta, c, d, 1, None) };
+        // A width-one seam keeps the rerun serial even under a pinned
+        // partition. SAFETY: forwarded unchanged from this call's contract.
+        unsafe { execute_capped(plan, alpha, a, b, beta, c, d, 1, Some(&Inline)) };
         return;
     }
 

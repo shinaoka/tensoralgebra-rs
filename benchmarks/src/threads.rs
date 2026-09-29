@@ -22,6 +22,17 @@ pub fn conflicting_env(
     })
 }
 
+/// Variables that change tensorcontract's partition or thread source and are
+/// therefore not allowed during a measured run.
+pub const FORBIDDEN_ENV_VARS: [&str; 2] = ["TENSORCONTRACT_PARTITION", "TENSORCONTRACT_POOL"];
+
+/// The first set variable in [`FORBIDDEN_ENV_VARS`], with its value.
+pub fn forbidden_env(get: impl Fn(&str) -> Option<String>) -> Option<(String, String)> {
+    FORBIDDEN_ENV_VARS
+        .iter()
+        .find_map(|name| get(name).map(|v| (name.to_string(), v)))
+}
+
 /// Parse `--threads N` from `args` (default 1).
 pub fn parse_threads(args: &[String]) -> Result<usize, String> {
     match args.iter().position(|a| a == "--threads") {
@@ -56,6 +67,9 @@ impl BenchThreads {
             fail(&format!(
                 "{name}={value} conflicts with --threads {requested}"
             ));
+        }
+        if let Some((name, value)) = forbidden_env(|n| std::env::var(n).ok()) {
+            fail(&format!("{name}={value} is not allowed in a measured run"));
         }
         // Accidental ambient Rayon use runs on a one-thread global pool, so it
         // cannot inflate a row; tprims paths use the borrowed pool below.
