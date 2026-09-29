@@ -275,3 +275,24 @@ pub unsafe fn view_mut<'a, T>(
     strided_view::StridedViewMut::new(data, &l.dims, &l.strides, off)
         .map_err(|e| FfiError::new(TPRIMS_ERR_SHAPE, e.to_string()))
 }
+
+/// Whether two operands' addressed byte ranges overlap (conservative: spans,
+/// not exact element sets). Empty operands never overlap.
+pub fn spans_overlap(a: &Layout, b: &Layout, elem: usize) -> bool {
+    if a.empty || b.empty {
+        return false;
+    }
+    let range = |l: &Layout| {
+        let lo = l.origin as isize + l.span.0 * elem as isize;
+        let hi = l.origin as isize + (l.span.1 + 1) * elem as isize;
+        (lo, hi)
+    };
+    let (a0, a1) = range(a);
+    let (b0, b1) = range(b);
+    a0 < b1 && b0 < a1
+}
+
+/// Element size of a dtype.
+pub fn elem_size(dt: DType) -> usize {
+    dt.size()
+}

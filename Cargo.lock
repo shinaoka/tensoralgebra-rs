@@ -1393,6 +1393,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "tprims-blas-capi"
+version = "0.1.0"
+dependencies = [
+ "num-complex",
+ "tprims-blas",
+ "tprims-core",
+]
+
+[[package]]
 name = "tprims-contract"
 version = "0.1.0"
 dependencies = [
@@ -1404,6 +1413,16 @@ dependencies = [
  "thiserror",
  "tprims-blas",
  "tprims-exec",
+]
+
+[[package]]
+name = "tprims-contract-capi"
+version = "0.1.0"
+dependencies = [
+ "num-complex",
+ "tprims-blas",
+ "tprims-contract",
+ "tprims-core",
 ]
 
 [[package]]
