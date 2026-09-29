@@ -39,6 +39,8 @@ serde_json = "1"
 [[bin]]
 name = "linalg"
 path = "benchmarks/tprims/linalg/linalg.rs"
+
+[[bin]]
 name = "contract"
 path = "benchmarks/tprims/contract/contract.rs"
 
