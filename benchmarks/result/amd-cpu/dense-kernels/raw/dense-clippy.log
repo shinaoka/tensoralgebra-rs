@@ -1,0 +1,183 @@
+    Checking cfg-if v1.0.5
+    Checking either v1.18.0
+    Checking bytemuck v1.25.2
+    Checking libm v0.2.16
+    Checking crossbeam-utils v0.8.23
+    Checking libc v0.2.189
+    Checking serde_core v1.0.229
+    Checking clap_lex v1.1.1
+    Checking ciborium-io v0.2.2
+    Checking regex-syntax v0.8.11
+    Checking zmij v1.0.23
+    Checking itoa v1.0.18
+    Checking memchr v2.8.3
+    Checking zerocopy v0.8.57
+    Checking thiserror v1.0.69
+    Checking plotters-backend v0.3.7
+    Checking bitflags v2.13.2
+    Checking anstyle v1.0.14
+    Checking itertools v0.10.5
+    Checking reborrow v0.5.5
+    Checking same-file v1.0.6
+    Checking cast v0.3.0
+    Checking pulp-wasm-simd-flag v0.1.1
+    Checking plotters-svg v0.3.7
+    Checking crossbeam-epoch v0.9.21
+    Checking raw-cpuid v11.6.0
+    Checking oorandom v11.1.5
+    Checking walkdir v2.5.0
+    Checking anes v0.1.6
+    Checking smallvec v1.16.1
+    Checking clap_builder v4.6.7
+    Checking once_cell v1.21.4
+    Checking regex-automata v0.4.18
+    Checking crossbeam-deque v0.8.8
+    Checking num-traits v0.2.19
+    Checking criterion-plot v0.5.0
+    Checking rayon-core v1.13.0
+    Checking serde v1.0.229
+    Checking serde_json v1.0.151
+    Checking getrandom v0.2.17
+    Checking is-terminal v0.4.17
+    Checking rayon v1.12.0
+    Checking clap v4.6.7
+    Checking num-complex v0.4.6
+    Checking plotters v0.3.7
+    Checking approx v0.5.1
+    Checking regex v1.13.1
+    Checking strided-traits v0.4.0 (/home/shinaoka/tensor4all/.worktrees/cpu-kernel-migration/strided-rs/strided-traits)
+    Checking pulp v0.22.3
+    Checking strided-view v0.4.0 (/home/shinaoka/tensor4all/.worktrees/cpu-kernel-migration/strided-rs/strided-view)
+    Checking rand_core v0.6.4
+error: manual implementation of `.is_multiple_of()`
+   --> strided-view/src/raw.rs:111:8
+    |
+111 |     if data.len() % element_size != 0 {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: replace with: `!data.len().is_multiple_of(element_size)`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#manual_is_multiple_of
+    = note: `-D clippy::manual-is-multiple-of` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::manual_is_multiple_of)]`
+
+error: manual implementation of `.is_multiple_of()`
+   --> strided-view/src/raw.rs:125:8
+    |
+125 |     if data.as_ptr() as usize % alignment != 0 {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: replace with: `!(data.as_ptr() as usize).is_multiple_of(alignment)`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#manual_is_multiple_of
+
+error: manual implementation of `.is_multiple_of()`
+   --> strided-view/src/raw.rs:145:8
+    |
+145 |     if byte_len % element_size != 0 {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: replace with: `!byte_len.is_multiple_of(element_size)`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#manual_is_multiple_of
+
+error: manual implementation of `.is_multiple_of()`
+   --> strided-view/src/raw.rs:152:25
+    |
+152 |     if byte_len != 0 && data.as_ptr() as usize % dtype.alignment() != 0 {
+    |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: replace with: `!(data.as_ptr() as usize).is_multiple_of(dtype.alignment())`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#manual_is_multiple_of
+
+error: using `contains()` instead of `iter().any()` is more efficient
+   --> strided-view/src/raw.rs:710:12
+    |
+710 |         if self.dims.iter().any(|&dim| dim == 0) {
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: try: `self.dims.contains(&0)`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#manual_contains
+    = note: `-D clippy::manual-contains` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::manual_contains)]`
+
+error: using `contains()` instead of `iter().any()` is more efficient
+   --> strided-view/src/raw.rs:802:12
+    |
+802 |         if self.dims.iter().any(|&dim| dim == 0) {
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: try: `self.dims.contains(&0)`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#manual_contains
+
+error: using `contains()` instead of `iter().any()` is more efficient
+   --> strided-view/src/raw.rs:811:12
+    |
+811 |         if self.dims.iter().any(|&dim| dim == 0) {
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: try: `self.dims.contains(&0)`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#manual_contains
+
+error: using `contains()` instead of `iter().any()` is more efficient
+  --> strided-view/src/view.rs:19:5
+   |
+19 |     dims.iter().any(|&dim| dim == 0)
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: try: `dims.contains(&0)`
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#manual_contains
+
+error: using `contains()` instead of `iter().any()` is more efficient
+  --> strided-view/src/view.rs:47:8
+   |
+47 |     if dims.iter().any(|&d| d == 0) {
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: try: `dims.contains(&0)`
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#manual_contains
+
+error: using `contains()` instead of `iter().any()` is more efficient
+   --> strided-view/src/view.rs:235:9
+    |
+235 |         self.dims.iter().any(|&d| d == 0)
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: try: `self.dims.contains(&0)`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#manual_contains
+
+error: using `contains()` instead of `iter().any()` is more efficient
+   --> strided-view/src/view.rs:555:9
+    |
+555 |         self.dims.iter().any(|&d| d == 0)
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: try: `self.dims.contains(&0)`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#manual_contains
+
+error: this expression creates a reference which is immediately dereferenced by the compiler
+   --> strided-view/src/view.rs:573:9
+    |
+573 |         &self.data
+    |         ^^^^^^^^^^ help: change this to: `self.data`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#needless_borrow
+    = note: `-D clippy::needless-borrow` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::needless_borrow)]`
+
+error: this expression creates a reference which is immediately dereferenced by the compiler
+   --> strided-view/src/view.rs:579:9
+    |
+579 |         &mut self.data
+    |         ^^^^^^^^^^^^^^ help: change this to: `self.data`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#needless_borrow
+
+error: using `contains()` instead of `iter().any()` is more efficient
+   --> strided-view/src/view.rs:812:9
+    |
+812 |         self.dims.iter().any(|&d| d == 0)
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: try: `self.dims.contains(&0)`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#manual_contains
+
+error: calling `set_len()` immediately after reserving a buffer creates uninitialized values
+   --> strided-view/src/view.rs:938:9
+    |
+938 |         let mut data = Vec::with_capacity(total);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+939 |         data.set_len(total);
+    |         ^^^^^^^^^^^^^^^^^^^
+    |
+    = help: initialize the buffer or wrap the content in `MaybeUninit`
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#uninit_vec
+    = note: `#[deny(clippy::uninit_vec)]` on by default
+
+error: could not compile `strided-view` (lib) due to 15 previous errors
+warning: build failed, waiting for other jobs to finish...

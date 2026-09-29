@@ -1,0 +1,494 @@
+   Compiling num-traits v0.2.19
+   Compiling libm v0.2.16
+    Checking either v1.18.0
+   Compiling syn v2.0.119
+    Checking rayon v1.12.0
+   Compiling thiserror-impl v1.0.69
+    Checking num-complex v0.4.6
+    Checking strided-traits v0.4.0 (/home/shinaoka/tensor4all/.worktrees/cpu-kernel-migration/strided-rs/strided-traits)
+    Checking pulp v0.22.3
+    Checking thiserror v1.0.69
+    Checking strided-view v0.4.0 (/home/shinaoka/tensor4all/.worktrees/cpu-kernel-migration/strided-rs/strided-view)
+    Checking strided-perm v0.4.0 (/home/shinaoka/tensor4all/.worktrees/cpu-kernel-migration/strided-rs/strided-perm)
+    Checking strided-basic v0.4.0 (/home/shinaoka/tensor4all/.worktrees/cpu-kernel-migration/strided-rs/strided-basic)
+error: returning the result of a `let` binding from a block
+  --> strided-basic/src/erased.rs:97:9
+   |
+85 | /         let result = ctx.run(|| match self.dtype {
+86 | |             KernelDType::F32 => execute_copy::<f32>(&self.plan, dest, src),
+87 | |             KernelDType::F64 => execute_copy::<f64>(&self.plan, dest, src),
+88 | |             KernelDType::I32 => execute_copy::<i32>(&self.plan, dest, src),
+...  |
+95 | |             }),
+96 | |         });
+   | |___________- unnecessary `let` binding
+97 |           result
+   |           ^^^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#let_and_return
+   = note: `-D clippy::let-and-return` implied by `-D warnings`
+   = help: to override `-D warnings` add `#[allow(clippy::let_and_return)]`
+help: return the expression directly
+   |
+85 ~         
+86 ~         ctx.run(|| match self.dtype {
+87 +             KernelDType::F32 => execute_copy::<f32>(&self.plan, dest, src),
+88 +             KernelDType::F64 => execute_copy::<f64>(&self.plan, dest, src),
+89 +             KernelDType::I32 => execute_copy::<i32>(&self.plan, dest, src),
+90 +             KernelDType::I64 => execute_copy::<i64>(&self.plan, dest, src),
+91 +             KernelDType::Bool => execute_copy::<bool>(&self.plan, dest, src),
+92 +             KernelDType::C32 => execute_copy::<Complex32>(&self.plan, dest, src),
+93 +             KernelDType::C64 => execute_copy::<Complex64>(&self.plan, dest, src),
+94 +             _ => Err(StridedError::UnsupportedDType {
+95 +                 dtype: self.dtype.label(),
+96 +             }),
+97 +         })
+   |
+
+error: returning the result of a `let` binding from a block
+   --> strided-basic/src/erased.rs:168:9
+    |
+156 | /         let result = ctx.run(|| match self.dtype {
+157 | |             KernelDType::F32 => execute_concatenate::<f32>(&self.plan, dest, inputs),
+158 | |             KernelDType::F64 => execute_concatenate::<f64>(&self.plan, dest, inputs),
+159 | |             KernelDType::I32 => execute_concatenate::<i32>(&self.plan, dest, inputs),
+...   |
+166 | |             }),
+167 | |         });
+    | |___________- unnecessary `let` binding
+168 |           result
+    |           ^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#let_and_return
+help: return the expression directly
+    |
+156 ~         
+157 ~         ctx.run(|| match self.dtype {
+158 +             KernelDType::F32 => execute_concatenate::<f32>(&self.plan, dest, inputs),
+159 +             KernelDType::F64 => execute_concatenate::<f64>(&self.plan, dest, inputs),
+160 +             KernelDType::I32 => execute_concatenate::<i32>(&self.plan, dest, inputs),
+161 +             KernelDType::I64 => execute_concatenate::<i64>(&self.plan, dest, inputs),
+162 +             KernelDType::Bool => execute_concatenate::<bool>(&self.plan, dest, inputs),
+163 +             KernelDType::C32 => execute_concatenate::<Complex32>(&self.plan, dest, inputs),
+164 +             KernelDType::C64 => execute_concatenate::<Complex64>(&self.plan, dest, inputs),
+165 +             _ => Err(StridedError::UnsupportedDType {
+166 +                 dtype: self.dtype.label(),
+167 +             }),
+168 +         })
+    |
+
+error: this function has too many arguments (9/7)
+   --> strided-basic/src/execution.rs:456:1
+    |
+456 | / pub unsafe fn mapreduce_threaded<F>(
+457 | |     dims: &[usize],
+458 | |     blocks: &[usize],
+459 | |     strides_list: &[Vec<isize>],
+...   |
+467 | | where
+468 | |     F: Fn(&[usize], &[usize], &[Vec<isize>], &[isize]) -> Result<()> + Sync,
+    | |____________________________________________________________________________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#too_many_arguments
+    = note: `-D clippy::too-many-arguments` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::too_many_arguments)]`
+
+error: this function has too many arguments (8/7)
+   --> strided-basic/src/map_view.rs:200:1
+    |
+200 | / unsafe fn inner_loop_map2<D: Copy, A: Copy, B: Copy, OpA: ElementOp<A>, OpB: ElementOp<B>>(
+201 | |     dp: *mut D,
+202 | |     ds: isize,
+203 | |     ap: *const A,
+...   |
+208 | |     f: &impl Fn(A, B) -> D,
+209 | | ) {
+    | |_^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#too_many_arguments
+
+error: the loop variable `i` is used to index `src_a`
+   --> strided-basic/src/map_view.rs:398:18
+    |
+398 |         for i in 0..len {
+    |                  ^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#needless_range_loop
+    = note: `-D clippy::needless-range-loop` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::needless_range_loop)]`
+help: consider using an iterator and enumerate()
+    |
+398 -         for i in 0..len {
+398 +         for (i, <item>) in src_a.iter().enumerate().take(len) {
+    |
+
+error: the loop variable `i` is used to index `src_b`
+   --> strided-basic/src/map_view.rs:404:18
+    |
+404 |         for i in 0..len {
+    |                  ^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#needless_range_loop
+help: consider using an iterator and enumerate()
+    |
+404 -         for i in 0..len {
+404 +         for (i, <item>) in src_b.iter().enumerate().take(len) {
+    |
+
+error: this function has too many arguments (8/7)
+   --> strided-basic/src/map_view.rs:675:1
+    |
+675 | / unsafe fn run_contiguous_mul_row_block<
+676 | |     O: MulOutput<D>,
+677 | |     D: Copy + 'static,
+678 | |     A: Copy + Mul<B, Output = D> + 'static,
+...   |
+688 | |     base_b_offset: isize,
+689 | | ) {
+    | |_^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#too_many_arguments
+
+error: this `if` can be collapsed into the outer `match`
+   --> strided-basic/src/map_view.rs:712:17
+    |
+712 | /                 if simd::try_mul_transposed_scalar_lhs_2d::<D, A, B>(
+713 | |                     dst_ptr.add(base_index).cast::<D>(),
+714 | |                     a_ptr.offset(base_a_offset),
+715 | |                     b_ptr.offset(base_b_offset),
+...   |
+721 | |                     return;
+722 | |                 }
+    | |_________________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#collapsible_match
+    = note: `-D clippy::collapsible-match` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::collapsible_match)]`
+help: collapse nested if block
+    |
+711 ~             Some(TransposedScalarTileKind::LhsScalar)
+712 |                 if simd::try_mul_transposed_scalar_lhs_2d::<D, A, B>(
+...
+719 |                     plan.b_row_stride,
+720 ~                 ) => {
+721 |                     return;
+722 ~                 }
+    |
+
+error: this function has too many arguments (10/7)
+   --> strided-basic/src/map_view.rs:926:1
+    |
+926 | / fn run_contiguous_range_mul_single_thread<
+927 | |     O: MulOutput<D>,
+928 | |     D: Copy + MaybeSendSync + 'static,
+929 | |     A: Copy + MaybeSendSync + Mul<B, Output = D> + 'static,
+...   |
+941 | |     outer_groups: usize,
+942 | | ) -> bool {
+    | |_________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#too_many_arguments
+
+error: this function has too many arguments (10/7)
+   --> strided-basic/src/map_view.rs:965:1
+    |
+965 | / unsafe fn inner_loop_map3<
+966 | |     D: Copy,
+967 | |     A: Copy,
+968 | |     B: Copy,
+...   |
+983 | |     f: &impl Fn(A, B, C) -> D,
+984 | | ) {
+    | |_^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#too_many_arguments
+
+error: this function has too many arguments (12/7)
+    --> strided-basic/src/map_view.rs:1016:1
+     |
+1016 | / unsafe fn inner_loop_map4<
+1017 | |     D: Copy,
+1018 | |     A: Copy,
+1019 | |     B: Copy,
+...    |
+1038 | |     f: &impl Fn(A, B, C, E) -> D,
+1039 | | ) {
+     | |_^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#too_many_arguments
+
+error: this function has too many arguments (8/7)
+    --> strided-basic/src/map_view.rs:1610:1
+     |
+1610 | / fn mul_identity_into_raw<
+1611 | |     O: MulOutput<D>,
+1612 | |     D: Copy + MaybeSendSync + 'static,
+1613 | |     A: Copy + MaybeSendSync + Mul<B, Output = D> + 'static,
+...    |
+1623 | |     _validated: ValidatedDestinationLayout,
+1624 | | ) -> Result<()> {
+     | |_______________^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#too_many_arguments
+
+error: this block may be rewritten with the `?` operator
+   --> strided-basic/src/ops_view.rs:680:5
+    |
+680 | /     if T::try_simd_sum(&[]).is_none() {
+681 | |         return None;
+682 | |     }
+    | |_____^ help: replace it with: `T::try_simd_sum(&[])?;`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#question_mark
+    = note: `-D clippy::question-mark` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::question_mark)]`
+
+error: this `if` statement can be collapsed
+   --> strided-basic/src/ops_view.rs:701:5
+    |
+701 | /     if Op::IS_IDENTITY {
+702 | |         if same_contiguous_layout(src.dims(), &[src.strides()]).is_some() {
+703 | |             let len = total_len(src.dims());
+704 | |             let src_slice = unsafe { std::slice::from_raw_parts(src.ptr(), len) };
+...   |
+717 | |     }
+    | |_____^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#collapsible_if
+    = note: `-D clippy::collapsible-if` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::collapsible_if)]`
+help: collapse nested if block
+    |
+701 ~     if Op::IS_IDENTITY
+702 ~         && same_contiguous_layout(src.dims(), &[src.strides()]).is_some() {
+703 |             let len = total_len(src.dims());
+...
+715 |             }
+716 ~         }
+    |
+
+error: this function has too many arguments (9/7)
+    --> strided-basic/src/ops_view.rs:1018:1
+     |
+1018 | / unsafe fn transpose_scale_4x4_f64(
+1019 | |     dst: *mut f64,
+1020 | |     dst_stride0: isize,
+1021 | |     dst_stride1: isize,
+...    |
+1027 | |     scale: f64,
+1028 | | ) {
+     | |_^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#too_many_arguments
+
+error: this function has too many arguments (9/7)
+    --> strided-basic/src/ops_view.rs:1080:1
+     |
+1080 | / unsafe fn copy_transpose_scale_2d_f64_tiled_raw(
+1081 | |     dst: *mut f64,
+1082 | |     dst_stride0: isize,
+1083 | |     dst_stride1: isize,
+...    |
+1089 | |     scale: f64,
+1090 | | ) {
+     | |_^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#too_many_arguments
+
+error: this function has too many arguments (9/7)
+    --> strided-basic/src/ops_view.rs:1251:1
+     |
+1251 | / unsafe fn transpose_scale_4x4_identity<T>(
+1252 | |     dst: *mut T,
+1253 | |     dst_stride0: isize,
+1254 | |     dst_stride1: isize,
+...    |
+1261 | | ) where
+1262 | |     T: Copy + Mul<Output = T>,
+     | |______________________________^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#too_many_arguments
+
+error: this function has too many arguments (9/7)
+    --> strided-basic/src/ops_view.rs:1315:1
+     |
+1315 | / unsafe fn copy_transpose_scale_2d_identity_tiled_raw<T>(
+1316 | |     dst: *mut T,
+1317 | |     dst_stride0: isize,
+1318 | |     dst_stride1: isize,
+...    |
+1325 | | ) where
+1326 | |     T: Copy + Mul<Output = T> + MaybeSendSync,
+     | |______________________________________________^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#too_many_arguments
+
+error: this function has too many arguments (9/7)
+    --> strided-basic/src/ops_view.rs:1451:1
+     |
+1451 | / unsafe fn copy_transpose_scale_2d_loop<T>(
+1452 | |     dst: *mut T,
+1453 | |     dst_stride0: isize,
+1454 | |     dst_stride1: isize,
+...    |
+1461 | | ) where
+1462 | |     T: Copy + ElementOpApply + Mul<Output = T> + MaybeSendSync,
+     | |_______________________________________________________________^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#too_many_arguments
+
+error: using `contains()` instead of `iter().any()` is more efficient
+   --> strided-basic/src/raw_ops.rs:103:8
+    |
+103 |     if layout.dims[..layout.rank].iter().any(|&dim| dim == 0) {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: try: `layout.dims[..layout.rank].contains(&0)`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#manual_contains
+    = note: `-D clippy::manual-contains` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::manual_contains)]`
+
+error: casting to the same type is unnecessary (`usize` -> `usize`)
+   --> strided-basic/src/reduce_view.rs:310:25
+    |
+310 |                 let n = len as usize;
+    |                         ^^^^^^^^^^^^ help: try: `len`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#unnecessary_cast
+    = note: `-D clippy::unnecessary-cast` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::unnecessary_cast)]`
+
+error: this function has too many arguments (9/7)
+   --> strided-basic/src/threading.rs:241:1
+    |
+241 | / pub(crate) fn mapreduce_threaded<F>(
+242 | |     dims: &[usize],
+243 | |     blocks: &[usize],
+244 | |     strides_list: &[Vec<isize>],
+...   |
+252 | | where
+253 | |     F: Fn(&[usize], &[usize], &[Vec<isize>], &[isize]) -> Result<()> + Sync,
+    | |____________________________________________________________________________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#too_many_arguments
+
+error: this function has too many arguments (12/7)
+   --> strided-basic/src/gather_plan.rs:125:5
+    |
+125 | /     fn compile(
+126 | |         batch_shape: &[usize],
+127 | |         index_dims: &[usize],
+128 | |         index_strides: &[isize],
+...   |
+137 | |         dest_strides: &[isize],
+138 | |     ) -> Result<Self> {
+    | |_____________________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#too_many_arguments
+
+error: this function has too many arguments (12/7)
+   --> strided-basic/src/gather_plan.rs:174:5
+    |
+174 | /     fn validate(
+175 | |         batch_shape: &[usize],
+176 | |         index_dims: &[usize],
+177 | |         index_strides: &[isize],
+...   |
+186 | |         dest_strides: &[isize],
+187 | |     ) -> Result<()> {
+    | |___________________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#too_many_arguments
+
+error: this function has too many arguments (9/7)
+   --> strided-basic/src/gather_plan.rs:218:1
+    |
+218 | / fn scatter_replay_strides(
+219 | |     index_dims: &[usize],
+220 | |     index_strides: &[isize],
+221 | |     index_vector_dim: usize,
+...   |
+233 | |     isize,
+234 | | ) {
+    | |_^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#too_many_arguments
+
+error: the variable `index_offset` is used as a loop counter
+   --> strided-basic/src/gather_plan.rs:761:9
+    |
+761 |         for _ in 0..self.total {
+    |         ^^^^^^^^^^^^^^^^^^^^^^ help: consider using: `for index_offset in (start_indices.offset()..).take(self.total)`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#explicit_counter_loop
+    = note: `-D clippy::explicit-counter-loop` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::explicit_counter_loop)]`
+
+error: the variable `dest_offset` is used as a loop counter
+   --> strided-basic/src/gather_plan.rs:761:9
+    |
+761 |         for _ in 0..self.total {
+    |         ^^^^^^^^^^^^^^^^^^^^^^ help: consider using: `for dest_offset in (dest.offset()..).take(self.total)`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#explicit_counter_loop
+
+error: this expression creates a reference which is immediately dereferenced by the compiler
+    --> strided-basic/src/gather_plan.rs:1388:83
+     |
+1388 |         let dest_base = checked_strided_offset(dest.offset(), &self.dest_strides, &clamped_starts)?;
+     |                                                                                   ^^^^^^^^^^^^^^^ help: change this to: `clamped_starts`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#needless_borrow
+     = note: `-D clippy::needless-borrow` implied by `-D warnings`
+     = help: to override `-D warnings` add `#[allow(clippy::needless_borrow)]`
+
+error: the variable `index_offset` is used as a loop counter
+    --> strided-basic/src/gather_plan.rs:1883:9
+     |
+1883 |         for _ in 0..self.batch_elems {
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: consider using: `for index_offset in (scatter_indices.offset()..).take(self.batch_elems)`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#explicit_counter_loop
+
+error: the variable `update_offset` is used as a loop counter
+    --> strided-basic/src/gather_plan.rs:1883:9
+     |
+1883 |         for _ in 0..self.batch_elems {
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: consider using: `for update_offset in (updates.offset()..).take(self.batch_elems)`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#explicit_counter_loop
+
+error: the loop variable `axis` is used to index `update_dims`
+    --> strided-basic/src/gather_plan.rs:2001:17
+     |
+2001 |     for axis in 0..update_dims.len() {
+     |                 ^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#needless_range_loop
+help: consider using an iterator and enumerate()
+     |
+2001 -     for axis in 0..update_dims.len() {
+2001 +     for (axis, <item>) in update_dims.iter().enumerate() {
+     |
+
+error: using `contains()` instead of `iter().any()` is more efficient
+    --> strided-basic/src/static_indexing_plan.rs:1230:20
+     |
+1230 |     let total = if shape.iter().any(|&extent| extent == 0) {
+     |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: try: `shape.contains(&0)`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#manual_contains
+
+error: the loop variable `axis` is used to index `shape`
+    --> strided-basic/src/static_indexing_plan.rs:1440:21
+     |
+1440 |         for axis in 0..shape.len() {
+     |                     ^^^^^^^^^^^^^^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#needless_range_loop
+help: consider using an iterator and enumerate()
+     |
+1440 -         for axis in 0..shape.len() {
+1440 +         for (axis, <item>) in shape.iter().enumerate() {
+     |
+
+error: could not compile `strided-basic` (lib) due to 33 previous errors

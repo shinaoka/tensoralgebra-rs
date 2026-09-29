@@ -1,0 +1,25 @@
+strided-basic v0.4.0 (/home/shinaoka/tensor4all/.worktrees/cpu-kernel-migration/strided-rs/strided-basic)
+└── strided-kernel v0.4.0 (/home/shinaoka/tensor4all/.worktrees/cpu-kernel-migration/strided-rs/strided-kernel)
+    └── strided-rs-benchmark-suite v0.1.0 (/home/shinaoka/tensor4all/.worktrees/cpu-kernel-migration/strided-rs-benchmark-suite)
+        └── strided-rs-benchmark-suite feature "parallel" (command-line)
+    ├── strided-kernel feature "default"
+    │   ├── strided-einsum2 v0.4.0 (/home/shinaoka/tensor4all/.worktrees/cpu-kernel-migration/strided-rs/strided-einsum2)
+    │   │   ├── strided-opteinsum v0.4.0 (/home/shinaoka/tensor4all/.worktrees/cpu-kernel-migration/strided-rs/strided-opteinsum)
+    │   │   │   └── strided-rs-benchmark-suite v0.1.0 (/home/shinaoka/tensor4all/.worktrees/cpu-kernel-migration/strided-rs-benchmark-suite) (*)
+    │   │   │   └── strided-opteinsum feature "parallel"
+    │   │   │       └── strided-rs-benchmark-suite feature "parallel" (command-line)
+    │   │   └── strided-rs-benchmark-suite v0.1.0 (/home/shinaoka/tensor4all/.worktrees/cpu-kernel-migration/strided-rs-benchmark-suite) (*)
+    │   │   └── strided-einsum2 feature "parallel"
+    │   │       ├── strided-rs-benchmark-suite feature "parallel" (command-line)
+    │   │       └── strided-opteinsum feature "parallel" (*)
+    │   └── strided-opteinsum v0.4.0 (/home/shinaoka/tensor4all/.worktrees/cpu-kernel-migration/strided-rs/strided-opteinsum) (*)
+    ├── strided-kernel feature "parallel"
+    │   ├── strided-rs-benchmark-suite feature "parallel" (command-line)
+    │   ├── strided-einsum2 feature "parallel" (*)
+    │   └── strided-opteinsum feature "parallel" (*)
+    └── strided-kernel feature "simd" (command-line)
+        └── strided-kernel feature "default" (*)
+├── strided-basic feature "parallel"
+│   └── strided-kernel feature "parallel" (*)
+└── strided-basic feature "simd"
+    └── strided-kernel feature "simd" (command-line) (*)

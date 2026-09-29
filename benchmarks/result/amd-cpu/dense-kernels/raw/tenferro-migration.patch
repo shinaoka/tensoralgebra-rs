@@ -1,0 +1,397 @@
+diff --git a/REPOSITORY_RULES.md b/REPOSITORY_RULES.md
+index 62e01b7c..82aa5942 100644
+--- a/REPOSITORY_RULES.md
++++ b/REPOSITORY_RULES.md
+@@ -525,7 +525,8 @@ Tests follow implementation ownership.
+   |---|---|
+   | Elementwise (`add`, `mul`, `neg`, `exp`, fused eager replay, ...) | `strided-kernel` (`map_into`, `zip_map2_into`, `ErasedFusedPlan`, etc.) |
+   | Reduction (`reduce_sum`, `reduce_prod`) | `strided-kernel` (`ErasedReducePlan::compile_axes`) |
+-  | Structural (`transpose`, `broadcast`, `extract_diag`) | `strided-kernel` (`permute` + `copy_into`, `broadcast`, `diagonal_view`) |
++  | Structural (`transpose`, `broadcast`, `extract_diag`, `embed_diagonal`, `tril`/`triu`) | `strided-kernel` (view/copy and dense full-overwrite kernels) |
++  | AXPBY (`y = alpha*x + beta*y`) | `strided-kernel::axpby_accum` |
+   | Gather | `strided-kernel` (`ErasedGatherPlan`) |
+   | Additive scatter | `strided-kernel` (`ErasedScatterPlan`) |
+   | Fixed-window dynamic slice/update | `strided-kernel` (`ErasedDynamicSlicePlan`, `ErasedDynamicUpdateSlicePlan`) |
+@@ -577,8 +578,7 @@ Tests follow implementation ownership.
+   Memory reuse and thread policy are execution resources, not tensor metadata;
+   backend-neutral tensor/view types expose metadata-only layout transforms and
+   do not own data-moving convenience methods.
+-- Exceptions with dedicated implementations: `reshape` (metadata-only),
+-  `embed_diagonal`, index-dependent triangular masks (`tril`/`triu`), max/min
++- Exceptions with dedicated implementations: `reshape` (metadata-only), max/min
+   reductions until strided exposes matching NaN semantics, and indexing ops
+   without a matching strided plan such as static slice, pad, concatenate, and
+   reverse.
+diff --git a/crates/tenferro-cpu/src/backend/tests.rs b/crates/tenferro-cpu/src/backend/tests.rs
+index 1ab4f758..873a2a68 100644
+--- a/crates/tenferro-cpu/src/backend/tests.rs
++++ b/crates/tenferro-cpu/src/backend/tests.rs
+@@ -245,9 +245,11 @@ fn cpu_hot_kernels_delegate_to_erased_strided_replay() {
+         .expect("pooled triangular kernel should remain discoverable");
+     assert!(
+         !pooled_triangular.contains("for row in 0..rows")
+-            && pooled_triangular.contains("data[start..end].fill(fill)"),
+-        "CPU pooled triangular masks should operate on contiguous column runs"
++            && pooled_triangular.contains("strided_kernel::triangular_mask_into_uninit"),
++        "CPU pooled triangular masks should delegate traversal to strided"
+     );
++    assert!(structural.contains("strided_kernel::embed_diagonal_into_uninit"));
++    assert!(include_str!("../blas1.rs").contains("strided_kernel::axpby_accum"));
+ }
+ 
+ #[test]
+diff --git a/crates/tenferro-cpu/src/blas1.rs b/crates/tenferro-cpu/src/blas1.rs
+index 8bac9113..5c7d4605 100644
+--- a/crates/tenferro-cpu/src/blas1.rs
++++ b/crates/tenferro-cpu/src/blas1.rs
+@@ -3,7 +3,6 @@ use std::ops::{Add, Mul};
+ use std::sync::atomic::{AtomicUsize, Ordering};
+ 
+ use num_complex::{Complex32, Complex64};
+-use rayon::prelude::*;
+ use tenferro_tensor::{
+     ContractionScalar, DType, MemoryKind, Tensor, TensorRead, TensorViewMut, TensorWrite,
+ };
+@@ -92,30 +91,10 @@ fn axpby_typed<T>(
+ where
+     T: Copy + Send + Sync + Add<Output = T> + Mul<Output = T>,
+ {
+-    debug_assert_eq!(x_data.len(), y_data.len());
+-    let len = y_data.len();
+-
+-    // INVARIANT: shared validation proves compact, injective y and conservative
+-    // x/y non-overlap before this single read-modify-write pass begins. The
+-    // accepted tenferro-owned exception is necessary because strided-rs has no
+-    // primitive for reading and updating one caller-owned destination.
+-    if context.thread_budget().get() > 1 && len > 1 {
+-        let chunks = context.thread_budget().get();
+-        let chunk_len = len.div_ceil(chunks).max(1);
+-        y_data
+-            .par_chunks_mut(chunk_len)
+-            .zip(x_data.par_chunks(chunk_len))
+-            .for_each(|(ys, xs)| {
+-                for (dst, src) in ys.iter_mut().zip(xs.iter()) {
+-                    *dst = alpha * *src + beta * *dst;
+-                }
+-            });
+-    } else {
+-        for (dst, src) in y_data.iter_mut().zip(x_data.iter()) {
+-            *dst = alpha * *src + beta * *dst;
+-        }
+-    }
+-    Ok(())
++    context.with_native_parallelism(|| {
++        strided_kernel::axpby_accum(y_data, x_data, alpha, beta)
++            .map_err(|err| crate::Error::backend_source("axpby", err))
++    })
+ }
+ 
+ macro_rules! axpby_write {
+diff --git a/crates/tenferro-cpu/src/lib.rs b/crates/tenferro-cpu/src/lib.rs
+index 15b126ba..fdc72b87 100644
+--- a/crates/tenferro-cpu/src/lib.rs
++++ b/crates/tenferro-cpu/src/lib.rs
+@@ -485,18 +485,6 @@ pub(crate) fn tensor_from_array<T: Clone + tenferro_tensor::TensorScalar>(
+         .expect("strided array dimensions match owned data length")
+ }
+ 
+-pub(crate) fn flat_to_multi(mut flat: usize, shape: &[usize], out: &mut [usize]) {
+-    assert_eq!(shape.len(), out.len());
+-    for (axis, &dim) in shape.iter().enumerate() {
+-        if dim == 0 {
+-            out[axis] = 0;
+-        } else {
+-            out[axis] = flat % dim;
+-            flat /= dim;
+-        }
+-    }
+-}
+-
+ // `provider-inject` owns call-through coverage in the serialized integration
+ // fixture, which registers every BLAS symbol before the first operation.  The
+ // broad unit suite selects the compiled default backend and therefore must not
+diff --git a/crates/tenferro-cpu/src/structural.rs b/crates/tenferro-cpu/src/structural.rs
+index 3d81cfa8..8c7290c8 100644
+--- a/crates/tenferro-cpu/src/structural.rs
++++ b/crates/tenferro-cpu/src/structural.rs
+@@ -7,7 +7,7 @@ use strided_kernel::{
+ 
+ use crate::{
+     buffer_pool::{BufferPool, PoolScalar},
+-    flat_to_multi, ConjElem,
++    ConjElem,
+ };
+ use tenferro_tensor::{
+     DType, MemoryKind, Placement, Tensor, TensorRank, TensorRead, TensorScalar, TensorView,
+@@ -386,57 +386,6 @@ pub(crate) fn validate_cpu_host_placement(
+     ))
+ }
+ 
+-fn zeroed_tensor_from_pool<T>(
+-    buffers: &mut BufferPool,
+-    op: &'static str,
+-    shape: Vec<usize>,
+-) -> crate::Result<TypedTensor<T>>
+-where
+-    T: Zero + PoolScalar + 'static,
+-{
+-    filled_tensor_from_pool(buffers, op, shape, T::zero())
+-}
+-
+-fn filled_tensor_from_pool<T>(
+-    buffers: &mut BufferPool,
+-    op: &'static str,
+-    shape: Vec<usize>,
+-    fill: T,
+-) -> crate::Result<TypedTensor<T>>
+-where
+-    T: PoolScalar + 'static,
+-{
+-    // Preserve operation-specific shape-product error attribution, then fill
+-    // the pooled full-overwrite destination exactly once.
+-    checked_shape_product(op, "output shape", &shape)?;
+-    let mut out = PooledUninitOutput::<T>::new(buffers, shape)?;
+-    // INVARIANT: the pooled destination is fully overwritten by the fill pass
+-    // below before the completion handoff, so no uninitialized element is
+-    // ever read or dropped.
+-    out.as_uninit_slice_mut().fill(MaybeUninit::new(fill));
+-    // SAFETY: the fill pass writes every logical destination element.
+-    unsafe { out.assume_init() }
+-}
+-
+-fn clone_host_tensor_from_pool<T>(
+-    buffers: &mut BufferPool,
+-    op: &'static str,
+-    tensor: &TypedTensor<T>,
+-) -> crate::Result<TypedTensor<T>>
+-where
+-    T: Copy + PoolScalar + 'static,
+-{
+-    if tensor.backend_buffer().is_some() {
+-        return Err(cpu_backend_buffer_error(op));
+-    }
+-    let input = tensor.host_data()?;
+-    let mut data = buffers.acquire_with_capacity::<T>(input.len());
+-    data.extend_from_slice(input);
+-    let mut output = TypedTensor::from_vec_col_major(tensor.shape().to_vec(), data)?;
+-    output.set_placement(tensor.placement().clone());
+-    Ok(output)
+-}
+-
+ #[cfg(test)]
+ pub(crate) fn transpose(input: &Tensor, perm: &[usize]) -> crate::Result<Tensor> {
+     with_test_pool(|buffers| transpose_with_pool(buffers, input, perm))
+@@ -753,10 +702,7 @@ pub(crate) fn embed_diagonal_with_pool(
+     dispatch_tensor_unary_with_bool_special_result!(
+         input,
+         |t| typed_embed_diagonal_with_pool(buffers, t, axis_a, axis_b),
+-        bool | t
+-            | typed_embed_diagonal_impl(t, axis_a, axis_b, |shape| {
+-                filled_tensor_from_pool(buffers, "embed_diagonal", shape, false)
+-            })
++        bool | t | typed_embed_diagonal_impl(buffers, t, axis_a, axis_b, false)
+     )
+ }
+ 
+@@ -1118,12 +1064,12 @@ where
+ }
+ 
+ #[cfg(test)]
+-pub(crate) fn typed_embed_diagonal<T: Copy + Zero + Clone + TensorScalar>(
++pub(crate) fn typed_embed_diagonal<T: Copy + Zero + Clone + PoolScalar + 'static>(
+     tensor: &TypedTensor<T>,
+     axis_a: usize,
+     axis_b: usize,
+ ) -> crate::Result<TypedTensor<T>> {
+-    typed_embed_diagonal_impl(tensor, axis_a, axis_b, TypedTensor::zeros)
++    with_test_pool(|buffers| typed_embed_diagonal_impl(buffers, tensor, axis_a, axis_b, T::zero()))
+ }
+ 
+ pub(crate) fn typed_embed_diagonal_with_pool<T>(
+@@ -1135,19 +1081,18 @@ pub(crate) fn typed_embed_diagonal_with_pool<T>(
+ where
+     T: Copy + Zero + Clone + PoolScalar + 'static,
+ {
+-    typed_embed_diagonal_impl(tensor, axis_a, axis_b, |shape| {
+-        zeroed_tensor_from_pool(buffers, "embed_diagonal", shape)
+-    })
++    typed_embed_diagonal_impl(buffers, tensor, axis_a, axis_b, T::zero())
+ }
+ 
+ fn typed_embed_diagonal_impl<T>(
++    buffers: &mut BufferPool,
+     tensor: &TypedTensor<T>,
+     axis_a: usize,
+     axis_b: usize,
+-    make_zeroed: impl FnOnce(Vec<usize>) -> crate::Result<TypedTensor<T>>,
++    zero: T,
+ ) -> crate::Result<TypedTensor<T>>
+ where
+-    T: Copy + Clone + TensorScalar,
++    T: Copy + Clone + PoolScalar + 'static,
+ {
+     validate_axis("embed_diagonal", axis_a, tensor.shape().len())?;
+     if axis_b > tensor.shape().len() {
+@@ -1161,40 +1106,20 @@ where
+     let n = tensor.shape()[axis_a];
+     let mut out_shape = tensor.shape().to_vec();
+     out_shape.insert(axis_b, n);
+-    let mut out = make_zeroed(out_shape)?;
+-
+-    let in_rank = tensor.shape().len();
+-    let out_rank = out.shape().len();
+-    let mut in_idx = vec![0usize; in_rank];
+-    let mut out_idx = vec![0usize; out_rank];
+-
+-    if tensor.backend_buffer().is_some() {
+-        return Err(cpu_backend_buffer_error("embed_diagonal"));
+-    }
+-    let input_data = tensor.host_data()?;
+-
+-    // Intentionally sequential: embed_diagonal writes a sparse diagonal subset
+-    // into a zeroed output and has no current strided-kernel parallel primitive.
+-    for (flat, value) in input_data
+-        .iter()
+-        .copied()
+-        .enumerate()
+-        .take(tensor.n_elements())
+-    {
+-        flat_to_multi(flat, tensor.shape(), &mut in_idx);
+-        let diag_val = in_idx[axis_a];
+-        let mut src_axis = 0usize;
+-        for (out_axis, out_slot) in out_idx.iter_mut().enumerate().take(out_rank) {
+-            if out_axis == axis_b {
+-                *out_slot = diag_val;
+-            } else {
+-                *out_slot = in_idx[src_axis];
+-                src_axis += 1;
+-            }
+-        }
+-        *out.get_mut(&out_idx)? = value;
+-    }
+-    Ok(out)
++    checked_shape_product("embed_diagonal", "output shape", &out_shape)?;
++    let input_data = typed_host_data("embed_diagonal", tensor)?;
++    let mut out = PooledUninitOutput::<T>::new(buffers, out_shape)?;
++    strided_kernel::embed_diagonal_into_uninit(
++        out.as_uninit_slice_mut(),
++        input_data,
++        tensor.shape(),
++        axis_a,
++        axis_b,
++        zero,
++    )
++    .map_err(|err| crate::Error::backend_source("embed_diagonal", err))?;
++    // SAFETY: strided initialized the whole output, including off-diagonal zeros.
++    unsafe { out.assume_init() }
+ }
+ 
+ #[cfg(test)]
+@@ -1295,40 +1220,28 @@ where
+     if tensor.shape().len() < 2 {
+         return Err(crate::Error::rank_mismatch(op, 2, tensor.shape().len()));
+     }
+-
+-    let rows = tensor.shape()[0];
+-    let cols = tensor.shape()[1];
+     if tensor.shape().contains(&0) {
+         return tensor.duplicate();
+     }
+ 
+-    let (batch_count, block_size) = checked_triangular_extent(op, tensor.shape(), rows, cols)?;
+-    let mut out = clone_host_tensor_from_pool(buffers, op, tensor)?;
+-    let data = out.host_data_mut()?;
+-
+-    // Column-major matrices make each column contiguous. Clone once, then fill
+-    // only the masked run instead of repeating per-element index arithmetic.
+-    for batch_idx in 0..batch_count {
+-        for col in 0..cols {
+-            let boundary = col as i128 - k as i128;
+-            let (masked_start, masked_end) = if upper {
+-                (
+-                    boundary.saturating_add(1).clamp(0, rows as i128) as usize,
+-                    rows,
+-                )
+-            } else {
+-                (0, boundary.clamp(0, rows as i128) as usize)
+-            };
+-            let start =
+-                checked_triangular_offset(op, batch_idx, block_size, col, rows, masked_start)?;
+-            let end = checked_triangular_offset(op, batch_idx, block_size, col, rows, masked_end)?;
+-            data[start..end].fill(fill);
+-        }
+-    }
+-
++    let input = typed_host_data(op, tensor)?;
++    let mut out = PooledUninitOutput::<T>::new(buffers, tensor.shape().to_vec())?;
++    strided_kernel::triangular_mask_into_uninit(
++        out.as_uninit_slice_mut(),
++        input,
++        tensor.shape(),
++        k,
++        upper,
++        fill,
++    )
++    .map_err(|err| crate::Error::backend_source(op, err))?;
++    // SAFETY: strided wrote every kept and masked output element.
++    let mut out = unsafe { out.assume_init()? };
++    out.set_placement(tensor.placement().clone());
+     Ok(out)
+ }
+ 
++#[cfg(test)]
+ fn checked_triangular_extent(
+     op: &'static str,
+     shape: &[usize],
+@@ -1354,6 +1267,7 @@ fn checked_triangular_extent(
+     Ok((batch_count, block_size))
+ }
+ 
++#[cfg(test)]
+ fn checked_triangular_offset(
+     op: &'static str,
+     batch_idx: usize,
+diff --git a/crates/tenferro-cpu/tests/integration/runtime_error_tests.rs b/crates/tenferro-cpu/tests/integration/runtime_error_tests.rs
+index 63a9800e..f7ba4ee6 100644
+--- a/crates/tenferro-cpu/tests/integration/runtime_error_tests.rs
++++ b/crates/tenferro-cpu/tests/integration/runtime_error_tests.rs
+@@ -107,16 +107,17 @@ fn cpu_linalg_dispatch_does_not_use_panic_catching_as_error_handling() {
+ }
+ 
+ #[test]
+-fn cpu_zero_fill_pooled_outputs_use_checked_shape_product() {
++fn cpu_diagonal_pooled_outputs_use_checked_shape_product() {
+     let structural = include_str!("../../src/structural.rs");
+     let filled_section = source_section(
+         structural,
+-        "fn filled_tensor_from_pool",
+-        "fn clone_host_tensor_from_pool",
++        "fn typed_embed_diagonal_impl",
++        "pub(crate) fn typed_tril",
+     );
+ 
+     assert!(
+-        filled_section.contains("checked_shape_product(op, \"output shape\", &shape)?"),
++        filled_section
++            .contains("checked_shape_product(\"embed_diagonal\", \"output shape\", &out_shape)?"),
+         "CPU zero/fill pooled output allocation must reject shape-product overflow"
+     );
+     assert!(
+@@ -124,14 +125,13 @@ fn cpu_zero_fill_pooled_outputs_use_checked_shape_product() {
+         "CPU zero/fill pooled output allocation must not use unchecked shape.iter().product()"
+     );
+     assert!(
+-        filled_section.contains("PooledUninitOutput::<T>::new(buffers, shape)?"),
++        filled_section.contains("PooledUninitOutput::<T>::new(buffers, out_shape)?"),
+         "CPU fill pooled outputs must use the full-overwrite uninit guard"
+     );
+     assert!(
+-        filled_section.contains(".fill(MaybeUninit::new(fill))")
+-            && filled_section.contains("// INVARIANT:")
++        filled_section.contains("strided_kernel::embed_diagonal_into_uninit")
+             && filled_section.contains("// SAFETY:"),
+-        "CPU fill pooled outputs must fill the entire destination before the completion handoff and record the invariant markers"
++        "CPU diagonal outputs must use strided full-overwrite before the documented completion handoff"
+     );
+     assert!(
+         !filled_section.contains("acquire_zeroed"),

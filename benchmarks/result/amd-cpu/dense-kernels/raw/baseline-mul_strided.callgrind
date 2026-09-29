@@ -1,0 +1,306 @@
+# callgrind format
+version: 1
+creator: callgrind-3.22.0
+pid: 21062
+cmd:  /tmp/dense-kernels-baseline
+part: 1
+
+
+desc: I1 cache: 
+desc: D1 cache: 
+desc: LL cache: 
+
+desc: Timerange: Basic block 0 - 9154170
+desc: Trigger: Program termination
+
+positions: line
+events: Ir
+summary: 19667775
+
+
+ob=(1) /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+fl=(1) ???
+fn=(0) 0x000000000001f540
+cob=(6) /tmp/dense-kernels-baseline
+cfi=(162) ???
+cfn=(534) (below main)
+calls=1 0 
+0 19667775
+
+ob=(6)
+fl=(162)
+fn=(566) main
+cfn=(568) std::rt::lang_start_internal
+calls=1 0 
+0 19667775
+
+fn=(844) strided_basic::kernel::ensure_same_shape
+0 108
+cob=(2) /usr/lib/x86_64-linux-gnu/libc.so.6
+cfi=(229) ./string/../sysdeps/x86_64/multiarch/memcmp-avx2-movbe.S
+cfn=(824) __memcmp_avx2_movbe
+calls=8 73 
+0 132
+0 78
+
+fn=(858) strided_basic::kernel::contiguous_layout
+0 282
+
+fn=(792) dense_kernels::main
+cfn=(874) profile_dense
+calls=3 0 
+0 19667775
+
+fn=(852) strided_basic::map_view::mul_identity_into_raw::<strided_basic::map_view::UninitializedOutput, f64, f64, f64>
+0 63
+cfn=(854) strided_basic::kernel::total_len
+calls=4 0 
+0 63
+0 9
+cfn=(856) strided_basic::execution_policy::rayon_threads
+calls=4 0 
+0 42
+0 21
+cfn=(858)
+calls=4 0 
+0 171
+0 24
+cfn=(858)
+calls=4 0 
+0 111
+0 51
+cfn=(854)
+calls=4 0 
+0 63
+0 12
+cfn=(854)
+calls=4 0 
+0 63
+0 57
+cfn=(860) strided_basic::map_view::contiguous_mul_range_plan
+calls=4 0 
+0 1242
+0 18
+cob=(2)
+cfi=(204) ./string/../sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S
+cfn=(684) __memcpy_avx_unaligned_erms
+calls=4 255 
+0 90
+0 78
+cfn=(856)
+calls=4 0 
+0 42
+0 45
+cfn=(866) <strided_basic::map_view::ContiguousMulOuterCursor>::new
+calls=4 0 
+0 474
+0 483
+cfn=(870) <strided_basic::map_view::ContiguousMulOuterCursor>::advance
+calls=4 0 
+0 27
+0 19661220
+
+fn=(856)
+0 84
+
+fn=(870)
+0 27
+
+fn=(534)
+cob=(2)
+cfi=(163) ./csu/../csu/libc-start.c
+cfn=(536) __libc_start_main@@GLIBC_2.34
+calls=1 242 
+0 19667775
+
+fn=(842) strided_basic::map_view::mul_into_uninit::<f64, f64, f64, strided_traits::element_op::Identity, strided_traits::element_op::Identity>
+0 69
+cfn=(844)
+calls=4 0 
+0 150
+0 48
+cfn=(844)
+calls=4 0 
+0 168
+0 39
+cfn=(846) strided_basic::layout_check::is_injective_layout
+calls=4 0 
+0 1164
+0 36
+cfn=(850) strided_basic::map_view::reachable_byte_range
+calls=4 0 
+0 294
+0 81
+cfn=(850)
+calls=4 0 
+0 294
+0 114
+cfn=(850)
+calls=4 0 
+0 294
+0 66
+cfn=(850)
+calls=4 0 
+0 294
+0 87
+cfn=(852)
+calls=4 0 
+0 19664469
+0 9
+
+fn=(864) <smallvec::SmallVec<[usize; 8]> as core::iter::traits::collect::Extend<usize>>::extend::<smallvec::SmallVec<[usize; 8]>>
+0 201
+
+fn=(866)
+0 84
+cfn=(868) <smallvec::SmallVec<[usize; 8]> as core::iter::traits::collect::Extend<usize>>::extend::<core::iter::adapters::copied::Copied<core::iter::adapters::skip::Skip<core::slice::iter::Iter<usize>>>>
+calls=4 0 
+0 150
+0 240
+
+fn=(874)
+0 3
+cfn=(840) dense_kernels::run::{closure#3}
+calls=3 0 
+0 19667772
+
+fn=(790) std::sys::backtrace::__rust_begin_short_backtrace::<fn(), ()>
+cfn=(792)
+calls=1 0 
+0 19667775
+
+fn=(846)
+0 306
+cfn=(848) strided_basic::layout_check::has_disjoint_stride_spans
+calls=4 0 
+0 846
+0 12
+
+fn=(860)
+0 369
+cfn=(864)
+calls=4 0 
+0 201
+0 582
+cfn=(862) core::slice::sort::shared::smallsort::insert_tail::<usize, <[usize]>::sort_by<strided_basic::map_view::compact_axis_order::{closure#0}>::{closure#0}>
+calls=4 0 
+0 75
+0 15
+
+fn=(788) std::rt::lang_start::<()>::{closure#0}
+cfn=(790)
+calls=1 0 
+0 19667775
+
+fn=(840)
+0 72
+cfn=(842)
+calls=4 0 
+0 19667676
+0 24
+
+fn=(568)
+cfn=(788)
+calls=1 0 
+0 19667775
+
+fn=(868)
+0 150
+
+fn=(848)
+0 846
+
+fn=(850)
+0 1176
+
+fn=(854)
+0 189
+
+fn=(862)
+0 75
+
+ob=(2)
+fl=(165) ./csu/../sysdeps/nptl/libc_start_call_main.h
+fn=(558) (below main)
+cob=(6)
+cfi=(162)
+cfn=(566)
+calls=1 0 
+58 19667775
+
+fl=(229)
+fn=(824)
+73 6
++7 6
++1 6
+401 6
++1 6
++5 6
++1 6
++1 6
++1 6
++1 6
++3 3
++1 3
++1 3
++1 3
++3 3
++1 3
++1 3
++1 6
++6 3
++1 3
++82 3
++1 3
++1 3
++1 3
++1 3
++4 3
++1 3
++1 3
++1 3
++1 3
++1 3
++2 3
++2 3
+
+fl=(204)
+fn=(684)
+255 3
++1 3
++6 3
++1 3
++2 3
++1 3
++1 3
+386 3
++1 3
++5 3
++1 3
++2 3
++1 3
++1 3
++2 3
++1 3
++1 3
++1 3
++1 3
++1 3
++1 3
++1 3
++1 3
++1 3
++1 3
++1 3
++1 3
++1 3
++1 6
+
+fl=(163)
+fn=(536)
+cfi=(165)
+cfn=(558)
+calls=1 29 
+360 19667775
+
+totals: 19667775

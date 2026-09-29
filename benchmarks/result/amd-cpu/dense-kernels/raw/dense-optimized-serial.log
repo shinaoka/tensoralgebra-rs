@@ -1,0 +1,12 @@
+   Compiling strided-basic v0.4.0 (/home/shinaoka/tensor4all/.worktrees/cpu-kernel-migration/strided-rs/strided-basic)
+    Finished `test` profile [unoptimized] target(s) in 2.72s
+     Running tests/dense_update.rs (target/debug/deps/dense_update-717cc786a05c41cf)
+
+running 4 tests
+test invalid_shapes_do_not_write ... ok
+test axpby_values_and_error_preserve_destination ... ok
+test embedding_all_axes_and_ranks ... ok
+test triangular_matches_elementwise_reference ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+

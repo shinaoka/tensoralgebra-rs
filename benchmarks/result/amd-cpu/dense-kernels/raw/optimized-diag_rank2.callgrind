@@ -1,0 +1,1599 @@
+# callgrind format
+version: 1
+creator: callgrind-3.22.0
+pid: 25948
+cmd:  /tmp/dense-kernels-optimized
+part: 1
+
+
+desc: I1 cache: 
+desc: D1 cache: 
+desc: LL cache: 
+
+desc: Timerange: Basic block 0 - 14077325
+desc: Trigger: Program termination
+
+positions: line
+events: Ir
+summary: 4102527
+
+
+ob=(3) ???
+fl=(153) ???
+fn=(682) 0x000000000489b6b0
+0 6
+cob=(2) /usr/lib/x86_64-linux-gnu/libc.so.6
+cfi=(204) ./string/../sysdeps/x86_64/multiarch/memmove-vec-unaligned-erms.S
+cfn=(684) __memcpy_avx_unaligned_erms
+calls=51 255 
+0 33
+
+ob=(1) /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+fl=(1) ???
+fn=(0) 0x000000000001f540
+cob=(6) /tmp/dense-kernels-optimized
+cfi=(162) ???
+cfn=(534) (below main)
+calls=1 0 
+0 4102527
+
+ob=(6)
+fl=(162)
+fn=(566) main
+cfn=(568) std::rt::lang_start_internal
+calls=1 0 
+0 4102527
+
+fn=(780) __rustc::__rust_no_alloc_shim_is_unstable_v2
+0 147
+
+fn=(790) std::sys::backtrace::__rust_begin_short_backtrace::<fn(), ()>
+cfn=(792) dense_kernels::main
+calls=1 0 
+0 4102527
+
+fn=(804) __rustc::__rdl_dealloc
+0 147
+cob=(2)
+cfi=(184) ./malloc/./malloc/malloc.c
+cfn=(722) free
+calls=221 3359 
+0 14121
+
+fn=(854) <alloc::raw_vec::RawVecInner>::grow_amortized
+0 51
+cfn=(856) <alloc::raw_vec::RawVecInner>::finish_grow
+calls=4 0 
+0 1194
+0 30
+
+fn=(906) <alloc::vec::Vec<isize> as alloc::vec::spec_from_iter_nested::SpecFromIterNested<isize, core::iter::adapters::map::Map<core::slice::iter::Iter<usize>, strided_basic::kernel::build_plan_fused::{closure#1}::{closure#0}>>>::from_iter
+0 114
+cfn=(780)
+calls=8 0 
+0 6
+0 24
+cfn=(782) __rustc::__rust_alloc
+calls=8 0 
+0 330
+0 234
+
+fn=(922) <alloc::vec::Vec<usize> as alloc::vec::spec_from_iter_nested::SpecFromIterNested<usize, core::iter::adapters::map::Map<core::slice::iter::Iter<usize>, strided_basic::block::compute_block_sizes::{closure#0}>>>::from_iter
+0 57
+cfn=(780)
+calls=4 0 
+0 3
+0 12
+cfn=(782)
+calls=4 0 
+0 165
+0 117
+
+fn=(930) <alloc::vec::Vec<alloc::vec::Vec<isize>> as alloc::vec::spec_from_iter_nested::SpecFromIterNested<alloc::vec::Vec<isize>, core::iter::adapters::map::Map<core::slice::iter::Iter<&[isize]>, strided_basic::block::compute_block_sizes::{closure#3}>>>::from_iter
+0 69
+cfn=(780)
+calls=4 0 
+0 3
+0 12
+cfn=(782)
+calls=4 0 
+0 165
+0 66
+cfn=(932) <alloc::vec::Vec<isize> as alloc::vec::spec_from_iter_nested::SpecFromIterNested<isize, core::iter::adapters::map::Map<core::slice::iter::Iter<usize>, strided_basic::block::compute_block_sizes::{closure#3}::{closure#0}>>>::from_iter
+calls=4 0 
+0 354
+0 21
+cfn=(932)
+calls=4 0 
+0 354
+0 96
+
+fn=(946) <alloc::vec::Vec<isize> as alloc::vec::spec_from_iter::SpecFromIter<isize, core::iter::adapters::map::Map<core::slice::iter::Iter<alloc::vec::Vec<isize>>, strided_basic::kernel::kernel_2d_inner<strided_basic::map_view::mul_identity_into_raw<strided_basic::map_view::UninitializedOutput, f64, f64, f64>::{closure#1}>::{closure#0}>>>::from_iter
+0 54
+cfn=(780)
+calls=4 0 
+0 3
+0 9
+cfn=(782)
+calls=4 0 
+0 165
+0 105
+
+fn=(788) std::rt::lang_start::<()>::{closure#0}
+cfn=(790)
+calls=1 0 
+0 4102527
+
+fn=(870) strided_basic::threading::parallel_threads_for_len
+0 15
+cfn=(872) <strided_basic::execution_policy::ACTIVE_FANOUT::{K#0}::{closure#1} as core::ops::function::FnOnce<(core::option::Option<&mut core::option::Option<core::cell::Cell<bool>>>,)>>::call_once
+calls=4 0 
+0 15
+0 18
+cfn=(874) <strided_basic::execution_policy::ACTIVE_POLICY::{K#0}::{closure#1} as core::ops::function::FnOnce<(core::option::Option<&mut core::option::Option<core::cell::Cell<strided_basic::execution_policy::ExecutionPolicy>>>,)>>::call_once
+calls=4 0 
+0 15
+0 30
+
+fn=(878) strided_basic::kernel::ensure_same_shape
+0 54
+cob=(2)
+cfi=(229) ./string/../sysdeps/x86_64/multiarch/memcmp-avx2-movbe.S
+cfn=(824) __memcmp_avx2_movbe
+calls=4 73 
+0 63
+0 39
+
+fn=(908) strided_basic::fuse::fuse_dims
+0 60
+cfn=(780)
+calls=4 0 
+0 3
+0 9
+cfn=(782)
+calls=4 0 
+0 165
+0 24
+cob=(2)
+cfi=(204)
+cfn=(684)
+calls=4 255 
+0 33
+0 117
+
+fn=(914) <alloc::vec::Vec<usize> as alloc::vec::spec_from_iter_nested::SpecFromIterNested<usize, core::iter::adapters::map::Map<core::slice::iter::Iter<usize>, strided_basic::fuse::compress_dims::{closure#2}>>>::from_iter
+0 57
+cfn=(780)
+calls=4 0 
+0 3
+0 12
+cfn=(782)
+calls=4 0 
+0 165
+0 117
+
+fn=(916) <alloc::vec::Vec<alloc::vec::Vec<isize>> as alloc::vec::spec_from_iter_nested::SpecFromIterNested<alloc::vec::Vec<isize>, core::iter::adapters::map::Map<core::slice::iter::Iter<alloc::vec::Vec<isize>>, strided_basic::fuse::compress_dims::{closure#3}>>>::from_iter
+0 69
+cfn=(780)
+calls=4 0 
+0 3
+0 12
+cfn=(782)
+calls=4 0 
+0 165
+0 57
+cfn=(918) <alloc::vec::Vec<isize> as alloc::vec::spec_from_iter_nested::SpecFromIterNested<isize, core::iter::adapters::map::Map<core::slice::iter::Iter<usize>, strided_basic::fuse::compress_dims::{closure#3}::{closure#0}>>>::from_iter
+calls=4 0 
+0 363
+0 27
+cfn=(918)
+calls=4 0 
+0 363
+0 105
+
+fn=(944) strided_basic::execution_policy::rayon_threads
+0 42
+
+fn=(534)
+cob=(2)
+cfi=(163) ./csu/../csu/libc-start.c
+cfn=(536) __libc_start_main@@GLIBC_2.34
+calls=1 242 
+0 4102527
+
+fn=(866) strided_basic::layout_check::has_disjoint_stride_spans
+0 1692
+
+fn=(872)
+0 15
+
+fn=(924) <alloc::vec::Vec<alloc::vec::Vec<isize>> as alloc::vec::spec_from_iter_nested::SpecFromIterNested<alloc::vec::Vec<isize>, core::iter::adapters::map::Map<core::slice::iter::Iter<&[isize]>, strided_basic::block::compute_block_sizes::{closure#1}>>>::from_iter
+0 72
+cfn=(780)
+calls=4 0 
+0 3
+0 12
+cfn=(782)
+calls=4 0 
+0 165
+0 72
+cfn=(926) <alloc::vec::Vec<isize> as alloc::vec::spec_from_iter_nested::SpecFromIterNested<isize, core::iter::adapters::map::Map<core::slice::iter::Iter<usize>, strided_basic::block::compute_block_sizes::{closure#1}::{closure#0}>>>::from_iter
+calls=4 0 
+0 363
+0 24
+cfn=(926)
+calls=4 0 
+0 363
+0 102
+
+fn=(934) strided_basic::fuse::compute_costs::<&[isize]>
+0 78
+cfn=(780)
+calls=4 0 
+0 3
+0 12
+cfn=(782)
+calls=4 0 
+0 615
+0 462
+
+fn=(940) <alloc::vec::Vec<&[usize]> as alloc::vec::spec_from_iter_nested::SpecFromIterNested<&[usize], core::iter::adapters::map::Map<core::slice::iter::Iter<&[usize]>, strided_basic::block::compute_blocks::{closure#3}>>>::from_iter
+0 45
+cfn=(780)
+calls=4 0 
+0 3
+0 12
+cfn=(782)
+calls=4 0 
+0 165
+0 129
+
+fn=(942) <alloc::raw_vec::RawVecInner<_>>::reserve::do_reserve_and_handle::<alloc::alloc::Global>
+0 81
+cfn=(856)
+calls=4 0 
+0 624
+0 27
+
+fn=(838) <strided_view::view::StridedViewMut<core::mem::maybe_uninit::MaybeUninit<f64>>>::new
+0 66
+cfn=(834) strided_view::view::validate_bounds
+calls=8 0 
+0 192
+0 81
+cfn=(836) alloc::sync::arcinner_layout_for_value_layout
+calls=8 0 
+0 51
+0 18
+cfn=(780)
+calls=8 0 
+0 3
+0 9
+cfn=(782)
+calls=8 0 
+0 165
+0 27
+cob=(2)
+cfi=(204)
+cfn=(684)
+calls=8 255 
+0 33
+0 24
+cfn=(836)
+calls=8 0 
+0 51
+0 18
+cfn=(780)
+calls=8 0 
+0 3
+0 9
+cfn=(782)
+calls=8 0 
+0 165
+0 27
+cob=(2)
+cfi=(204)
+cfn=(684)
+calls=8 255 
+0 33
+0 78
+
+fn=(848) <alloc::raw_vec::RawVecInner>::try_allocate_in
+0 66
+cfn=(780)
+calls=4 0 
+0 3
+0 51
+cfn=(782)
+calls=4 0 
+0 165
+0 6
+
+fn=(852) <alloc::raw_vec::RawVec<usize>>::grow_one
+0 9
+cfn=(854)
+calls=4 0 
+0 1275
+0 12
+
+fn=(858) __rustc::__rust_realloc
+0 6
+cfn=(860) __rustc::__rdl_realloc
+calls=8 0 
+0 1596
+
+fn=(862) core::ptr::drop_glue::<strided_view::StridedError>
+0 18
+
+fn=(882) strided_basic::kernel::total_len
+0 126
+
+fn=(886) strided_basic::kernel::build_plan_fused
+0 51
+cfn=(888) strided_basic::order::compute_order
+calls=4 0 
+0 5199
+0 33
+cfn=(902) <alloc::vec::Vec<usize> as alloc::vec::spec_from_iter_nested::SpecFromIterNested<usize, core::iter::adapters::map::Map<core::slice::iter::Iter<usize>, strided_basic::kernel::build_plan_fused::{closure#0}>>>::from_iter
+calls=4 0 
+0 354
+0 24
+cfn=(904) <alloc::vec::Vec<alloc::vec::Vec<isize>> as alloc::vec::spec_from_iter_nested::SpecFromIterNested<alloc::vec::Vec<isize>, core::iter::adapters::map::Map<core::slice::iter::Iter<&[isize]>, strided_basic::kernel::build_plan_fused::{closure#1}>>>::from_iter
+calls=4 0 
+0 1155
+0 21
+cfn=(780)
+calls=4 0 
+0 3
+0 9
+cfn=(782)
+calls=4 0 
+0 165
+0 96
+cfn=(908)
+calls=4 0 
+0 411
+0 24
+cfn=(910) strided_basic::fuse::compress_dims
+calls=4 0 
+0 2349
+0 54
+cfn=(780)
+calls=4 0 
+0 3
+0 9
+cfn=(782)
+calls=4 0 
+0 165
+0 87
+cfn=(780)
+calls=4 0 
+0 3
+0 9
+cfn=(782)
+calls=4 0 
+0 882
+0 81
+cfn=(920) strided_basic::block::compute_block_sizes
+calls=4 0 
+0 16744
+0 69
+cfn=(802) __rustc::__rust_dealloc
+calls=4 0 
+0 301
+0 27
+cfn=(802)
+calls=4 0 
+0 324
+0 18
+cfn=(802)
+calls=4 0 
+0 322
+0 75
+cfn=(802)
+calls=8 0 
+0 648
+0 30
+cfn=(802)
+calls=4 0 
+0 261
+0 21
+cfn=(802)
+calls=4 0 
+0 324
+0 21
+cfn=(802)
+calls=4 0 
+0 324
+0 27
+
+fn=(892) strided_basic::fuse::compute_importance
+0 63
+cfn=(780)
+calls=4 0 
+0 3
+0 12
+cfn=(894) __rustc::__rust_alloc_zeroed
+calls=4 0 
+0 786
+0 456
+
+fn=(904)
+0 69
+cfn=(780)
+calls=4 0 
+0 3
+0 12
+cfn=(782)
+calls=4 0 
+0 165
+0 72
+cfn=(906)
+calls=4 0 
+0 354
+0 30
+cfn=(906)
+calls=4 0 
+0 354
+0 96
+
+fn=(912) <alloc::vec::Vec<usize> as alloc::vec::spec_from_iter_nested::SpecFromIterNested<usize, core::iter::adapters::filter::Filter<core::ops::range::Range<usize>, strided_basic::fuse::compress_dims::{closure#0}>>>::from_iter
+0 66
+cfn=(780)
+calls=4 0 
+0 3
+0 9
+cfn=(782)
+calls=4 0 
+0 165
+0 135
+
+fn=(928) <alloc::vec::Vec<alloc::vec::Vec<usize>> as alloc::vec::spec_from_iter_nested::SpecFromIterNested<alloc::vec::Vec<usize>, core::iter::adapters::map::Map<core::slice::iter::Iter<alloc::vec::Vec<isize>>, strided_basic::block::compute_block_sizes::{closure#2}>>>::from_iter
+0 66
+cfn=(780)
+calls=4 0 
+0 3
+0 12
+cfn=(782)
+calls=4 0 
+0 165
+0 39
+cfn=(890) strided_view::auxiliary::index_order
+calls=4 0 
+0 546
+0 12
+cfn=(890)
+calls=4 0 
+0 546
+0 99
+
+fn=(938) <alloc::vec::Vec<&[isize]> as alloc::vec::spec_from_iter_nested::SpecFromIterNested<&[isize], core::iter::adapters::map::Map<core::slice::iter::Iter<&[isize]>, strided_basic::block::compute_blocks::{closure#2}>>>::from_iter
+0 45
+cfn=(780)
+calls=4 0 
+0 3
+0 12
+cfn=(782)
+calls=4 0 
+0 165
+0 129
+
+fn=(802)
+0 147
+cfn=(804)
+calls=221 0 
+0 14268
+
+fn=(832) <strided_view::view::StridedView<f64>>::new
+0 66
+cfn=(834)
+calls=6 0 
+0 192
+0 81
+cfn=(836)
+calls=6 0 
+0 51
+0 18
+cfn=(780)
+calls=6 0 
+0 3
+0 9
+cfn=(782)
+calls=6 0 
+0 165
+0 27
+cob=(2)
+cfi=(204)
+cfn=(684)
+calls=6 255 
+0 33
+0 24
+cfn=(836)
+calls=6 0 
+0 51
+0 18
+cfn=(780)
+calls=6 0 
+0 3
+0 9
+cfn=(782)
+calls=6 0 
+0 165
+0 27
+cob=(2)
+cfi=(204)
+cfn=(684)
+calls=6 255 
+0 33
+0 78
+
+fn=(856)
+0 81
+cfn=(858)
+calls=4 0 
+0 504
+0 99
+cfn=(858)
+calls=4 0 
+0 1098
+0 36
+
+fn=(876) strided_basic::map_view::map_into::<core::mem::maybe_uninit::MaybeUninit<f64>, f64, strided_traits::element_op::Identity, <core::mem::maybe_uninit::MaybeUninit<f64>>::new>
+0 81
+cfn=(878)
+calls=4 0 
+0 156
+0 36
+cfn=(880) strided_basic::layout_check::is_injective_layout
+calls=4 0 
+0 1164
+0 30
+cfn=(882)
+calls=4 0 
+0 63
+0 24
+cfn=(884) strided_basic::kernel::contiguous_layout
+calls=4 0 
+0 111
+0 30
+cfn=(882)
+calls=4 0 
+0 63
+0 33
+cfn=(886)
+calls=4 0 
+0 30723
+0 117
+cfn=(944)
+calls=4 0 
+0 42
+0 39
+cfn=(780)
+calls=4 0 
+0 3
+0 9
+cfn=(894)
+calls=4 0 
+0 513
+0 33
+cfn=(780)
+calls=4 0 
+0 3
+0 9
+cfn=(782)
+calls=4 0 
+0 165
+0 21
+cob=(2)
+cfi=(204)
+cfn=(684)
+calls=4 255 
+0 33
+0 57
+cfn=(946)
+calls=4 0 
+0 336
+0 201
+cfn=(948) strided_basic::map_view::map_parts_into_validated::<core::mem::maybe_uninit::MaybeUninit<f64>, f64, strided_traits::element_op::Identity, <core::mem::maybe_uninit::MaybeUninit<f64>>::new>::{closure#2}
+calls=4 0 
+0 1809
+0 1701
+cfn=(948)
+calls=252 0 
+0 113967
+0 6354
+cfn=(802)
+calls=4 0 
+0 261
+0 18
+cfn=(802)
+calls=4 0 
+0 261
+0 21
+cfn=(802)
+calls=4 0 
+0 324
+0 21
+cfn=(802)
+calls=4 0 
+0 324
+0 21
+cfn=(802)
+calls=4 0 
+0 324
+0 81
+cfn=(802)
+calls=8 0 
+0 648
+0 30
+cfn=(802)
+calls=4 0 
+0 261
+0 21
+cfn=(802)
+calls=4 0 
+0 324
+0 30
+
+fn=(900) core::slice::sort::shared::smallsort::insertion_sort_shift_left::<usize, <[usize]>::sort_by<strided_basic::fuse::sort_by_importance::{closure#0}>::{closure#0}>
+0 99
+
+fn=(910)
+0 60
+cfn=(912)
+calls=4 0 
+0 378
+0 36
+cfn=(914)
+calls=4 0 
+0 354
+0 24
+cfn=(916)
+calls=4 0 
+0 1164
+0 45
+cfn=(802)
+calls=4 0 
+0 261
+0 27
+
+fn=(782)
+0 141
+cfn=(784) __rustc::__rdl_alloc
+calls=214 0 
+0 9759
+
+fn=(784)
+0 1269
+cob=(2)
+cfi=(184)
+cfn=(604) malloc
+calls=214 3294 
+0 8490
+
+fn=(844) strided_basic::dense_update::product
+0 126
+
+fn=(850) <alloc::vec::Vec<usize>>::insert_mut
+0 45
+cfn=(852)
+calls=4 0 
+0 1296
+0 27
+cob=(2)
+cfi=(204)
+cfn=(684)
+calls=4 255 
+0 39
+0 27
+
+fn=(864) strided_basic::layout_check::is_injective_layout_without_alloc
+0 282
+cfn=(866)
+calls=4 0 
+0 846
+0 12
+
+fn=(880)
+0 306
+cfn=(866)
+calls=4 0 
+0 846
+0 12
+
+fn=(888)
+0 72
+cfn=(780)
+calls=4 0 
+0 3
+0 12
+cfn=(782)
+calls=4 0 
+0 165
+0 132
+cfn=(890)
+calls=8 0 
+0 1092
+0 57
+cfn=(780)
+calls=4 0 
+0 3
+0 9
+cfn=(782)
+calls=4 0 
+0 165
+0 21
+cob=(2)
+cfi=(204)
+cfn=(684)
+calls=4 255 
+0 36
+0 48
+cfn=(892)
+calls=4 0 
+0 1320
+0 15
+cfn=(898) strided_basic::fuse::sort_by_importance
+calls=4 0 
+0 438
+0 24
+cfn=(802)
+calls=4 0 
+0 261
+0 75
+cfn=(802)
+calls=8 0 
+0 648
+0 30
+cfn=(802)
+calls=4 0 
+0 261
+0 21
+cfn=(802)
+calls=4 0 
+0 261
+0 30
+
+fn=(894)
+0 6
+cfn=(896) __rustc::__rdl_alloc_zeroed
+calls=8 0 
+0 1293
+
+fn=(936) strided_basic::block::compute_blocks
+0 723
+cfn=(780)
+calls=4 0 
+0 3
+0 9
+cfn=(782)
+calls=4 0 
+0 156
+0 21
+cob=(2)
+cfi=(204)
+cfn=(684)
+calls=4 255 
+0 39
+0 27
+cfn=(780)
+calls=4 0 
+0 3
+0 9
+cfn=(782)
+calls=4 0 
+0 156
+0 24
+cob=(2)
+cfi=(204)
+cfn=(684)
+calls=4 255 
+0 39
+0 24
+cfn=(938)
+calls=4 0 
+0 354
+0 12
+cfn=(940)
+calls=4 0 
+0 354
+0 42
+cfn=(937) strided_basic::block::compute_blocks'2
+calls=4 0 
+0 534
+0 9
+cfn=(780)
+calls=4 0 
+0 3
+0 9
+cfn=(782)
+calls=4 0 
+0 582
+0 54
+cfn=(802)
+calls=4 0 
+0 261
+0 39
+cfn=(802)
+calls=4 0 
+0 261
+0 27
+cfn=(802)
+calls=4 0 
+0 261
+0 18
+cfn=(802)
+calls=4 0 
+0 261
+0 39
+cfn=(802)
+calls=4 0 
+0 261
+0 18
+cfn=(942)
+calls=4 0 
+0 732
+0 18
+cob=(2)
+cfi=(204)
+cfn=(684)
+calls=4 255 
+0 39
+0 12
+
+fn=(937)
+0 270
+cfn=(780)
+calls=4 0 
+0 3
+0 9
+cfn=(782)
+calls=4 0 
+0 156
+0 27
+cob=(2)
+cfi=(204)
+cfn=(684)
+calls=4 255 
+0 39
+0 30
+
+fn=(948)
+0 115776
+
+fn=(952) <alloc::sync::Arc<[isize]>>::drop_slow
+0 132
+cfn=(802)
+calls=28 0 
+0 1296
+
+fn=(568)
+cfn=(788)
+calls=1 0 
+0 4102527
+
+fn=(792)
+cfn=(954) profile_dense
+calls=3 0 
+0 4102527
+
+fn=(834)
+0 384
+
+fn=(840) dense_kernels::run::{closure#3}
+0 93
+cfn=(842) strided_basic::dense_update::embed_diagonal_into_uninit::<f64>
+calls=4 0 
+0 4102404
+0 27
+
+fn=(846) strided_basic::dense_update::same_len
+0 102
+
+fn=(868) strided_basic::dense_update::for_each_chunk::<core::mem::maybe_uninit::MaybeUninit<f64>, strided_basic::dense_update::embed_diagonal_into_uninit<f64>::{closure#1}>
+0 33
+cfn=(870)
+calls=4 0 
+0 93
+0 3932238
+
+fn=(884)
+0 111
+
+fn=(896)
+0 114
+cob=(2)
+cfi=(184)
+cfn=(758) calloc
+calls=8 3699 
+0 1179
+
+fn=(836)
+0 204
+
+fn=(842)
+0 75
+cfn=(844)
+calls=4 0 
+0 126
+0 24
+cfn=(846)
+calls=4 0 
+0 51
+0 39
+cfn=(846)
+calls=4 0 
+0 51
+0 60
+cfn=(848)
+calls=4 0 
+0 291
+0 30
+cob=(2)
+cfi=(204)
+cfn=(684)
+calls=4 255 
+0 33
+0 15
+cfn=(850)
+calls=4 0 
+0 1434
+0 12
+cfn=(830) strided_view::view::col_major_strides
+calls=4 0 
+0 327
+0 12
+cfn=(830)
+calls=4 0 
+0 363
+0 48
+cob=(2)
+cfi=(204)
+cfn=(684)
+calls=4 255 
+0 39
+0 39
+cfn=(862)
+calls=4 0 
+0 18
+0 36
+cfn=(832)
+calls=4 0 
+0 1053
+0 84
+cfn=(838)
+calls=4 0 
+0 1053
+0 72
+cfn=(864)
+calls=4 0 
+0 1140
+0 18
+cfn=(868)
+calls=4 0 
+0 3932364
+0 12
+cfn=(876)
+calls=4 0 
+0 160896
+0 6
+cfn=(950) core::ptr::drop_glue::<strided_view::view::StridedView<f64>>
+calls=4 0 
+0 768
+0 6
+cfn=(950)
+calls=4 0 
+0 768
+0 21
+cfn=(802)
+calls=4 0 
+0 324
+0 24
+cfn=(802)
+calls=4 0 
+0 324
+0 21
+cfn=(802)
+calls=4 0 
+0 324
+0 3
+
+fn=(860)
+0 132
+cob=(2)
+cfi=(184)
+cfn=(712) realloc
+calls=8 3407 
+0 1464
+
+fn=(926)
+0 114
+cfn=(780)
+calls=8 0 
+0 6
+0 24
+cfn=(782)
+calls=8 0 
+0 330
+0 252
+
+fn=(932)
+0 114
+cfn=(780)
+calls=8 0 
+0 6
+0 24
+cfn=(782)
+calls=8 0 
+0 330
+0 234
+
+fn=(954)
+0 3
+cfn=(840)
+calls=3 0 
+0 4102524
+
+fn=(830)
+0 72
+cfn=(780)
+calls=10 0 
+0 6
+0 18
+cfn=(782)
+calls=10 0 
+0 330
+0 264
+
+fn=(874)
+0 15
+
+fn=(890)
+0 144
+cfn=(780)
+calls=16 0 
+0 12
+0 36
+cfn=(782)
+calls=16 0 
+0 660
+0 1332
+
+fn=(898)
+0 36
+cfn=(780)
+calls=4 0 
+0 3
+0 9
+cfn=(782)
+calls=4 0 
+0 165
+0 117
+cfn=(900)
+calls=4 0 
+0 99
+0 9
+
+fn=(902)
+0 57
+cfn=(780)
+calls=4 0 
+0 3
+0 12
+cfn=(782)
+calls=4 0 
+0 165
+0 117
+
+fn=(918)
+0 114
+cfn=(780)
+calls=8 0 
+0 6
+0 24
+cfn=(782)
+calls=8 0 
+0 330
+0 252
+
+fn=(920)
+0 66
+cfn=(922)
+calls=4 0 
+0 354
+0 33
+cfn=(924)
+calls=4 0 
+0 1176
+0 24
+cfn=(928)
+calls=4 0 
+0 1488
+0 21
+cfn=(930)
+calls=4 0 
+0 1140
+0 21
+cfn=(780)
+calls=4 0 
+0 3
+0 9
+cfn=(782)
+calls=4 0 
+0 165
+0 84
+cfn=(934)
+calls=4 0 
+0 1170
+0 24
+cfn=(780)
+calls=4 0 
+0 3
+0 9
+cfn=(782)
+calls=4 0 
+0 753
+0 105
+cfn=(780)
+calls=4 0 
+0 3
+0 9
+cfn=(782)
+calls=4 0 
+0 165
+0 114
+cfn=(936)
+calls=4 0 
+0 5433
+0 21
+cfn=(802)
+calls=4 0 
+0 261
+0 18
+cfn=(802)
+calls=4 0 
+0 261
+0 21
+cfn=(802)
+calls=4 0 
+0 261
+0 18
+cfn=(802)
+calls=4 0 
+0 280
+0 81
+cfn=(802)
+calls=8 0 
+0 522
+0 30
+cfn=(802)
+calls=4 0 
+0 261
+0 78
+cfn=(802)
+calls=8 0 
+0 579
+0 30
+cfn=(802)
+calls=4 0 
+0 261
+0 78
+cfn=(802)
+calls=8 0 
+0 648
+0 30
+cfn=(802)
+calls=4 0 
+0 261
+0 21
+cfn=(802)
+calls=4 0 
+0 324
+0 27
+
+fn=(950)
+0 54
+cfn=(952)
+calls=8 0 
+0 714
+0 54
+cfn=(952)
+calls=8 0 
+0 714
+
+ob=(2)
+fl=(163)
+fn=(536)
+cfi=(165) ./csu/../sysdeps/nptl/libc_start_call_main.h
+cfn=(558) (below main)
+calls=1 29 
+360 4102527
+
+fl=(165)
+fn=(558)
+cob=(6)
+cfi=(162)
+cfn=(566)
+calls=1 0 
+58 4102527
+
+fl=(184)
+fn=(716) _int_realloc
+4914 48
++11 24
++1 30
++1 24
++6 12
++2 12
++1 18
++2 24
++3 12
++89 54
+-79 12
++12 6
++12 12
+cfn=(616) _int_malloc
+calls=4 3846 
+* 366
+* 3
++1 6
++9 3
+-6 3
++1 3
++5 6
++8 3
+-1 3
+fi=(190) ./malloc/../string/bits/string_fortified.h
+29 3
+fe=(184)
+4993 18
+fi=(190)
+29 3
+cob=(3)
+cfi=(153)
+cfn=(682)
+calls=4 -29 
+* 39
+fe=(184)
+4997 12
+cfn=(718) _int_free
+calls=4 4495 
+* 162
++2 3
+-47 3
++1 3
+-2 6
++4 12
++2 3
+-2 3
++2 3
+-2 6
++1 3
+-1 6
++4 3
+-3 3
++1 3
++2 3
+
+fn=(624) alloc_perturb
+1985 9
++2 3
+
+fn=(712)
+3407 66
++6 12
++4 12
++7 12
+5241 6
+3433 6
+5242 18
+-1 12
++2 12
+3538 54
+5244 6
+3441 12
++15 18
+fi=(185) ./malloc/./malloc/arena.c
+153 18
+fe=(184)
+3464 24
++1 12
+1326 12
++19 36
+3475 12
++31 12
++2 36
+cfn=(716)
+calls=9 4914 
+* 984
+* 6
++1 30
+fi=(185)
+153 24
+fe=(184)
+3509 12
+
+fn=(604)
+3294 1128
++7 282
+1326 282
++19 693
+3311 258
++2 564
++3 282
++10 24
++28 72
+-36 423
+3178 258
++4 258
++4 129
++4 129
+-4 387
++4 129
++1 129
+3354 774
+-26 48
+cfn=(616)
+calls=70 3846 
+* 2157
++1 60
+fi=(185)
+153 24
+fe=(184)
+
+fn=(718)
+4495 1050
++4 450
++6 600
++1 300
++4 750
++8 600
+-1 300
++1 300
++29 150
+-20 150
+-6 150
++6 300
++20 600
+1792 78
+4561 156
++11 312
++2 234
+1992 78
+4593 78
+1992 156
+4595 78
++1 78
++4 156
++2 78
+-2 78
++2 78
++4 156
++2 234
++1 78
++19 300
++30 900
+3163 72
++4 72
+-4 72
++2 288
++1 72
++1 72
+4550 72
+
+fn=(616)
+3846 231
+1326 42
++19 123
+3887 36
+1794 18
+3914 36
++65 36
+-63 72
++3 18
++2 36
++2 36
+-6 18
++9 36
++1 90
++5 36
++1 36
++7 18
+-1 36
++1 90
++5 36
+3165 18
+3945 18
++1 39
++5 378
+3165 63
+-2 63
++4 63
+-2 63
+3945 63
+3163 63
++3 63
++1 63
+3946 333
++2 126
++2 126
+4060 3
+-1 3
+-1 3
++1 6
++1 6
+-2 6
++12 15
+3887 6
++27 6
++66 3
++2 3
+-2 3
++2 6
+-68 9
+1345 3
+3919 6
++2 6
++9 9
+1985 54
+4487 252
+4257 9
++6 3
++71 9
+-4 3
++1 3
++1 3
+-1 3
++1 3
++1 6
++1 9
++5 12
++4 9
++3 12
+-3 9
++3 12
+-3 9
++3 12
+-3 6
+4443 3
++1 6
++2 6
++3 9
++11 9
+cfn=(624)
+calls=65 1985 
+* 12
++1 3
+-9 6
++2 6
+-1 3
++1 3
+-3 3
++3 3
++2 3
+-2 12
++2 3
++3 6
+
+fn=(758)
+3699 12
++10 6
+-10 42
++10 48
++8 12
++3 18
++2 12
++34 30
+fi=(185)
+153 12
+fe=(184)
+3732 6
++1 6
++21 12
+-21 12
++21 6
+cfn=(616)
+calls=9 +92 
+* 735
++2 12
++81 48
+-41 6
+-12 6
++12 12
++3 30
++8 6
++2 12
++2 12
++5 6
++2 6
+-2 6
++3 12
+-63 18
++3 18
+
+fn=(722)
+3359 147
++4 294
+-4 441
++14 147
+-14 441
++12 147
++4 147
+-4 147
++4 294
++17 441
+fi=(185)
+153 441
+fe=(184)
+3398 441
+cfn=(718)
+calls=226 4495 
+* 9564
++3 147
++1 882
+
+fl=(229)
+fn=(824)
+73 3
++7 3
++1 3
+401 3
++1 3
++5 3
++1 3
++1 3
++1 3
++1 3
++3 2
++1 2
++1 2
++1 2
++3 2
++1 2
++1 2
++1 4
++6 1
++1 1
++82 1
++1 1
++1 1
++1 1
++1 1
++4 1
++1 1
++1 1
++1 1
++1 1
++1 1
++2 1
++2 1
+
+fl=(204)
+fn=(684)
+255 45
++1 45
++6 45
++1 45
++2 3
++1 3
++1 3
++3 3
++1 3
++1 3
++3 6
++30 42
++1 42
++2 18
++1 18
++33 24
++1 24
++1 24
++1 24
++2 24
++17 18
++1 18
++1 18
++1 18
++1 18
+
+totals: 4102527

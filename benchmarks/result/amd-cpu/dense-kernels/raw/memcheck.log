@@ -1,0 +1,21 @@
+==730672== Memcheck, a memory error detector
+==730672== Copyright (C) 2002-2022, and GNU GPL'd, by Julian Seward et al.
+==730672== Using Valgrind-3.22.0 and LibVEX; rerun with -h for copyright info
+==730672== Command: /tmp/dense-kernels-optimized
+==730672== 
+CHECK mul_2048 passed; threads=1 policy=Sequential samples=1
+CHECK mul_odd passed; threads=1 policy=Sequential samples=1
+CHECK mul_strided passed; threads=1 policy=Sequential samples=1
+CHECK axpby_1m passed; threads=1 policy=Sequential samples=1
+CHECK tril_1024 passed; threads=1 policy=Sequential samples=1
+CHECK triu_rect passed; threads=1 policy=Sequential samples=1
+CHECK diag_rank2 passed; threads=1 policy=Sequential samples=1
+==730672== 
+==730672== HEAP SUMMARY:
+==730672==     in use at exit: 544 bytes in 1 blocks
+==730672==   total heap usage: 220 allocs, 219 frees, 319,136,009 bytes allocated
+==730672== 
+==730672== For a detailed leak analysis, rerun with: --leak-check=full
+==730672== 
+==730672== For lists of detected and suppressed errors, rerun with: -s
+==730672== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)

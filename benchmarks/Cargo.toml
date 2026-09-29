@@ -1,0 +1,59 @@
+[package]
+name = "strided-rs-benchmark-suite"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = ["faer"]
+faer = ["strided-opteinsum/faer", "strided-einsum2/faer"]
+parallel = [
+    "strided-opteinsum/parallel",
+    "strided-einsum2/parallel",
+    "strided-kernel/parallel",
+    "strided-perm/parallel",
+    "dep:rayon",
+]
+hptt = ["dep:hptt"]
+blas = ["strided-opteinsum/blas", "strided-einsum2/blas"]
+
+[profile.release-with-debug]
+inherits = "release"
+debug = true
+
+[dependencies]
+strided-opteinsum = { path = "../strided-rs/strided-opteinsum", default-features = false }
+strided-einsum2 = { path = "../strided-rs/strided-einsum2", default-features = false }
+strided-kernel = { path = "../strided-rs/strided-kernel", default-features = false }
+strided-view = { path = "../strided-rs/strided-view" }
+strided-perm = { path = "../strided-rs/strided-perm" }
+num-complex = "0.4"
+num-traits = "0.2"
+hptt = { version = "0.4.1", optional = true }
+rayon = { version = "1", optional = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[[bin]]
+name = "tn_light_415_late_step"
+path = "benchmarks/einsum_benchmarks/tn_light_415_late_step/tn_light_415_late_step.rs"
+
+[[bin]]
+name = "scale_transpose"
+path = "benchmarks/strided_benchmarks/transpose_scale/scale_transpose.rs"
+
+[[bin]]
+name = "permute"
+path = "benchmarks/strided_benchmarks/permute/permute.rs"
+
+[[bin]]
+name = "fused_elementwise"
+path = "benchmarks/strided_benchmarks/fused_elementwise/fused_elementwise.rs"
+
+[[bin]]
+name = "dense_kernels"
+path = "benchmarks/strided_benchmarks/dense_kernels/dense_kernels.rs"
+
+[[bin]]
+name = "kernel_scaling"
+path = "benchmarks/strided_benchmarks/kernel_scaling/kernel_scaling.rs"
+required-features = ["parallel"]

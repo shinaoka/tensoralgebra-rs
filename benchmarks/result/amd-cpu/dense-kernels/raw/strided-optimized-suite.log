@@ -1,0 +1,415 @@
+   Compiling strided-basic v0.4.0 (/home/shinaoka/tensor4all/.worktrees/cpu-kernel-migration/strided-rs/strided-basic)
+    Finished `test` profile [unoptimized] target(s) in 6.32s
+     Running unittests src/lib.rs (target/debug/deps/strided_basic-a9525109094fb8cf)
+
+running 161 tests
+test block::tests::test_compute_block_sizes_4d_permuted_strides ... ok
+test block::tests::test_compute_block_sizes_4d_column_major ... ok
+test block::tests::test_compute_block_sizes_full_pipeline ... ok
+test block::tests::test_compute_blocks_4d_array_first_dim_smallest ... ok
+test block::tests::test_compute_blocks_4d_permuted ... ok
+test block::tests::test_compute_blocks_first_dim_smallest_stride ... ok
+test block::tests::test_compute_blocks_large ... ok
+test block::tests::test_compute_blocks_4d_needs_reduction ... ok
+test block::tests::test_compute_blocks_min_stride_larger_than_blocksize ... ok
+test block::tests::test_compute_blocks_mixed_strides_two_arrays ... ok
+test block::tests::test_compute_blocks_negative_strides ... ok
+test block::tests::test_compute_blocks_small ... ok
+test block::tests::test_last_argmax_weighted ... ok
+test block::tests::test_last_argmax_weighted_all_ones ... ok
+test block::tests::test_last_argmax_weighted_cost_matters ... ok
+test block::tests::test_last_argmax_weighted_mixed ... ok
+test block::tests::test_last_argmax_weighted_tie ... ok
+test block::tests::test_total_memory_region_all_contiguous ... ok
+test block::tests::test_total_memory_region_all_large_strides ... ok
+test block::tests::test_total_memory_region_contiguous ... ok
+test block::tests::test_total_memory_region_julia_match_2d ... ok
+test block::tests::test_total_memory_region_julia_match_multiple_arrays ... ok
+test block::tests::test_total_memory_region_strided ... ok
+test copy_plan::tests::compile_accepts_representable_mixed_sign_span_without_fusion_overflow ... ok
+test copy_plan::tests::compile_rejects_extent_overflow ... ok
+test copy_plan::tests::compile_rejects_length_mismatch ... ok
+test copy_plan::tests::compile_rejects_non_injective_destination ... ok
+test copy_plan::tests::compile_rejects_unrepresentable_positive_and_negative_offset_spans ... ok
+test copy_plan::tests::execute_rejects_layout_drift ... ok
+test copy_plan::tests::identity_layout_uses_single_fused_axis ... ok
+test copy_plan::tests::plan_copy_matches_direct_rank0 ... ok
+test copy_plan::tests::plan_copy_matches_direct_f32_and_complex ... ok
+test copy_plan::tests::plan_copy_matches_direct_rank1 ... ok
+test copy_plan::tests::plan_copy_matches_direct_rank4 ... ok
+test copy_plan::tests::plan_copy_matches_direct_rank2_transposed ... ok
+test copy_plan::tests::plan_copy_matches_direct_zero_size ... ok
+test copy_plan::tests::plan_copy_matches_direct_rank8 ... ok
+test copy_plan::tests::plan_copy_negative_stride_matches_view_kernel ... ok
+test copy_plan::tests::plan_execute_scale_and_conj ... ok
+test exec_context::tests::ambient_context_has_no_thread_limit ... ok
+test copy_plan::tests::uninit_then_receipt_drops_after_panic ... ok
+test exec_context::tests::bounded_context_rejects_zero_and_exposes_limit ... ok
+test exec_context::tests::run_installs_execution_policy_and_restores_previous_policy ... ok
+test exec_context::tests::serial_context_has_no_thread_limit ... ok
+test execution_policy::default_tests::ambient_scope_returns_result_without_changing_state ... ok
+test execution_policy::default_tests::nested_explicit_scopes_combine_conservatively ... ok
+test execution_policy::default_tests::explicit_scope_restores_state_after_return_and_panic ... ok
+test execution_policy::tests::leaf_panic_restores_ambient_policy_and_inactive_fanout ... ok
+test execution_policy::tests::permutation_copy_parallel_eligibility_is_deterministic ... ok
+test execution_policy::tests::scheduler_panic_restores_owned_policy_and_fanout_state ... ok
+test fuse::tests::test_compress_dims_all_ones ... ok
+test fuse::tests::test_compress_dims_empty ... ok
+test fuse::tests::test_compress_dims_multi_arrays ... ok
+test fuse::tests::test_compress_dims_no_removal ... ok
+test fuse::tests::test_compress_dims_removes_fused ... ok
+test fuse::tests::test_compress_dims_single_dim ... ok
+test fuse::tests::test_compress_dims_removes_multiple ... ok
+test fuse::tests::test_compress_dims_single_dim_one ... ok
+test fuse::tests::test_compute_costs ... ok
+test fuse::tests::test_compute_costs_owned_vecs ... ok
+test fuse::tests::test_compute_importance_2_arrays ... ok
+test fuse::tests::test_compute_costs_with_zero ... ok
+test fuse::tests::test_compute_importance_output_weight ... ok
+test fuse::tests::test_compute_importance_size_one_dim ... ok
+test fuse::tests::test_fuse_dims_contiguous ... ok
+test fuse::tests::test_compute_importance_with_zero_stride ... ok
+test fuse::tests::test_fuse_dims_non_contiguous ... ok
+test fuse::tests::test_sort_by_importance ... ok
+test fuse::tests::test_fuse_dims_allows_broadcast_operand_across_fused_axes ... ok
+test gather_plan::tests::window_replay_fuses_only_bilaterally_contiguous_axes ... ok
+test gather_plan::tests::scatter_fast_path_is_limited_to_rank_one_scalar_updates ... ok
+test kernel::tests::test_build_plan_fused_compresses ... ok
+test kernel::tests::test_build_plan_fused_keeps_broadcast_compact_inner_loop ... ok
+test kernel::tests::test_contiguous_layout_ignores_dim1_axes ... ok
+test fuse::tests::test_fuse_dims_partial ... ok
+test kernel::tests::test_kernel_nd_iterative_total_elements_match ... ok
+test kernel::tests::test_macro_kernels_total_elements_1d ... ok
+test kernel::tests::test_macro_kernel_6d_visits_all_elements ... ok
+test kernel::tests::test_macro_kernels_total_elements_3d ... ok
+test gather_plan::tests::dynamic_update_fast_path_is_limited_to_rank_one_contiguous_layouts ... ok
+test kernel::tests::test_macro_kernels_total_elements_4d ... ok
+test kernel::tests::test_macro_kernel_7d_visits_all_elements ... ok
+test fuse::tests::test_fuse_dims_multiple_arrays ... ok
+test kernel::tests::test_contiguous_layout_row_vs_col ... ok
+test kernel::tests::test_macro_kernels_total_elements_7d ... ok
+test kernel::tests::test_macro_kernels_total_elements_8d ... ok
+test kernel::tests::test_macro_kernels_total_elements_5d ... ok
+test gather_plan::tests::dynamic_slice_fast_path_is_limited_to_rank_one_contiguous_layouts ... ok
+test kernel::tests::test_macro_kernel_8d_visits_all_elements ... ok
+test kernel::tests::test_kernel_inner_block ... ok
+test kernel::tests::test_macro_kernels_total_elements_6d ... ok
+test kernel::tests::test_same_contiguous_layout_all_row_major ... ok
+test kernel::tests::test_macro_kernels_total_elements_2d ... ok
+test kernel::tests::test_same_contiguous_layout_empty_strides_list ... ok
+test kernel::tests::test_same_contiguous_layout_many_arrays ... ok
+test kernel::tests::test_macro_kernel_5d_visits_all_elements ... ok
+test kernel::tests::test_same_contiguous_layout_mixed_layouts ... ok
+test kernel::tests::test_same_contiguous_layout_one_noncontiguous ... ok
+test kernel::tests::test_same_contiguous_layout_single_array ... ok
+test kernel::tests::test_same_contiguous_layout_all_col_major ... ok
+test kernel::tests::test_sequential_contiguous_layout_col_major ... ok
+test kernel::tests::test_sequential_contiguous_layout_noncontiguous ... ok
+test kernel::tests::test_sequential_contiguous_layout_small_array ... ok
+test map_view::scalar_branch_tests::raw_map_rejects_noninjective_destination_before_write ... ok
+test kernel::tests::test_same_contiguous_layout_empty_dims ... ok
+test map_view::scalar_branch_tests::contiguous_mul_range_plan_available_without_parallel_feature ... ok
+test map_view::scalar_branch_tests::test_broadcast_mul_into_error_branches_and_non_identity_ops ... ok
+test map_view::scalar_branch_tests::test_inner_loop_mul2_stride_specializations ... ok
+test map_view::scalar_branch_tests::test_inner_loop_map2_stride_specializations ... ok
+test map_view::tests::test_broadcast_strides_for_axes_batched_outer ... ok
+test map_view::tests::test_compact_axis_order_accepts_all_rank4_axis_permutations ... ok
+test map_view::tests::test_contiguous_mul_range_plan_compact_batched_outer ... ok
+test map_view::tests::test_contiguous_mul_range_plan_noncompact_batched_outer ... ok
+test map_view::tests::test_broadcast_strides_for_axes_uses_zero_stride_for_size_one_source_dim ... ok
+test map_view::tests::test_contiguous_mul_range_plan_noncompact_row_major_output ... ok
+test map_view::tests::test_compact_axis_order_rejects_strided_layout_with_holes ... ok
+test map_view::tests::test_contiguous_mul_range_plan_pure_outer ... ok
+test map_view::tests::test_contiguous_mul_range_plan_uses_permuted_compact_output_for_unrelated_shape ... ok
+test maybe_sync::tests::test_f64_satisfies_maybe_traits ... ok
+test map_view::tests::test_contiguous_mul_outer_cursor_matches_linear_offsets ... ok
+test map_view::tests::test_transposed_scalar_tile_kind_detects_noncompact_rhs_scalar ... ok
+test ops_view::tiled_tests::test_zero_scale_fills_non_contiguous_destination ... ok
+test order::tests::test_compute_order_3d ... ok
+test order::tests::test_compute_order_4d_permuted ... ok
+test order::tests::test_compute_order_column_major ... ok
+test order::tests::test_compute_order_mixed ... ok
+test order::tests::test_compute_order_negative_strides ... ok
+test order::tests::test_compute_order_size_one_dims ... ok
+test order::tests::test_compute_order_handles_empty_inputs_and_destination_reordering ... ok
+test order::tests::test_compute_order_row_major ... ok
+test order::tests::test_compute_order_with_zero_stride_broadcast ... ok
+test simd::tests::test_transposed_scalar_2d_handles_small_square_tiles ... ok
+test raw_ops::tests::raw_copy_scale_conjugates_complex_sources ... ok
+test simd::tests::test_transposed_scalar_rhs_2d_f64_source_contiguous ... ok
+test simd::tests::test_transposed_scalar_rhs_2d_complex64_source_contiguous ... ok
+test simd::tests::test_transposed_scalar_rhs_2d_handles_short_rows ... ok
+test simd::tests::test_try_mul_contiguous_complex32 ... ok
+test simd::tests::test_try_mul_contiguous_complex64 ... ok
+test order::tests::test_compute_order_empty ... ok
+test static_indexing_plan::tests::pad_plan_selects_contiguous_axis0_run_for_dense_edge_padding ... ok
+test static_indexing_plan::tests::pad_benchmark_recipes_use_generic_replay ... ok
+test static_indexing_plan::tests::contiguous_pad_matches_scalar_for_every_erased_scalar_type ... ok
+test threading::default_tests::copy_into_col_major_copies_from_non_col_major_source ... ok
+test simd::tests::test_transposed_scalar_lhs_2d_complex32_source_contiguous ... ok
+test threading::default_tests::copy_permuted_serial_copies_transposed_view ... ok
+test threading::tests::test_mapreduce_threaded_single_thread ... ok
+test threading::tests::permutation_copy_scheduler_is_ambient_and_panic_safe ... ok
+test threading::tests::test_mapreduce_threaded_splits_cover_all_elements ... ok
+test threading::tests::test_mapreduce_threaded_with_spacing ... ok
+test threading::tests::test_streaming_lastargmax ... ok
+test simd::tests::sum_squares_simd_covers_unrolled_body_and_tail ... ok
+test simd::tests::test_transposed_scalar_lhs_2d_f32_source_contiguous ... ok
+test map_view::scalar_branch_tests::contiguous_range_mul_single_thread_computes_large_broadcast_mul ... ok
+test raw_ops::tests::raw_axpy_accumulates ... ok
+test threading::tests::internal_join_wait_does_not_leak_policy_to_an_unrelated_ambient_job ... ok
+test threading::tests::parallel_threads_for_len_honors_policy_and_threshold ... ok
+test ops_view::tiled_tests::test_identity_tiled_transpose_scale_handles_integer_remainders ... ok
+test ops_view::tiled_tests::test_f64_tiled_transpose_scale_handles_remainders ... ok
+test raw_ops::tests::raw_copy_scale_matches_view_kernel ... ok
+test copy_plan::tests::plan_rank_above_limit_falls_back_to_view_kernels ... ok
+test ops_view::tiled_tests::test_bounded_identity_tiled_transpose_uses_two_partitions_exactly_once ... ok
+
+test result: ok. 161 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/compare_view.rs (target/debug/deps/compare_view-e06ee571916dc92f)
+
+running 5 tests
+test compare_into_preserves_nan_unordered_semantics ... ok
+test compare_into_covers_ordered_kernel_dtypes_and_operations ... ok
+test compare_into_rejects_noninjective_destination_before_mutation ... ok
+test compare_into_rejects_large_noninjective_destination_before_parallel_mutation ... ok
+test compare_into_preserves_noncontiguous_view_semantics ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/correctness_view.rs (target/debug/deps/correctness_view-fff23078422d37fd)
+
+running 101 tests
+test test_add_mixed_c64_plus_f64 ... ok
+test test_add_small_contiguous ... ok
+test test_axpy_mixed ... ok
+test test_axpy_permuted ... ok
+test test_batched_outer_product_into_rejects_mismatched_batch_dims ... ok
+test test_broadcast_mul_into_rejects_invalid_axis_map ... ok
+test test_col_major_tensor ... ok
+test test_copy_conj_complex ... ok
+test test_copy_into ... ok
+test test_copy_into_conj_complex ... ok
+test test_copy_into_contiguous_identity ... ok
+test test_copy_scale ... ok
+test test_copy_scale_mixed ... ok
+test test_copy_transpose_scale_into_zero_does_not_read_source_values ... ok
+test test_copy_transpose_scale_into_error_non_2d ... ok
+test test_dot ... ok
+test test_dot_f32_contiguous ... ok
+test test_dot_permuted ... ok
+test test_dot_mixed_layout ... ok
+test test_dot_mixed_f64_c64 ... ok
+test test_dot_same_type_simd_regression ... ok
+test test_fma_mixed_f64_c64 ... ok
+test test_fma_permuted ... ok
+test test_map_into_mixed_f64_to_c64 ... ok
+test test_map_into_rejects_noninjective_destination_before_serial_write ... ok
+test test_mul_identity_paths_reject_noninjective_destination_before_serial_write ... ok
+test test_mul_into_permuted_noncompact ... ok
+test test_mul_into_contiguous ... ok
+test test_mul_into_rejects_shape_mismatch ... ok
+test test_mul_mixed_c64_times_f64 ... ok
+test test_mul_small_contiguous ... ok
+test test_mul_permuted ... ok
+test test_reduce_axis_1d_to_scalar ... ok
+test test_reduce_axis_4d_blocked ... ok
+test test_reduce_axis_3d_permuted_blocked ... ok
+test test_reduce_axis_invalid_axis ... ok
+test test_reduce_axis_col_major_mixed ... ok
+test test_reduce_axis_permuted ... ok
+test test_reduce_axis_sum ... ok
+test test_reduce_axis_map_fn_permuted ... ok
+test test_reduce_max_permuted ... ok
+test test_small_contiguous_add ... ok
+test test_small_contiguous_copy_into ... ok
+test test_small_contiguous_dot ... ok
+test test_small_contiguous_map_into ... ok
+test test_reduce_sum_of_squares_permuted ... ok
+test test_reduce_mixed_layout ... ok
+test test_reduce_product_permuted ... ok
+test test_small_contiguous_sum ... ok
+test test_sum_col_major_small ... ok
+test test_sum_f32_contiguous ... ok
+test test_reduce_sum ... ok
+test test_sum_permuted ... ok
+test test_symmetrize_into_error_non_square ... ok
+test test_zip_map2_into_rejects_noninjective_destination_before_serial_write ... ok
+test test_zip_map2_into_mixed_f64_c64 ... ok
+test test_zip_map3_into_contiguous ... ok
+test test_zip_map4_into_rejects_noninjective_destination_before_serial_write ... ok
+test test_axpy_mixed_layout ... ok
+test test_copy_transpose_scale_into ... ok
+test test_broadcast_mul_into_broadcasts_mapped_size_one_axes ... ok
+test test_broadcast_mul_into_maps_source_axes_without_copy ... ok
+test test_batched_outer_product_into_noncompact ... ok
+test test_batched_outer_product_into_compact ... ok
+test test_batched_outer_product_into_mixed_types ... ok
+test test_mul_mixed_layout ... ok
+test test_strided_view_broadcast_and_copy ... ok
+test test_map_into_transposed ... ok
+test test_copy_scale_permuted ... ok
+test test_symmetrize_conj_into_complex ... ok
+test test_add_mixed_layout ... ok
+test test_reduce_3d_permuted_blocked ... ok
+test test_reduce_col_major_3d ... ok
+test test_symmetrize_into ... ok
+test test_copy_into_conj_mixed_layout ... ok
+test test_zip_map3_into_permuted ... ok
+test test_batched_outer_product_into_matches_broadcast_mul_into ... ok
+test test_copy_into_mixed_layouts ... ok
+test test_custom_type_map_into_without_element_op_apply ... ok
+test test_mul_into_broadcast_stride_zero ... ok
+test test_fma_mixed_layout ... ok
+test test_zip_map2_mixed_strides ... ok
+test test_zip_map3_into_mixed_strides ... ok
+test test_zip_map4_into_contiguous ... ok
+test test_large_dot ... ok
+test test_large_copy_into_permuted ... ok
+test test_large_mul ... ok
+test test_symmetrize_into_error_non_2d ... ok
+test test_large_map_into ... ok
+test test_large_add ... ok
+test test_large_map_into_permuted ... ok
+test test_large_zip_map2 ... ok
+test test_large_zip_map4_permuted ... ok
+test test_zip_map3_into_rejects_noninjective_destination_before_serial_write ... ok
+test test_large_reduce ... ok
+test test_large_symmetrize ... ok
+test test_large_fma ... ok
+test test_large_axpy ... ok
+test test_zip_map4_into_permuted ... ok
+test test_mul_identity_paths_reject_noninjective_destination_before_bounded_parallel_write ... ok
+test test_map_and_zip_reject_large_noninjective_destinations_before_parallel_write ... ok
+
+test result: ok. 101 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/dense_update.rs (target/debug/deps/dense_update-2b9377db3e085308)
+
+running 5 tests
+test invalid_shapes_do_not_write ... ok
+test axpby_values_and_error_preserve_destination ... ok
+test embedding_all_axes_and_ranks ... ok
+test triangular_matches_elementwise_reference ... ok
+test bounded_and_sequential_policy_inside_pool ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+     Running tests/erased_copy_plan.rs (target/debug/deps/erased_copy_plan-43a0039f8adb5a44)
+
+running 5 tests
+test erased_copy_plan_accepts_explicit_execution_contexts ... ok
+test erased_copy_plan_executes_f64_transposed_layout ... ok
+test erased_raw_descriptors_reject_invalid_byte_layouts ... ok
+test erased_copy_plan_executes_supported_scalar_set ... ok
+test erased_copy_plan_rejects_dtype_mismatch ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/erased_reduce_plan.rs (target/debug/deps/erased_reduce_plan-c1e42ccb009972ca)
+
+running 33 tests
+test erased_reduce_plan_axis_compile_rejects_invalid_contracts ... ok
+test erased_reduce_plan_contiguous_fast_path_honors_offset_and_empty_layout ... ok
+test erased_reduce_plan_axis_reduction_writes_identity_for_empty_reduced_domain ... ok
+test erased_reduce_plan_contiguous_product_covers_vector_body_and_tail ... ok
+test erased_reduce_plan_executes_all_axes_sum_into_rank0_scalar ... ok
+test erased_reduce_plan_empty_input_returns_operation_identity ... ok
+test erased_reduce_plan_executes_c64_product ... ok
+test erased_reduce_plan_executes_f64_sum_transposed_layout ... ok
+test erased_reduce_plan_executes_i32_sum_with_ambient_context ... ok
+test erased_reduce_plan_executes_multi_axis_sum_with_kept_middle_axis ... ok
+test erased_reduce_plan_executes_remaining_supported_dtype_set ... ok
+test erased_reduce_plan_executes_single_axis_sum_into_strided_output ... ok
+test erased_reduce_plan_fused_rank8_axes_match_contiguous_order ... ok
+test erased_reduce_plan_integer_axis_reductions_use_wrapping_arithmetic ... ok
+test erased_reduce_plan_integer_full_reductions_use_wrapping_arithmetic ... ok
+test erased_reduce_plan_partially_fused_inner_axes_preserve_order ... ok
+test erased_reduce_plan_product_documents_reassociated_overflow_classification ... ok
+test erased_reduce_plan_preserves_noncompact_and_nonfinite_semantics ... ok
+test erased_reduce_plan_rejects_dtype_mismatch_before_writing ... ok
+test erased_reduce_plan_rejects_invalid_compile_layout ... ok
+test erased_reduce_plan_rank8_reordered_axes_preserve_fold_order ... ok
+test erased_reduce_plan_rejects_layout_mismatch_before_writing ... ok
+test erased_reduce_plan_rejects_non_scalar_output_and_unsupported_dtype ... ok
+test erased_reduce_plan_serial_full_sum_uses_fixed_multi_accumulator_order ... ok
+test erased_reduce_plan_sum_squares_axis_handles_negative_stride_offset_and_zero_extent ... ok
+test erased_reduce_plan_sum_squares_handles_empty_rank_zero_and_nonfinite_values ... ok
+test erased_reduce_plan_sum_squares_is_bitwise_materialized_sum ... ok
+test erased_reduce_plan_sum_squares_matches_materialized_axis_reduction ... ok
+test erased_reduce_plan_sum_squares_rejects_non_float_dtypes ... ok
+test erased_reduce_plan_sum_squares_matches_materialized_full_reduction ... ok
+test erased_reduce_plan_sum_squares_rounds_multiplication_before_accumulation ... ok
+test erased_reduce_plan_fixed_bounded_context_is_bitwise_repeatable ... ok
+test erased_sum_squares_fixed_bounded_context_is_bitwise_repeatable ... ok
+
+test result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/issue_187_uninit_reduce.rs (target/debug/deps/issue_187_uninit_reduce-70508f295bc03198)
+
+running 11 tests
+test axis_holes_negative_stride_and_identity_match ... ok
+test f32_full ... ok
+test c64_full ... ok
+test c32_full ... ok
+test f64_full ... ok
+test uninit_reduce_empty_product_uses_identity ... ok
+test i32_full ... ok
+test i64_full ... ok
+test uninit_reduce_simd_tail_and_sum_squares_match_initialized_replay ... ok
+test validation_errors_leave_uninitialized_bytes_untouched ... ok
+test uninit_reduce_product_and_nonfinite_match_initialized_replay ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/simd_mul_uninit.rs (target/debug/deps/simd_mul_uninit-452e2ecc1186a256)
+
+running 5 tests
+test float_special_values ... ok
+test f64_unaligned_body_tail_and_fallback ... ok
+test f32_unaligned_body_tail_and_fallback ... ok
+test c32_unaligned_body_tail_and_fallback ... ok
+test c64_unaligned_body_tail_and_fallback ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+   Doc-tests strided_basic
+
+running 33 tests
+test strided-basic/src/execution.rs - execution (line 22) - compile fail ... ok
+test strided-basic/src/erased_common.rs - erased_common::check_static_indexing_dtype (line 54) ... ok
+test strided-basic/src/layout_check.rs - layout_check::is_injective_layout (line 7) ... ok
+test strided-basic/src/exec_context.rs - exec_context::ExecContext::run (line 86) ... ok
+test strided-basic/src/map_view.rs - map_view::validate_destination_layout_without_alloc (line 60) ... ok
+test strided-basic/src/erased_common.rs - erased_common::check_dtype (line 33) ... ok
+test strided-basic/src/threading.rs - threading::SendPtr (line 31) ... ok
+test strided-basic/src/kernel.rs - kernel::ensure_same_shape (line 545) ... ok
+test strided-basic/src/execution.rs - execution::build_plan_fused (line 55) ... ok
+test strided-basic/src/erased_common.rs - erased_common::validate_uninit_no_overlap (line 6) ... ok
+test strided-basic/src/erased_common.rs - erased_common::erased_view (line 79) ... ok
+test strided-basic/src/execution.rs - execution::build_plan_fused_small (line 86) ... ok
+test strided-basic/src/execution.rs - execution::compute_costs (line 417) ... ok
+test strided-basic/src/copy_plan.rs - copy_plan::CopyPlan (line 178) ... ok
+test strided-basic/src/lib.rs - (line 9) ... ok
+test strided-basic/src/execution.rs - execution::scatter_into_uninit (line 630) ... ok
+test strided-basic/src/dense_update.rs - dense_update::axpby_accum (line 60) ... ok
+test strided-basic/src/dense_update.rs - dense_update::triangular_mask_into_uninit (line 88) ... ok
+test strided-basic/src/execution.rs - execution::mapreduce_threaded (line 443) ... ok
+test strided-basic/src/execution.rs - execution::dynamic_slice_into_uninit (line 542) ... ok
+test strided-basic/src/execution.rs - execution::dynamic_update_into_uninit (line 585) ... ok
+test strided-basic/src/dense_update.rs - dense_update::embed_diagonal_into_uninit (line 159) ... ok
+test strided-basic/src/execution.rs - execution::for_each_inner_block_preordered (line 114) ... ok
+test strided-basic/src/execution.rs - execution::gather_into_uninit (line 499) ... ok
+test strided-basic/src/execution.rs - execution::map_raw_into_validated (line 328) ... ok
+test strided-basic/src/lib.rs - (line 66) ... ok
+test strided-basic/src/execution.rs - execution (line 11) ... ok
+test strided-basic/src/execution.rs - execution::zip_map4_into_validated (line 278) ... ok
+test strided-basic/src/execution.rs - execution::map_into_validated (line 150) ... ok
+test strided-basic/src/execution.rs - execution::zip_map3_into_validated (line 231) ... ok
+test strided-basic/src/execution.rs - execution::zip_map2_raw_into_validated (line 369) ... ok
+test strided-basic/src/execution_policy.rs - execution_policy::with_execution_policy (line 108) ... ok
+test strided-basic/src/execution.rs - execution::zip_map2_into_validated (line 189) ... ok
+
+test result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.37s
+

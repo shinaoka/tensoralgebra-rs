@@ -1,0 +1,12 @@
+==21192== Callgrind, a call-graph generating cache profiler
+==21192== Copyright (C) 2002-2017, and GNU GPL'd, by Josef Weidendorfer et al.
+==21192== Using Valgrind-3.22.0 and LibVEX; rerun with -h for copyright info
+==21192== Command: /tmp/dense-kernels-baseline
+==21192== 
+==21192== For interactive control, run 'callgrind_control -h'.
+CHECK diag_rank2 passed; threads=1 policy=Sequential samples=3
+==21192== 
+==21192== Events    : Ir
+==21192== Collected : 4102443
+==21192== 
+==21192== I   refs:      4,102,443
