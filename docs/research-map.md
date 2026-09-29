@@ -1,0 +1,50 @@
+# Research map
+
+Snapshot: 2026-09-29. Each item below links to a primary paper, project-maintained document, official API page, or upstream issue. A paper's experimental result is evidence for its tested hardware and workload, not a prediction for a new machine.
+
+## Algorithms and architecture
+
+| Area | Primary source | What it establishes | What remains open here |
+| --- | --- | --- | --- |
+| Large GEMM | [Van Zee and van de Geijn, *BLIS: A Framework for Rapidly Instantiating BLAS Functionality*](https://www.cs.utexas.edu/~flame/pubs/blis1_toms_rev3.pdf); [BLIS project](https://github.com/flame/blis) | Packed panels and a small kernel interface can support many BLAS operations. | Whether a new Rust driver or BLIS/gemmkit integration wins on our shapes and FFI boundary. |
+| Tensor contraction | [Matthews, *High-Performance Tensor Contraction without Transposition*](https://arxiv.org/abs/1607.00291); [TBLIS project](https://github.com/MatthewsResearchGroup/tblis) | Packing can absorb tensor-to-matrix rearrangement rather than materializing a full transpose. | Which irregular layouts benefit, and how a Rust API should represent labels and strides. |
+| CPU batched GEMM | [Deshmukh, Yokota, and Bosilca, *Cache Optimization and Performance Modeling of Batched, Small, and Rectangular Matrix Multiplication*](https://arxiv.org/abs/2311.07602) | CPU batching, cache use, and register accumulation need shape- and architecture-specific study. | The crossover for our batch sizes, dtypes, and available providers. |
+| Batched LU/QR/Cholesky | [Haidar et al., *Batched Matrix Computations on Hardware Accelerators Based on GPUs*](https://www.netlib.org/utk/people/JackDongarra/PAPERS/batched-matrix-comp.pdf), especially §4.1 and Table 1 | Their 16-core Sandy Bridge CPU comparison favors one sequential factorization per core over parallelizing each small matrix (about 100 vs 40 GFLOP/s in that experiment). The paper also decomposes factorization into panel and trailing-update operations. | Re-measure on modern CPUs, including sizes where per-matrix parallelism may win. GPU-specific tactics do not automatically transfer to CPUs. |
+| GPU batched factorization follow-up | [MAGMA Batched: A Batched BLAS Approach for Small Matrix Factorizations and Applications on GPUs](https://icl.utk.edu/files/publications/2016/icl-utk-909-2016.pdf) | Organizes small LU/QR/Cholesky around batched BLAS kernels. | Which algorithmic steps transfer to CPUs; GPU warp and shared-memory choices do not transfer directly. |
+| Batched API | [Abdelfattah et al., *A Set of Batched Basic Linear Algebra Subprograms and LAPACK Routines*](https://icl.utk.edu/files/publications/2018/icl-utk-1170-2018.pdf); [ICL Batched BLAS project](https://icl.utk.edu/bblas/) | A published interface proposal covers grouped independent BLAS and LAPACK calls. | A Rust interface with explicit executor, scratch, error reporting, and mixed batch shapes. |
+| LU behavior | [Reference LAPACK DGETRF specification](https://www.netlib.org/lapack/explore-html/db/d04/group__getrf_gaea332d65e208d833716b405ea2a1ab69.html) | Partial pivoting, factor storage, pivot indices, and singularity reporting are specified independently of an optimized implementation. | Exact Rust error and batch partial-failure contracts. |
+| Batched QR/SVD | [Batched QR and SVD Algorithms on GPUs with Applications in Hierarchical Matrix Compression](https://arxiv.org/abs/1707.05141) | Published approaches extend the batched literature beyond LU/Cholesky. | SVD accuracy and performance deserve a separate later experiment; they are outside the first factorization prototype. |
+| QR behavior | [Reference LAPACK DGEQRF specification/source](https://www.netlib.org/lapack/explore-html/d3/d69/dgeqrf_8f_source.html) | Reflector storage and workspace-query behavior provide compatibility points. | Scratch ownership, blocked/unblocked crossover, and tolerance policy. |
+
+Published algorithms leave implementation choices such as block sizes, edge tiles, scratch allocation, and scheduling open. [BLIS kernel documentation](https://github.com/flame/blis/blob/master/docs/KernelsHowTo.md) even records a change in where edge-case handling lives. Independent choices should be documented and tested against public contracts; a source translation must be labeled as a port.
+
+## Candidate implementations and related work
+
+- [BLIS](https://github.com/flame/blis): mature BLAS framework and candidate large-GEMM provider or baseline. Its [FAQ](https://github.com/flame/blis/blob/master/docs/FAQ.md) documents its kernel architecture and threading model.
+- [TBLIS](https://github.com/MatthewsResearchGroup/tblis): direct tensor-contraction baseline and potential provider. The paper above is the algorithmic starting point.
+- [faer](https://codeberg.org/sarah-quinones/faer): pure-Rust linear algebra reference and comparison target. Its [project paper](https://github.com/sarah-quinones/faer-rs/blob/main/paper.md) says its matrix multiplication follows the BLIS approach; this is precedent for implementing a published approach independently. Its GitHub repository is a mirror.
+- [OpenBLAS](https://github.com/OpenMathLib/OpenBLAS): BLAS/LAPACK comparison target and possible external correctness oracle. Its tests may be run externally; copying test files would require file-by-file provenance and license review.
+- [Reference LAPACK](https://github.com/Reference-LAPACK/lapack): operation contracts, reference results, and test ideas. The same copying rule applies to its source and tests.
+- [gemmkit](https://github.com/SomeB1oody/gemmkit): Rust GEMM candidate. Its [published API](https://docs.rs/gemmkit/latest/gemmkit/) includes strided views and caller-owned workspace variants; investigate maturity, coverage, and performance before choosing it.
+- [OxiBLAS](https://github.com/cool-japan/oxiblas): another Rust candidate. Maintenance, provenance, numerical behavior, and measurements need direct evaluation; no trust or performance conclusion is made here.
+- [tensorprimitives-rs](https://github.com/lkdvos/tensorprimitives-rs): independent Rust tensor-contraction experiment. Its [decision record](https://github.com/lkdvos/tensorprimitives-rs/blob/main/docs/decisions.md) and [results](https://github.com/lkdvos/tensorprimitives-rs/blob/main/docs/results.md) are useful evidence, including rejected hypotheses and machine-dependent pool results.
+- [Intel oneMKL product documentation](https://www.intel.com/content/www/us/en/docs/oneapi/programming-guide/2025-0/intel-oneapi-math-kernel-library-onemkl.html): public APIs and behavior can be compared. The open-source oneMKL/oneMath **interface** project is distinct from the optimized oneMKL **product**; do not assume the product's internal algorithms are published as source.
+
+## Threading and FFI
+
+[Rayon's `ThreadPool::install`](https://docs.rs/rayon/latest/rayon/struct.ThreadPool.html#method.install) lets a Rust caller select a pool explicitly, but entering from outside that pool executes on a worker. [Rayon's `broadcast`](https://docs.rs/rayon/latest/rayon/struct.ThreadPool.html#method.broadcast) runs on every worker in the pool, rather than selecting an arbitrary per-operation subset. Its work-stealing scheduler does not provide a static worker-to-output mapping by default.
+
+[tensorprimitives-rs D49/D50](https://github.com/lkdvos/tensorprimitives-rs/blob/main/docs/decisions.md) distinguishes two axes: blocking SPMD-with-barriers inside one contraction can deadlock if naively scheduled as tasks on an undersized bounded pool; an independent outer batch has no such barrier and **does fit Rayon**. That project chose scoped threads for its batch implementation because the implementation was small and it already owned a pool that could be extended, not because Rayon was shown to be unsuitable. Its [results](https://github.com/lkdvos/tensorprimitives-rs/blob/main/docs/results.md) report that its own persistent pool helps on one CPU and hurts on another; its batched API was unmeasured as of the snapshot. Those results are not a Rayon benchmark.
+
+[tenferro-rs #1945](https://github.com/tensor4all/tenferro-rs/issues/1945) records that ambient Rayon execution makes sessions closure-scoped and imposes an FFI entry cost. It proposes explicit-executor kernels and a holdable session. [faer #319](https://codeberg.org/sarah-quinones/faer/issues/319) requests an explicit caller-owned pool. For a non-Rust host, passing a `rayon::ThreadPool` Rust reference is not itself a C ABI; options to test include an opaque executor handle, caller-thread batch scheduling with serial kernels, and an explicit host scheduling callback.
+
+Avoid nested oversubscription: if the batch owns parallelism, start each small matrix with a serial kernel. For larger matrices, measure the crossover instead of fixing it by analogy. Thread-pool entry, allocation locality, and cache topology are separate effects to measure.
+
+## Connection to tenferro
+
+- [#1945: explicit executor and holdable CPU session](https://github.com/tensor4all/tenferro-rs/issues/1945) is the FFI and call-entry motivation.
+- [#1927: CPU public-path and batched performance coordination](https://github.com/tensor4all/tenferro-rs/issues/1927) explicitly keeps current batched-linalg ownership in `tenferro-linalg` until another consumer and a stable buffer/scratch/provider/threading interface justify extraction.
+- [#1660: CPU linalg backend strategy](https://github.com/tensor4all/tenferro-rs/issues/1660) calls for correctness oracles, evaluating gemmkit, and measuring pure-Rust options.
+- [faer #319](https://codeberg.org/sarah-quinones/faer/issues/319) is the corresponding upstream pool API request. [faer #316](https://codeberg.org/sarah-quinones/faer/issues/316) concerns GPU architecture, not that API.
+
+Nothing here changes tenferro's accepted issue or implementation process. Results from this repository should inform a separate decision with reproducible evidence.
