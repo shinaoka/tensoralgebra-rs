@@ -22,7 +22,7 @@ fn svd_case<T: Scalar>(m: usize, n: usize) {
         let s = svd(&e, &a.view(), vec).unwrap();
         let (u, v) = (s.u.as_ref().unwrap(), s.v.as_ref().unwrap());
         let kk = u.cols().min(v.cols());
-        let mut us = Matrix::<T>::zeros(m, v.cols());
+        let mut us = Matrix::<T>::zeros(m, v.cols()).unwrap();
         for j in 0..kk.min(k) {
             let sj = <T as Element>::from_parts(s.s[j], tensorcontract::Real::from_f64(0.0));
             for i in 0..m {

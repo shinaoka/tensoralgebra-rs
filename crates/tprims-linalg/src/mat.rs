@@ -8,7 +8,7 @@ use crate::{Error, Result};
 /// # Examples
 ///
 /// ```
-/// let mut m = tprims_linalg::Matrix::<f64>::zeros(2, 3);
+/// let mut m = tprims_linalg::Matrix::<f64>::zeros(2, 3).unwrap();
 /// m.set(1, 2, 5.0);
 /// assert_eq!(m.get(1, 2), 5.0);
 /// assert_eq!(m.data()[1 + 2 * 2], 5.0);
@@ -22,7 +22,29 @@ pub struct Matrix<T> {
 
 impl<T: Scalar> Matrix<T> {
     /// A zero matrix.
-    pub fn zeros(rows: usize, cols: usize) -> Self {
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Shape`] when `rows * cols` overflows.
+    pub fn zeros(rows: usize, cols: usize) -> Result<Self> {
+        let len = rows
+            .checked_mul(cols)
+            .filter(|&l| {
+                l.checked_mul(std::mem::size_of::<T>())
+                    .is_some_and(|b| b <= isize::MAX as usize)
+            })
+            .ok_or_else(|| Error::Shape(format!("{rows}x{cols} matrix is too large")))?;
+        Ok(Self {
+            rows,
+            cols,
+            data: vec![<T as tensorcontract::Element>::zero(); len],
+        })
+    }
+
+    /// A zero matrix whose size was already validated by [`Matrix::zeros`] or
+    /// by an existing matrix of at least this many elements.
+    pub(crate) fn zeros_validated(rows: usize, cols: usize) -> Self {
+        // INVARIANT: callers pass extents whose product was checked (see doc).
         Self {
             rows,
             cols,
@@ -61,7 +83,10 @@ impl<T: Scalar> Matrix<T> {
         let (rows, cols) = (v.dims()[0], v.dims()[1]);
         let (rs, cs) = (v.strides()[0], v.strides()[1]);
         let p = v.ptr();
-        let mut data = Vec::with_capacity(rows * cols);
+        let len = rows
+            .checked_mul(cols)
+            .ok_or_else(|| Error::Shape(format!("{rows}x{cols} matrix is too large")))?;
+        let mut data = Vec::with_capacity(len);
         for j in 0..cols {
             for i in 0..rows {
                 // SAFETY: the view was bounds-checked at construction and

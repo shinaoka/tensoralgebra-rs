@@ -27,7 +27,7 @@ fn pools() -> rayon::ThreadPool {
 fn solve_case<T: Scalar>(exec: &Exec<'_>, n: usize, nb: usize) {
     let mut mats: Vec<Matrix<T>> = (0..nb).map(|i| random::<T>(n, n, 100 + i as u64)).collect();
     if nb > 3 {
-        mats[3] = Matrix::zeros(n, n); // singular item
+        mats[3] = Matrix::zeros(n, n).unwrap(); // singular item
     }
     let a = stack(&mats);
     let rhs: Vec<Matrix<T>> = (0..nb).map(|i| random::<T>(n, 2, 500 + i as u64)).collect();

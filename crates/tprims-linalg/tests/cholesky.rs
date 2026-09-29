@@ -56,7 +56,7 @@ fn cholesky_reports_the_failing_pivot() {
         cholesky(&Exec::serial(), &a.view()).unwrap_err(),
         Error::NotPositiveDefinite { index: 2 }
     );
-    let r = Matrix::<f64>::zeros(3, 2);
+    let r = Matrix::<f64>::zeros(3, 2).unwrap();
     assert_eq!(
         cholesky(&Exec::serial(), &r.view()).unwrap_err(),
         Error::NotSquare { rows: 3, cols: 2 }
@@ -66,7 +66,7 @@ fn cholesky_reports_the_failing_pivot() {
 fn ldlt_case<T: Scalar>(n: usize) {
     // Hermitian indefinite: A = H with diagonal of alternating sign.
     let b = random::<T>(n, n, 5);
-    let mut a = Matrix::zeros(n, n);
+    let mut a = Matrix::zeros(n, n).unwrap();
     for j in 0..n {
         for i in 0..n {
             let v = Element::add(b.get(i, j), Element::conj(b.get(j, i)));

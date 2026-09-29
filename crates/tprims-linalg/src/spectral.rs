@@ -63,8 +63,12 @@ pub fn svd<T: Scalar>(exec: &Exec<'_>, a: &StridedView<'_, T>, vectors: Vectors)
         Vectors::Full => (ComputeSvdVectors::Full, ComputeSvdVectors::Full, m, n),
     };
     let mut s = vec![<T as Element>::zero(); k];
-    let mut u = (vectors != Vectors::None).then(|| Matrix::<T>::zeros(m, ucols));
-    let mut v = (vectors != Vectors::None).then(|| Matrix::<T>::zeros(n, vcols));
+    let mut u = (vectors != Vectors::None)
+        .then(|| Matrix::<T>::zeros(m, ucols))
+        .transpose()?;
+    let mut v = (vectors != Vectors::None)
+        .then(|| Matrix::<T>::zeros(n, vcols))
+        .transpose()?;
     if m > 0 && n > 0 {
         let am = a.as_faer();
         let sd = faer::diag::DiagMut::from_slice_mut(&mut s);
@@ -135,7 +139,7 @@ pub fn eigh<T: Scalar>(exec: &Exec<'_>, a: &StridedView<'_, T>, vectors: bool) -
         }
     }
     let mut w = vec![<T as Element>::zero(); n];
-    let mut v = vectors.then(|| Matrix::<T>::zeros(n, n));
+    let mut v = vectors.then(|| Matrix::<T>::zeros(n, n)).transpose()?;
     if n > 0 {
         let am = a.as_faer();
         let wd = faer::diag::DiagMut::from_slice_mut(&mut w);
@@ -201,7 +205,8 @@ macro_rules! eig_impls {
             ) -> Result<EigParts<Self::C>> {
                 let n = a.nrows();
                 let (mut re, mut im) = (vec![0.0 as $r; n], vec![0.0 as $r; n]);
-                let mut u = vectors.then(|| Matrix::<$r>::zeros(n, n));
+                // INVARIANT: `a` is an existing n x n matrix, so n * n fits.
+                let mut u = vectors.then(|| Matrix::<$r>::zeros_validated(n, n));
                 let cv = if vectors {
                     ComputeEigenvectors::Yes
                 } else {
@@ -235,7 +240,7 @@ macro_rules! eig_impls {
                 // of faer's private real-to-complex conversion.)
                 let vecs = u.map(|u| {
                     let e = <$r>::EPSILON;
-                    let mut v = Matrix::<Complex<$r>>::zeros(n, n);
+                    let mut v = Matrix::<Complex<$r>>::zeros_validated(n, n);
                     let mut j = 0;
                     while j < n {
                         if im[j].abs() <= e * re[j].abs().max(1.0) || j + 1 == n {
@@ -268,7 +273,7 @@ macro_rules! eig_impls {
             ) -> Result<EigParts<Self::C>> {
                 let n = a.nrows();
                 let mut w = vec![Complex::<$r>::new(0.0, 0.0); n];
-                let mut u = vectors.then(|| Matrix::<Complex<$r>>::zeros(n, n));
+                let mut u = vectors.then(|| Matrix::<Complex<$r>>::zeros_validated(n, n));
                 let cv = if vectors {
                     ComputeEigenvectors::Yes
                 } else {
@@ -326,7 +331,7 @@ pub fn eig<T: EigScalar>(
     if n == 0 {
         return Ok(Eig {
             values: vec![],
-            vectors: vectors.then(|| Matrix::zeros(0, 0)),
+            vectors: vectors.then(|| Matrix::zeros_validated(0, 0)),
         });
     }
     let am = a.as_faer();

@@ -35,7 +35,7 @@ pub fn random<T: Scalar>(rows: usize, cols: usize, seed: u64) -> Matrix<T> {
 
 pub fn matmul<T: Scalar>(a: &Matrix<T>, b: &Matrix<T>) -> Matrix<T> {
     assert_eq!(a.cols(), b.rows());
-    let mut out = Matrix::zeros(a.rows(), b.cols());
+    let mut out = Matrix::zeros(a.rows(), b.cols()).unwrap();
     for j in 0..b.cols() {
         for i in 0..a.rows() {
             let mut acc = <T as Element>::zero();
@@ -49,7 +49,7 @@ pub fn matmul<T: Scalar>(a: &Matrix<T>, b: &Matrix<T>) -> Matrix<T> {
 }
 
 pub fn adjoint<T: Scalar>(a: &Matrix<T>) -> Matrix<T> {
-    let mut out = Matrix::zeros(a.cols(), a.rows());
+    let mut out = Matrix::zeros(a.cols(), a.rows()).unwrap();
     for j in 0..a.cols() {
         for i in 0..a.rows() {
             out.set(j, i, Element::conj(a.get(i, j)));
@@ -89,7 +89,7 @@ pub fn hpd<T: Scalar>(n: usize, seed: u64) -> Matrix<T> {
 }
 
 pub fn identity<T: Scalar>(n: usize) -> Matrix<T> {
-    let mut a = Matrix::zeros(n, n);
+    let mut a = Matrix::zeros(n, n).unwrap();
     for i in 0..n {
         a.set(i, i, <T as Element>::one());
     }

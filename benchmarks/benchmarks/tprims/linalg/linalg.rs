@@ -150,7 +150,13 @@ fn single<T: EigScalar>(cfg: &Cfg, exec: &Exec<'_>) {
 
 fn batch<T: Scalar>(cfg: &Cfg, exec: &Exec<'_>) {
     let t = name::<T>();
-    for (n, nb) in [(2usize, 1024usize), (4, 1024), (8, 1024), (32, 64)] {
+    for (n, nb) in [
+        (2usize, 1024usize),
+        (4, 1024),
+        (8, 1024),
+        (32, 64),
+        (128, 16),
+    ] {
         let v = format!("n{n}_b{nb}");
         let st = [1, n as isize, (n * n) as isize];
         let a = fill::<T>(n * n * nb, 6);

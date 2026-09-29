@@ -15,10 +15,10 @@ use faer::{Conj, MatMut, MatRef};
 use strided_view::{StridedView, StridedViewMut};
 use tensorcontract::Element;
 use tprims_blas::{is_injective_layout, GemmPolicy, Scalar};
-use tprims_exec::{Exec, Par};
+use tprims_exec::{Exec, Par, WidthPolicy};
 
 use crate::lu::singular_pivot;
-use crate::util::{abs, flops};
+use crate::util::{abs, factor_policy, flops};
 use crate::{Error, Matrix, Result};
 
 /// Outcome for one batch item.
@@ -144,36 +144,65 @@ unsafe fn mat_mut<'a, T>(p: *mut T, s: &Stack3) -> MatMut<'a, T> {
     unsafe { MatMut::from_raw_parts_mut(p, s.rows, s.cols, s.rs, s.cs) }
 }
 
+/// How a batch runs: `outer = Some(k)` spreads the items over `k` lanes,
+/// each item serial; otherwise items run in turn with `inner` threads each.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Schedule {
+    pub outer: Option<usize>,
+    pub inner: usize,
+}
+
+/// Items are split over the pool whenever the whole batch is worth running
+/// in parallel and either an item alone is not, or there are at least as
+/// many items as threads (batch-level parallelism beats faer's inner
+/// threading there: n = 128 LU at batch 16 was 2.5x slower item by item).
+pub(crate) fn schedule(
+    exec: &Exec<'_>,
+    count: usize,
+    item_flops: f64,
+    policy: WidthPolicy,
+) -> Schedule {
+    let ns = GemmPolicy::default().ns_per_flop;
+    let inner = exec.width_for(item_flops * ns, &policy);
+    let total = exec.width_for(item_flops * count as f64 * ns, &WidthPolicy::default());
+    if count > 1 && total > 1 && (inner == 1 || count >= exec.budget()) {
+        Schedule {
+            outer: Some(total.min(count)),
+            inner: 1,
+        }
+    } else {
+        Schedule { outer: None, inner }
+    }
+}
+
 /// Run `count` items: `make(par)` builds a lane's reusable state once,
 /// `f(state, i, par)` handles item `i`.
 fn run_items<S>(
     exec: &Exec<'_>,
     count: usize,
     item_flops: f64,
+    policy: WidthPolicy,
     make: &(dyn Fn(faer::Par) -> S + Sync),
     f: &(dyn Fn(&mut S, usize, faer::Par) + Sync),
 ) {
-    let p = GemmPolicy::default();
-    let inner = exec.width_for(item_flops * p.ns_per_flop, &p.width);
-    let total = exec.width_for(item_flops * count as f64 * p.ns_per_flop, &p.width);
-    if inner == 1 && total > 1 && count > 1 {
-        let lanes = total.min(count);
+    let s = schedule(exec, count, item_flops, policy);
+    if let Some(lanes) = s.outer {
         let e = exec.with_budget(lanes).unwrap_or(*exec);
         e.for_each_partition(lanes, &|l| {
-            let mut s = make(faer::Par::Seq);
+            let mut st = make(faer::Par::Seq);
             for i in l * count / lanes..(l + 1) * count / lanes {
-                f(&mut s, i, faer::Par::Seq);
+                f(&mut st, i, faer::Par::Seq);
             }
         });
     } else {
-        exec.install(inner, |par| {
+        exec.install(s.inner, |par| {
             let par = match par {
                 Par::Seq => faer::Par::Seq,
                 Par::Threads(n) => faer::Par::rayon(n.get()),
             };
-            let mut s = make(par);
+            let mut st = make(par);
             for i in 0..count {
-                f(&mut s, i, par);
+                f(&mut st, i, par);
             }
         });
     }
@@ -214,6 +243,9 @@ pub fn solve<T: Scalar>(
     if n == 0 || count == 0 {
         return Ok(st);
     }
+    // A may use zero strides, so n * n is checked here for the work matrix.
+    n.checked_mul(n)
+        .ok_or_else(|| Error::Shape(format!("{n}x{n} items are too large")))?;
     let (ap, bp, sp) = (P(a.ptr() as *mut T), P(b.as_mut_ptr()), P(st.as_mut_ptr()));
     let req = |par| {
         StackReq::any_of(&[
@@ -229,7 +261,7 @@ pub fn solve<T: Scalar>(
     let make = |par| {
         (
             MemBuffer::new(req(par)),
-            Matrix::<T>::zeros(n, n),
+            Matrix::<T>::zeros_validated(n, n),
             vec![0usize; n],
             vec![0usize; n],
         )
@@ -238,6 +270,7 @@ pub fn solve<T: Scalar>(
         exec,
         count,
         flops::<T>(((n * n * n) + 2 * n * n * k) as f64),
+        factor_policy(),
         &make,
         &|s, i, par| {
             let (mem, work, perm, perm_inv) = s;
@@ -309,6 +342,7 @@ pub fn cholesky<T: Scalar>(exec: &Exec<'_>, a: &mut StridedViewMut<'_, T>) -> Re
         exec,
         count,
         flops::<T>((n * n * n) as f64 / 3.0),
+        WidthPolicy::default(),
         &make,
         &|mem, i, par| {
             // SAFETY: i < count; disjoint validated items; status slot i is ours.
@@ -399,6 +433,7 @@ pub fn eigh<T: Scalar>(
         exec,
         count,
         flops::<T>(9.0 * (n * n * n) as f64),
+        WidthPolicy::default(),
         &make,
         &|s, i, par| {
             let (mem, vals) = s;
@@ -495,6 +530,7 @@ pub fn svd<T: Scalar>(
         exec,
         count,
         flops::<T>(12.0 * (m * n * k) as f64),
+        WidthPolicy::default(),
         &make,
         &|state, i, par| {
             let (mem, vals) = state;
@@ -526,3 +562,6 @@ pub fn svd<T: Scalar>(
     );
     Ok(st)
 }
+
+#[cfg(test)]
+mod tests;

@@ -74,11 +74,25 @@ pub(crate) fn singular_pivot<T: Scalar>(lu: &Matrix<T>) -> Option<usize> {
     })
 }
 
-/// A pivot that is exactly zero or non-finite: the factor below it is 0/0.
-fn exact_zero_pivot<T: Scalar>(lu: &Matrix<T>) -> bool {
-    (0..lu.rows().min(lu.cols())).any(|i| {
+/// The first pivot, in elimination order, that is exactly zero or
+/// non-finite. An exact zero leaves 0/0 in later pivots, so only the first
+/// bad pivot tells whether the matrix is singular (zero) or the input was
+/// non-finite.
+enum BadPivot {
+    Zero,
+    NonFinite,
+}
+
+fn first_bad_pivot<T: Scalar>(lu: &Matrix<T>) -> Option<BadPivot> {
+    (0..lu.rows().min(lu.cols())).find_map(|i| {
         let v = abs(lu.get(i, i));
-        v == 0.0 || !v.is_finite()
+        if v == 0.0 {
+            Some(BadPivot::Zero)
+        } else if !v.is_finite() {
+            Some(BadPivot::NonFinite)
+        } else {
+            None
+        }
     })
 }
 
@@ -100,7 +114,8 @@ impl<T: Scalar> Lu<T> {
     pub fn l(&self) -> Matrix<T> {
         let (m, n) = (self.lu.rows(), self.lu.cols());
         let k = m.min(n);
-        let mut l = Matrix::zeros(m, k);
+        // INVARIANT: m x min(m, n) is no larger than the stored m x n factor.
+        let mut l = Matrix::zeros_validated(m, k);
         for j in 0..k {
             l.set(j, j, <T as Element>::one());
             for i in j + 1..m {
@@ -114,7 +129,8 @@ impl<T: Scalar> Lu<T> {
     pub fn u(&self) -> Matrix<T> {
         let (m, n) = (self.lu.rows(), self.lu.cols());
         let k = m.min(n);
-        let mut u = Matrix::zeros(k, n);
+        // INVARIANT: min(m, n) x n is no larger than the stored m x n factor.
+        let mut u = Matrix::zeros_validated(k, n);
         for j in 0..n {
             for i in 0..=j.min(k.saturating_sub(1)) {
                 if i < k {
@@ -180,9 +196,10 @@ impl<T: Scalar> Lu<T> {
     /// [`Error::NotSquare`].
     pub fn det(&self) -> Result<T> {
         let n = square(self.lu.rows(), self.lu.cols())?;
-        // A zero pivot leaves 0/0 in the trailing factor; the determinant is 0.
-        if exact_zero_pivot(&self.lu) {
-            return Ok(<T as Element>::zero());
+        match first_bad_pivot(&self.lu) {
+            Some(BadPivot::Zero) => return Ok(<T as Element>::zero()),
+            Some(BadPivot::NonFinite) => return Ok(from_f64(f64::NAN)),
+            None => {}
         }
         let mut d = <T as Element>::one();
         for i in 0..n {
@@ -203,8 +220,12 @@ impl<T: Scalar> Lu<T> {
     /// [`Error::NotSquare`].
     pub fn logdet(&self) -> Result<(T, T::Re)> {
         let n = square(self.lu.rows(), self.lu.cols())?;
-        if exact_zero_pivot(&self.lu) {
-            return Ok((<T as Element>::zero(), Real::from_f64(f64::NEG_INFINITY)));
+        match first_bad_pivot(&self.lu) {
+            Some(BadPivot::Zero) => {
+                return Ok((<T as Element>::zero(), Real::from_f64(f64::NEG_INFINITY)))
+            }
+            Some(BadPivot::NonFinite) => return Ok((from_f64(f64::NAN), Real::from_f64(f64::NAN))),
+            None => {}
         }
         let mut sign = if self.transpositions % 2 == 1 {
             from_f64::<T>(-1.0)
@@ -356,7 +377,7 @@ pub fn solve<T: Scalar>(
 pub fn inv<T: Scalar>(exec: &Exec<'_>, a: &StridedView<'_, T>) -> Result<Matrix<T>> {
     let f = lu(exec, a)?;
     let n = square(f.lu.rows(), f.lu.cols())?;
-    let mut x = Matrix::zeros(n, n);
+    let mut x = Matrix::zeros(n, n)?;
     for i in 0..n {
         x.set(i, i, <T as Element>::one());
     }

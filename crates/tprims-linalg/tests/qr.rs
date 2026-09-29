@@ -88,5 +88,5 @@ fn lstsq_detects_rank_and_solves_consistent_systems() {
     let mut p = f.perm().to_vec();
     p.sort();
     assert_eq!(p, (0..5).collect::<Vec<_>>());
-    let _ = Matrix::<f64>::zeros(0, 0);
+    let _ = Matrix::<f64>::zeros(0, 0).unwrap();
 }

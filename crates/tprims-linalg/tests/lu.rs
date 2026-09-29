@@ -8,7 +8,7 @@ mod common;
 use common::*;
 
 fn permute_rows<T: Scalar>(a: &Matrix<T>, perm: &[usize]) -> Matrix<T> {
-    let mut out = Matrix::zeros(a.rows(), a.cols());
+    let mut out = Matrix::zeros(a.rows(), a.cols()).unwrap();
     for (i, &p) in perm.iter().enumerate() {
         for j in 0..a.cols() {
             out.set(i, j, a.get(p, j));
@@ -22,7 +22,7 @@ fn op_mat<T: Scalar>(a: &Matrix<T>, op: Op) -> Matrix<T> {
         Op::N => a.clone(),
         Op::C => adjoint(a),
         Op::T => {
-            let mut t = Matrix::zeros(a.cols(), a.rows());
+            let mut t = Matrix::zeros(a.cols(), a.rows()).unwrap();
             for j in 0..a.cols() {
                 for i in 0..a.rows() {
                     t.set(j, i, a.get(i, j));
@@ -76,7 +76,7 @@ fn lu_reconstructs_rectangular_and_solves_square() {
 fn singular_solve_is_a_typed_error() {
     let mut a = identity::<f64>(4);
     a.set(2, 2, 0.0);
-    let mut b = Matrix::<f64>::zeros(4, 1);
+    let mut b = Matrix::<f64>::zeros(4, 1).unwrap();
     let e = solve(&Exec::serial(), &a.view(), &mut b.view_mut()).unwrap_err();
     assert!(matches!(e, Error::Singular { .. }), "{e:?}");
     assert_eq!(det(&Exec::serial(), &a.view()).unwrap(), 0.0);
@@ -87,7 +87,7 @@ fn singular_solve_is_a_typed_error() {
         inv(&Exec::serial(), &a.view()),
         Err(Error::Singular { .. })
     ));
-    let r = Matrix::<f64>::zeros(2, 3);
+    let r = Matrix::<f64>::zeros(2, 3).unwrap();
     assert!(matches!(
         lu(&Exec::serial(), &r.view())
             .unwrap()

@@ -34,7 +34,8 @@ impl<T: Scalar> Householder<T> {
 
     fn r(&self) -> Matrix<T> {
         let (k, n) = (self.k(), self.qr.cols());
-        let mut r = Matrix::zeros(k, n);
+        // INVARIANT: min(m, n) x n is no larger than the stored m x n factor.
+        let mut r = Matrix::zeros_validated(k, n);
         for j in 0..n {
             for i in 0..k.min(j + 1) {
                 r.set(i, j, self.qr.get(i, j));
@@ -92,7 +93,7 @@ impl<T: Scalar> Householder<T> {
 
     fn q(&self, exec: &Exec<'_>, cols: usize) -> Result<Matrix<T>> {
         let m = self.qr.rows();
-        let mut q = Matrix::zeros(m, cols);
+        let mut q = Matrix::zeros(m, cols)?;
         for i in 0..m.min(cols) {
             q.set(i, i, <T as Element>::one());
         }
@@ -121,7 +122,7 @@ pub fn qr<T: Scalar>(exec: &Exec<'_>, a: &StridedView<'_, T>) -> Result<Qr<T>> {
     let (m, n) = (qrm.rows(), qrm.cols());
     let k = m.min(n);
     let bs = block_size::<T>(m, n);
-    let mut coeff = Matrix::zeros(bs, k);
+    let mut coeff = Matrix::zeros(bs, k)?;
     if k > 0 {
         let (mat, c) = (qrm.as_faer_mut(), coeff.as_faer_mut());
         install_with(
@@ -212,7 +213,7 @@ pub fn qr_col_piv<T: Scalar>(exec: &Exec<'_>, a: &StridedView<'_, T>) -> Result<
     let (m, n) = (qrm.rows(), qrm.cols());
     let k = m.min(n);
     let bs = block_size::<T>(m, n);
-    let mut coeff = Matrix::zeros(bs, k);
+    let mut coeff = Matrix::zeros(bs, k)?;
     let (mut perm, mut perm_inv) = ((0..n).collect::<Vec<_>>(), (0..n).collect::<Vec<_>>());
     if k > 0 {
         let (mat, c) = (qrm.as_faer_mut(), coeff.as_faer_mut());
@@ -323,7 +324,7 @@ pub fn lstsq<T: Scalar>(
     let nrhs = y.cols();
     f.apply_qh(exec, &mut y.view_mut())?;
     let r = f.rank(rtol);
-    let mut xp = Matrix::zeros(n, nrhs);
+    let mut xp = Matrix::zeros(n, nrhs)?;
     for j in 0..nrhs {
         for i in 0..r {
             xp.set(i, j, y.get(i, j));
@@ -337,7 +338,7 @@ pub fn lstsq<T: Scalar>(
         });
     }
     // Undo the pivoting: row j of xp belongs to variable perm[j].
-    let mut x = Matrix::zeros(n, nrhs);
+    let mut x = Matrix::zeros(n, nrhs)?;
     for j in 0..nrhs {
         for (i, &p) in f.perm.iter().enumerate() {
             x.set(p, j, xp.get(i, j));
