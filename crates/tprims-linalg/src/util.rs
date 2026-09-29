@@ -13,10 +13,11 @@ pub(crate) fn install<R: Send>(
     install_with(exec, flops, GemmPolicy::default().width, op)
 }
 
-/// Serial threshold for faer's blocked LU and QR: measured on an EPYC 7713P
-/// (2026-09-30, `benchmarks/benchmarks/tprims/linalg`), their parallel paths
-/// are slower than serial at n = 128 (0.6x LU, 0.4x QR at 4 threads) and gain
-/// at most 1.3x at n = 512, so they stay serial below an estimated 1 ms.
+/// Serial threshold for faer's blocked LU, QR and Cholesky/LDLᴴ: measured
+/// on an EPYC 7713P (2026-09-30, `benchmarks/benchmarks/tprims/linalg`),
+/// their parallel paths are slower than serial at n = 128 (0.6x LU, 0.4x QR,
+/// 0.8x c64 Cholesky at 4 threads) and gain at most 1.3x at n = 512, so they
+/// stay serial below an estimated 1 ms.
 pub(crate) fn factor_policy() -> WidthPolicy {
     WidthPolicy {
         serial_below_ns: 1.0e6,

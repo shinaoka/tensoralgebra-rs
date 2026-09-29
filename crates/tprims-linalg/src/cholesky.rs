@@ -5,7 +5,7 @@ use strided_view::{StridedView, StridedViewMut};
 use tprims_blas::Scalar;
 use tprims_exec::Exec;
 
-use crate::util::{flops, install, rhs_mut, square};
+use crate::util::{factor_policy, flops, install, install_with, rhs_mut, square};
 use crate::{Error, Matrix, Result};
 
 /// Cholesky factor `A = L Lᴴ` of a Hermitian positive definite matrix.
@@ -25,20 +25,25 @@ pub fn cholesky<T: Scalar>(exec: &Exec<'_>, a: &StridedView<'_, T>) -> Result<Ch
     let n = square(l.rows(), l.cols())?;
     if n > 0 {
         let mat = l.as_faer_mut();
-        install(exec, flops::<T>((n * n * n) as f64 / 3.0), move |par| {
-            let mut mem = MemBuffer::new(llt::factor::cholesky_in_place_scratch::<T>(
-                n,
-                par,
-                Default::default(),
-            ));
-            llt::factor::cholesky_in_place(
-                mat,
-                Default::default(),
-                par,
-                MemStack::new(&mut mem),
-                Default::default(),
-            )
-        })
+        install_with(
+            exec,
+            flops::<T>((n * n * n) as f64 / 3.0),
+            factor_policy(),
+            move |par| {
+                let mut mem = MemBuffer::new(llt::factor::cholesky_in_place_scratch::<T>(
+                    n,
+                    par,
+                    Default::default(),
+                ));
+                llt::factor::cholesky_in_place(
+                    mat,
+                    Default::default(),
+                    par,
+                    MemStack::new(&mut mem),
+                    Default::default(),
+                )
+            },
+        )
         .map_err(|e| match e {
             llt::factor::LltError::NonPositivePivot { index } => {
                 Error::NotPositiveDefinite { index }
@@ -103,22 +108,27 @@ pub fn ldlt<T: Scalar>(exec: &Exec<'_>, a: &StridedView<'_, T>) -> Result<Ldlt<T
         let mat: MatMut<'_, T> = lb.as_faer_mut();
         let sd = faer::diag::DiagMut::from_slice_mut(&mut subdiag);
         let (p, pi) = (&mut perm[..], &mut perm_inv[..]);
-        install(exec, flops::<T>((n * n * n) as f64 / 3.0), move |par| {
-            let mut mem = MemBuffer::new(lblt::factor::cholesky_in_place_scratch::<usize, T>(
-                n,
-                par,
-                Default::default(),
-            ));
-            let _ = lblt::factor::cholesky_in_place(
-                mat,
-                sd,
-                p,
-                pi,
-                par,
-                MemStack::new(&mut mem),
-                Default::default(),
-            );
-        });
+        install_with(
+            exec,
+            flops::<T>((n * n * n) as f64 / 3.0),
+            factor_policy(),
+            move |par| {
+                let mut mem = MemBuffer::new(lblt::factor::cholesky_in_place_scratch::<usize, T>(
+                    n,
+                    par,
+                    Default::default(),
+                ));
+                let _ = lblt::factor::cholesky_in_place(
+                    mat,
+                    sd,
+                    p,
+                    pi,
+                    par,
+                    MemStack::new(&mut mem),
+                    Default::default(),
+                );
+            },
+        );
     }
     Ok(Ldlt {
         lb,
