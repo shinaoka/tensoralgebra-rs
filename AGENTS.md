@@ -27,6 +27,10 @@ This is a research repository, not a production tensor-algebra library. Read `RE
 - `benchmarks/`: package `tprims-bench` (started as an import of
   strided-rs-benchmark-suite). Every new operation adds rows here at 1T and 4T.
 - `experiments/`: standalone measurement probes, excluded from the workspace.
+- `.agents/skills/` (canonical, read by Codex and pi), mirrored byte for byte
+  in `.claude/skills/`, with OpenCode commands in `.opencode/commands/`;
+  `python3 scripts/check-agent-skills.py` checks the mirrors. Run benchmarks
+  with the `tprims-benchmark` skill.
 - strided-rs is an external git dependency pinned to the v0.4.4 commit,
   spelled exactly as in tenferro-rs (`Cargo.toml`); strided changes and
   strided benchmarks go to tensor4all/strided-rs and
@@ -34,12 +38,13 @@ This is a research repository, not a production tensor-algebra library. Read `RE
 
 ## Build
 
-- Every cargo invocation uses `-j 16`.
+- The build job count depends on the host: set `CARGO_BUILD_JOBS` (16 on the
+  shared 64-core EPYC workstation); scripts and CI do not hardcode `-j`.
 - Local gate before a PR: `cargo fmt --all -- --check`,
-  `cargo clippy -j 16 --workspace --all-targets -- -D warnings`,
-  `cargo test -j 16 --workspace`, `cargo test -j 16 -p tprims-exec` (without
+  `cargo clippy --workspace --all-targets -- -D warnings`,
+  `cargo test --workspace`, `cargo test -p tprims-exec` (without
   the `strided` feature the workspace unifies on), and
-  `cargo test -j 16 -p tensorcontract --release`. Build `cargo build -j 16 -p tprims-bundle`
+  `cargo test -p tensorcontract --release`. Build `cargo build -p tprims-bundle`
   before the workspace tests (the C ABI test links the built `libtprims.so`). CI uses stable clippy,
   which may be newer than a local toolchain.
 - Before a PR, also check README and `docs/` against the implementation

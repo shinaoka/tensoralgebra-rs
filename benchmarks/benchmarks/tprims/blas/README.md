@@ -7,7 +7,7 @@ strategies (faer plus a loop over items; TBLIS-style through Lukas Devos's
 batched call chose; `CHECK` lines compare the two strategies' outputs.
 
 ```bash
-cargo build -j 16 --release -p tprims-bench --bin blas
+cargo build --release -p tprims-bench --bin blas
 taskset -c 57    target/release/blas --threads 1
 taskset -c 57-60 target/release/blas --threads 4
 ```

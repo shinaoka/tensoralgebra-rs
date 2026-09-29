@@ -7,7 +7,7 @@ Entry cost of the `tprims-exec` primitives, and two kernels driven through
 case, so "serial work never enters the pool" is counted, not inferred.
 
 ```bash
-cargo build -j 16 --release -p tprims-bench --bin exec_entry
+cargo build --release -p tprims-bench --bin exec_entry
 taskset -c 19    target/release/exec_entry --threads 1
 taskset -c 19-22 target/release/exec_entry --threads 4
 ```
