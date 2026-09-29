@@ -1,0 +1,105 @@
+# threads: requested=1 pool=1 budget=1
+case,variant,threads,median_ns,samples
+gemm_f64,n8,1,170,50
+gemm_f64,n32,1,2191,50
+gemm_f64,n128,1,93493,50
+gemm_f64,n512,1,6179052,50
+gemm_f64,n512_at,1,6157702,50
+gemm_f64,n1024,1,50289174,15
+gemm_f64,m256_n1024_k64,1,749955,50
+gemm_f64,m1024_n64_k256,1,792796,50
+gemm_f64,n2048,1,382394839,5
+gemm_c64,n8,1,330,50
+gemm_c64,n32,1,6981,50
+gemm_c64,n128,1,374972,50
+gemm_c64,n512,1,20821111,15
+gemm_c64,n512_at,1,20864163,15
+gemm_c64,n1024,1,200835786,5
+gemm_c64,m256_n1024_k64,1,2962287,50
+gemm_c64,m1024_n64_k256,1,3215485,50
+gemm_batched_f64,faer_n2_b1,1,160,50
+# selected faer_n2_b1: Some(FaerLoop { outer_parallel: false })
+gemm_batched_f64,tblis_n2_b1,1,2170,50
+# selected tblis_n2_b1: Some(Tblis { outer_parallel: false })
+CHECK gemm_batched_f64 n2_b1 threads=1 faer_vs_tblis_max_abs=0e0 ok
+gemm_batched_f64,faer_n2_b1024,1,32571,50
+# selected faer_n2_b1024: Some(FaerLoop { outer_parallel: false })
+gemm_batched_f64,tblis_n2_b1024,1,576369,50
+# selected tblis_n2_b1024: Some(Tblis { outer_parallel: false })
+CHECK gemm_batched_f64 n2_b1024 threads=1 faer_vs_tblis_max_abs=0e0 ok
+gemm_batched_f64,faer_n2_b4096,1,130035,50
+# selected faer_n2_b4096: Some(FaerLoop { outer_parallel: false })
+gemm_batched_f64,tblis_n2_b4096,1,2309686,50
+# selected tblis_n2_b4096: Some(Tblis { outer_parallel: false })
+CHECK gemm_batched_f64 n2_b4096 threads=1 faer_vs_tblis_max_abs=0e0 ok
+gemm_batched_f64,faer_n4_b1024,1,46391,50
+# selected faer_n4_b1024: Some(FaerLoop { outer_parallel: false })
+gemm_batched_f64,tblis_n4_b1024,1,620790,50
+# selected tblis_n4_b1024: Some(Tblis { outer_parallel: false })
+CHECK gemm_batched_f64 n4_b1024 threads=1 faer_vs_tblis_max_abs=0e0 ok
+gemm_batched_f64,faer_n8_b1024,1,76302,50
+# selected faer_n8_b1024: Some(FaerLoop { outer_parallel: false })
+gemm_batched_f64,tblis_n8_b1024,1,828697,50
+# selected tblis_n8_b1024: Some(Tblis { outer_parallel: false })
+CHECK gemm_batched_f64 n8_b1024 threads=1 faer_vs_tblis_max_abs=0e0 ok
+gemm_batched_f64,faer_n32_b256,1,494726,50
+# selected faer_n32_b256: Some(FaerLoop { outer_parallel: false })
+gemm_batched_f64,tblis_n32_b256,1,1221540,50
+# selected tblis_n32_b256: Some(Tblis { outer_parallel: false })
+CHECK gemm_batched_f64 n32_b256 threads=1 faer_vs_tblis_max_abs=0e0 ok
+gemm_batched_f64,faer_n128_b16,1,1523100,50
+# selected faer_n128_b16: Some(FaerLoop { outer_parallel: false })
+gemm_batched_f64,tblis_n128_b16,1,2089359,50
+# selected tblis_n128_b16: Some(Tblis { outer_parallel: false })
+CHECK gemm_batched_f64 n128_b16 threads=1 faer_vs_tblis_max_abs=0e0 ok
+gemm_batched_f64,faer_n512_b1,1,6169362,50
+# selected faer_n512_b1: Some(FaerLoop { outer_parallel: false })
+gemm_batched_f64,tblis_n512_b1,1,6725890,50
+# selected tblis_n512_b1: Some(Tblis { outer_parallel: false })
+CHECK gemm_batched_f64 n512_b1 threads=1 faer_vs_tblis_max_abs=1.4210854715202004e-14 ok
+gemm_batched_c64,faer_n2_b1,1,170,50
+# selected faer_n2_b1: Some(FaerLoop { outer_parallel: false })
+gemm_batched_c64,tblis_n2_b1,1,2160,50
+# selected tblis_n2_b1: Some(Tblis { outer_parallel: false })
+CHECK gemm_batched_c64 n2_b1 threads=1 faer_vs_tblis_max_abs=1.3877787807814457e-17 ok
+gemm_batched_c64,faer_n2_b1024,1,44471,50
+# selected faer_n2_b1024: Some(FaerLoop { outer_parallel: false })
+gemm_batched_c64,tblis_n2_b1024,1,598869,50
+# selected tblis_n2_b1024: Some(Tblis { outer_parallel: false })
+CHECK gemm_batched_c64 n2_b1024 threads=1 faer_vs_tblis_max_abs=1.1102230246251565e-16 ok
+gemm_batched_c64,faer_n2_b4096,1,178476,50
+# selected faer_n2_b4096: Some(FaerLoop { outer_parallel: false })
+gemm_batched_c64,tblis_n2_b4096,1,2395868,50
+# selected tblis_n2_b4096: Some(Tblis { outer_parallel: false })
+CHECK gemm_batched_c64 n2_b4096 threads=1 faer_vs_tblis_max_abs=1.1102230246251565e-16 ok
+gemm_batched_c64,faer_n4_b1024,1,66272,50
+# selected faer_n4_b1024: Some(FaerLoop { outer_parallel: false })
+gemm_batched_c64,tblis_n4_b1024,1,661032,50
+# selected tblis_n4_b1024: Some(Tblis { outer_parallel: false })
+CHECK gemm_batched_c64 n4_b1024 threads=1 faer_vs_tblis_max_abs=2.220446049250313e-16 ok
+gemm_batched_c64,faer_n8_b1024,1,247698,50
+# selected faer_n8_b1024: Some(FaerLoop { outer_parallel: false })
+gemm_batched_c64,tblis_n8_b1024,1,1031384,50
+# selected tblis_n8_b1024: Some(Tblis { outer_parallel: false })
+CHECK gemm_batched_c64 n8_b1024 threads=1 faer_vs_tblis_max_abs=4.440892098500626e-16 ok
+gemm_batched_c64,faer_n32_b256,1,1761137,50
+# selected faer_n32_b256: Some(FaerLoop { outer_parallel: false })
+gemm_batched_c64,tblis_n32_b256,1,3237976,50
+# selected tblis_n32_b256: Some(Tblis { outer_parallel: false })
+CHECK gemm_batched_c64 n32_b256 threads=1 faer_vs_tblis_max_abs=1.3322676295501878e-15 ok
+gemm_batched_c64,faer_n128_b16,1,6084889,50
+# selected faer_n128_b16: Some(FaerLoop { outer_parallel: false })
+gemm_batched_c64,tblis_n128_b16,1,7604779,50
+# selected tblis_n128_b16: Some(Tblis { outer_parallel: false })
+CHECK gemm_batched_c64 n128_b16 threads=1 faer_vs_tblis_max_abs=3.552713678800501e-15 ok
+gemm_batched_c64,faer_n512_b1,1,24757522,15
+# selected faer_n512_b1: Some(FaerLoop { outer_parallel: false })
+gemm_batched_c64,tblis_n512_b1,1,27347667,15
+# selected tblis_n512_b1: Some(Tblis { outer_parallel: false })
+CHECK gemm_batched_c64 n512_b1 threads=1 faer_vs_tblis_max_abs=2.770846217324862e-14 ok
+trsm_f64,left_lower_n32_nrhs32,1,5180,50
+trsm_f64,left_lower_n256_nrhs256,1,533538,50
+trsm_f64,left_lower_n1024_nrhs1024,1,30059055,15
+trsm_c64,left_lower_n32_nrhs32,1,8560,50
+trsm_c64,left_lower_n256_nrhs256,1,2004865,50
+trsm_c64,left_lower_n1024_nrhs1024,1,91343166,15
