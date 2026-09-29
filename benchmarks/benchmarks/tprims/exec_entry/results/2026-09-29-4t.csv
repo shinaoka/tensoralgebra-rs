@@ -1,0 +1,21 @@
+# threads: requested=4 pool=4 budget=4
+case,variant,threads,median_ns,samples
+install_empty,k1,4,30,200
+# stats install_empty: entries=0 broadcasts=0 inline=0
+install_empty,k2,4,6890,200
+# stats install_empty: entries=220 broadcasts=0 inline=0
+install_empty,k4,4,6750,200
+# stats install_empty: entries=220 broadcasts=0 inline=0
+partition_empty,k2,4,6851,200
+# stats partition_empty: entries=220 broadcasts=0 inline=0
+partition_empty,k4,4,6820,200
+# stats partition_empty: entries=220 broadcasts=0 inline=0
+broadcast_empty,w4,4,7620,200
+# stats broadcast_empty: entries=0 broadcasts=220 inline=0
+strided_map_f64,transpose_2^12,4,3150,200
+# stats strided_map_f64: entries=0 broadcasts=0 inline=0
+strided_map_f64,transpose_2^22,4,4070970,30
+# stats strided_map_f64: entries=35 broadcasts=0 inline=0
+CHECK tensorcontract_gemm_f64 threads=4 max_abs_diff=0e0 ok
+tensorcontract_gemm_f64,512^3,4,1984503,20
+# stats tensorcontract_gemm_f64: entries=0 broadcasts=23 inline=0

@@ -36,6 +36,10 @@ This is a research repository, not a production tensor-algebra library. Read `RE
 - Every cargo invocation uses `-j 16`.
 - Local gate before a PR: `cargo fmt --all -- --check`,
   `cargo clippy -j 16 --workspace --all-targets -- -D warnings`, the same with
-  `--features strided-basic/parallel,strided-kernel/parallel,strided-perm/parallel,tprims-bench/parallel`,
+  `--features strided-basic/parallel,strided-basic/tprims-exec,strided-kernel/parallel,strided-perm/parallel,tprims-bench/parallel`,
   `cargo test -j 16 --workspace`, and
-  `cargo test -j 16 -p strided-basic -p strided-kernel -p strided-perm --features parallel`.
+  `cargo test -j 16 -p strided-basic -p strided-kernel -p strided-perm --features parallel`,
+  the strided crates alone without features (the workspace run unifies
+  `parallel` on through `tprims-bench`), and
+  `cargo test -j 16 -p tensorcontract --release`. CI uses stable clippy,
+  which may be newer than a local toolchain.

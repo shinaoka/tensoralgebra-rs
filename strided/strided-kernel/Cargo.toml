@@ -21,6 +21,8 @@ num-complex.workspace = true
 default = ["simd"]
 parallel = ["strided-basic/parallel", "strided-fused/parallel"]
 simd = ["strided-basic/simd", "strided-fused/simd"]
+# tprims addition: re-exports strided_basic::run_with_exec.
+tprims-exec = ["parallel", "strided-basic/tprims-exec"]
 
 [dev-dependencies]
 rayon.workspace = true

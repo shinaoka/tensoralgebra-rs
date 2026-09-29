@@ -1,0 +1,19 @@
+[package]
+name = "tprims-exec"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Explicit execution contexts for the tprims stack: borrowed Rayon pools, kernel-level entry"
+
+[dependencies]
+rayon = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+faer = { workspace = true }
+tensorcontract = { workspace = true }
+
+[lints]
+workspace = true

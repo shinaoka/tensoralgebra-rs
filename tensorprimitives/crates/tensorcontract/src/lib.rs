@@ -344,6 +344,7 @@ pub mod layout;
 pub mod plan;
 pub mod reference;
 pub mod scatter;
+pub mod spmd;
 
 pub use element::{Element, Real, C32, C64};
 pub use error::{Error, Result};
@@ -582,6 +583,56 @@ impl Plan {
         Ok(())
     }
 
+    /// [`Plan::run`] on threads supplied by the host through
+    /// [`Spmd`](spmd::Spmd) (tprims addition): the thread count is
+    /// `spmd.width()`, and no thread is spawned by this crate.
+    ///
+    /// # Errors
+    ///
+    /// As [`Plan::run`].
+    pub fn run_with<T>(
+        &self,
+        spmd: &dyn spmd::Spmd,
+        alpha: T,
+        a: TensorView<'_, T>,
+        b: TensorView<'_, T>,
+        beta: T,
+        c: Option<TensorView<'_, T>>,
+        d: TensorViewMut<'_, T>,
+    ) -> Result<()>
+    where
+        T: Element,
+        T::Real: KernelSet,
+    {
+        self.check_ops(a.op, b.op, c.as_ref().map(|c| c.op), d.op)?;
+        self.check_bounds(
+            a.data.len(),
+            b.data.len(),
+            c.as_ref().map(|c| c.data.len()),
+            d.data.len(),
+        )?;
+        let cptr = match &c {
+            Some(c) => c.data.as_ptr(),
+            None => d.data.as_ptr(),
+        };
+        let beta = if c.is_none() { T::zero() } else { beta };
+        // SAFETY: bounds validated above; `d` is an exclusive borrow so it
+        // cannot alias `a`, `b` or `c`.
+        unsafe {
+            driver::execute_with(
+                self,
+                spmd,
+                alpha,
+                a.data.as_ptr(),
+                b.data.as_ptr(),
+                beta,
+                cptr,
+                d.data.as_mut_ptr(),
+            );
+        }
+        Ok(())
+    }
+
     /// Execute against raw pointers, with no bounds checking.
     ///
     /// This is what the TAPP C ABI calls: at an FFI boundary the caller has
@@ -617,6 +668,29 @@ impl Plan {
         T::Real: KernelSet,
     {
         driver::execute(self, alpha, a, b, beta, c, d)
+    }
+
+    /// [`Plan::run_raw`] on host-supplied threads (tprims addition).
+    ///
+    /// # Safety
+    ///
+    /// As [`Plan::run_raw`].
+    #[allow(clippy::too_many_arguments)] // INVARIANT: `run_raw`'s arguments plus the seam.
+    pub unsafe fn run_raw_with<T>(
+        &self,
+        spmd: &dyn spmd::Spmd,
+        alpha: T,
+        a: *const T,
+        b: *const T,
+        beta: T,
+        c: *const T,
+        d: *mut T,
+    ) where
+        T: Element,
+        T::Real: KernelSet,
+    {
+        // SAFETY: the caller upholds `run_raw`'s contract.
+        unsafe { driver::execute_with(self, spmd, alpha, a, b, beta, c, d) }
     }
 
     /// Each operand's element-wise op must be the one the plan was built with.

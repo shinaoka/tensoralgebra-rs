@@ -21,11 +21,14 @@ num-complex.workspace = true
 rayon = { workspace = true, optional = true }
 smallvec = { workspace = true, optional = true }
 pulp = { workspace = true, optional = true }
+tprims-exec = { workspace = true, optional = true }
 
 [features]
 default = ["simd"]
 parallel = ["dep:rayon", "dep:smallvec", "strided-perm/parallel"]
 simd = ["dep:pulp"]
+# Run strided kernels on a tprims-exec context (`run_with_exec`); tprims addition.
+tprims-exec = ["parallel", "dep:tprims-exec"]
 
 [dev-dependencies]
 criterion.workspace = true
