@@ -31,7 +31,7 @@ lines in a log.
 - AMD EPYC 7713P, shared host (load average about 4); cores 57-60 (one L3
   domain) busy fraction <= 0.01 over 3 s before and after. Sub-microsecond
   rows are within the ~20% A/A noise floor measured for `linalg`.
-- Raw output: [results/](results/). All `CHECK` lines ok (relative
+- Raw output: [results/](results/) (CSVs, and `*.selected.log` with the `# selected` and `CHECK` lines). All `CHECK` lines ok (relative
   difference <= 1.5e-15); every case ran copy-free under `pg` except
   `permuted_nonfusable`, where A was materialized.
 
@@ -60,9 +60,10 @@ lines in a log.
    batch axis is serial inside each SPMD team).
 2. **When an operand must be copied, TBLIS-style is competitive and wins at
    4T** (`permuted_nonfusable`: tblis/pg 0.92 f64, 0.88 c64 at 4T), because
-   the pg path's copy of A is serial-bandwidth work that the direct kernel
-   avoids. This is the first case where the direct strategy is preferable;
+   the pg path pays for a copy of A that the direct kernel avoids
+   (hypothesis: the copy, although parallel above strided's threshold, is
+   bandwidth-bound; pg itself only scales 1.4x there). This is the first case where the direct strategy is preferable;
    an `Auto` rule "TBLIS when pg would materialize a large operand" is a
    candidate, to be decided on a wider corpus.
-3. Planning costs 1-2 us for pg and 3-14 us for tblis (scatter vectors of
+3. Planning costs 1-2 us for pg and 1.6-14 us for tblis (scatter vectors of
    length M + N + K); both are outside `execute`.

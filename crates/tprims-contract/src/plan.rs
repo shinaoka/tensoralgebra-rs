@@ -18,8 +18,9 @@ use crate::{Error, Result};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Strategy {
-    /// Library choice: currently [`Strategy::PermuteGemm`] (faster in every
-    /// Phase 1b batched-GEMM measurement).
+    /// Library choice: an elementwise pass for all-batch (Hadamard)
+    /// problems, otherwise [`Strategy::PermuteGemm`] (faster than TBLIS-style
+    /// on every fusable case of the Phase 1c corpus).
     Auto,
     /// Fuse to strided batched GEMM, copying non-fusable operands once.
     PermuteGemm,
@@ -58,12 +59,19 @@ pub enum Selected {
     },
     /// Direct contraction; nothing is copied.
     Tblis,
+    /// All axes are batch axes (Hadamard product): one elementwise pass.
+    Elementwise,
 }
 
 #[derive(Debug)]
 enum Inner {
     Pg(Box<PgPlan>),
     Tb(Box<TbPlan>),
+    /// A and B axis of each output (batch) axis.
+    Elementwise {
+        a_axes: Vec<usize>,
+        b_axes: Vec<usize>,
+    },
 }
 
 /// A validated contraction for fixed layouts, reusable across calls.
@@ -107,6 +115,14 @@ impl<T: Scalar> ContractPlan<T> {
             }
         }
         let shape: Shape = cfg.validate(a.0, b.0)?;
+        for (name, l) in [("A", &a), ("B", &b), ("C", &c)] {
+            let n = l.0.iter().try_fold(1usize, |acc, &d| acc.checked_mul(d));
+            if n.and_then(|n| n.checked_mul(std::mem::size_of::<T>()))
+                .is_none_or(|b| b > isize::MAX as usize)
+            {
+                return Err(Error::Shape(format!("{name}: element count overflows")));
+            }
+        }
         if shape.out_dims != c.0 {
             return Err(Error::Shape(format!(
                 "C has extents {:?}, expected {:?}",
@@ -120,7 +136,13 @@ impl<T: Scalar> ContractPlan<T> {
         let dims = [a.0, b.0, c.0];
         let strides = [a.1, b.1, c.1];
         let k_empty = cfg.lhs_contract.iter().any(|&x| a.0[x] == 0);
+        let all_batch =
+            shape.lhs_free.is_empty() && shape.rhs_free.is_empty() && cfg.lhs_contract.is_empty();
         let inner = match strategy {
+            Strategy::Auto | Strategy::PermuteGemm if all_batch => Inner::Elementwise {
+                a_axes: cfg.lhs_batch.clone(),
+                b_axes: cfg.rhs_batch.clone(),
+            },
             Strategy::Tblis => Inner::Tb(Box::new(tblis::plan(cfg, &shape, dims, strides, conj)?)),
             Strategy::Auto | Strategy::PermuteGemm => Inner::Pg(Box::new(permute_gemm::plan(
                 cfg,
@@ -146,6 +168,7 @@ impl<T: Scalar> ContractPlan<T> {
                 materialized: p.materialized,
             },
             Inner::Tb(_) => Selected::Tblis,
+            Inner::Elementwise { .. } => Selected::Elementwise,
         }
     }
 
@@ -193,6 +216,33 @@ impl<T: Scalar> ContractPlan<T> {
                 permute_gemm::execute(p, exec, alpha, a, self.conj.0, b, self.conj.1, beta, c)
             }
             Inner::Tb(p) => tblis::execute(p, exec, alpha, a, b, beta, c),
+            Inner::Elementwise { a_axes, b_axes } => {
+                let (dims, cs) = (c.dims().to_vec(), c.strides().to_vec());
+                let sa: Vec<isize> = a_axes.iter().map(|&x| a.strides()[x]).collect();
+                let sb: Vec<isize> = b_axes.iter().map(|&x| b.strides()[x]).collect();
+                let (ca, cb) = self.conj;
+                let op = |x: T, cj: Conj| if cj == Conj::Yes { Element::conj(x) } else { x };
+                let read = beta != <T as Element>::zero();
+                // SAFETY: all three views are non-empty and bounds-checked;
+                // A and B axes are permuted onto C's (batch) axes, whose
+                // extents they share; C is exclusive and injective.
+                unsafe {
+                    crate::util::zip_update(
+                        exec,
+                        &dims,
+                        (c.as_mut_ptr(), &cs),
+                        [(a.ptr(), &sa), (b.ptr(), &sb)],
+                        read,
+                        &move |y, [x, z]| {
+                            Element::add(
+                                Element::mul(alpha, Element::mul(op(x, ca), op(z, cb))),
+                                Element::mul(beta, y),
+                            )
+                        },
+                    )
+                };
+                Ok(())
+            }
         }
     }
 }

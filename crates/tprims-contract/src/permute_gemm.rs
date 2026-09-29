@@ -72,8 +72,6 @@ pub(crate) struct PgPlan {
     fused: [[(usize, isize); 3]; 3],
 }
 
-const NONE3: [Option<usize>; 3] = [None, None, None];
-
 fn groups(cfg: &DotGeneral, s: &Shape, a: &[usize], b: &[usize]) -> [Group; 4] {
     let nm = s.lhs_free.len();
     let nn = s.rhs_free.len();
@@ -114,7 +112,6 @@ fn groups(cfg: &DotGeneral, s: &Shape, a: &[usize], b: &[usize]) -> [Group; 4] {
             .collect(),
         extents: cfg.lhs_batch.iter().map(|&x| a[x]).collect(),
     };
-    let _ = NONE3;
     [m, n, k, h]
 }
 
@@ -129,6 +126,15 @@ pub(crate) fn plan(
     no_materialize: bool,
 ) -> Result<PgPlan> {
     let gs = groups(cfg, s, dims[0], dims[1]);
+    // An empty problem never reaches the GEMM (execute returns early).
+    if dims.iter().any(|d| d.contains(&0)) {
+        return Ok(PgPlan {
+            materialized: [false; 3],
+            perms: [vec![], vec![], vec![]],
+            fused: [[(0, 1); 3]; 3],
+        });
+    }
+    // INVARIANT: element counts were checked in ContractPlan::new.
     let sizes: [usize; 3] = [0, 1, 2].map(|o| dims[o].iter().product());
     // Candidate copy sets, cheapest first (C counts twice: it round-trips).
     let mut sets: Vec<[bool; 3]> = (0u8..8)

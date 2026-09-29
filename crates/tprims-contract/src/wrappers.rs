@@ -113,69 +113,22 @@ pub fn add<T: Scalar>(
     if len == 0 {
         return Ok(());
     }
-    // In place `c = alpha * a + beta * c`: the last axis is split into lanes
-    // (barrier-free), each lane walks the remaining axes with an odometer.
-    let dims = c.dims().to_vec();
-    let (cs, as_) = (c.strides().to_vec(), a.strides().to_vec());
-    let r = dims.len();
-    let (cp, ap) = (Ptr(c.as_mut_ptr()), Ptr(a.ptr() as *mut T));
-    let last = if r == 0 { 1 } else { dims[r - 1] };
-    let p = tprims_blas::GemmPolicy::default();
-    let lanes = exec
-        .width_for(len as f64 * 2.0 * p.ns_per_flop, &p.width)
-        .min(last)
-        .max(1);
-    exec.for_each_partition(lanes, &|l| {
-        let (lo, hi) = (l * last / lanes, (l + 1) * last / lanes);
-        for t in lo..hi {
-            let (mut co, mut ao) = if r == 0 {
-                (0, 0)
-            } else {
-                (t as isize * cs[r - 1], t as isize * as_[r - 1])
-            };
-            let inner = &dims[..r.saturating_sub(1)];
-            let mut idx = vec![0usize; inner.len()];
-            loop {
-                // SAFETY: (idx, t) is inside the extents of both validated,
-                // non-empty views; C is exclusive and injective, so lanes
-                // (disjoint t ranges) write disjoint elements.
-                unsafe {
-                    let (cq, aq) = (cp.get().offset(co), ap.get().offset(ao));
-                    *cq = Element::add(Element::mul(alpha, *aq), Element::mul(beta, *cq));
-                }
-                let mut k = 0;
-                loop {
-                    if k == inner.len() {
-                        break;
-                    }
-                    idx[k] += 1;
-                    co += cs[k];
-                    ao += as_[k];
-                    if idx[k] < inner[k] {
-                        break;
-                    }
-                    co -= cs[k] * inner[k] as isize;
-                    ao -= as_[k] * inner[k] as isize;
-                    idx[k] = 0;
-                    k += 1;
-                }
-                if k == inner.len() {
-                    break;
-                }
-            }
-        }
-    });
+    let (dims, cs, as_) = (
+        c.dims().to_vec(),
+        c.strides().to_vec(),
+        a.strides().to_vec(),
+    );
+    // SAFETY: both views are non-empty and bounds-checked with these extents;
+    // C is exclusive and injective (checked above); A is a distinct borrow.
+    unsafe {
+        crate::util::zip_update(
+            exec,
+            &dims,
+            (c.as_mut_ptr(), &cs),
+            [(a.ptr(), &as_)],
+            true,
+            &move |y, [x]| Element::add(Element::mul(alpha, x), Element::mul(beta, y)),
+        )
+    };
     Ok(())
-}
-
-#[derive(Clone, Copy)]
-struct Ptr<T>(*mut T);
-// SAFETY: dereferenced only at disjoint, validated offsets (see `add`).
-unsafe impl<T> Send for Ptr<T> {}
-unsafe impl<T> Sync for Ptr<T> {}
-
-impl<T> Ptr<T> {
-    fn get(self) -> *mut T {
-        self.0
-    }
 }
