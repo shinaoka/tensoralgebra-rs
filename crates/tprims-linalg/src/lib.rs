@@ -23,6 +23,7 @@
 //! f.solve(&Exec::serial(), &mut b.view_mut()).unwrap();
 //! assert!((b.get(0, 0) - 1.0).abs() < 1e-12 && (b.get(1, 0) - 1.0).abs() < 1e-12);
 //! ```
+pub mod batched;
 mod cholesky;
 mod error;
 mod lu;
@@ -31,6 +32,7 @@ mod qr;
 mod spectral;
 mod util;
 
+pub use batched::Status;
 pub use cholesky::{cholesky, ldlt, Cholesky, Ldlt};
 pub use error::{Error, Result};
 pub use lu::{det, inv, logdet, lu, lu_full, solve, FullPivLu, Lu};
