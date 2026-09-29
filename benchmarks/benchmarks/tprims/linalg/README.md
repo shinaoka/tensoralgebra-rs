@@ -163,7 +163,7 @@ drift biased a run that measured all 1T cases before all 4T cases.
    in `blas`: the schedule's flop estimate ignores per-item overhead. The same
    refinement applies here.
 4. **The nonsymmetric eigensolver does not scale** at n = 512 (1.18x f64,
-   0.98x c64 at 4 threads); eigh and svd reach 1.8-2.2x there. This is faer's
+   0.98x c64 at 4 threads); eigh and svd reach 1.5-2.3x there. This is faer's
    parallel efficiency, not investigated further here; `eig` may deserve the
    same kind of kernel-specific width policy as LU/QR once measured more
    widely.
