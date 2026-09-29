@@ -4,12 +4,14 @@ An experimental Rust project for CPU tensor contractions, GEMM, and batched dens
 
 ## Working hypotheses
 
-- **Large GEMM:** Evaluate a BLIS-style packed-panel design and existing BLIS/gemmkit providers before writing architecture-specific kernels.
+- **Large GEMM:** Evaluate a BLIS-style packed-panel design and existing BLIS, `gemm`, and gemmkit providers before writing architecture-specific kernels.
 - **Tensor contraction:** Evaluate a TBLIS-style direct contraction against transpose/reshape-then-GEMM, including irregular strides and complex values.
 - **Small matrices and batches:** Evaluate dedicated batched GEMM, LU, Cholesky, and QR kernels. Schedule independent matrices on the outer batch axis; test the crossover to per-matrix parallelism rather than assuming one rule fits every size.
 - **Execution ownership:** Make the effective thread budget, pool, and scratch lifetime explicit. A Rust caller should be able to supply an executor. A C/Julia/Python caller needs an FFI contract that does not silently take over the host's threads.
 
 These are questions, not settled design decisions. [The research map](docs/research-map.md) distinguishes published evidence from project-specific hypotheses. [The experiment plan](docs/experiments.md) defines the first three independent prototypes and how to compare them.
+
+`matrixalgebra-rs` is a possible future CPU backend boundary. It will only be created if experiments identify a useful stable interface; it is not part of this repository setup.
 
 ## Why this project exists
 
