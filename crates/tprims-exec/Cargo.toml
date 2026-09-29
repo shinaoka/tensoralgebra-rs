@@ -13,6 +13,7 @@ thiserror = { workspace = true }
 
 [dev-dependencies]
 faer = { workspace = true }
+tensorcontract = { workspace = true }
 
 [lints]
 workspace = true

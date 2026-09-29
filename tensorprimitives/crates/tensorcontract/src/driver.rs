@@ -1,5 +1,8 @@
 //! The five-loop driver.
 //!
+//! tprims: an [`Spmd`](crate::spmd::Spmd) seam was added here (not upstream):
+//! when a caller supplies one, its threads replace `std::thread::scope`.
+//!
 //! Structurally identical to BLIS's GEMM: two levels of cache blocking with a
 //! packing step at each, wrapped around a register-blocked micro-kernel. The
 //! only tensor-specific part is that every matrix access goes through a
@@ -276,7 +279,30 @@ pub unsafe fn execute<T>(
 {
     // SAFETY: forwarded unchanged; `usize::MAX` imposes no cap, so the thread
     // count is the plan's, exactly as before this parameter existed.
-    unsafe { execute_capped(plan, alpha, a, b, beta, c, d, usize::MAX) }
+    unsafe { execute_capped(plan, alpha, a, b, beta, c, d, usize::MAX, None) }
+}
+
+/// [`execute`] with host-supplied co-scheduled threads (tprims addition).
+///
+/// # Safety
+///
+/// As [`execute`].
+#[allow(clippy::too_many_arguments)] // INVARIANT: same argument set as `execute_capped`.
+pub unsafe fn execute_with<T>(
+    plan: &Plan,
+    spmd: &dyn crate::spmd::Spmd,
+    alpha: T,
+    a: *const T,
+    b: *const T,
+    beta: T,
+    c: *const T,
+    d: *mut T,
+) where
+    T: Element,
+    T::Real: KernelSet,
+{
+    // SAFETY: forwarded unchanged.
+    unsafe { execute_capped(plan, alpha, a, b, beta, c, d, usize::MAX, Some(spmd)) }
 }
 
 /// [`execute`], with an upper bound on the threads this call may use.
@@ -304,6 +330,7 @@ pub(crate) unsafe fn execute_capped<T>(
     c: *const T,
     d: *mut T,
     max_threads: usize,
+    spmd: Option<&dyn crate::spmd::Spmd>,
 ) where
     T: Element,
     T::Real: KernelSet,
@@ -417,7 +444,14 @@ pub(crate) unsafe fn execute_capped<T>(
     // three row panels and two column blocks uses six threads at most however
     // many were asked for and however much work it contains.
     let npanels = m.div_ceil(mr);
-    let want = plan.threads().min(max_threads.max(1));
+    // With a host-supplied `Spmd` the width is the host's, not the plan's or
+    // `TENSORCONTRACT_THREADS`.
+    let want = match spmd {
+        Some(s) => s.width(),
+        None => plan.threads(),
+    }
+    .min(max_threads)
+    .max(1);
     let (pm, pn) = plan.partition_with(mr, nr, want);
     let p = pm * pn;
 
@@ -526,6 +560,17 @@ pub(crate) unsafe fn execute_capped<T>(
     // Pooled if asked for and if the pool can serve this width, otherwise spawn.
     // `try_broadcast` runs nothing when it declines, so this is a real either/or
     // and never a partial execution. Off by default: see `crate::pool`.
+    if let Some(s) = spmd {
+        if s.broadcast(p, &cell) {
+            return;
+        }
+        // Declined: nothing ran, so rerunning serially is safe. Never fall
+        // back to spawning threads behind the host's back.
+        // SAFETY: forwarded unchanged from this call's contract.
+        unsafe { execute_capped(plan, alpha, a, b, beta, c, d, 1, None) };
+        return;
+    }
+
     #[cfg(feature = "std")]
     if crate::pool::enabled() && crate::pool::try_broadcast(p, &cell) {
         return;
