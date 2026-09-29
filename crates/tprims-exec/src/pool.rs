@@ -17,11 +17,16 @@ use std::sync::Mutex;
 /// assert_eq!(pool.stats().entries, 0);
 /// ```
 pub struct Pool<'p> {
-    pub(crate) pool: &'p rayon::ThreadPool,
+    pool: PoolRef<'p>,
     pub(crate) spmd: Mutex<()>,
     entries: AtomicU64,
     broadcasts: AtomicU64,
     inline_runs: AtomicU64,
+}
+
+enum PoolRef<'p> {
+    Borrowed(&'p rayon::ThreadPool),
+    Owned(Box<rayon::ThreadPool>),
 }
 
 /// Counters of how often a [`Pool`] was entered, for tests and benchmarks.
@@ -44,6 +49,10 @@ pub struct PoolStats {
 impl<'p> Pool<'p> {
     /// Borrow a host pool.
     pub fn borrow(pool: &'p rayon::ThreadPool) -> Self {
+        Self::with(PoolRef::Borrowed(pool))
+    }
+
+    fn with(pool: PoolRef<'p>) -> Self {
         Self {
             pool,
             spmd: Mutex::new(()),
@@ -55,7 +64,23 @@ impl<'p> Pool<'p> {
 
     /// Number of workers.
     pub fn size(&self) -> usize {
-        self.pool.current_num_threads()
+        self.tp().current_num_threads()
+    }
+
+    pub(crate) fn tp(&self) -> &rayon::ThreadPool {
+        match &self.pool {
+            PoolRef::Borrowed(p) => p,
+            PoolRef::Owned(p) => p,
+        }
+    }
+
+    /// Give back an owned pool (`None` for a borrowed one), for example so a
+    /// C host can drop it and join its workers.
+    pub fn into_owned(self) -> Option<rayon::ThreadPool> {
+        match self.pool {
+            PoolRef::Owned(p) => Some(*p),
+            PoolRef::Borrowed(_) => None,
+        }
     }
 
     /// Snapshot of the entry counters.
@@ -75,7 +100,7 @@ impl<'p> Pool<'p> {
     }
 
     pub(crate) fn is_worker(&self) -> bool {
-        self.pool.current_thread_index().is_some()
+        self.tp().current_thread_index().is_some()
     }
 
     pub(crate) fn count_entry(&self) {
@@ -88,6 +113,22 @@ impl<'p> Pool<'p> {
 
     pub(crate) fn count_inline(&self) {
         self.inline_runs.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+impl Pool<'static> {
+    /// Take ownership of a pool, for hosts without one of their own (the C
+    /// ABI's `tprims_exec_rayon_create`). Rust hosts normally [`Pool::borrow`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let tp = rayon::ThreadPoolBuilder::new().num_threads(2).build().unwrap();
+    /// let pool = tprims_exec::Pool::owned(tp);
+    /// assert_eq!(pool.size(), 2);
+    /// ```
+    pub fn owned(pool: rayon::ThreadPool) -> Self {
+        Self::with(PoolRef::Owned(Box::new(pool)))
     }
 }
 
