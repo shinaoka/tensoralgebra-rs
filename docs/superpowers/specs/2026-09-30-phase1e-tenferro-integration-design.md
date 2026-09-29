@@ -25,7 +25,7 @@ depends on tprims.
    the TBLIS-style implementation if it is faster, **globally** (not by shape
    range).
 5. The TBLIS decision uses a `dot_general`/contraction size sweep, faer
-   (permute+GEMM) vs TBLIS, at 1T and 4T, with typical sizes taken from
+   (permute+GEMM) vs TBLIS, at 1T and 4T (8T added, see P2), with typical sizes taken from
    tenferro-benchmark runtime profiles.
 6. strided-rs is external to both repositories and pinned to the same commit
    (done in tprims-rs #18), so tenferro and tprims share one `StridedView`.
@@ -143,8 +143,12 @@ acceptance gate; otherwise its provider method returns `Unsupported`.
 ## Performance and acceptance
 
 All runs on the EPYC 7713P (64 cores, 8 CCDs of 8 cores sharing 32 MiB L3,
-one NUMA node), pinned with `taskset` inside one CCD for 1T/4T, idle cores
-checked, runs sequential, following `PERFORMANCE_TIPS.md`.
+one NUMA node) follow the `tprims-benchmark` skill
+(`.agents/skills/tprims-benchmark/SKILL.md`): idle cores of one L3 domain
+chosen by `benchmarks/scripts/idle_cpus.py`, every measurement through
+`benchmarks/scripts/pinned.sh` (idle before and after), runs sequential,
+build jobs from `CARGO_BUILD_JOBS`. CPU affinity is Linux-only; the
+decisions below use Linux runs.
 
 **P1. Shape profile.** The ext provider logs, behind an environment variable,
 each call's op, dtype, shape, strides and contraction config to a JSONL file.
@@ -155,20 +159,23 @@ produced it.
 
 **P2. TBLIS decision (in tprims-bench).** `contract` and `blas` gain a
 `--corpus <json>` mode sweeping the P1 corpus plus the existing synthetic
-cases, faer/permute+GEMM vs TBLIS-style, at 1T and 4T, in at least three
+cases, faer/permute+GEMM vs TBLIS-style, at 1T, 4T and 8T (one full L3
+domain; 16T reported only), in at least three
 sessions with an A/A noise measurement per session. Rule, applied separately
 to contraction (`Strategy::Auto`) and batched GEMM (default
 `BatchStrategy`): switch the default to TBLIS if the geometric mean of
 `time_pg / time_tblis` over the corpus exceeds 1 by more than the A/A noise at
-both 1T and 4T in every session; otherwise keep the current default. Cases
+each of 1T, 4T and 8T in every session; otherwise keep the current default.
+8T gates because TBLIS reuses packed panels in L3, which a full CCD
+contends for most, and a global switch must not regress there. Cases
 where the chosen default loses are listed in the result page. The decision is
 recorded in `docs/decision-log.md`.
 
 **P3. Acceptance (in tenferro-benchmark).** A cargo feature `tprims` makes
 the benchmark binaries install the ext provider. Baseline = default build,
 candidate = `--features tprims`, compared with the existing ABBA paired
-timing (`scripts/run_paired_timing.sh`) at 1T and 4T (plus 8T and 16T for
-scaling, reported, not gated). An op family is routed to tprims when its
+timing (`scripts/run_paired_timing.sh`) at 1T, 4T and 8T (16T reported, not
+gated). An op family is routed to tprims when its
 geometric-mean ratio is ≤ 1 within the A/A noise and no case regresses beyond
 twice the noise (thresholds approved by the maintainer, 2026-09-30);
 otherwise it stays `Unsupported`. Results go to
@@ -196,8 +203,13 @@ Making tprims tenferro's default backend; publishing tprims to crates.io;
 GPU; the C ABI; replacing faer inside tprims; the Householder family and
 uninit GEMM in tprims.
 
-## Open points for review
+## Decided in review (2026-09-30)
 
-1. Thread counts for P2 and P3: 8T (one full CCD, the largest configuration
-   sharing one L3) is wanted; whether it gates the decision alongside 1T and
-   4T or is reported only is under discussion.
+- `ext/tenferro-cpu-tprims` merges to tenferro `main` once green.
+- P3 thresholds as written.
+- 8T gates P2 and P3 alongside 1T and 4T; 16T is reported only. (8T was
+  requested by the maintainer; gating it was the recommendation adopted when
+  implementation was allowed to proceed. Cost if wrong: a TBLIS switch that
+  would pass at 1T/4T is held back by 8T.)
+- Measurement procedure lives in the `tprims-benchmark` skill, not in this
+  spec.
