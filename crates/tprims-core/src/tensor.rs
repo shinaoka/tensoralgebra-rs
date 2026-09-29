@@ -32,8 +32,16 @@ pub unsafe extern "C" fn tprims_tensor_borrow_versioned(
             flags: 0,
         };
     }
-    // SAFETY: non-null and valid per the contract.
+    // SAFETY: non-null and valid per the contract. Only DLPack major
+    // version 1 has the layout mirrored here; another major version yields a
+    // null view, which every call rejects with TPRIMS_ERR_INVALID_ARGUMENT.
     unsafe {
+        if (*m).version.major != 1 {
+            return tprims_tensor {
+                view: std::ptr::null_mut(),
+                flags: 0,
+            };
+        }
         tprims_tensor {
             view: &mut (*m).dl_tensor,
             flags: (*m).flags,
@@ -67,6 +75,15 @@ impl DType {
             DType::F32 => 4,
             DType::F64 | DType::C32 => 8,
             DType::C64 => 16,
+        }
+    }
+
+    /// Alignment of the Rust element type (a complex number aligns like its
+    /// real part).
+    fn align(self) -> usize {
+        match self {
+            DType::F32 | DType::C32 => 4,
+            DType::F64 | DType::C64 => 8,
         }
     }
 }
@@ -212,8 +229,16 @@ pub fn layout(t: &tprims_tensor, dt: DType) -> Result<Layout, FfiError> {
     let origin = if empty {
         std::ptr::NonNull::<u8>::dangling().as_ptr()
     } else {
+        let off = usize::try_from(v.byte_offset).map_err(|_| shape_err("byte_offset overflow"))?;
         // SAFETY: `data + byte_offset` is the first element per DLPack.
-        unsafe { (v.data as *mut u8).add(v.byte_offset as usize) }
+        let o = unsafe { (v.data as *mut u8).add(off) };
+        if !(o as usize).is_multiple_of(dt.align()) {
+            return Err(FfiError::new(
+                TPRIMS_ERR_INVALID_ARGUMENT,
+                format!("data + byte_offset is not aligned to {} bytes", dt.align()),
+            ));
+        }
+        o
     };
     Ok(Layout {
         dims,
@@ -224,12 +249,13 @@ pub fn layout(t: &tprims_tensor, dt: DType) -> Result<Layout, FfiError> {
     })
 }
 
-/// A read-only strided view over exactly the addressed span (zero copy).
+/// A read-only strided view over the addressed span (zero copy).
 ///
 /// # Safety
 ///
-/// The caller's DLPack contract: the addressed elements are valid, initialized
-/// `T` for the lifetime `'a`, and not written concurrently.
+/// The caller's contract (documented in `tprims/core.h`): the whole span from
+/// the lowest to the highest addressed element, padding included, is
+/// initialized memory of `T` that no other thread writes during the call.
 pub unsafe fn view<'a, T>(l: &Layout) -> Result<strided_view::StridedView<'a, T>, FfiError> {
     let (data, off): (&'a [T], isize) = if l.empty {
         (&[], 0)
@@ -252,7 +278,8 @@ pub unsafe fn view<'a, T>(l: &Layout) -> Result<strided_view::StridedView<'a, T>
 ///
 /// # Safety
 ///
-/// As [`view`], plus exclusive access to the span for `'a`.
+/// As [`view`], plus no other access to the span during the call (outputs
+/// whose span overlaps an input's are rejected by the callers).
 pub unsafe fn view_mut<'a, T>(
     t: &tprims_tensor,
     l: &Layout,

@@ -3,7 +3,9 @@
 //! DLPack 1.x types ([`dlpack`]), borrowed operands ([`tensor::tprims_tensor`])
 //! converted to strided views without copying, status codes and the
 //! thread-local last-error message ([`status`]), and executor handles
-//! ([`exec`]). Every `extern "C"` entry point catches panics. Other parts'
+//! ([`exec`]). Every `extern "C"` entry point that runs library code catches
+//! panics through [`status::ffi`]; the remaining trivial entry points
+//! (handle queries, retain/release, borrow helpers) do not panic. Other parts'
 //! C ABI crates build on these; only `tprims-bundle` produces a library.
 pub mod dlpack;
 pub mod exec;

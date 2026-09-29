@@ -11,26 +11,19 @@ extern "C" {
 
 #define TPRIMS_ABI_VERSION 100 /* 0.1.0 */
 
-/* DLPack 1.x (subset used by tprims), layout-compatible with dlpack.h. */
-#ifndef DLPACK_VERSION_MAJOR
-typedef struct { int32_t device_type; int32_t device_id; } DLDevice;
-typedef struct { uint8_t code; uint8_t bits; uint16_t lanes; } DLDataType;
-typedef struct {
-  void *data; DLDevice device; int32_t ndim; DLDataType dtype;
-  int64_t *shape; int64_t *strides; uint64_t byte_offset;
-} DLTensor;
-typedef struct { uint32_t major; uint32_t minor; } DLPackVersion;
-typedef struct DLManagedTensorVersioned {
-  DLPackVersion version; void *manager_ctx;
-  void (*deleter)(struct DLManagedTensorVersioned *self);
-  uint64_t flags; DLTensor dl_tensor;
-} DLManagedTensorVersioned;
-#define kDLCPU 1
-#define kDLCUDAHost 3
-#define kDLFloat 2
-#define kDLComplex 5
-#define DLPACK_FLAG_BITMASK_READ_ONLY (1ULL << 0)
-#endif
+/* DLPack 1.x. The vendored copy (v1.1, Apache-2.0, include/dlpack/) is used
+   unless the host already included its own dlpack.h (same include guard). */
+#include "dlpack/dlpack.h"
+
+/* Operand contract for every tprims call:
+   - tensors are CPU (kDLCPU or kDLCUDAHost), lanes == 1, f32/f64/complex64/
+     complex128, data + byte_offset aligned to the element's real type;
+   - the whole span from the lowest to the highest addressed element (padding
+     included) is initialized memory that no other thread writes during the
+     call, and an output is not accessed by anyone else during the call;
+   - an output whose span overlaps an input's span is rejected
+     (TPRIMS_ERR_ALIASED), even when the element sets are disjoint;
+   - DLManagedTensorVersioned with a major version other than 1 is rejected. */
 
 typedef int32_t tprims_status;
 #define TPRIMS_OK 0
@@ -51,7 +44,7 @@ typedef int32_t tprims_status;
 /* Borrowed operand: valid for the duration of a call; never freed by tprims. */
 typedef struct { DLTensor *view; uint64_t flags; } tprims_tensor;
 
-tprims_tensor tprims_tensor_borrow_versioned(DLManagedTensorVersioned *m);
+tprims_tensor tprims_tensor_borrow_versioned(struct DLManagedTensorVersioned *m);
 tprims_tensor tprims_tensor_borrow_raw(DLTensor *t, uint64_t flags);
 
 const char *tprims_last_error(void);

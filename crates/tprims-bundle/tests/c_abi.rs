@@ -77,3 +77,25 @@ fn only_tprims_symbols_of_the_selected_parts_are_exported() {
         assert!(syms.contains(&want), "{want} not exported: {syms:?}");
     }
 }
+
+#[test]
+fn headers_combine_with_a_real_dlpack_h_in_either_order() {
+    let cc = std::env::var("CC").unwrap_or_else(|_| "cc".into());
+    if Command::new(&cc).arg("--version").output().is_err() {
+        eprintln!("skipping: no C compiler ({cc})");
+        return;
+    }
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let include = root.join("../tprims-core/include");
+    for src in ["headers_dlpack_first.c", "headers_tprims_first.c"] {
+        let out = std::env::temp_dir().join(format!("tprims_{src}_{}", std::process::id()));
+        let st = Command::new(&cc)
+            .args(["-std=c11", "-Wall", "-Werror", "-fsyntax-only"])
+            .arg(format!("-I{}", include.display()))
+            .arg(root.join("tests/c").join(src))
+            .status()
+            .expect("cc");
+        let _ = std::fs::remove_file(&out);
+        assert!(st.success(), "{src} failed to compile");
+    }
+}

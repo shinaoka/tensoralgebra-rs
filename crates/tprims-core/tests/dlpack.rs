@@ -164,3 +164,11 @@ fn empty_tensors_never_touch_data() {
     let v = unsafe { view::<f64>(&l).unwrap() };
     assert_eq!(v.dims(), &[0, 5]);
 }
+
+#[test]
+fn rust_mirror_matches_the_c_layout() {
+    use std::mem::{offset_of, size_of};
+    assert_eq!(size_of::<DLTensor>(), 48);
+    assert_eq!(offset_of!(DLManagedTensorVersioned, dl_tensor), 32);
+    assert_eq!(size_of::<tprims_core::tensor::tprims_tensor>(), 16);
+}

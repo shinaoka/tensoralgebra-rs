@@ -62,13 +62,14 @@ impl FfiError {
 /// Record `message` for [`tprims_last_error`] on this thread.
 pub fn set_last_error(message: &str) {
     let c = CString::new(message.replace('\0', " ")).unwrap_or_default();
-    LAST.with(|l| *l.borrow_mut() = c);
+    // try_with: during thread teardown the slot may be gone; drop the message.
+    let _ = LAST.try_with(|l| *l.borrow_mut() = c);
 }
 
 /// Clear the message without allocating when it is already empty (the
 /// success path of every call).
 fn clear_last_error() {
-    LAST.with(|l| {
+    let _ = LAST.try_with(|l| {
         if !l.borrow().as_bytes().is_empty() {
             *l.borrow_mut() = CString::default();
         }
@@ -106,5 +107,6 @@ pub fn ffi(body: impl FnOnce() -> Result<(), FfiError>) -> tprims_status {
 /// Always safe to call; the returned pointer must not be freed.
 #[no_mangle]
 pub extern "C" fn tprims_last_error() -> *const c_char {
-    LAST.with(|l| l.borrow().as_ptr())
+    LAST.try_with(|l| l.borrow().as_ptr())
+        .unwrap_or(c"".as_ptr())
 }

@@ -34,5 +34,14 @@ Closing the 4-thread pool (joining its workers) took 99 us.
    GEMM call). `strided-view`'s borrowed-metadata `RawStridedRef` avoids
    them; accepting it in `tprims-blas`/`tprims-contract` is the follow-up.
 2. Small calls never enter the pool (4T rows equal 1T rows), as designed.
+   A malloc-counting interposer (Phase 1f review) measured about 13
+   allocations per 8x8 GEMM call from C, supporting the hypothesis in 1.
+
+Comparison caveats: the "empty call" Rust row reads a constant through
+`black_box`, not a function call, so it only bounds the C call's cost from
+below; the C 1T rows use a serial executor while the Rust 1T rows use a
+one-thread borrowed pool (both run serially on the caller); the Rust GEMM and
+contraction rows build their input views once, outside the loop, while the C
+calls rebuild them on every call (that is part of the measured boundary cost).
 3. Zero copy holds: the C test checks that results land in the caller's
    buffers for row-major (NULL strides), column-major and strided inputs.

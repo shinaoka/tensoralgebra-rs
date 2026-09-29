@@ -38,8 +38,8 @@ unsafe fn scalar<T: Copy>(p: *const c_void, name: &str) -> Result<T, FfiError> {
             format!("null {name}"),
         ));
     }
-    // SAFETY: non-null, a `T` per the ABI contract.
-    Ok(unsafe { *(p as *const T) })
+    // SAFETY: non-null, a `T` per the ABI contract (possibly unaligned).
+    Ok(unsafe { std::ptr::read_unaligned(p as *const T) })
 }
 
 fn check_no_overlap(

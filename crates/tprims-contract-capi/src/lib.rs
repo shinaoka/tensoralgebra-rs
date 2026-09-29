@@ -83,8 +83,9 @@ fn conj(c: i32) -> Conj {
     }
 }
 
-/// Create a plan for fixed layouts of A, B and C (their data pointers are
-/// not used; only shapes, strides, dtype and device). `strategy`: 0 auto,
+/// Create a plan for fixed layouts of A, B and C: shapes, strides, dtype and
+/// device are used; data pointers are only validated (non-null for
+/// non-empty tensors, aligned), not read. `strategy`: 0 auto,
 /// 1 permute plus batched GEMM, 2 TBLIS-style. `flags`: `TPRIMS_NO_MATERIALIZE`.
 ///
 /// # Safety
@@ -186,7 +187,10 @@ unsafe fn exec_t<T: Scalar>(
     // to one element of the dtype.
     unsafe {
         let (av, bv, mut cv) = (view::<T>(&la)?, view::<T>(&lb)?, view_mut::<T>(&c, &lc)?);
-        let (al, be) = (*(alpha as *const T), *(beta as *const T));
+        let (al, be) = (
+            std::ptr::read_unaligned(alpha as *const T),
+            std::ptr::read_unaligned(beta as *const T),
+        );
         exec_ref(exec)?.with(|x| p.execute(x, al, &av, &bv, be, &mut cv).map_err(map))
     }
 }

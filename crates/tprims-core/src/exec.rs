@@ -72,17 +72,19 @@ impl tprims_exec {
                     Ok(g) => g,
                     Err(_) => return TPRIMS_BUSY,
                 };
+                // Take the join list before releasing the pool lock and hold
+                // it while joining: a concurrent close that finds the pool
+                // already gone waits on this lock, so no close returns before
+                // every worker (including its TLS teardown) has finished.
+                let mut j = joins
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
                 let Some(p) = g.take() else {
-                    return TPRIMS_OK; // already closed
+                    return TPRIMS_OK; // already closed and joined
                 };
                 drop(p.into_owned()); // starts worker shutdown
                 drop(g);
-                let handles: Vec<_> = std::mem::take(
-                    &mut *joins
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner),
-                );
-                for h in handles {
+                for h in std::mem::take(&mut *j) {
                     let _ = h.join();
                 }
                 TPRIMS_OK
@@ -254,7 +256,11 @@ pub extern "C" fn tprims_exec_release(e: *mut tprims_exec) {
         }
     };
     if h.close() == TPRIMS_ERR_WOULD_DEADLOCK {
-        std::thread::spawn(finish);
+        // A worker cannot join its own pool: hand the join to a reaper. If no
+        // thread can be spawned the handle is leaked rather than panicking.
+        let _ = std::thread::Builder::new()
+            .name("tprims-reaper".into())
+            .spawn(finish);
     } else {
         finish();
     }
