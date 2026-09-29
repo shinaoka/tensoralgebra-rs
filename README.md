@@ -1,103 +1,115 @@
-# tensoralgebra-rs
+# tprims-rs
 
-An experimental design for a tensor4all CPU algebra stack: tensor contraction,
-GEMM, and batched dense linear algebra. AI-assisted contributions are welcome.
+An experimental design for a tensor4all CPU algebra stack in three layers:
+strided kernels, matrix algebra, and tensor primitives. AI-assisted
+contributions are welcome.
 
 **Status:** design and experiments; no stable API or performance claim.
-The names below describe proposed responsibilities. Modules can become separate
-crates when experiments establish useful boundaries.
+The names below describe proposed responsibilities. Crates can be created when
+experiments establish useful boundaries. This repository currently holds only
+design notes; the repository name is provisional.
 
-## Who owns what?
+## Three layers, one direction of dependency
 
-**Arrows mean “depends on.”** This diagram shows the computation layers;
-shared view and execution contracts are listed just below it.
-Colors indicate responsibilities: blue for tensor operations, green for matrix
-operations, gray for shared strided kernels, and gold for GEMM tile kernels.
-Repository boundaries remain provisional.
+**Arrows mean "depends on."** Each layer is an independent workspace. The lower
+layers never depend on the upper ones. Colors indicate layers: blue for tensor
+primitives, green for matrix algebra, gray for strided kernels.
 
 ```mermaid
 flowchart TB
-    E["tensoralgebra-einsum<br/>Index notation<br/>Contraction order"]
-    C["tensoralgebra-contract<br/>Binary contraction<br/>Tensor pack and scatter"]
-    S["tensoralgebra-strided<br/>Owned arrays, map, reduce<br/>Copy and permutation"]
-    B["matrixalgebra-linalg<br/>Batched LU / Cholesky / QR / SVD<br/>Batch plans and per-item status"]
-    L["matrixalgebra-linalg<br/>LU, Cholesky, QR, SVD<br/>Factors and solves"]
-    M["matrixalgebra<br/>GEMM and batched GEMM<br/>Matrix pack, TRSM, SYRK / HERK"]
-    K["matrixalgebra-kernel<br/>Packed GEMM tile kernels<br/>ISA dispatch"]
-    E --> C
-    B -->|"Reuse per-matrix algorithms"| L
-    L --> M
-    L -->|"Generic copy and scale"| S
-    M --> K
-    C -->|"Copy and permutation"| S
-    C -->|"Matrix fast path"| M
-    C -->|"Direct tensor path"| K
+    subgraph T["tprims-rs (tensor primitives)"]
+        TP["tprims<br/>Binary contraction: plan, tensor pack, scatter<br/>Permute, add, trace wrappers<br/>Tensor-level SVD / QR / LU wrappers"]
+    end
+    subgraph M["matalg-rs (matrix algebra)"]
+        ML["matalg-linalg<br/>LU, Cholesky, QR, SVD<br/>Factors, solves, batched module"]
+        MA["matalg<br/>GEMM driver and matrix packers<br/>TRSM, SYRK / HERK, batched GEMM"]
+        MK["matalg-kernel<br/>Packed GEMM tile kernels<br/>ISA dispatch, no scheduler"]
+    end
+    subgraph S["strided-rs (strided kernels)"]
+        SK["strided-kernel<br/>Map, reduce, fused elementwise"]
+        SP["strided-perm<br/>Copy and permutation"]
+        SE["strided-exec<br/>Executor, thread budget, scratch (new)"]
+        SV["strided-view + strided-traits<br/>Checked views, strides, scalar / conjugation"]
+    end
+    TP -->|"Direct tensor path"| MK
+    TP -->|"Matrix fast path"| MA
+    TP -->|"Matricized factorizations"| ML
+    TP -->|"Materialize path"| SP
+    TP --> SK
+    ML --> MA --> MK
+    ML -->|"Generic copy and scale"| SK
+    MK --> SV
+    MA --> SE
+    ML --> SE
+    SK --> SV
+    SP --> SV
+    SK --> SE
+    SP --> SE
+    TP --> SE
     classDef tensorLayer fill:#e8f2ff,stroke:#2563a6,color:#132f50
     classDef matrixLayer fill:#e7f5ec,stroke:#28784c,color:#173d27
-    classDef kernelLayer fill:#fff1cf,stroke:#a36b12,color:#503507
     classDef sharedLayer fill:#edf0f4,stroke:#536477,color:#233244
-    class E,C tensorLayer
-    class S sharedLayer
-    class B,L,M matrixLayer
-    class K kernelLayer
+    class TP tensorLayer
+    class ML,MA,MK matrixLayer
+    class SK,SP,SE,SV sharedLayer
 ```
 
-The two linalg nodes are responsibilities within **one crate**: batch APIs own
-batch plans, workspace sizing and per-item status; per-matrix routines own the
-numerical algorithms. Both use `algebra-exec` for explicit execution and scratch.
+| Layer | Workspace | Crates | Owns |
+| --- | --- | --- | --- |
+| Strided kernels | `strided-rs` (existing) | `strided-traits`, `strided-view`, `strided-perm`, `strided-kernel`, `strided-exec` (new) | Checked borrowed views, scalar and conjugation contracts, copy and permutation, map / reduce / fused elementwise, explicit executor and scratch. No algebra. |
+| Matrix algebra | `matalg-rs` (new) | `matalg-kernel`, `matalg`, `matalg-linalg` | Packed tile kernel, GEMM driver and BLAS-like operations, dense factorizations. Batched GEMM lives in `matalg`; batched factorizations are a module in `matalg-linalg`. |
+| Tensor primitives | `tprims-rs` (this repository) | `tprims` | Binary contraction (`tensordot` / `dot_general`) with plan, tensor panel packing and scatter. Thin wrappers for permute, add, trace and tensor-level factorizations. No numerical algorithm of its own. |
 
-| Shared foundation | Responsibility |
-| --- | --- |
-| `algebra-view` | Checked borrowed views, strides, scalar and conjugation contracts. Shared by matrix and tensor layers. |
-| `algebra-exec` | Explicit executor, thread budget, scratch planning and lifetime. Used by operation drivers; the tile kernel has no scheduler. |
+**What is deliberately excluded.** N-ary index notation and contraction-order
+planning (einsum) are not part of this stack. They stay in `strided-opteinsum`
+or in the frontend that needs them, and call `tprims` for each binary step.
+Tenferro continues to own AD, traced execution, device transfer and GPU
+backends. Adapters for `ndarray` / `mdarray` sit above the stack.
 
-`tensoralgebra-strided` is a reusable lower-level kernel layer. Contraction uses
-its copy/permutation operations when a plan selects materialization; einsum
-uses them through contraction. Linalg can reuse generic copy and scale operations,
-and frontends can call elementwise, broadcast and reduction kernels directly.
-Strided kernels depend on views and execution contracts, never on contraction
-or factorization algorithms. Their kernels accept borrowed views; owned-array
-helpers do not require backend operations to allocate.
-
-In a future repository split, shared strided kernels, views and execution must
-sit below both matrix and tensor operations, in the lower workspace or an
-independent foundation workspace. The provisional `tensoralgebra-` prefix does
-not imply an upper-layer dependency. Tenferro continues to own AD, traced
-execution, device transfer and GPU backends. Adapters sit above the shared stack.
+**Why the lowest layer is `strided-rs`.** The existing `strided-view` and
+`strided-traits` already provide checked borrowed views with lazy conjugation.
+Instead of a new `algebra-view`, the stack reuses them and adds one crate,
+`strided-exec`, for the caller-owned executor, thread budget and scratch
+contract. Every kernel in the two upper layers takes that execution context
+explicitly. No layer introduces an ambient global pool.
 
 ## The shared GEMM kernel
 
 **Arrows here show data flow.** Matrix GEMM and direct tensor contraction have
-different packers and drivers, but can use the same packed tile kernel.
+different packers and drivers, but use the same packed tile kernel in
+`matalg-kernel`.
 
 ```mermaid
 flowchart LR
-    A["Matrix views"] --> MP["Matrix driver<br/>Block and pack matrix panels"]
-    B["Tensor views + index plan"] --> TP["Contraction driver<br/>Pack tensor panels directly"]
-    MP --> K["Shared GEMM<br/>tile kernel"]
+    A["Matrix views"] --> MP["matalg driver<br/>Block and pack matrix panels"]
+    B["Tensor views + index plan"] --> TP["tprims driver<br/>Pack tensor panels directly"]
+    MP --> K["matalg-kernel<br/>packed tile kernel"]
     TP --> K
     K --> O["Computed tile<br/>Driver writes or scatters to output"]
     classDef driver fill:#e8f2ff,stroke:#2563a6,color:#132f50
-    classDef kernel fill:#fff1cf,stroke:#a36b12,color:#503507
+    classDef kernel fill:#e7f5ec,stroke:#28784c,color:#173d27
     class MP,TP driver
     class K kernel
 ```
 
 This follows the [BLIS](https://www.cs.utexas.edu/~flame/pubs/blis1_toms_rev3.pdf)
 and [TBLIS](https://arxiv.org/html/1607.00291v4) separation of packing and tile
-computation. A contraction plan selects a compatible matrix-view fast path,
-direct tensor packing, or explicitly reported materialization. Provider choice
-and access to a usable low-level kernel interface remain experiments.
-Direct panel packing stays with the contraction driver; a full copy or
-permutation uses the shared strided layer. Specialized packing should not be
-forced through a generic elementwise API.
+computation. A `tprims` contraction plan selects one of three paths: collapse
+compatible strides to a matrix view and call `matalg` GEMM without copying;
+pack bounded tensor panels directly into the `matalg-kernel` format and scatter
+irregular output tiles; or explicitly materialize operands through
+`strided-perm` when the extra bytes are worth the GEMM speed. Full-tensor
+materialization must be reported as a selected strategy. Provider choice and
+access to a usable low-level kernel interface remain experiments.
 
 ## Factorizations and batches
 
-`matrixalgebra-linalg` owns each decomposition's numerical algorithm and error
-semantics. Matrix primitives accelerate its updates.
+`matalg-linalg` owns each decomposition's numerical algorithm and error
+semantics. `matalg` primitives accelerate its updates. `tprims` exposes
+tensor-level factorizations only as matricize, call `matalg-linalg`, reshape
+back; it holds no pivoting, convergence or scaling logic.
 
-| Operation | Algorithm owned by linalg | Reused matrix work |
+| Operation | Algorithm owned by `matalg-linalg` | Reused `matalg` work |
 | --- | --- | --- |
 | Cholesky | Panel factorization and definiteness checks | TRSM, SYRK / HERK |
 | LU | Pivot selection, row swaps and factor storage | TRSM, GEMM |
@@ -112,8 +124,8 @@ provider or serial implementation. See [algorithm details and LAPACK sources](do
 ```mermaid
 flowchart TB
     H["Rust or C / Julia / Python caller"]
-    P["Batched GEMM or batched linalg API<br/>One entry with a reusable batch plan"]
-    X["algebra-exec<br/>Caller-controlled pool, thread budget and scratch"]
+    P["matalg batched GEMM or matalg-linalg batched module<br/>One entry with a reusable batch plan"]
+    X["strided-exec<br/>Caller-controlled pool, thread budget and scratch"]
     W1["Task 1<br/>Serial GEMM or factorization<br/>Exclusive scratch"]
     W2["Task 2<br/>Serial GEMM or factorization<br/>Exclusive scratch"]
     WN["Task N<br/>Serial GEMM or factorization<br/>Exclusive scratch"]
@@ -130,37 +142,37 @@ flowchart TB
 Tasks run on a bounded set of workers; each worker can reuse scratch between
 tasks. For a small batch of large matrices, measure inner-matrix parallelism
 instead. Both levels share one thread budget. A barrier-driven inner contraction
-needs a suitable synchronization contract; arbitrary pool submission is insufficient.
+needs a suitable synchronization contract; arbitrary pool submission is
+insufficient.
 
-Batched GEMM stays beside GEMM; batched decompositions stay beside their scalar
-operations in `matrixalgebra-linalg`. Reusing a serial routine per item is the
-first implementation; specialized small-matrix or interleaved batch algorithms
-can replace it behind the same batch contract after validation and measurement.
-C callers need an explicit handle or callback contract for execution
-and scratch. [Execution rationale and primary sources](docs/architecture.md#batched-execution).
+Batched GEMM stays beside GEMM in `matalg`; batched decompositions are a module
+of `matalg-linalg`, not a separate crate. Reusing a serial routine per item is
+the first implementation; specialized small-matrix or interleaved batch
+algorithms can replace it behind the same batch contract after validation and
+measurement. C callers need an explicit handle or callback contract for
+execution and scratch. [Execution rationale and primary sources](docs/architecture.md#batched-execution).
 
-## Where does strided-rs go?
+## What happens to strided-rs?
 
-**Arrows mean proposed migration, not dependencies.** Integration includes
-redesigning responsibilities and preserving tested semantics.
+`strided-rs` stays where it is and becomes the foundation layer. Only two
+changes are proposed. **Arrows mean proposed change, not dependencies.**
 
 ```mermaid
 flowchart LR
-    V["strided-traits + strided-view<br/>Borrowed views and scalar contracts"] --> AV["algebra-view"]
-    A["strided-view<br/>Owned StridedArray"] --> TS["tensoralgebra-strided"]
-    B["strided-basic / fused / kernel<br/>strided-perm"] --> TS
-    C["strided-einsum2"] --> TC["tensoralgebra-contract"]
-    E["strided-opteinsum"] --> TE["tensoralgebra-einsum"]
-    D["ndarray / mdarray adapters<br/>strided-rs facade"] --> AD["Thin adapters and transition facade"]
-    classDef shared fill:#fff1cf,stroke:#a36b12,color:#503507
+    N["(new) strided-exec<br/>Executor and scratch contract"] --> S["strided-rs workspace"]
+    E["strided-einsum2<br/>Binary einsum via contiguous prep + GEMM"] -->|"Superseded by"| TP["tprims"]
+    O["strided-opteinsum<br/>N-ary planner"] -->|"Calls binary step through"| TP
+    classDef shared fill:#edf0f4,stroke:#536477,color:#233244
     classDef tensor fill:#e8f2ff,stroke:#2563a6,color:#132f50
-    class AV shared
-    class TS,TC,TE,AD tensor
+    class N,S,O shared
+    class E,TP tensor
 ```
 
-Keep current consumers pinned until correctness and performance are verified.
-Preserve upstream attribution and file-level licenses when moving code or tests.
-[Migration details](docs/architecture.md#integrating-and-redesigning-strided-rs).
+`strided-view`, `strided-traits`, `strided-perm` and `strided-kernel` are
+reused as they are, with execution and scratch made explicit where they are
+currently ambient. Keep current consumers pinned until correctness and
+performance are verified. Preserve upstream attribution and file-level licenses
+when moving code or tests. [Migration details](docs/architecture.md#relationship-to-strided-rs).
 
 ## What do we try first?
 

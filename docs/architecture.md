@@ -2,7 +2,7 @@
 
 [Back to the visual overview](../README.md). These notes retain the detailed rationale, numerical requirements, and primary sources.
 
-An experimental design space for a tensor4all CPU algebra stack: strided arrays, matrix multiplication, tensor contraction, and dense factorizations, including batches. AI-assisted design and implementation are welcome; contributors remain responsible for correctness, measurements, and code provenance. There is no stable API or performance claim yet.
+An experimental design space for a tensor4all CPU algebra stack: strided kernels, matrix multiplication, dense factorizations including batches, and binary tensor contraction. AI-assisted design and implementation are welcome; contributors remain responsible for correctness, measurements, and code provenance. There is no stable API or performance claim yet.
 
 ## Working hypotheses
 
@@ -13,40 +13,52 @@ An experimental design space for a tensor4all CPU algebra stack: strided arrays,
 
 These are questions, not settled design decisions. [The research map](research-map.md) distinguishes published evidence from project-specific hypotheses. [The experiment plan](experiments.md) defines the first three independent prototypes and how to compare them.
 
-## Proposed crate boundaries
+## Three layers
 
-The central boundary is a **packed GEMM tile kernel** shared by matrix GEMM and direct tensor contraction. Matrix GEMM owns its ordinary matrix packing and blocked driver. Tensor contraction owns index planning, tensor packing, and irregular output scatter. Matrix factorizations use matrix operations and their own numerical algorithms. Batched APIs compose per-matrix algorithms with explicit scheduling and reusable scratch.
+The stack is three independent workspaces with one direction of dependency: tensor primitives depend on matrix algebra, matrix algebra depends on strided kernels, and strided kernels depend on nothing in the stack. Repository placement follows this graph; no cycle is allowed.
 
-This is a provisional map, not a request to create every crate now. Prototypes can start in this workspace. If the interfaces stabilize, `matrixalgebra-rs` can be the matrix backend repository and `tensoralgebra-rs` the tensor operation repository under tensor4all. Shared views, execution contracts, and generic strided kernels must sit below both operation families, in the lower workspace or an independent foundation workspace. Repository placement follows the dependency graph, not a provisional crate-name prefix, and must not introduce a cycle. Neither a new backend repository nor a transfer of this one has been performed.
+| Layer | Workspace | Crate | Responsibility |
+| --- | --- | --- | --- |
+| Strided kernels | `strided-rs` | `strided-traits`, `strided-view` | Checked borrowed strided views and metadata, scalar/conjugation contracts, rank-2 matrix views of the same storage. No owning tensor type from tenferro, no thread pool. Existing crates, reused. |
+| | | `strided-exec` (new) | Caller-owned executor/session contract, thread budget, scratch-size queries, reusable per-worker scratch, serial fallback. No ambient global pool requirement. |
+| | | `strided-perm` | Explicit copy and permutation (HPTT-inspired). Existing crate. |
+| | | `strided-kernel` | Map, reduce, broadcast and fused elementwise kernels on borrowed views. Existing crate; execution and scratch to be made explicit. |
+| Matrix algebra | `matalg-rs` | `matalg-kernel` | Packed A/B panel format, scalar fallback, ISA dispatch, and GEMM microkernels computing bounded result tiles. No public full-matrix GEMM, no scheduler, no tensor labels. |
+| | | `matalg` | Matrix GEMM driver, matrix packers, blocking, batched GEMM, and necessary BLAS-like operations such as GEMV, TRSM, and SYRK/HERK. |
+| | | `matalg-linalg` | LU, Cholesky, QR, SVD, factor objects, solves, errors, workspace plans. Batched entry points are a `batched` module of this crate. |
+| Tensor primitives | `tprims-rs` | `tprims` | Binary `tensordot`/`dot_general`: plans, tensor panel packing, bounded scatter metadata, output tile updates. Thin wrappers for permute, add and trace over `strided-perm` / `strided-kernel`. Thin tensor-level SVD/QR/LU wrappers over `matalg-linalg` (matricize, call, reshape back). |
 
-| Proposed crate | Responsibility |
-| --- | --- |
-| `algebra-view` (lower level) | Checked borrowed strided views and metadata, scalar/conjugation contracts, rank-2 matrix views of the same storage. No owning tenferro tensor or thread pool. |
-| `algebra-exec` (lower level) | Caller-owned executor/session contract, thread budget, scratch-size queries, reusable per-worker scratch, serial fallback. No ambient global pool requirement. |
-| `matrixalgebra-kernel` | Packed A/B panel format, scalar fallback, ISA dispatch, and GEMM microkernels computing bounded result tiles. No public full-matrix GEMM or tensor labels. |
-| `matrixalgebra` | Matrix GEMM driver, matrix packers, blocking, and necessary BLAS-like operations such as GEMV, TRSM, and SYRK/HERK. |
-| `matrixalgebra-linalg` | LU, Cholesky, QR, SVD, factor objects, solves, errors, workspace plans, and batched entry points. |
-| `tensoralgebra-strided` | Shared lower-level map/reduce/broadcast, fused elementwise work, and explicit copy/permutation, redesigned from `strided-rs`. Kernels operate on borrowed views; owned-array helpers are separate from kernel execution. |
-| `tensoralgebra-contract` | Binary `tensordot`/`dot_general`: plans, tensor panel packing, bounded scatter metadata, output tile updates. |
-| `tensoralgebra-einsum` | N-ary index syntax and contraction-order planning, calling the binary engine. |
+The central boundary is the **packed GEMM tile kernel** in `matalg-kernel`, shared by matrix GEMM and direct tensor contraction. `matalg` owns ordinary matrix packing and the blocked driver. `tprims` owns index planning, tensor packing, and irregular output scatter. `matalg-linalg` uses `matalg` operations and its own numerical algorithms. Batched APIs compose per-matrix algorithms with explicit scheduling and reusable scratch.
 
-These are *responsibilities* before they are package names. Keep related modules in one crate until a separate consumer and stable interface justify a split. Batched scheduling is shared execution machinery; `batched_gemm` and batched factorizations remain beside their scalar operations. Thin `ndarray`/`mdarray` adapters and an optional facade sit above the core. Tenferro continues to own AD, traced execution, device transfer, and GPU backends.
+Each layer is deliberately small. `tprims` is a single crate: contraction is its only substantial algorithm, and everything else in it is a wrapper that names a tensor operation and delegates. `matalg-linalg` is a single crate: batched scheduling is a module, not a separate numerical library. Additional crates are created only when a separate consumer and a stable interface justify the split.
 
-`algebra-view` and `algebra-exec` provide the shared contracts. `tensoralgebra-strided` builds reusable kernels on those contracts and never depends on contraction or factorization algorithms. `matrixalgebra-kernel` contains no scheduler; `matrixalgebra` uses the tile kernel and shared contracts. `matrixalgebra-linalg` uses matrix operations and reuses generic strided copy/scale where appropriate; numerically specialized reductions and panel algorithms remain its responsibility. `tensoralgebra-contract` uses shared strided copy/permutation for selected materialization paths, the tile kernel for direct contraction, and matrix GEMM for compatible fast paths. `tensoralgebra-einsum` reaches these kernels through the binary contraction engine. Frontends may also call shared strided operations directly. Every dependency on the strided layer uses the caller's execution and scratch context.
+### What is excluded
+
+- **N-ary einsum.** Index notation and contraction-order planning are a frontend concern. They stay in `strided-opteinsum` or in the consumer (tenferro, Julia/Python frontends) and call `tprims` for each binary step. The stack exposes no index-string API.
+- **AD, traced execution, device transfer, GPU backends.** Tenferro owns these. Adapters for `ndarray` / `mdarray` and any facade sit above the stack.
+- **Tensor-level numerical algorithms.** `tprims` does not implement pivoting, convergence, or scaling. A tensor SVD is a matricized call into `matalg-linalg`.
+
+### Dependency rules
+
+- `strided-*` crates never depend on `matalg-*` or `tprims`.
+- `matalg-kernel` depends only on `strided-view` / `strided-traits`. It contains no scheduler and takes no executor.
+- `matalg` and `matalg-linalg` take an explicit `strided-exec` context for every expensive operation. `matalg-linalg` may reuse generic copy/scale from `strided-kernel`; numerically specialized reductions and panel algorithms remain its responsibility.
+- `tprims` depends on `matalg-kernel` (direct path), `matalg` (matrix-view fast path), `matalg-linalg` (matricized factorizations), `strided-perm` and `strided-kernel` (materialize path and wrappers), and `strided-exec`.
+- Every dependency on the strided layer uses the caller's execution and scratch context.
 
 ### Why tensor contraction uses the GEMM kernel, not only `gemm()`
 
-[BLIS](https://www.cs.utexas.edu/~flame/pubs/blis1_toms_rev3.pdf) separates blocking, packing, and a register-tile microkernel. [TBLIS §6–7](https://arxiv.org/html/1607.00291v4) reuses BLIS microkernels but needs its own tensor-aware packing and inner driver. An irregular output tile may require a small temporary tile followed by scatter; it does **not** require a full output transpose. TBLIS explicitly reports that the ordinary BLIS framework did not expose enough flexibility in its inner loops. Accordingly, `tensoralgebra-contract` depends on the packed-kernel contract; calling public matrix GEMM is one selected fast path, not the entire implementation.
+[BLIS](https://www.cs.utexas.edu/~flame/pubs/blis1_toms_rev3.pdf) separates blocking, packing, and a register-tile microkernel. [TBLIS §6–7](https://arxiv.org/html/1607.00291v4) reuses BLIS microkernels but needs its own tensor-aware packing and inner driver. An irregular output tile may require a small temporary tile followed by scatter; it does **not** require a full output transpose. TBLIS explicitly reports that the ordinary BLIS framework did not expose enough flexibility in its inner loops. Accordingly, `tprims` depends on the `matalg-kernel` packed-kernel contract; calling public `matalg` GEMM is one selected fast path, not the entire implementation.
 
-A binary contraction plan validates free-left, reduction, free-right, and shared batch indices, output shape and aliasing, then chooses a measured path: (1) collapse compatible strides to a matrix view and call GEMM without copying; (2) pack bounded tensor panels directly into the shared kernel format and scatter irregular output tiles; or (3) explicitly materialize operands when extra bytes are worth the GEMM speed. The public semantics should be `C = alpha * contract(A, B) + beta * C`, with a checked caller-output form and defined zero-size behavior. Planning may fold contiguous dimensions and reorder logical traversal without changing user-visible index order. Full-tensor materialization must be reported as a selected strategy.
+A binary contraction plan validates free-left, reduction, free-right, and shared batch indices, output shape and aliasing, then chooses a measured path: (1) collapse compatible strides to a matrix view and call `matalg` GEMM without copying; (2) pack bounded tensor panels directly into the `matalg-kernel` format and scatter irregular output tiles; or (3) explicitly materialize operands through `strided-perm` when extra bytes are worth the GEMM speed. The public semantics should be `C = alpha * contract(A, B) + beta * C`, with a checked caller-output form and defined zero-size behavior. Planning may fold contiguous dimensions and reorder logical traversal without changing user-visible index order. Full-tensor materialization must be reported as a selected strategy.
 
 The first kernel-contract prototype can use a scalar tile kernel. `gemm`, gemmkit, and BLIS are candidates or baselines; whether any exposes a usable low-level panel/microkernel seam must be checked. Their public GEMM calls alone cannot implement the direct TBLIS-style path.
 
-Full copy/permutation is implemented by the shared strided layer. Kernel-specific panel packing and output scatter stay with the contraction driver, which knows the packed format, index plan, and tile update semantics. A direct path therefore need not call a standalone permutation kernel, and specialized packers need not be expressed through a generic elementwise API.
+Full copy/permutation is implemented by `strided-perm`. Kernel-specific panel packing and output scatter stay with the `tprims` driver, which knows the packed format, index plan, and tile update semantics. A direct path therefore need not call a standalone permutation kernel, and specialized packers need not be expressed through a generic elementwise API.
 
 ### Matrix decompositions
 
-`matrixalgebra-linalg` owns pivoting, scaling, factor storage, convergence, and solve semantics. It uses `matrixalgebra` for large trailing updates and small direct/panel kernels where GEMM is a poor fit. The operations share the matrix view and executor, not one universal decomposition algorithm.
+`matalg-linalg` owns pivoting, scaling, factor storage, convergence, and solve semantics. It uses `matalg` for large trailing updates and small direct/panel kernels where GEMM is a poor fit. The operations share the matrix view and executor, not one universal decomposition algorithm.
 
 | Operation | Starting decomposition | Batched baseline |
 | --- | --- | --- |
@@ -57,9 +69,11 @@ Full copy/permutation is implemented by the shared strided layer. Kernel-specifi
 
 Start with `f32`/`f64`, then complex arithmetic with explicit conjugation behavior. Require reconstruction/solve residuals, QR orthogonality, rank-deficient and non-positive-definite inputs, extreme scales, and convergence status before timing. SVD is a separate numerical workstream, not a straightforward GEMM extension.
 
+Tensor-level factorizations in `tprims` reshape a strided tensor into a rank-2 view over the same storage when the split is stride-compatible, or materialize through `strided-perm` otherwise, then call `matalg-linalg`. The wrapper reports which of the two it did and adds no numerical logic.
+
 ### Batched execution
 
-`matrixalgebra-linalg` contains both per-matrix factorization algorithms and batched LU, Cholesky, QR, and SVD APIs. The batch layer owns batch descriptors, output/status arrays, scratch planning, and the choice of batch versus inner-matrix parallelism. It uses `algebra-exec` to execute that schedule and reuses per-matrix routines as its first implementation. This is a module boundary within the linalg crate, not a separate batch-only numerical library. `matrixalgebra` similarly owns batched GEMM. Specialized small-matrix or interleaved batch kernels can later replace the per-item implementation under the same batch contract; they require their own correctness and performance evidence. Batched SVD follows the staged solver plan described above.
+`matalg-linalg` contains both per-matrix factorization algorithms and a `batched` module with LU, Cholesky, QR, and SVD entry points. The batch module owns batch descriptors, output/status arrays, scratch planning, and the choice of batch versus inner-matrix parallelism. It uses `strided-exec` to execute that schedule and reuses per-matrix routines as its first implementation. `matalg` similarly owns batched GEMM. Specialized small-matrix or interleaved batch kernels can later replace the per-item implementation under the same batch contract; they require their own correctness and performance evidence. Batched SVD follows the staged solver plan described above.
 
 The first API targets equally shaped strided matrices; grouped heterogeneous shapes can follow. A prepared batch plan can reuse validated descriptors and one scratch region per worker. Schedule **one serial matrix operation per independent task** on the caller's executor initially. For a small batch of large matrices, measure inner-matrix threading instead. One thread budget controls both levels so nested parallelism does not oversubscribe. A single FFI batch call amortizes call and executor-entry costs.
 
@@ -67,32 +81,33 @@ Return a per-item status and define the contents of failed outputs. Batched GEMM
 
 ### Executor and FFI contract
 
-Every expensive operation accepts an explicit context or prepared handle referring to caller-owned execution and scratch. Serial work runs directly on the calling thread. A C/Julia/Python host needs a retainable opaque handle or equivalent callback contract; a Rust `&rayon::ThreadPool` is only a Rust adapter. Specify task submission/completion, thread budget, scratch lifetime, and caller-thread participation. Direct pool passage and low-cost FFI entry are goals to prototype and measure, not present capabilities of `gemm` or gemmkit.
+`strided-exec` defines the contract. Every expensive operation accepts an explicit context or prepared handle referring to caller-owned execution and scratch. Serial work runs directly on the calling thread. A C/Julia/Python host needs a retainable opaque handle or equivalent callback contract; a Rust `&rayon::ThreadPool` is only a Rust adapter. Specify task submission/completion, thread budget, scratch lifetime, and caller-thread participation. Direct pool passage and low-cost FFI entry are goals to prototype and measure, not present capabilities of `gemm` or gemmkit.
 
 TBLIS also uses cooperating threads and barriers inside a blocked contraction. An arbitrary task-submission pool does not automatically provide that contract. Start with outer-batch parallelism and serial inner contractions, then prototype an explicitly synchronized inner driver if large contractions need it. Measure it with the caller's actual executor.
 
-## Integrating and redesigning `strided-rs`
+## Relationship to `strided-rs`
 
-The [current `strided-rs` workspace](https://github.com/tensor4all/strided-rs/blob/main/Cargo.toml) already has views, basic and fused kernels, HPTT-inspired permutation, binary einsum, N-ary planning, adapters, and a facade. The integration should preserve tested semantics while replacing boundaries that force ambient threading or hidden materialization:
+The [current `strided-rs` workspace](https://github.com/tensor4all/strided-rs/blob/main/Cargo.toml) already has views, basic and fused kernels, HPTT-inspired permutation, binary einsum, N-ary planning, adapters, and a facade. It is not migrated into this stack; it *is* the lowest layer. The proposed changes are limited:
 
-| Current component | Proposed destination and review |
+| Current component | Proposed role and review |
 | --- | --- |
-| `strided-traits`, `strided-view` | `algebra-view`: preserve checked borrowing and lazy conjugation; separate borrowed metadata from owned `StridedArray`, which belongs with `tensoralgebra-strided`. Place the shared view crate in the lower-level workspace to avoid a dependency cycle. |
-| `strided-basic`, `strided-fused`, `strided-kernel` | `tensoralgebra-strided`: keep useful map/reduce/fused paths, make execution and scratch explicit, and review repeated metadata/index work. Basic and fused can remain modules until separate crates earn their cost. |
-| `strided-perm` | Explicit copy/transpose under `tensoralgebra-strided`, or its own crate if independently needed. Preserve [HPTT provenance and license](https://github.com/tensor4all/strided-rs/blob/main/docs/PROVENANCE_AND_CITATION_POLICY.md). |
-| `strided-einsum2` | `tensoralgebra-contract`: preserve semantic tests and provider comparisons; replace default contiguous preparation with matrix-view/direct-pack/materialize choices. |
-| `strided-opteinsum` | `tensoralgebra-einsum`: preserve the N-ary planner while using one binary contraction engine. |
-| `mdarray-opteinsum`, `ndarray-opteinsum`, `strided-rs` facade | Thin adapters or transition facade. Keep current consumers, including tenferro, pinned until equivalent correctness and performance are verified. |
+| `strided-traits`, `strided-view` | Reused unchanged as the shared view contract. Preserve checked borrowing and lazy conjugation. |
+| `strided-exec` (new) | Add the executor, thread budget and scratch contract. Existing kernels gain an explicit context parameter where they currently rely on ambient threading. |
+| `strided-perm` | Reused as the copy/permutation kernel for `tprims` materialize paths and permute wrappers. Preserve [HPTT provenance and license](https://github.com/tensor4all/strided-rs/blob/main/docs/PROVENANCE_AND_CITATION_POLICY.md). |
+| `strided-kernel` | Reused for map/reduce/fused paths and for generic copy/scale in `matalg-linalg`. Review repeated metadata/index work; make execution and scratch explicit. |
+| `strided-einsum2` | Superseded by `tprims`. Its semantic tests and provider comparisons move to `tprims`; its default contiguous-preparation path is replaced by the matrix-view / direct-pack / materialize plan. |
+| `strided-opteinsum` | Stays in `strided-rs` as the N-ary planner. Its binary step is retargeted to `tprims`. |
+| `mdarray-opteinsum`, `ndarray-opteinsum`, `strided-rs` facade | Thin adapters above the stack. Keep current consumers, including tenferro, pinned until equivalent correctness and performance are verified. |
 
 Current binary einsum [passes operands through a contiguous-preparation path before GEMM](https://github.com/tensor4all/strided-rs/blob/main/strided-einsum2/src/lib.rs); compatible views may avoid a copy, but a direct tensor packer is a different architecture. Moving Julia/HPTT-derived code also requires preserving its source attribution and file-level licenses under the [provenance policy](provenance.md). An independently implemented published algorithm and a translated source file have different obligations. No `strided-rs` code or tests have been copied into this repository.
 
 ## Implementation order
 
-1. Define checked views, scalar/output semantics, executor and scratch ownership, reference scalar kernels, and a real C caller. Validate results before timing.
-2. Test the packed tile seam with ordinary matrix GEMM and several irregular contractions. Compare providers; keep a scalar fallback. Add ISA kernels only when measurement warrants it.
-3. Implement or integrate matrix GEMM, TRSM, SYRK/HERK and small/panel routines; validate Cholesky, LU, and QR against reconstruction and provider oracles.
-4. Add homogeneous batched calls and direct tensor pack/scatter; compare with materialization and provider-backed paths. Then consider interleaved small batches, grouped batches, and N-ary planning.
-5. Specify SVD accuracy and convergence requirements and benchmark a provider baseline before committing to a native solver. Extract production crates only after an interface and another consumer exist, consistent with [tenferro #1927](https://github.com/tensor4all/tenferro-rs/issues/1927).
+1. Define `strided-exec`: executor and scratch ownership, reference scalar kernels, and a real C caller. Validate results before timing.
+2. Test the `matalg-kernel` packed tile seam with ordinary matrix GEMM and several irregular contractions. Compare providers; keep a scalar fallback. Add ISA kernels only when measurement warrants it.
+3. Implement or integrate `matalg` GEMM, TRSM, SYRK/HERK and small/panel routines; validate Cholesky, LU, and QR in `matalg-linalg` against reconstruction and provider oracles.
+4. Add homogeneous batched calls and the `tprims` direct pack/scatter path; compare with materialization and provider-backed paths. Then consider interleaved small batches, grouped batches, and retargeting `strided-opteinsum`.
+5. Specify SVD accuracy and convergence requirements and benchmark a provider baseline before committing to a native solver. Create the `matalg-rs` repository and production crates only after an interface and another consumer exist, consistent with [tenferro #1927](https://github.com/tensor4all/tenferro-rs/issues/1927).
 
 AI-assisted contributions may include algorithms, implementations, benchmarks, counterexamples, and design proposals. Acceptance rests on attributable sources, numerical tests, reproducible performance evidence for optimization claims, and maintainer review. [Research map](research-map.md), [experiment protocol](experiments.md), [decision log](decision-log.md), and [provenance policy](provenance.md) record the evidence and open questions.
 
