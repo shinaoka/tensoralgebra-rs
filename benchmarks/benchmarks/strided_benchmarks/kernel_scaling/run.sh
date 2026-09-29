@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Build and run the kernel scaling page against an arbitrary strided-rs tree.
 #
-#   STRIDED_RS_DIR=/path/to/strided-rs run.sh build
-#   STRIDED_RS_DIR=/path/to/strided-rs run.sh check [THREADS]
-#   STRIDED_RS_DIR=/path/to/strided-rs run.sh rust THREADS
+#   [STRIDED_RS_DIR=/path/to/strided-tree] run.sh build
+#   [STRIDED_RS_DIR=/path/to/strided-tree] run.sh check [THREADS]
+#   [STRIDED_RS_DIR=/path/to/strided-tree] run.sh rust THREADS
 #   run.sh julia THREADS
 #
-# The suite Cargo.toml points at ../strided-rs. To measure any other tree
+# The package is part of the tprims-rs workspace (strided code under
+# ../strided). To measure any other tree
 # without editing it, this script writes a standalone manifest under
 # target/kernel-scaling/<rev>/ whose only path dependency is
 # $STRIDED_RS_DIR/strided-kernel. Nothing outside target/ and data/results/
@@ -64,8 +65,8 @@ debug = 1
 EOF
     # Reuse the suite lock file as a starting point so shared crates resolve
     # to the same versions; cargo prunes and extends it as needed.
-    if [[ ! -f "$build_dir/Cargo.lock" && -f "$root/Cargo.lock" ]]; then
-        cp "$root/Cargo.lock" "$build_dir/Cargo.lock"
+    if [[ ! -f "$build_dir/Cargo.lock" && -f "$root/../Cargo.lock" ]]; then
+        cp "$root/../Cargo.lock" "$build_dir/Cargo.lock"
     fi
 }
 

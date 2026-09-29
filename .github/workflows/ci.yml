@@ -40,6 +40,10 @@ jobs:
       # (thin LTO, one codegen unit); upstream CI tests both.
       - run: cargo test -j 16 -p tensorcontract --release
       - run: cargo run -j 16 --release -p tensorprimitives-bench -- info
+      # Upstream tensorprimitives checks: the out-of-root readme still packages,
+      # and the `std` feature seam still builds without it.
+      - run: cargo package -j 16 -p tensorcontract --list --allow-dirty
+      - run: cargo build -j 16 -p tensorcontract --no-default-features
 
   msrv:
     runs-on: ubuntu-latest

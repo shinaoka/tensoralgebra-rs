@@ -68,8 +68,8 @@ Crate, header and symbol names map one to one: `tprims-blas` exposes
 rename on import, for example `blas = { package = "tprims-blas" }`.
 
 **Deliberately excluded:** N-ary einsum and contraction-order planning (they
-stay in `strided-opteinsum` or the frontend and call `tprims-contract` per
-binary step); iterative Krylov solvers (deferred, see the
+stay above the stack, in the published `strided-opteinsum` releases or the
+frontend, and call `tprims-contract` per binary step); iterative Krylov solvers (deferred, see the
 [decision log](docs/decision-log.md)); AD, tracing, device transfer and GPU
 backends.
 
