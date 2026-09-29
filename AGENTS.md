@@ -27,6 +27,10 @@ This is a research repository, not a production tensor-algebra library. Read `RE
 - `benchmarks/`: package `tprims-bench` (started as an import of
   strided-rs-benchmark-suite). Every new operation adds rows here at 1T and 4T.
 - `experiments/`: standalone measurement probes, excluded from the workspace.
+- `.agents/skills/` (canonical, read by Codex and pi), mirrored byte for byte
+  in `.claude/skills/`, with OpenCode commands in `.opencode/commands/`;
+  `python3 scripts/check-agent-skills.py` checks the mirrors. Run benchmarks
+  with the `tprims-benchmark` skill.
 - strided-rs is an external git dependency pinned to the v0.4.4 commit,
   spelled exactly as in tenferro-rs (`Cargo.toml`); strided changes and
   strided benchmarks go to tensor4all/strided-rs and

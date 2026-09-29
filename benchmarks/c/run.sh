@@ -7,10 +7,11 @@ root=$(cd "$(dirname "$0")/../.." && pwd)
 cargo build -j 16 --release -p tprims-bundle --manifest-path "$root/Cargo.toml" >&2
 cargo build -j 16 --release -p tprims-bench --bin capi_rust --manifest-path "$root/Cargo.toml" >&2
 lib=$root/target/release
+pin=$root/benchmarks/scripts/pinned.sh
 mkdir -p "$out"
 cc -O2 -std=c11 -o "$out/bench_c" "$root/benchmarks/c/bench.c" -I"$root/crates/tprims-core/include" -L"$lib" -Wl,-rpath,"$lib" -ltprims -lm
 for t in 1 4; do
     cpus=$cpus1; [[ $t == 4 ]] && cpus=$cpus4
-    taskset -c "$cpus" "$out/bench_c" "$t" > "$out/c-${t}t.csv"
-    taskset -c "$cpus" "$lib/capi_rust" --threads "$t" > "$out/rust-${t}t.csv"
+    "$pin" "$cpus" -- "$out/bench_c" "$t" > "$out/c-${t}t.csv"
+    "$pin" "$cpus" -- "$lib/capi_rust" --threads "$t" > "$out/rust-${t}t.csv"
 done

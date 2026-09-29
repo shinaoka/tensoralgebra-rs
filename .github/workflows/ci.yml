@@ -19,6 +19,14 @@ jobs:
           components: rustfmt
       - run: cargo fmt --all -- --check
 
+  scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/check-agent-skills.py
+      - run: python3 benchmarks/scripts/test_idle_cpus.py
+      - run: bash -n benchmarks/scripts/pinned.sh benchmarks/benchmarks/tprims/linalg/run.sh benchmarks/benchmarks/tprims/contract/run.sh benchmarks/c/run.sh
+
   clippy:
     runs-on: ubuntu-latest
     steps:
