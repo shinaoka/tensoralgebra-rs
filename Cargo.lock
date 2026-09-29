@@ -1373,6 +1373,20 @@ dependencies = [
  "strided-perm",
  "strided-view",
  "tensorcontract",
+ "tprims-blas",
+ "tprims-exec",
+]
+
+[[package]]
+name = "tprims-blas"
+version = "0.1.0"
+dependencies = [
+ "faer",
+ "num-complex",
+ "rayon",
+ "strided-view",
+ "tensorcontract",
+ "thiserror",
  "tprims-exec",
 ]
 

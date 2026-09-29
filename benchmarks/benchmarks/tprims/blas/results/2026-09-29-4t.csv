@@ -1,0 +1,80 @@
+# threads: requested=4 pool=4 budget=4
+case,variant,threads,median_ns,samples
+gemm_f64,n8,4,170,50
+gemm_f64,n32,4,2400,50
+gemm_f64,n128,4,43492,50
+gemm_f64,n512,4,1584533,50
+gemm_f64,n512_at,4,1522041,50
+gemm_f64,n1024,4,12318987,15
+gemm_c64,n8,4,330,50
+gemm_c64,n32,4,6921,50
+gemm_c64,n128,4,112184,50
+gemm_c64,n512,4,5897723,15
+gemm_c64,n512_at,4,5910613,15
+gemm_c64,n1024,4,48121020,5
+gemm_batched_f64,faer_n2_b1024,4,34191,50
+# selected faer_n2_b1024: Some(FaerLoop { outer_parallel: false })
+gemm_batched_f64,tblis_n2_b1024,4,588183,50
+# selected tblis_n2_b1024: Some(Tblis { outer_parallel: false })
+CHECK gemm_batched_f64 n2_b1024 threads=4 faer_vs_tblis_max_abs=0e0 ok
+gemm_batched_f64,faer_n4_b1024,4,47132,50
+# selected faer_n4_b1024: Some(FaerLoop { outer_parallel: false })
+gemm_batched_f64,tblis_n4_b1024,4,643096,50
+# selected tblis_n4_b1024: Some(Tblis { outer_parallel: false })
+CHECK gemm_batched_f64 n4_b1024 threads=4 faer_vs_tblis_max_abs=0e0 ok
+gemm_batched_f64,faer_n8_b1024,4,42432,50
+# selected faer_n8_b1024: Some(FaerLoop { outer_parallel: true })
+gemm_batched_f64,tblis_n8_b1024,4,329093,50
+# selected tblis_n8_b1024: Some(Tblis { outer_parallel: true })
+CHECK gemm_batched_f64 n8_b1024 threads=4 faer_vs_tblis_max_abs=0e0 ok
+gemm_batched_f64,faer_n32_b256,4,136405,50
+# selected faer_n32_b256: Some(FaerLoop { outer_parallel: true })
+gemm_batched_f64,tblis_n32_b256,4,335174,50
+# selected tblis_n32_b256: Some(Tblis { outer_parallel: true })
+CHECK gemm_batched_f64 n32_b256 threads=4 faer_vs_tblis_max_abs=0e0 ok
+gemm_batched_f64,faer_n128_b16,4,659136,50
+# selected faer_n128_b16: Some(FaerLoop { outer_parallel: false })
+gemm_batched_f64,tblis_n128_b16,4,966808,50
+# selected tblis_n128_b16: Some(Tblis { outer_parallel: false })
+CHECK gemm_batched_f64 n128_b16 threads=4 faer_vs_tblis_max_abs=0e0 ok
+gemm_batched_f64,faer_n512_b1,4,1538531,50
+# selected faer_n512_b1: Some(FaerLoop { outer_parallel: false })
+gemm_batched_f64,tblis_n512_b1,4,1894375,50
+# selected tblis_n512_b1: Some(Tblis { outer_parallel: false })
+CHECK gemm_batched_f64 n512_b1 threads=4 faer_vs_tblis_max_abs=1.4210854715202004e-14 ok
+gemm_batched_c64,faer_n2_b1024,4,44562,50
+# selected faer_n2_b1024: Some(FaerLoop { outer_parallel: false })
+gemm_batched_c64,tblis_n2_b1024,4,601113,50
+# selected tblis_n2_b1024: Some(Tblis { outer_parallel: false })
+CHECK gemm_batched_c64 n2_b1024 threads=4 faer_vs_tblis_max_abs=1.1102230246251565e-16 ok
+gemm_batched_c64,faer_n4_b1024,4,67202,50
+# selected faer_n4_b1024: Some(FaerLoop { outer_parallel: false })
+gemm_batched_c64,tblis_n4_b1024,4,674047,50
+# selected tblis_n4_b1024: Some(Tblis { outer_parallel: false })
+CHECK gemm_batched_c64 n4_b1024 threads=4 faer_vs_tblis_max_abs=2.220446049250313e-16 ok
+gemm_batched_c64,faer_n8_b1024,4,72713,50
+# selected faer_n8_b1024: Some(FaerLoop { outer_parallel: true })
+gemm_batched_c64,tblis_n8_b1024,4,300912,50
+# selected tblis_n8_b1024: Some(Tblis { outer_parallel: true })
+CHECK gemm_batched_c64 n8_b1024 threads=4 faer_vs_tblis_max_abs=4.440892098500626e-16 ok
+gemm_batched_c64,faer_n32_b256,4,455908,50
+# selected faer_n32_b256: Some(FaerLoop { outer_parallel: true })
+gemm_batched_c64,tblis_n32_b256,4,846184,50
+# selected tblis_n32_b256: Some(Tblis { outer_parallel: true })
+CHECK gemm_batched_c64 n32_b256 threads=4 faer_vs_tblis_max_abs=1.3322676295501878e-15 ok
+gemm_batched_c64,faer_n128_b16,4,1844473,50
+# selected faer_n128_b16: Some(FaerLoop { outer_parallel: false })
+gemm_batched_c64,tblis_n128_b16,4,2387974,50
+# selected tblis_n128_b16: Some(Tblis { outer_parallel: false })
+CHECK gemm_batched_c64 n128_b16 threads=4 faer_vs_tblis_max_abs=3.552713678800501e-15 ok
+gemm_batched_c64,faer_n512_b1,4,5900293,15
+# selected faer_n512_b1: Some(FaerLoop { outer_parallel: false })
+gemm_batched_c64,tblis_n512_b1,4,7012757,15
+# selected tblis_n512_b1: Some(Tblis { outer_parallel: false })
+CHECK gemm_batched_c64 n512_b1 threads=4 faer_vs_tblis_max_abs=2.770846217324862e-14 ok
+trsm_f64,left_lower_n32_nrhs32,4,5190,50
+trsm_f64,left_lower_n256_nrhs256,4,238220,50
+trsm_f64,left_lower_n1024_nrhs1024,4,8820278,15
+trsm_c64,left_lower_n32_nrhs32,4,8611,50
+trsm_c64,left_lower_n256_nrhs256,4,653446,50
+trsm_c64,left_lower_n1024_nrhs1024,4,28533247,15

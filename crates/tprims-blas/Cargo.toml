@@ -1,0 +1,22 @@
+[package]
+name = "tprims-blas"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT OR Apache-2.0"
+publish = false
+description = "BLAS-like operations for the tprims stack on explicit execution contexts: GEMM, batched GEMM (faer loop or TBLIS-style), TRSM"
+
+[dependencies]
+faer = { workspace = true }
+num-complex = { workspace = true }
+strided-view = { workspace = true }
+tensorcontract = { workspace = true }
+thiserror = { workspace = true }
+tprims-exec = { workspace = true }
+
+[dev-dependencies]
+rayon = { workspace = true }
+
+[lints]
+workspace = true
