@@ -20,6 +20,8 @@ The [shared tensor4all provenance policy](https://github.com/tensor4all/tensor4a
 | OpenBLAS | [BSD 3-Clause](https://github.com/OpenMathLib/OpenBLAS/blob/develop/LICENSE) | Inspect the exact imported test/source file and bundled subproject; the root text alone is not a file inventory. |
 | Reference LAPACK | [LICENSE](https://github.com/Reference-LAPACK/lapack/blob/master/LICENSE) | Check the selected file and version before reuse. |
 | gemmkit | [MIT or Apache-2.0](https://github.com/SomeB1oody/gemmkit) | Verify the chosen release's package contents if integrating. |
+| tenferro-rs | MIT OR Apache-2.0 | Planned port (Phase 1): permute plus batched GEMM contraction and the CPU GEMM driver from `tenferro-cpu`. Same maintainers; record the source commit. |
+| tensorprimitives-rs | MIT OR Apache-2.0 | Planned port (Phase 1): `tensorcontract` (TBLIS-style direct contraction, packing, microkernels) by Lukas Devos. Import with `git subtree add` without `--squash` after the design is settled, keeping authorship and commit history; the author has been contacted. |
 
 [MIT](https://opensource.org/license/mit) requires its copyright and permission notices in copies or substantial portions. [BSD 3-Clause](https://opensource.org/license/BSD-3-clause) requires retaining the copyright notice, conditions, and disclaimer in source redistributions, reproducing them in binary distribution materials, and not implying endorsement. A `NOTICE` file is useful as an index, but its name alone does not satisfy these conditions. Including such permissively licensed portions does not, by itself, relicense unrelated original project code.
 

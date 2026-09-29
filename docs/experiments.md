@@ -29,7 +29,7 @@ The roughly 8 to 14 µs session entry in [tenferro #1945](https://github.com/ten
 
 **Question:** For which matrix and batch sizes do serial-per-matrix kernels, specialized batched kernels, and provider calls win?
 
-Start with a correct scalar reference for small GEMM and Cholesky, then LU and QR. Try an array of independent matrices versus an interleaved batch layout; measure packing and scratch reuse. Compare serial outer loop, caller-owned Rayon batch scheduling, and provider threading. Use BLIS/OpenBLAS, faer, and gemmkit as external baselines where the operation and dtype are available. Do not copy their tests into this repository without a separate provenance review.
+Start with a correct scalar reference for small GEMM and Cholesky, then LU and QR. Try an array of independent matrices versus an interleaved batch layout; measure packing and scratch reuse. Compare the Phase 1 implementations (faer plus a loop over items, TBLIS-style batched GEMM), serial outer loop versus caller-owned Rayon batch scheduling, and provider threading. Use BLIS/OpenBLAS, faer, and gemmkit as external baselines where the operation and dtype are available. Do not copy their tests into this repository without a separate provenance review.
 
 Cover at least small square and rectangular cases, batch sizes from one to many independent matrices, `f32` and `f64`, and a complex follow-up. Report latency per batch as well as aggregate throughput. [Haidar et al. §4.1](https://www.netlib.org/utk/people/JackDongarra/PAPERS/batched-matrix-comp.pdf) motivates the serial-per-matrix baseline; [the CPU batched-GEMM paper](https://arxiv.org/abs/2311.07602) motivates cache- and shape-sensitive alternatives. Neither fixes a universal crossover.
 
@@ -39,11 +39,19 @@ Cover at least small square and rectangular cases, batch sizes from one to many 
 
 **Question:** When does TBLIS-style packing of general strides beat reshape/transpose-then-GEMM, and can the execution contract be shared with Prototype 2?
 
-Build a small fixed corpus of labeled binary contractions with contiguous, permuted, and irregular strides. Include real and complex cases and report input/output bytes, conversion bytes, scratch, and end-to-end time. Compare a direct path with TBLIS and with a materializing GEMM path backed by a recorded provider. Include tiny contractions where executor entry dominates and larger contractions where packing and cache behavior dominate.
+Build a small fixed corpus of labeled binary contractions with contiguous, permuted, and irregular strides. Include real and complex cases and report input/output bytes, conversion bytes, scratch, and end-to-end time. Compare the two strategies ported in Phase 1 (tenferro-rs permute plus batched GEMM, tensorprimitives-rs TBLIS-style direct) with TBLIS itself. Include tiny contractions where executor entry dominates and larger contractions where packing and cache behavior dominate.
 
 Use [Matthews's TBLIS paper](https://arxiv.org/abs/1607.00291) for the algorithmic idea and [tensorprimitives-rs](https://github.com/lkdvos/tensorprimitives-rs) as an independent point of comparison. Its [D49/D50](https://github.com/lkdvos/tensorprimitives-rs/blob/main/docs/decisions.md) makes an important distinction: a barrier-driven inner path has different scheduler needs from a barrier-free batch.
 
 **Decision gate:** A reproducible win on a predeclared shape family, or a measured reason to use an existing provider. If direct contraction adds no meaningful value, do not build another general engine merely to have one.
+
+## Prototype 4: C ABI slice
+
+**Question:** Does the design hold across the C boundary: explicit `tprims_exec*` per call, DLPack views, one bundled library?
+
+Build the Phase 1f slice (`tprims-core`, `tprims-blas-capi`, `tprims-contract-capi`, `tprims-bundle`) and a C benchmark program. Measure per-call fixed cost of an empty call, a small GEMM and a small contraction through C against the same calls from Rust, both serial and with a pool created from C. Verify zero copy for strided and column-major `DLTensor` inputs by pointer identity, pool create, use and close (including `TPRIMS_BUSY`), and that a handle from one part is accepted by another. Record per-call validation cost separately from kernel time.
+
+**Decision gate:** C-side fixed cost within a small, recorded margin of the Rust call, no hidden copies, and no ABI change forced by the benchmark. Otherwise revise the design before Phase 2.
 
 ## Architecture decision after the prototypes
 

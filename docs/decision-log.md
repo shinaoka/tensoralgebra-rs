@@ -29,6 +29,17 @@ Dated 2026-09-29. A source link supports the observation; the proposed response 
 | C ABI for execution: explicit handle per call, or a C-level "enter pool and run callback" command? | Open; leaning to an explicit `tprims_exec*` argument on every call with kernel-level entry inside. A C callback run on a pool worker would reintroduce the tenferro session problems and requires foreign runtimes (Python GIL, Julia thread adoption) to accept calls on threads they did not create. | Decide with the first `tprims-core` prototype |
 | Spin-wait policy (OpenMP `KMP_BLOCKTIME` style)? | **Deferred.** Not needed while serial calls skip the pool and parallel calls are large. Revisit if a measured workload needs sub-microsecond chaining of parallel kernels. | OpenMP with active wait: 0.5 µs at 4 threads, but p90 spikes of 80 to 190 µs when spinning threads exceed cores ([measurement](../experiments/rayon-entry/README.md)). |
 
+## Phase 1 scope
+
+| Question | Present position | Evidence or next check |
+| --- | --- | --- |
+| What comes first? | **Decided:** being usable as the tenferro-rs CPU backend, behind a feature, with A/B correctness and a same-run performance gate. | Maintainer decision, 2026-09-29; [implementation order](architecture.md#implementation-order) |
+| Contraction implementation? | **Decided:** port two strategies and compare them under one plan API: tenferro-rs permute plus batched GEMM, and the TBLIS-style direct contraction of tensorprimitives-rs `tensorcontract`. | Maintainer decision, 2026-09-29. Both sources are MIT OR Apache-2.0. Comparison in [Prototype 3](experiments.md#prototype-3-direct-tensor-contraction). |
+| Batched GEMM? | **Decided:** two implementations to compare, faer plus a loop over items and the TBLIS-style kernel. | Maintainer decision, 2026-09-29; [Prototype 2](experiments.md#prototype-2-batched-gemm-and-factorizations) |
+| Batched linear algebra? | **Decided:** faer per item with batched loops first; specialized small-batch kernels only where measured (Phase 3). | Maintainer decision, 2026-09-29 |
+| C ABI in Phase 1? | **Decided:** a thin slice (`tprims-core`, `tprims-blas-capi`, `tprims-contract-capi`, `tprims-bundle`) plus a C benchmark harness, to test early whether the design holds across the C boundary. Full coverage is Phase 2. | Maintainer decision, 2026-09-29; [Prototype 4](experiments.md#prototype-4-c-abi-slice) |
+| How is tensorprimitives-rs code brought in? | **Decided:** `git subtree add` without `--squash`, keeping Lukas Devos's authorship and commit history, after the overall design is settled. Lukas has been contacted. | Maintainer decision, 2026-09-29; [provenance](provenance.md) |
+
 ## Numerical and performance questions
 
 | Question | Present position | Evidence or next check |
@@ -38,8 +49,8 @@ Dated 2026-09-29. A source link supports the observation; the proposed response 
 | Who owns threads? | Explicit caller-owned execution; serial execution stays available to a host that owns scheduling. | [tenferro #1945](https://github.com/tensor4all/tenferro-rs/issues/1945); [faer #319](https://codeberg.org/sarah-quinones/faer/issues/319) |
 | Large GEMM provider? | Compare BLIS, Sarah Quiñones's `gemm`, and gemmkit; custom kernels require measured justification. | [BLIS paper](https://www.cs.utexas.edu/~flame/pubs/blis1_toms_rev3.pdf); [gemm](https://github.com/sarah-quinones/gemm); [gemmkit](https://github.com/SomeB1oody/gemmkit); [tenferro #1660](https://github.com/tensor4all/tenferro-rs/issues/1660) |
 | Upstream pool API or fork? | Prefer a focused upstream request for the selected provider. Consider a narrow fork only if support is unavailable; neither provider accepts a pool reference today. | [`gemm` parallelism](https://github.com/sarah-quinones/gemm/blob/main/gemm-common/src/lib.rs); [`gemmkit` parallelism](https://github.com/SomeB1oody/gemmkit/blob/master/gemmkit/src/parallel.rs); [faer #319](https://codeberg.org/sarah-quinones/faer/issues/319) |
-| Tensor contraction provider? | Compare TBLIS-style direct contraction with materializing GEMM, not just kernel throughput. | [TBLIS paper](https://arxiv.org/abs/1607.00291) |
-| Small batched linalg? | Start with serial-per-matrix, outer-batch parallelism; measure the crossover. | [Haidar et al. §4.1](https://www.netlib.org/utk/people/JackDongarra/PAPERS/batched-matrix-comp.pdf) |
+| Tensor contraction provider? | Compare TBLIS-style direct contraction with materializing GEMM, not just kernel throughput. Both are ported in Phase 1 (see above). | [TBLIS paper](https://arxiv.org/abs/1607.00291) |
+| Small batched linalg? | Start with serial-per-matrix (faer), outer-batch parallelism; measure the crossover. | [Haidar et al. §4.1](https://www.netlib.org/utk/people/JackDongarra/PAPERS/batched-matrix-comp.pdf) |
 | Can we use published algorithms? | Yes, implement independently and cite sources. Record exact provenance if translating code or importing tests. | [Provenance policy](provenance.md) |
 | Can we reuse faer/OpenBLAS tests? | Run as external oracles first. Review each file's license before importing test code or fixtures. | [faer license](https://github.com/sarah-quinones/faer-rs/blob/main/LICENSE); [OpenBLAS license](https://github.com/OpenMathLib/OpenBLAS/blob/develop/LICENSE) |
 

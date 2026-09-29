@@ -7,8 +7,8 @@ An experimental design space for a CPU algebra stack: explicit execution, stride
 ## Working hypotheses
 
 - **Large GEMM:** Evaluate a BLIS-style packed-panel design and existing BLIS, `gemm`, and gemmkit providers before writing architecture-specific kernels.
-- **Tensor contraction:** Evaluate a TBLIS-style direct contraction against transpose/reshape-then-GEMM, including irregular strides and complex values.
-- **Small matrices and batches:** Evaluate dedicated batched GEMM, LU, Cholesky, and QR kernels. Schedule independent matrices on the outer batch axis; test the crossover to per-matrix parallelism rather than assuming one rule fits every size.
+- **Tensor contraction:** Port two strategies behind one plan API and compare them: tenferro-rs's permute plus batched GEMM, and the TBLIS-style direct contraction of tensorprimitives-rs. Include irregular strides and complex values.
+- **Small matrices and batches:** Start from faer with a loop over items (batched GEMM and batched linear algebra), scheduled on the outer batch axis. Test the crossover to per-matrix parallelism, and to the TBLIS-style kernel for batched GEMM, rather than assuming one rule fits every size.
 - **Execution ownership:** Make the effective thread budget, pool, and scratch lifetime explicit. A Rust caller supplies an execution context. A C/Julia/Python caller can create, use and close a pool through the C ABI, or inject its own scheduler, without the library silently taking over the host's threads.
 
 These are questions, not settled design decisions. [The research map](research-map.md) distinguishes published evidence from project-specific hypotheses. [The experiment plan](experiments.md) defines the first three independent prototypes and how to compare them.
@@ -27,13 +27,13 @@ The full statement and rationale are in [design principles](design-principles.md
 
 | Crate | Responsibility | Depends on |
 | --- | --- | --- |
-| `tprims-exec` | Execution context: serial, caller-owned Rayon pool, host scheduling callbacks; thread budget for nested parallelism; scratch-size queries and reusable per-worker scratch. | none in the stack |
+| `tprims-exec` | Execution context: serial, a Rayon pool borrowed from the host (or created by a C host), host scheduling callbacks with guaranteed width; thread budget for nested parallelism; scratch-size queries and reusable per-worker scratch. | none in the stack |
 | `strided-traits`, `strided-view` (existing) | Checked borrowed strided views, scalar and conjugation contracts, rank-2 views of the same storage. | none |
 | `strided-perm`, `strided-kernel` (existing) | Copy and permutation (HPTT-inspired); map, reduce, broadcast and fused elementwise kernels. Execution and scratch become explicit through `tprims-exec`. | `strided-view`, `tprims-exec` |
-| `tprims-gemm-kernel` | Packed A/B panel format, scalar fallback, ISA dispatch, microkernels computing bounded result tiles. No scheduler, no full-matrix GEMM, no tensor labels. | `strided-view` |
-| `tprims-blas` | Matrix GEMM driver, matrix packers, blocking, batched GEMM, TRSM, SYRK/HERK and further BLAS-like operations as needed (GEMV is not excluded by the name). | `tprims-gemm-kernel`, `tprims-exec` |
-| `tprims-linalg` | Dense linear algebra: factorizations, direct solves, least squares, symmetric/Hermitian eigendecomposition, factor objects, errors, workspace plans; `batched` module. | `tprims-blas`, `strided-kernel`, `tprims-exec` |
-| `tprims-contract` | Binary contraction with free, contracted and batch indices (`dot_general` semantics): plans, tensor panel packing, bounded scatter, output tile updates. Thin permute / add / trace wrappers and matricized factorization wrappers. | `tprims-gemm-kernel`, `tprims-blas`, `tprims-linalg`, `strided-perm`, `strided-kernel`, `tprims-exec` |
+| `tprims-gemm-kernel` | Packed A/B panel format, scalar fallback, ISA dispatch, microkernels computing bounded result tiles, initially ported from tensorprimitives-rs `tensorcontract`. No scheduler, no full-matrix GEMM, no tensor labels. | `strided-view` |
+| `tprims-blas` | GEMM and batched GEMM with two implementations to compare (faer plus a loop over items; TBLIS-style packing on `tprims-gemm-kernel`), TRSM, then SYRK/HERK and further BLAS-like operations as needed (GEMV is not excluded by the name). | faer, `tprims-gemm-kernel`, `tprims-exec` |
+| `tprims-linalg` | Dense linear algebra: factorizations, direct solves, least squares, symmetric/Hermitian eigendecomposition, factor objects, errors, workspace plans; `batched` module. Initially faer per item. | faer, `tprims-blas`, `strided-kernel`, `tprims-exec` |
+| `tprims-contract` | Binary contraction with free, contracted and batch indices (`dot_general` semantics): one plan API over two strategies, permute plus batched GEMM and TBLIS-style direct packing with bounded scatter. Thin permute / add / trace wrappers and matricized factorization wrappers. | `tprims-gemm-kernel`, `tprims-blas`, `tprims-linalg`, `strided-perm`, `strided-kernel`, `tprims-exec` |
 
 The name `contract` was chosen over `tensordot` because NumPy, PyTorch and JAX `tensordot` has no batch indices; the operation here does, as in cuTENSOR's `cutensorContract`.
 
@@ -145,15 +145,49 @@ pub enum Exec<'a> {
 }
 ```
 
+### Cost of parallel execution
+
+A parallel kernel pays a fixed entry cost before any work is shared. A simple model for work `T` split over `n` threads is
+
+```text
+T_par(n) ≈ L(n, state) + T / n
+```
+
+where `L` depends on the width and on whether the workers are awake. The [rayon-entry measurement](../experiments/rayon-entry/README.md) (M5 Max, 2026-09-29) splits `L` into three parts:
+
+| Part | Cost | Cause |
+| --- | --- | --- |
+| Caller wake-up | about 3 µs | The caller outside the pool blocks on a lock latch (a `Condvar`) and must be woken when the job finishes. Same as a raw two-thread `Condvar` round trip. |
+| Worker wake-up | 6 to 8 µs | Idle workers sleep after 32 `yield_now` rounds, within 100 µs; Rayon wakes one sleeping worker per injected job. |
+| Fan-out | 55 to 200 µs at 18 threads | Waking every worker; the heterogeneous efficiency cores likely contribute. About 8 to 17 µs at 4 threads. |
+| Already inside the pool | 8 to 33 ns | No handoff: the job runs on the current worker. |
+
+Consequences for the design:
+
+- **Break-even.** Parallelism gains only if `T - T/n > L`. With `L` about 10 µs at small width, work below roughly 50 to 100 µs should run serially on the calling thread; an `N = 100` matrix-vector product (about 1 µs) is always serial. Full width pays off only for work of the order of milliseconds.
+- **Width from work.** A kernel picks `n` from its flop and byte count, not from the pool size, so a medium kernel wakes a few workers rather than all of them. The thresholds are per kernel and per machine and must be measured; they are not fixed constants of the API.
+- **No per-call handoff for serial work.** This is the difference from tenferro-rs today, which enters its pool once per session and so pays 8 to 14 µs on every FFI call, including serial ones ([tenferro #1945](https://github.com/tensor4all/tenferro-rs/issues/1945)).
+- **OpenMP is not intrinsically cheaper.** A default libomp parallel region costs 12 µs at 4 threads and 53 to 100 µs at 18 threads, the same range as Rayon. Sub-microsecond OpenMP entry comes from active waiting (`KMP_BLOCKTIME`), which burns cores and produced p90 spikes of 80 to 190 µs when spinning threads exceeded cores. A spin policy is therefore deferred ([decision](decision-log.md#execution)).
+- **Chains of small parallel kernels** are the case the model penalizes most: each pays `L`. The remedy is fusing them into one parallel region (a batch, or an SPMD kernel with barriers), not lowering `L`.
+
+Not yet measured: real GEMM and contraction break-even against width, barrier cost inside one SPMD call, a homogeneous x86 CPU, and the fixed cost through the C ABI ([Prototype 4](experiments.md#prototype-4-c-abi-slice)).
+
 TBLIS also uses cooperating threads and barriers inside a blocked contraction. An arbitrary task-submission interface, including host callbacks, does not automatically provide that contract. Start with outer-batch parallelism and serial inner contractions, then prototype an explicitly synchronized inner driver on a Rayon context if large contractions need it.
 
-## Why tensor contraction uses the GEMM kernel, not only `gemm()`
+## Two contraction strategies
 
-[BLIS](https://www.cs.utexas.edu/~flame/pubs/blis1_toms_rev3.pdf) separates blocking, packing, and a register-tile microkernel. [TBLIS §6 and §7](https://arxiv.org/html/1607.00291v4) reuses BLIS microkernels but needs its own tensor-aware packing and inner driver. An irregular output tile may require a small temporary tile followed by scatter; it does **not** require a full output transpose. TBLIS explicitly reports that the ordinary BLIS framework did not expose enough flexibility in its inner loops. Accordingly, `tprims-contract` depends on the `tprims-gemm-kernel` packed-kernel contract; calling public `tprims-blas` GEMM is one selected fast path, not the entire implementation.
+`tprims-contract` ports two existing implementations behind one plan API and compares them on a predeclared corpus. Neither is assumed to win.
 
-A binary contraction plan validates free-left, contracted, free-right, and batch indices, output shape and aliasing, then chooses a measured path: (1) collapse compatible strides to a matrix view and call `tprims-blas` GEMM without copying; (2) pack bounded tensor panels directly into the `tprims-gemm-kernel` format and scatter irregular output tiles; or (3) explicitly materialize operands through `strided-perm` when extra bytes are worth the GEMM speed. Planning may fold contiguous dimensions and reorder logical traversal without changing user-visible index order.
+| Strategy | Source | Idea |
+| --- | --- | --- |
+| Permute plus batched GEMM | tenferro-rs `dot_general` (`tenferro-cpu/src/dot_runtime.rs`, `gemm/`), MIT OR Apache-2.0 | Fold compatible strides into a batched matrix view without copying when possible; otherwise materialize operands through `strided-perm`, then call `tprims-blas` batched GEMM. |
+| TBLIS-style direct | tensorprimitives-rs `tensorcontract` by Lukas Devos, MIT OR Apache-2.0 | Pack tensor panels with general strides directly into the `tprims-gemm-kernel` format, run the microkernels, and scatter bounded output tiles. No full operand transpose. [Matthews, TBLIS](https://arxiv.org/abs/1607.00291). |
 
-The first kernel-contract prototype can use a scalar tile kernel. `gemm`, gemmkit, and BLIS are candidates or baselines; whether any exposes a usable low-level panel/microkernel seam must be checked. Their public GEMM calls alone cannot implement the direct TBLIS-style path. Kernel-specific panel packing and output scatter stay with the `tprims-contract` driver, which knows the packed format, index plan, and tile update semantics.
+A plan validates free-left, contracted, free-right and batch indices, output shape and aliasing, then selects a strategy. Planning may fold contiguous dimensions and reorder logical traversal without changing user-visible index order. The comparison reports end-to-end time, bytes moved and scratch, for tiny contractions where entry dominates and for large ones where packing and cache behavior dominate.
+
+The TBLIS strategy runs cooperating workers with barriers inside one contraction. It therefore needs `broadcast(n, f)` with guaranteed width from `tprims-exec`, not arbitrary task submission; the rayon `ThreadPool::broadcast` implementation proposed in [tensorprimitives-rs #1](https://github.com/lkdvos/tensorprimitives-rs/issues/1) provides it, declining to a scoped-thread fallback if the pool is narrower than the partition.
+
+The ported source keeps its authorship, commit history and license notices; the import mechanism (for example `git subtree` without squashing) is chosen when the code is brought in, after the design is settled. See the [provenance policy](provenance.md).
 
 ## Dense linear algebra
 
@@ -186,6 +220,8 @@ Tensor-level factorizations in `tprims-contract` reshape a strided tensor into a
 
 `tprims-linalg` contains a `batched` module with factorization and solve entry points; `tprims-blas` owns batched GEMM. The batch module owns batch descriptors, output/status arrays, scratch planning, and the choice of batch versus inner-matrix parallelism. It executes the schedule on the caller's `tprims-exec` context and reuses per-matrix routines as its first implementation. Specialized small-matrix or interleaved batch kernels can later replace the per-item implementation under the same batch contract; they require their own correctness and performance evidence.
 
+**Phase 1 baseline: faer plus a loop.** Every batched operation first runs the faer per-matrix routine in a loop over items: serial per item on the calling thread for a small batch, the items distributed over the borrowed pool for a large batch, and faer's inner `Par::rayon(n)` only for a few large matrices. Batched GEMM additionally has the TBLIS-style implementation, compared against the faer loop.
+
 The first API targets equally shaped strided matrices, expressed in C as a DLPack tensor with a leading batch axis; grouped heterogeneous shapes can follow. A prepared batch plan can reuse validated descriptors and one scratch region per worker. Schedule **one serial matrix operation per independent task** initially. For a small batch of large matrices, measure inner-matrix threading instead. A single C ABI batch call amortizes call and executor-entry costs.
 
 Return a per-item status and define the contents of failed outputs. Batched GEMM should compare arrays of matrices, interleaved/structure-of-arrays layouts, and dedicated small-matrix SIMD kernels. A common scheduler does not imply one data layout or microkernel. [Haidar et al. §4.1](https://www.netlib.org/utk/people/JackDongarra/PAPERS/batched-matrix-comp.pdf) motivates serial-per-matrix CPU execution; [Deshmukh et al.](https://arxiv.org/abs/2311.07602) motivates cache- and shape-specific batch GEMM. Their results do not establish a universal crossover or a CPU batched-SVD algorithm.
@@ -207,11 +243,20 @@ Current binary einsum [passes operands through a contiguous-preparation path bef
 
 ## Implementation order
 
-1. Define `tprims-exec` and `tprims-core`: serial and Rayon contexts with synchronous close, DLPack operand validation, status and error model. Build a minimal `tprims-bundle` with two stub parts and call it from a real C program on Linux, macOS and Windows.
-2. Test the `tprims-gemm-kernel` packed tile seam with ordinary matrix GEMM and several irregular contractions. Compare providers; keep a scalar fallback. Add ISA kernels only when measurement warrants it.
-3. Implement or integrate `tprims-blas` GEMM, TRSM, SYRK/HERK and small/panel routines; validate Cholesky, LU, LDLᴴ, QR and solves in `tprims-linalg` against reconstruction, residual and provider oracles.
-4. Add homogeneous batched calls and the `tprims-contract` direct pack/scatter path; compare with materialization and provider-backed paths. Then consider interleaved small batches, grouped batches, and retargeting `strided-opteinsum`.
-5. Specify SVD and eigensolver accuracy and convergence requirements and benchmark a provider baseline before committing to native solvers. Publish crates only after an interface and a consumer exist, consistent with [tenferro #1927](https://github.com/tensor4all/tenferro-rs/issues/1927).
+Phase 1 puts being usable as the tenferro-rs CPU backend first. It also builds a thin C ABI slice and benchmarks it, to find out early whether the design holds across the C boundary; full C ABI coverage follows in Phase 2.
+
+| Phase | Content | Done when |
+| --- | --- | --- |
+| 1a | `tprims-exec`: borrowed Rayon pool, width chosen from work, kernel-level entry, `broadcast(n, f)`. | tenferro's pool runs a faer kernel and a TBLIS SPMD kernel through `tprims-exec`, with no entry for serial work. |
+| 1b | `tprims-blas`: GEMM and batched GEMM, faer plus loop and TBLIS-style; TRSM on faer (heavily used by AD rules). | Both batched GEMM implementations pass the same correctness suite; a measured selection rule by shape. |
+| 1c | `tprims-contract`: permute plus batched GEMM (ported from tenferro) and TBLIS-style direct (ported from tensorprimitives-rs); batch dimensions, conjugation, `alpha`/`beta`. | Both strategies agree with a reference; comparison recorded on a predeclared corpus. |
+| 1d | `tprims-linalg`: faer per item plus batched loops, covering the tenferro CPU linear algebra operations (Cholesky, triangular solve, LU and full-pivot LU families with solves, QR and Householder operations, SVD, eigh, eig). | tenferro's linear algebra and AD rule tests pass. |
+| 1e | tenferro-rs integration behind a `cpu-tprims` feature: `dot_general`, grouped / batched GEMM, then linear algebra. | A/B correctness against the current backend, and a same-run performance gate. |
+| 1f | C ABI slice: `tprims-core` (DLPack types, status, `tprims_exec` create / borrow / close), `tprims-blas-capi` (GEMM, batched GEMM), `tprims-contract-capi`, and `tprims-bundle` with those features. A C benchmark harness. | From C: per-call fixed cost of a small GEMM and contraction against direct Rust, zero copy verified for strided and column-major DLPack inputs, pool create / use / close, cross-part handles, recorded under the experiment protocol. |
+| 2 | Full C ABI: `tprims-linalg-capi` with factor handles, `strided-capi`, host-callback executors, capability queries. Build and call from a real C program on Linux, macOS and Windows. | ABI conventions and pool close verified on all three platforms. |
+| 3 | Replace faer paths or add specialized small-batch kernels only where measured; SVD and eigensolver accuracy requirements before any native solver. | Each replacement passes the correctness suite and a performance gate. |
+
+Crates are published only after an interface and a consumer exist, consistent with [tenferro #1927](https://github.com/tensor4all/tenferro-rs/issues/1927).
 
 AI-assisted contributions may include algorithms, implementations, benchmarks, counterexamples, and design proposals. Acceptance rests on attributable sources, numerical tests, reproducible performance evidence for optimization claims, and maintainer review.
 

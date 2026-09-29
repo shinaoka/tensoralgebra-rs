@@ -28,12 +28,12 @@ exposes; only `tprims-bundle` produces a shared or static library.
 
 ```mermaid
 flowchart TB
-    CT["<b>tprims-contract</b><br/>Binary contraction<br/>plan, tensor pack, scatter"]
-    LA["<b>tprims-linalg</b><br/>Factorizations, solves<br/>lstsq, eigh, batched"]
-    BL["<b>tprims-blas</b><br/>GEMM, TRSM, SYRK / HERK<br/>batched GEMM"]
-    GK["<b>tprims-gemm-kernel</b><br/>Packed format<br/>microkernels"]
+    CT["<b>tprims-contract</b><br/>Binary contraction<br/>permute + batched GEMM<br/>or TBLIS direct"]
+    LA["<b>tprims-linalg</b><br/>Factorizations, solves<br/>lstsq, eigh, batched<br/>(faer first)"]
+    BL["<b>tprims-blas</b><br/>GEMM, batched GEMM, TRSM<br/>faer + loop or TBLIS"]
+    GK["<b>tprims-gemm-kernel</b><br/>Packed format<br/>microkernels (TBLIS path)"]
     ST["<b>strided-*</b> (existing)<br/>Views, permutation<br/>elementwise kernels"]
-    EX["<b>tprims-exec</b><br/>Execution context<br/>thread budget, scratch"]
+    EX["<b>tprims-exec</b><br/>Execution context<br/>borrowed pool, width, scratch"]
     CT --> LA --> BL --> GK --> ST --> EX
     CT -.->|"direct tensor path"| GK
     classDef tensor fill:#e8f2ff,stroke:#2563a6,color:#132f50
@@ -46,12 +46,12 @@ flowchart TB
 
 | Crate | Owns | C ABI crate |
 | --- | --- | --- |
-| `tprims-exec` | Execution context: serial, caller-owned Rayon pool, host scheduling callbacks; thread budget; reusable scratch. No ambient global pool. | `tprims-core` |
+| `tprims-exec` | Execution context: serial, a Rayon pool borrowed from the host (or created by a C host), host scheduling callbacks; width chosen from work; reusable scratch. No ambient global pool. | `tprims-core` |
 | `strided-*` (existing, [strided-rs](https://github.com/tensor4all/strided-rs)) | Checked strided views, scalar and conjugation contracts, copy and permutation, map / reduce / fused elementwise. | `strided-capi` |
-| `tprims-gemm-kernel` | Packed A/B panel format and register-tile microkernels. No scheduler, no full-matrix API. | none |
-| `tprims-blas` | GEMM driver and matrix packers, TRSM, SYRK / HERK, batched GEMM. | `tprims-blas-capi` |
-| `tprims-linalg` | LU, Cholesky, LDLᴴ, QR, SVD, symmetric / Hermitian eigendecomposition; solves on factor objects, `solve`, `lstsq`, `inv`, `det`; `batched` module. | `tprims-linalg-capi` |
-| `tprims-contract` | Binary contraction with batch indices (`dot_general` semantics); thin permute / add / trace wrappers. | `tprims-contract-capi` |
+| `tprims-gemm-kernel` | Packed A/B panel format and register-tile microkernels for the TBLIS-style path, initially ported from tensorprimitives-rs. No scheduler, no full-matrix API. | none |
+| `tprims-blas` | GEMM and batched GEMM (faer plus a loop over items, or TBLIS-style; compared), TRSM, later SYRK / HERK. | `tprims-blas-capi` |
+| `tprims-linalg` | LU, Cholesky, LDLᴴ, QR, SVD, symmetric / Hermitian eigendecomposition; solves on factor objects, `solve`, `lstsq`, `inv`, `det`; `batched` module. faer per item first. | `tprims-linalg-capi` |
+| `tprims-contract` | Binary contraction with batch indices (`dot_general` semantics) with two strategies to compare: permute plus batched GEMM (from tenferro-rs) and TBLIS-style direct (from tensorprimitives-rs); thin permute / add / trace wrappers. | `tprims-contract-capi` |
 
 Crate, header and symbol names map one to one: `tprims-blas` exposes
 `tprims/blas.h` and `tprims_blas_*`. A Rust user who prefers short paths can
@@ -126,31 +126,24 @@ void         tprims_exec_retain(tprims_exec *exec);
 void         tprims_exec_release(tprims_exec *exec);
 ```
 
-Every expensive operation takes an explicit `tprims_exec`. Rust callers use
-the same context from `tprims-exec`. `close` is synchronous: dropping a Rayon
-`ThreadPool` only terminates threads asynchronously, so the handle waits for
-all workers through an exit handler, and returns `TPRIMS_BUSY` while work is
-in flight. [Details](docs/architecture.md#execution-context).
+Every expensive operation takes an explicit `tprims_exec`. Rust callers pass an `Exec` that borrows the host's Rayon pool, for example the pool of tenferro-rs, for the duration of the call. Serial work runs on the calling thread without entering any pool; only a kernel that runs in parallel enters the pool, and not at all if the caller is already one of its workers. With that rule an entry cost of about 10 µs is acceptable ([measurement](experiments/rayon-entry/README.md)): work below roughly 50 to 100 µs runs serially, and a kernel picks its width from its work so that full-width fan-out (55 to 200 µs at 18 threads) is paid only by large kernels ([cost model](docs/architecture.md#cost-of-parallel-execution)). faer can therefore serve as the first backend. `close` is synchronous: dropping a Rayon `ThreadPool` only terminates threads asynchronously, so the handle waits for all workers through an exit handler, and returns `TPRIMS_BUSY` while work is in flight. [Details](docs/architecture.md#execution-context).
 
-## The shared GEMM kernel
+## Two contraction strategies, compared
 
-Matrix GEMM and direct tensor contraction use different packers and drivers
-but the same packed tile kernel, following the
-[BLIS](https://www.cs.utexas.edu/~flame/pubs/blis1_toms_rev3.pdf) and
-[TBLIS](https://arxiv.org/html/1607.00291v4) separation of packing and tile
-computation. A `tprims-contract` plan selects one of three paths: collapse
-compatible strides to a matrix view and call `tprims-blas` GEMM without
-copying; pack bounded tensor panels directly into the `tprims-gemm-kernel`
-format and scatter irregular output tiles; or explicitly materialize operands
-through `strided-perm`. Provider choice remains an experiment.
+`tprims-contract` ports two existing implementations behind one plan API: tenferro-rs's permute plus batched GEMM, and the [TBLIS](https://arxiv.org/abs/1607.00291)-style direct contraction of Lukas Devos's [tensorprimitives-rs](https://github.com/lkdvos/tensorprimitives-rs), which packs general strides straight into microkernel panels and scatters output tiles. Batched GEMM likewise has two implementations, faer plus a loop over items and the TBLIS-style kernel. Measurement decides which one a plan selects for which shapes. Ported code keeps its authorship, history and license notices.
 
-## What do we try first?
+## Phase 1: a tenferro-rs CPU backend
 
-| Prototype | Question to resolve |
+| Step | Content |
 | --- | --- |
-| Execution context and C ABI | Can a C host create, reuse and close a pool with low entry cost, across parts in one bundle? |
-| Small GEMM and linalg | Which batch layouts, kernels and parallel axes win? |
-| Direct tensor contraction | When does direct pack / scatter beat materialization plus GEMM? |
+| 1a | `tprims-exec`: borrowed pool, width from work, kernel-level entry, `broadcast(n, f)` |
+| 1b | `tprims-blas`: GEMM, batched GEMM (faer + loop, TBLIS), TRSM |
+| 1c | `tprims-contract`: permute + batched GEMM and TBLIS direct, compared |
+| 1d | `tprims-linalg`: faer per item plus batched loops, covering tenferro's CPU linear algebra |
+| 1e | tenferro-rs integration behind a feature, with A/B correctness and a same-run performance gate |
+| 1f | A thin C ABI slice (core, blas, contract, bundle) and C benchmarks, to test the design across the C boundary early |
+
+Full C ABI coverage is Phase 2. [Full plan](docs/architecture.md#implementation-order).
 
 The motivating [FFI measurement](https://github.com/tensor4all/tenferro-rs/issues/1945)
 reported roughly 8 to 14 µs session entry on one EPYC configuration. It is a
