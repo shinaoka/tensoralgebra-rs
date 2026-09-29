@@ -1,7 +1,7 @@
 # threads: requested=1 pool=1 budget=1
 case,variant,threads,median_ns,samples
-install_empty,k1,1,30,200
-strided_map_f64,transpose_2^12,1,3580,200
-strided_map_f64,transpose_2^22,1,14768508,30
+install_empty,k1,1,40,200
+strided_map_f64,transpose_2^12,1,3180,200
+strided_map_f64,transpose_2^22,1,14222973,30
 CHECK tensorcontract_gemm_f64 threads=1 max_abs_diff=0e0 ok
-tensorcontract_gemm_f64,512^3,1,5961071,20
+tensorcontract_gemm_f64,512^3,1,5613114,20
