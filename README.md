@@ -173,7 +173,7 @@ the same run.
 | Step | Content |
 | --- | --- |
 | 1a | `tprims-exec`: borrowed pool, width from work, kernel-level entry, `broadcast(n, f)` |
-| 1b | `tprims-blas`: GEMM, batched GEMM (faer + loop, TBLIS), TRSM |
+| 1b | `tprims-blas`: GEMM, batched GEMM (faer + loop, TBLIS), grouped GEMM (1e-0), TRSM |
 | 1c | `tprims-contract`: permute + batched GEMM and TBLIS direct, compared |
 | 1d | `tprims-linalg`: faer per item plus batched loops, covering tenferro's CPU linear algebra including nonsymmetric `eig` |
 | 1e | tenferro-rs integration behind a feature, with an explicit per-op fallback to the current backend, A/B correctness and a same-run performance gate |
@@ -182,7 +182,10 @@ the same run.
 **Status (2026-09-30):** 1a, 1b, 1c, 1d and 1f are implemented
 (`crates/tprims-{exec,blas,linalg,contract,core,blas-capi,contract-capi,bundle}`),
 each with 1T/4T benchmarks under [`benchmarks/benchmarks/tprims/`](benchmarks/benchmarks/tprims/README.md)
-and [`benchmarks/c/`](benchmarks/c/README.md); 1e (tenferro-rs integration) is next.
+and [`benchmarks/c/`](benchmarks/c/README.md). 1e (tenferro-rs integration,
+[design](docs/superpowers/specs/2026-09-30-phase1e-tenferro-integration-design.md))
+is in progress: the tprims side (grouped GEMM, corpus replay for the TBLIS
+decision) is done; the tenferro hooks and provider are next.
 
 Full C ABI coverage is Phase 2. [Full plan](docs/architecture.md#implementation-order).
 

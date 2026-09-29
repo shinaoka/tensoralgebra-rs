@@ -17,7 +17,8 @@ use tprims_bench::corpus::{Corpus, Dtype, Entry, GemmBatchedEntry};
 use tprims_bench::threads::BenchThreads;
 use tprims_bench::timing::{env_usize, median_ns};
 use tprims_blas::{
-    gemm, gemm_batched, trsm, BatchIn, BatchStrategy, Diag, MatIn, Op, Scalar, Side, Uplo,
+    gemm, gemm_batched, gemm_grouped, trsm, BatchIn, BatchStrategy, Conj, Diag, GroupedJob, MatIn,
+    Op, Scalar, Side, Uplo,
 };
 use tprims_exec::Exec;
 
@@ -212,6 +213,96 @@ fn batched_cases<T: Scalar>(cfg: &Cfg, exec: &Exec<'_>) {
     }
 }
 
+/// `(rows, inner, cols)` per grouped job.
+type Shapes = Vec<(usize, usize, usize)>;
+
+/// Grouped GEMM over variable-size jobs (compact column-major blocks in shared
+/// buffers) against a loop of single `gemm` calls on the same blocks.
+fn grouped_cases<T: Scalar>(cfg: &Cfg, exec: &Exec<'_>) {
+    let case = format!("gemm_grouped_{}", name::<T>());
+    if !cfg.want(&case) {
+        return;
+    }
+    // (label, jobs): many small, a moderate mix, a few large.
+    let sets: [(&str, Shapes); 3] = [
+        (
+            "small_x512",
+            (0..512)
+                .map(|i| (4 + i % 13, 4 + i % 7, 4 + i % 11))
+                .collect(),
+        ),
+        (
+            "mixed_x64",
+            (0..64)
+                .map(|i| (16 + 7 * (i % 9), 16 + 5 * (i % 7), 16 + 3 * (i % 11)))
+                .collect(),
+        ),
+        (
+            "large_x4",
+            vec![
+                (512, 384, 256),
+                (256, 512, 384),
+                (384, 256, 512),
+                (320, 320, 320),
+            ],
+        ),
+    ];
+    for (label, shapes) in sets {
+        let (mut oa, mut ob, mut oc) = (0, 0, 0);
+        let mut jobs = Vec::new();
+        for &(m, k, n) in &shapes {
+            jobs.push(GroupedJob {
+                a_offset: oa,
+                b_offset: ob,
+                c_offset: oc,
+                rows: m,
+                inner: k,
+                cols: n,
+            });
+            oa += m * k;
+            ob += k * n;
+            oc += m * n;
+        }
+        let (a, b): (Vec<T>, Vec<T>) = (fill(oa, 6), fill(ob, 7));
+        let flops: f64 = shapes.iter().map(|&(m, k, n)| (m * n * k) as f64).sum();
+        let runs = cfg.runs_for(mul_cost::<T>() * flops);
+        let (one, zero) = (<T as Element>::one(), <T as Element>::zero());
+        let mut outs = Vec::new();
+        let mut c: Vec<T> = vec![zero; oc];
+        let mut sel = None;
+        let ns = median_ns(cfg.warmup.min(runs), runs, || {
+            sel = Some(
+                gemm_grouped(exec, one, &a, Conj::No, &b, Conj::No, zero, &mut c, &jobs)
+                    .expect("grouped"),
+            );
+        });
+        cfg.row(&case, &format!("grouped_{label}"), ns, runs);
+        println!("# selected grouped_{label}: {sel:?}");
+        outs.push(c);
+        let mut c: Vec<T> = vec![zero; oc];
+        let ns = median_ns(cfg.warmup.min(runs), runs, || {
+            for j in &jobs {
+                let (m, k, n) = (j.rows, j.inner, j.cols);
+                let av = StridedView::new(&a, &[m, k], &[1, m as isize], j.a_offset as isize)
+                    .expect("a");
+                let bv = StridedView::new(&b, &[k, n], &[1, k as isize], j.b_offset as isize)
+                    .expect("b");
+                let mut cv =
+                    StridedViewMut::new(&mut c, &[m, n], &[1, m as isize], j.c_offset as isize)
+                        .expect("c");
+                gemm(exec, one, MatIn::new(&av), MatIn::new(&bv), zero, &mut cv).expect("gemm");
+            }
+        });
+        cfg.row(&case, &format!("gemm_loop_{label}"), ns, runs);
+        outs.push(c);
+        println!(
+            "CHECK {case} {label} threads={} grouped_vs_loop_equal={}",
+            cfg.threads,
+            if outs[0] == outs[1] { "ok" } else { "MISMATCH" }
+        );
+    }
+}
+
 /// One recorded `gemm_batched` entry, both strategies.
 fn corpus_batched<T: Scalar>(cfg: &Cfg, exec: &Exec<'_>, e: &GemmBatchedEntry) {
     let ((oa, la), (ob, lb), (oc, lc)) = (e.a.span(), e.b.span(), e.c.span());
@@ -384,6 +475,8 @@ fn main() {
         gemm_cases::<Complex64>(&cfg, exec);
         batched_cases::<f64>(&cfg, exec);
         batched_cases::<Complex64>(&cfg, exec);
+        grouped_cases::<f64>(&cfg, exec);
+        grouped_cases::<Complex64>(&cfg, exec);
         trsm_cases::<f64>(&cfg, exec);
         trsm_cases::<Complex64>(&cfg, exec);
     });

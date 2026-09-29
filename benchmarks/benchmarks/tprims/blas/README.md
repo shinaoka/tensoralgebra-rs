@@ -2,7 +2,9 @@
 
 `tprims-blas` at an enforced thread count: `gemm`, `gemm_batched` with both
 strategies (faer plus a loop over items; TBLIS-style through Lukas Devos's
-`tensorcontract`), and `trsm`, for f64 and c64. Column-major operands;
+`tensorcontract`), `gemm_grouped` (variable-size jobs in shared buffers,
+against a loop of `gemm` calls on the same blocks), and `trsm`, for f64 and
+c64. Column-major operands;
 `gemm_batched` batch axis last. `# selected` lines show the schedule each
 batched call chose; `CHECK` lines compare the two strategies' outputs.
 
