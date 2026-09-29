@@ -153,7 +153,7 @@ drift biased a run that measured all 1T cases before all 4T cases.
 
 1. **faer's parallel LU and QR lose to serial at n = 128** (measured before
    the fix: 0.6x LU, 0.4x QR at 4 threads, isolated runs) and gain only
-   1.2-1.3x at n = 512 f64. They now use their own width policy (serial below
+   1.15-1.3x at n = 512 f64. They now use their own width policy (serial below
    an estimated 1 ms; `tprims-linalg/src/util.rs`), which is why the n = 128
    rows equal their 1T rows.
 2. **The batched module scales where items are serial-sized and the batch is
@@ -162,5 +162,8 @@ drift biased a run that measured all 1T cases before all 4T cases.
 3. **Tiny batches stay serial** (n = 2 and 4 at batch 1024 for most ops), as
    in `blas`: the schedule's flop estimate ignores per-item overhead. The same
    refinement applies here.
-4. Large single-matrix eigensolvers scale modestly (eig n = 512: about 1.5x at
-   4 threads); this is faer's parallel efficiency, not measured further here.
+4. **The nonsymmetric eigensolver does not scale** at n = 512 (1.18x f64,
+   0.98x c64 at 4 threads); eigh and svd reach 1.8-2.2x there. This is faer's
+   parallel efficiency, not investigated further here; `eig` may deserve the
+   same kind of kernel-specific width policy as LU/QR once measured more
+   widely.
