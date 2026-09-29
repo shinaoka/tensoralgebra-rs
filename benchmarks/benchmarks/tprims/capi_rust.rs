@@ -1,0 +1,71 @@
+//! The Rust side of `benchmarks/c/bench.c`: the same calls made directly
+//! from Rust (no ABI), per call, at an enforced thread count.
+use std::hint::black_box;
+use std::time::Instant;
+
+use strided_view::{StridedView, StridedViewMut};
+use tprims_bench::threads::BenchThreads;
+use tprims_blas::{gemm, Conj, MatIn};
+use tprims_contract::{ContractPlan, DotGeneral, Flags, Strategy};
+
+const INNER: usize = 1000;
+const SAMPLES: usize = 101;
+
+fn median(mut f: impl FnMut()) -> f64 {
+    let mut s: Vec<f64> = (0..SAMPLES)
+        .map(|_| {
+            let t = Instant::now();
+            for _ in 0..INNER {
+                f();
+            }
+            t.elapsed().as_nanos() as f64 / INNER as f64
+        })
+        .collect();
+    s.sort_by(f64::total_cmp);
+    s[SAMPLES / 2]
+}
+
+fn main() {
+    let th = BenchThreads::from_args();
+    th.verify();
+    let t = th.requested;
+    println!("case,variant,threads,median_ns,samples");
+    th.with_exec(|exec, _| {
+        let ns = median(|| {
+            black_box(tprims_core::ABI_VERSION);
+        });
+        println!("empty_call,rust,{t},{ns:.1},{SAMPLES}");
+        let a: Vec<f64> = (0..64).map(|i| (i % 7) as f64 - 3.0).collect();
+        let b: Vec<f64> = (0..64).map(|i| (i % 5) as f64 * 0.5).collect();
+        let mut c = vec![0.0f64; 64];
+        let av = StridedView::new(&a, &[8, 8], &[1, 8], 0).expect("a");
+        let bv = StridedView::new(&b, &[8, 8], &[1, 8], 0).expect("b");
+        let ns = median(|| {
+            let mut cv = StridedViewMut::new(&mut c, &[8, 8], &[1, 8], 0).expect("c");
+            gemm(exec, 1.0, MatIn::new(&av), MatIn::new(&bv), 0.0, &mut cv).expect("gemm");
+        });
+        println!("gemm_8,rust,{t},{ns:.1},{SAMPLES}");
+        let x: Vec<f64> = (0..8).map(|i| i as f64).collect();
+        let y: Vec<f64> = (0..8).map(|i| 8.0 - i as f64).collect();
+        let mut z = vec![0.0f64; 16];
+        let cfg = DotGeneral::new(&[2], &[0], &[], &[]);
+        let plan = ContractPlan::<f64>::new(
+            &cfg,
+            (&[2, 2, 2], &[1, 2, 4]),
+            (&[2, 2, 2], &[1, 2, 4]),
+            (&[2, 2, 2, 2], &[1, 2, 4, 8]),
+            (Conj::No, Conj::No),
+            Strategy::Auto,
+            Flags::default(),
+        )
+        .expect("plan");
+        let xv = StridedView::new(&x, &[2, 2, 2], &[1, 2, 4], 0).expect("x");
+        let yv = StridedView::new(&y, &[2, 2, 2], &[1, 2, 4], 0).expect("y");
+        let ns = median(|| {
+            let mut zv = StridedViewMut::new(&mut z, &[2, 2, 2, 2], &[1, 2, 4, 8], 0).expect("z");
+            plan.execute(exec, 1.0, &xv, &yv, 0.0, &mut zv)
+                .expect("exec");
+        });
+        println!("contract_2x2x2,rust,{t},{ns:.1},{SAMPLES}");
+    });
+}

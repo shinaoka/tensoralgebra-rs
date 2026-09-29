@@ -65,11 +65,21 @@ pub fn set_last_error(message: &str) {
     LAST.with(|l| *l.borrow_mut() = c);
 }
 
+/// Clear the message without allocating when it is already empty (the
+/// success path of every call).
+fn clear_last_error() {
+    LAST.with(|l| {
+        if !l.borrow().as_bytes().is_empty() {
+            *l.borrow_mut() = CString::default();
+        }
+    });
+}
+
 /// Run an ABI body: catch panics, record the error message, return a status.
 pub fn ffi(body: impl FnOnce() -> Result<(), FfiError>) -> tprims_status {
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(body)) {
         Ok(Ok(())) => {
-            set_last_error("");
+            clear_last_error();
             TPRIMS_OK
         }
         Ok(Err(e)) => {

@@ -1,0 +1,95 @@
+#define _POSIX_C_SOURCE 199309L
+/* Per-call cost through the C ABI: empty call, 8x8 GEMM, 2x2x2 contraction,
+   serial and on a 4-thread pool created from C. Prints
+   case,variant,threads,median_ns,samples (per call; each sample is the mean
+   of INNER calls). Pair with the Rust `capi_rust` bench binary. */
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#include "tprims/tprims.h"
+
+#define INNER 1000
+#define SAMPLES 101
+
+static double now_ns(void) {
+  struct timespec t;
+  clock_gettime(CLOCK_MONOTONIC, &t);
+  return (double)t.tv_sec * 1e9 + (double)t.tv_nsec;
+}
+
+static int cmp(const void *a, const void *b) {
+  double x = *(const double *)a, y = *(const double *)b;
+  return (x > y) - (x < y);
+}
+
+static DLTensor f64t(double *d, int32_t nd, int64_t *shape, int64_t *strides) {
+  DLTensor t;
+  memset(&t, 0, sizeof t);
+  t.data = d; t.device.device_type = kDLCPU; t.ndim = nd;
+  t.dtype.code = kDLFloat; t.dtype.bits = 64; t.dtype.lanes = 1;
+  t.shape = shape; t.strides = strides;
+  return t;
+}
+
+static volatile uint32_t sink;
+
+int main(int argc, char **argv) {
+  int threads = argc > 1 ? atoi(argv[1]) : 1;
+  tprims_exec *ex = threads > 1 ? tprims_exec_rayon_create((size_t)threads, NULL) : tprims_exec_serial();
+  if (!ex) { fprintf(stderr, "exec: %s\n", tprims_last_error()); return 1; }
+  printf("# threads: requested=%d exec=%zu\n", threads, tprims_exec_num_threads(ex));
+  printf("case,variant,threads,median_ns,samples\n");
+  double s[SAMPLES];
+
+  for (int k = 0; k < SAMPLES; k++) {
+    double t0 = now_ns();
+    for (int i = 0; i < INNER; i++) sink += tprims_abi_version();
+    s[k] = (now_ns() - t0) / INNER;
+  }
+  qsort(s, SAMPLES, sizeof(double), cmp);
+  printf("empty_call,c,%d,%.1f,%d\n", threads, s[SAMPLES / 2], SAMPLES);
+
+  double a[64], b[64], c[64];
+  for (int i = 0; i < 64; i++) { a[i] = (i % 7) - 3; b[i] = (i % 5) * 0.5; c[i] = 0; }
+  int64_t sh[2] = {8, 8}, st[2] = {1, 8};
+  DLTensor ta = f64t(a, 2, sh, st), tb = f64t(b, 2, sh, st), tc = f64t(c, 2, sh, st);
+  double one = 1, zero = 0;
+  for (int k = 0; k < SAMPLES; k++) {
+    double t0 = now_ns();
+    for (int i = 0; i < INNER; i++)
+      if (tprims_blas_gemm(ex, &one, tprims_tensor_borrow_raw(&ta, 0), 0, tprims_tensor_borrow_raw(&tb, 0), 0, &zero,
+                           tprims_tensor_borrow_raw(&tc, 0)) != TPRIMS_OK) { fprintf(stderr, "%s\n", tprims_last_error()); return 1; }
+    s[k] = (now_ns() - t0) / INNER;
+  }
+  qsort(s, SAMPLES, sizeof(double), cmp);
+  printf("gemm_8,c,%d,%.1f,%d\n", threads, s[SAMPLES / 2], SAMPLES);
+
+  int64_t s3[3] = {2, 2, 2}, st3[3] = {1, 2, 4}, s4[4] = {2, 2, 2, 2}, st4[4] = {1, 2, 4, 8};
+  double x[8], y[8], z[16];
+  for (int i = 0; i < 8; i++) { x[i] = i; y[i] = 8 - i; }
+  DLTensor tx = f64t(x, 3, s3, st3), ty = f64t(y, 3, s3, st3), tz = f64t(z, 4, s4, st4);
+  size_t lc[1] = {2}, rc[1] = {0};
+  tprims_dot_general cfg = {lc, rc, 1, NULL, NULL, 0};
+  tprims_contract_plan *plan = NULL;
+  if (tprims_contract_plan_create(&cfg, tprims_tensor_borrow_raw(&tx, 0), tprims_tensor_borrow_raw(&ty, 0),
+                                  tprims_tensor_borrow_raw(&tz, 0), 0, 0, 0, 0, &plan) != TPRIMS_OK) {
+    fprintf(stderr, "%s\n", tprims_last_error()); return 1;
+  }
+  for (int k = 0; k < SAMPLES; k++) {
+    double t0 = now_ns();
+    for (int i = 0; i < INNER; i++)
+      tprims_contract_plan_execute(plan, ex, &one, tprims_tensor_borrow_raw(&tx, 0), tprims_tensor_borrow_raw(&ty, 0), &zero,
+                                   tprims_tensor_borrow_raw(&tz, 0));
+    s[k] = (now_ns() - t0) / INNER;
+  }
+  qsort(s, SAMPLES, sizeof(double), cmp);
+  printf("contract_2x2x2,c,%d,%.1f,%d\n", threads, s[SAMPLES / 2], SAMPLES);
+  tprims_contract_plan_destroy(plan);
+
+  double t0 = now_ns();
+  int st_close = tprims_exec_close(ex);
+  printf("# close: status=%d %.1f us\n", st_close, (now_ns() - t0) / 1e3);
+  tprims_exec_release(ex);
+  return 0;
+}
