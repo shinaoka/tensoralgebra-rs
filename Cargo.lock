@@ -1401,6 +1401,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "tprims-linalg"
+version = "0.1.0"
+dependencies = [
+ "faer",
+ "num-complex",
+ "rayon",
+ "strided-view",
+ "tensorcontract",
+ "thiserror",
+ "tprims-blas",
+ "tprims-exec",
+]
+
+[[package]]
 name = "tracing"
 version = "0.1.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"

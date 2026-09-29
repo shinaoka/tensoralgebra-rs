@@ -89,6 +89,24 @@ pub(crate) fn mat2(name: &'static str, dims: &[usize], strides: &[isize]) -> Res
     })
 }
 
+/// Whether a strided layout is (sufficiently provably) injective: distinct
+/// multi-indices map to distinct element offsets. Axes of extent at most one
+/// are ignored; the others, sorted by `|stride|`, must each start beyond the
+/// span of the smaller ones. This accepts every column-/row-major, padded,
+/// permuted or reversed layout and rejects zero and overlapping strides; a
+/// few exotic interleaved injective layouts are conservatively rejected.
+///
+/// # Examples
+///
+/// ```
+/// use tprims_blas::is_injective_layout;
+/// assert!(is_injective_layout(&[(3, 1), (4, 5)]));
+/// assert!(!is_injective_layout(&[(3, 1), (4, 0)]));
+/// ```
+pub fn is_injective_layout(extents_strides: &[(usize, isize)]) -> bool {
+    check_injective(extents_strides).is_ok()
+}
+
 /// Sufficient test that distinct `(i, j)` map to distinct addresses.
 pub(crate) fn check_injective(extents_strides: &[(usize, isize)]) -> Result<()> {
     // An empty layout addresses nothing.

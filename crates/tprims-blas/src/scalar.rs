@@ -23,7 +23,7 @@ mod sealed {
 /// ```
 pub trait Scalar:
     sealed::Sealed
-    + faer::traits::ComplexField
+    + faer::traits::ComplexField<Real = <Self as Scalar>::Re>
     + tensorcontract::Element<Real = <Self as Scalar>::Re>
     + Copy
     + Send
@@ -31,7 +31,7 @@ pub trait Scalar:
     + 'static
 {
     /// The real type, with tensorcontract's kernels.
-    type Re: tensorcontract::KernelSet;
+    type Re: tensorcontract::KernelSet + faer::traits::RealField + Copy;
     /// Whether the type is complex.
     const IS_COMPLEX_SCALAR: bool;
 }
