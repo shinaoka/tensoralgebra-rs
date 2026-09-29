@@ -262,7 +262,7 @@ Return a per-item status and define the contents of failed outputs. Batched GEMM
 
 ## Relationship to `strided-rs`
 
-The [current `strided-rs` workspace](https://github.com/tensor4all/strided-rs/blob/main/Cargo.toml) provides views, basic and fused kernels, HPTT-inspired permutation, binary einsum, N-ary planning, adapters, and a facade. Its crates keep their names and become the strided part of this stack. Proposed changes:
+The [current `strided-rs` workspace](https://github.com/tensor4all/strided-rs/blob/main/Cargo.toml) provides views, basic and fused kernels, HPTT-inspired permutation, binary einsum, N-ary planning, adapters, and a facade. Its crates keep their names and, since Phase 0, live in this repository under `strided/`; the facade, `strided-einsum2`, `strided-opteinsum` and the `mdarray-`/`ndarray-opteinsum` adapters are frozen under `strided/deprecated/`. Proposed changes:
 
 | Current component | Proposed role and review |
 | --- | --- |
@@ -273,7 +273,7 @@ The [current `strided-rs` workspace](https://github.com/tensor4all/strided-rs/bl
 | `strided-opteinsum` | Stays as the N-ary planner; its binary step is retargeted to `tprims-contract`. |
 | `mdarray-opteinsum`, `ndarray-opteinsum`, `strided-rs` facade | Thin adapters above the stack. Keep current consumers, including tenferro, pinned until equivalent correctness and performance are verified. |
 
-Current binary einsum [passes operands through a contiguous-preparation path before GEMM](https://github.com/tensor4all/strided-rs/blob/main/strided-einsum2/src/lib.rs); compatible views may avoid a copy, but a direct tensor packer is a different architecture. Moving Julia/HPTT-derived code also requires preserving its source attribution and file-level licenses under the [provenance policy](provenance.md). No `strided-rs` code or tests have been copied into this repository.
+Current binary einsum [passes operands through a contiguous-preparation path before GEMM](https://github.com/tensor4all/strided-rs/blob/main/strided-einsum2/src/lib.rs); compatible views may avoid a copy, but a direct tensor packer is a different architecture. Moving Julia/HPTT-derived code also requires preserving its source attribution and file-level licenses under the [provenance policy](provenance.md). strided-rs was imported with its history, attribution and license files in Phase 0.
 
 ## Implementation order
 
@@ -281,6 +281,7 @@ Phase 1 puts being usable as the tenferro-rs CPU backend first. It also builds a
 
 | Phase | Content | Done when |
 | --- | --- | --- |
+| 0 | Import strided-rs, tensorprimitives-rs and strided-rs-benchmark-suite with history; one workspace; rules ported from tenferro-rs; root CI. | Workspace fmt, clippy, tests, MSRV and docs pass; history preserved. |
 | 1a | `tprims-exec`: borrowed Rayon pool, width chosen from work, kernel-level entry, `broadcast(n, f)`. | tenferro's pool runs a faer kernel and a TBLIS SPMD kernel through `tprims-exec`, with no entry for serial work. Tests: active width below pool width, partition above budget (repartitioned, no new threads, no barrier deadlock), nested and concurrent SPMD. Benchmark: fixed large pool, several active widths. |
 | 1b | `tprims-blas`: GEMM and batched GEMM, faer plus loop and TBLIS-style; TRSM on faer (heavily used by AD rules). | Both batched GEMM implementations pass the same correctness suite; a measured selection rule by shape. |
 | 1c | `tprims-contract`: permute plus batched GEMM (ported from tenferro) and TBLIS-style direct (ported from tensorprimitives-rs); batch dimensions, conjugation, `alpha`/`beta`. | Both strategies agree with a reference; comparison recorded on a predeclared corpus. |
@@ -300,8 +301,8 @@ AI-assisted contributions may include algorithms, implementations, benchmarks, c
 
 ## Sources and provenance
 
-[Research map](research-map.md) links primary papers, official API documentation, project decisions, and upstream licenses. [Provenance policy](provenance.md) describes how to record an independently implemented algorithm, a code port, or a reused test. No upstream source or tests have been copied into this repository.
+[Research map](research-map.md) links primary papers, official API documentation, project decisions, and upstream licenses. [Provenance policy](provenance.md) describes how to record an independently implemented algorithm, a code port, or a reused test. Phase 0 imported strided-rs, tensorprimitives-rs and strided-rs-benchmark-suite with history; see the provenance table.
 
 ## Status
 
-Research setup, revised 2026-09-29. No production design, ABI or package publication has been approved. The repository license is pending a maintainer choice; no third-party code is included.
+Research setup, revised 2026-09-29. No production design, ABI or package publication has been approved. The license of new tprims code is pending a maintainer choice; imported code keeps its own licenses.

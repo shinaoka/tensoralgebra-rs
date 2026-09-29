@@ -1,6 +1,17 @@
 # Provenance, licenses, and citation
 
-This repository begins with research notes. No source code, tests, or benchmark harnesses from the referenced projects have been copied here.
+This repository began with research notes. In Phase 0 (2026-09-29) three
+projects were imported with `git subtree add` without `--squash`, so their
+history and authorship are preserved:
+
+| Directory | Upstream | Commit | License | Notices kept |
+| --- | --- | --- | --- | --- |
+| `strided/` | [tensor4all/strided-rs](https://github.com/tensor4all/strided-rs) | `71b7cb9` | MIT OR Apache-2.0; `strided-perm` also BSD-3-Clause (HPTT-derived) | `strided/LICENSE-*`, `strided/NOTICE`, `strided/THIRD-PARTY-LICENSES` |
+| `tensorprimitives/` | [lkdvos/tensorprimitives-rs](https://github.com/lkdvos/tensorprimitives-rs) (Lukas Devos) | `8cda75e` | MIT OR Apache-2.0 | `tensorprimitives/LICENSE-*`, per-crate `LICENSE-*` |
+| `benchmarks/` | [tensor4all/strided-rs-benchmark-suite](https://github.com/tensor4all/strided-rs-benchmark-suite) | `0550611` | MIT | `benchmarks/LICENSE` |
+
+The history of an imported file is reachable through the import merge
+commit's second parent (for example `git log 6a84228^2 -- strided-perm/src/lib.rs`).
 
 ## Three different uses of prior work
 
@@ -21,7 +32,7 @@ The [shared tensor4all provenance policy](https://github.com/tensor4all/tensor4a
 | Reference LAPACK | [LICENSE](https://github.com/Reference-LAPACK/lapack/blob/master/LICENSE) | Check the selected file and version before reuse. |
 | gemmkit | [MIT or Apache-2.0](https://github.com/SomeB1oody/gemmkit) | Verify the chosen release's package contents if integrating. |
 | tenferro-rs | MIT OR Apache-2.0 | Planned port (Phase 1): permute plus batched GEMM contraction and the CPU GEMM driver from `tenferro-cpu`. Same maintainers; record the source commit. |
-| tensorprimitives-rs | MIT OR Apache-2.0 | Planned port (Phase 1): `tensorcontract` (TBLIS-style direct contraction, packing, microkernels) by Lukas Devos. Import with `git subtree add` without `--squash` after the design is settled, keeping authorship and commit history; the author has been contacted. |
+| tensorprimitives-rs | MIT OR Apache-2.0 | Imported (Phase 0) under `tensorprimitives/` at `8cda75e` with `git subtree add`, history and authorship preserved: `tensorcontract` (TBLIS-style direct contraction, packing, microkernels) by Lukas Devos. |
 
 [MIT](https://opensource.org/license/mit) requires its copyright and permission notices in copies or substantial portions. [BSD 3-Clause](https://opensource.org/license/BSD-3-clause) requires retaining the copyright notice, conditions, and disclaimer in source redistributions, reproducing them in binary distribution materials, and not implying endorsement. A `NOTICE` file is useful as an index, but its name alone does not satisfy these conditions. Including such permissively licensed portions does not, by itself, relicense unrelated original project code.
 
