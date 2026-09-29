@@ -20,7 +20,9 @@
 mod error;
 mod exec;
 mod pool;
+mod width;
 
 pub use error::ExecError;
 pub use exec::{Exec, Par};
 pub use pool::{Pool, PoolStats};
+pub use width::WidthPolicy;

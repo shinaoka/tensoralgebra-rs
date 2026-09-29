@@ -166,4 +166,98 @@ impl<'a> Exec<'a> {
             })
         });
     }
+
+    /// Co-scheduled SPMD execution: `f(t)` for every `t < width` runs
+    /// concurrently on distinct workers, so `f` may use barriers counting
+    /// `width` participants.
+    ///
+    /// Width one runs `f(0)` inline. On a pool the whole pool is dispatched
+    /// (Rayon `broadcast`); workers with index `>= width` return at once.
+    /// Broadcasts on one pool are serialized. A panic in `f` propagates to
+    /// the caller after every participant has finished.
+    ///
+    /// # Errors
+    ///
+    /// [`ExecError::Unavailable`] when co-scheduling cannot be guaranteed
+    /// (`Serial` with `width > 1`, or the caller is already a worker of the
+    /// pool, where an outer job may hold workers at a barrier); nothing runs
+    /// then, and the caller uses its barrier-free variant.
+    /// [`ExecError::WidthExceedsPool`] when `width` exceeds the pool.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use tprims_exec::{Exec, ExecError};
+    /// assert_eq!(Exec::serial().broadcast(2, &|_| {}), Err(ExecError::Unavailable));
+    /// ```
+    pub fn broadcast(&self, width: usize, f: &(dyn Fn(usize) + Sync)) -> Result<(), ExecError> {
+        if width == 0 {
+            return Ok(());
+        }
+        match self {
+            Exec::Serial => {
+                if width == 1 {
+                    f(0);
+                    Ok(())
+                } else {
+                    Err(ExecError::Unavailable)
+                }
+            }
+            Exec::Rayon { pool, .. } => {
+                let size = pool.size();
+                if width > size {
+                    return Err(ExecError::WidthExceedsPool { width, pool: size });
+                }
+                if pool.is_worker() {
+                    return Err(ExecError::Unavailable);
+                }
+                if width == 1 {
+                    f(0);
+                    return Ok(());
+                }
+                // INVARIANT: the SPMD mutex serializes broadcasts on this pool, so
+                // no worker ever holds two barrier-bearing jobs; it guards no data,
+                // so a poisoned lock (panic in an earlier `f`) is safe to reuse.
+                let _guard = pool
+                    .spmd
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                pool.count_broadcast();
+                pool.pool.broadcast(|ctx| {
+                    let t = ctx.index();
+                    if t < width {
+                        f(t)
+                    }
+                });
+                Ok(())
+            }
+        }
+    }
+
+    /// Partition width for work estimated at `serial_ns` on one thread,
+    /// minimizing the [`WidthPolicy`] cost model within the budget.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use tprims_exec::{Exec, WidthPolicy};
+    /// assert_eq!(Exec::serial().width_for(1e9, &WidthPolicy::default()), 1);
+    /// ```
+    pub fn width_for(&self, serial_ns: f64, policy: &crate::WidthPolicy) -> usize {
+        let budget = self.budget();
+        // NaN or small work stays serial.
+        if budget == 1 || serial_ns.is_nan() || serial_ns < policy.serial_below_ns {
+            return 1;
+        }
+        let cost = |k: usize| {
+            if k == 1 {
+                serial_ns
+            } else {
+                policy.entry_base_ns + policy.entry_per_thread_ns * k as f64 + serial_ns / k as f64
+            }
+        };
+        (1..=budget)
+            .min_by(|&a, &b| cost(a).total_cmp(&cost(b)))
+            .unwrap_or(1)
+    }
 }
