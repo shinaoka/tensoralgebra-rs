@@ -1,10 +1,11 @@
 [package]
 name = "strided-kernel"
-version.workspace = true
+version = "0.4.4"
 edition.workspace = true
-license.workspace = true
-authors.workspace = true
-repository.workspace = true
+rust-version.workspace = true
+license = "MIT OR Apache-2.0"
+authors = ["Satoshi Terasaki", "Hiroshi Shinaoka"]
+repository = "https://github.com/tensor4all/strided-rs"
 description = "Cache-optimized kernels for strided multidimensional array operations in Rust (ported from Julia Strided.jl/StridedViews.jl)."
 keywords = ["tensor", "strided", "kernels", "numerical"]
 categories = ["science", "mathematics", "algorithms"]

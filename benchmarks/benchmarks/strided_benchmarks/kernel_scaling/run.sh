@@ -12,7 +12,7 @@
 # $STRIDED_RS_DIR/strided-kernel. Nothing outside target/ and data/results/
 # is written, so no worktree path is ever committed.
 #
-# Environment: STRIDED_RS_DIR (default ../strided-rs), CPUS (Linux taskset
+# Environment: STRIDED_RS_DIR (default ../strided, the in-repo import), CPUS (Linux taskset
 # list, default 0-(THREADS-1)), OUTPUT_DIR, RUSTFLAGS (default
 # "-C target-cpu=native"), plus the binary's BENCH_RUNS, BENCH_WARMUP,
 # KERNEL_SCALING_SHRINK and BENCH_FILTER.
@@ -20,7 +20,7 @@ set -euo pipefail
 
 page=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$page/../../.." && pwd)
-strided_rs=$(cd "${STRIDED_RS_DIR:-"$root/../strided-rs"}" && pwd)
+strided_rs=$(cd "${STRIDED_RS_DIR:-"$root/../strided"}" && pwd)
 [[ -f "$strided_rs/strided-kernel/Cargo.toml" ]] || {
     echo "no strided-kernel crate under $strided_rs" >&2
     exit 1

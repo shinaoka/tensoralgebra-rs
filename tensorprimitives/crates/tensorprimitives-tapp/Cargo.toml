@@ -5,13 +5,13 @@ keywords = ["tensor", "contraction", "tapp", "ffi", "abi"]
 categories = ["mathematics", "science", "external-ffi-bindings"]
 readme = "README.md"
 documentation = "https://docs.rs/tensorprimitives-tapp"
-version.workspace = true
+version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
-license.workspace = true
-repository.workspace = true
-homepage.workspace = true
-authors.workspace = true
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/lkdvos/tensorprimitives-rs"
+homepage = "https://github.com/lkdvos/tensorprimitives-rs"
+authors = ["Lukas Devos <ldevos@flatironinstitute.org>"]
 
 [lib]
 name = "tensorprimitives_tapp"

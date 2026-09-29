@@ -1,10 +1,11 @@
 [package]
 name = "strided-perm"
-version.workspace = true
+version = "0.4.4"
 edition.workspace = true
+rust-version.workspace = true
 license = "(MIT OR Apache-2.0) AND BSD-3-Clause"
-authors.workspace = true
-repository.workspace = true
+authors = ["Satoshi Terasaki", "Hiroshi Shinaoka"]
+repository = "https://github.com/tensor4all/strided-rs"
 description = "Cache-efficient tensor permutation / transpose (HPTT-inspired)."
 keywords = ["tensor", "permutation", "transpose", "multidimensional"]
 categories = ["science", "mathematics", "algorithms"]
