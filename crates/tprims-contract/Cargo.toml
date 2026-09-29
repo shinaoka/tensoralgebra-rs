@@ -8,12 +8,12 @@ publish = false
 description = "Binary tensor contraction with batch indices for the tprims stack: permute plus batched GEMM, or TBLIS-style direct"
 
 [dependencies]
-strided-basic = { workspace = true, features = ["tprims-exec"] }
+strided-basic = { workspace = true }
 strided-view = { workspace = true }
 tensorcontract = { workspace = true }
 thiserror = { workspace = true }
 tprims-blas = { workspace = true }
-tprims-exec = { workspace = true }
+tprims-exec = { workspace = true, features = ["strided"] }
 
 [dev-dependencies]
 num-complex = { workspace = true }

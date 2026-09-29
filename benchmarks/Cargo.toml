@@ -5,37 +5,24 @@ edition.workspace = true
 rust-version.workspace = true
 license = "MIT"
 publish = false
-description = "Benchmarks for the tprims stack (imported from strided-rs-benchmark-suite)"
-
-[features]
-default = []
-parallel = [
-    "strided-kernel/parallel",
-    "strided-perm/parallel",
-]
-hptt = ["dep:hptt"]
+description = "Benchmarks for the tprims stack"
 
 [lib]
 path = "src/lib.rs"
 bench = false
 
 [dependencies]
-tprims-exec = { workspace = true }
+tprims-exec = { workspace = true, features = ["strided"] }
 tprims-blas = { workspace = true }
 tprims-linalg = { workspace = true }
 tprims-contract = { workspace = true }
 tprims-core = { workspace = true }
-strided-basic = { workspace = true, features = ["tprims-exec"] }
+strided-basic = { workspace = true }
 tensorcontract = { workspace = true }
-strided-kernel = { workspace = true }
 strided-view = { workspace = true }
-strided-perm = { workspace = true }
 num-complex = { workspace = true }
 num-traits = { workspace = true }
-hptt = { version = "0.4.1", optional = true }
 rayon = { workspace = true }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
 
 [[bin]]
 name = "capi_rust"
@@ -56,27 +43,6 @@ path = "benchmarks/tprims/blas/blas.rs"
 [[bin]]
 name = "exec_entry"
 path = "benchmarks/tprims/exec_entry/exec_entry.rs"
-
-[[bin]]
-name = "scale_transpose"
-path = "benchmarks/strided_benchmarks/transpose_scale/scale_transpose.rs"
-
-[[bin]]
-name = "permute"
-path = "benchmarks/strided_benchmarks/permute/permute.rs"
-
-[[bin]]
-name = "fused_elementwise"
-path = "benchmarks/strided_benchmarks/fused_elementwise/fused_elementwise.rs"
-
-[[bin]]
-name = "dense_kernels"
-path = "benchmarks/strided_benchmarks/dense_kernels/dense_kernels.rs"
-
-[[bin]]
-name = "kernel_scaling"
-path = "benchmarks/strided_benchmarks/kernel_scaling/kernel_scaling.rs"
-required-features = ["parallel"]
 
 [lints]
 workspace = true

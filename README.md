@@ -10,16 +10,15 @@ contributions are welcome.
 
 **Status:** design, experiments and imported building blocks; no stable API,
 ABI or performance claim. The repository holds design notes, measurement
-experiments under `experiments/`, and code imported with its history in
-Phase 0:
+experiments under `experiments/`, and:
 
-- `strided/`: strided-rs (`strided-traits`, `-view`, `-perm`, `-basic`,
-  `-fused`, `-kernel`); its facade and einsum crates are frozen under
-  `strided/deprecated/`.
 - `tensorprimitives/`: tensorprimitives-rs by Lukas Devos (`tensorcontract`,
-  the TBLIS-style direct contraction).
-- `benchmarks/`: strided-rs-benchmark-suite, now the `tprims-bench` package.
+  the TBLIS-style direct contraction), imported with its history in Phase 0.
+- `benchmarks/`: the `tprims-bench` package.
 - `crates/`: the new `tprims-*` parts (from Phase 1).
+
+strided-rs (`strided-view`, `-perm`, `-basic`, `-kernel`) is an external
+dependency pinned to its v0.4.4 commit, the same pin as tenferro-rs.
 
 **Design principles** ([full text](docs/design-principles.md)): parts, not a
 facade; one direction of dependency; short names under the `tprims-` prefix;
@@ -146,7 +145,10 @@ Every expensive operation takes an explicit `tprims_exec`. Rust callers pass an 
 
 strided-rs, tensorprimitives-rs and strided-rs-benchmark-suite were imported
 with `git subtree` (history kept) into one Cargo workspace, and the
-repository and performance rules were ported from tenferro-rs
+repository and performance rules were ported from tenferro-rs. strided-rs and
+its benchmarks later went back to their own repositories: only one small
+adapter had needed strided changes, and a second copy of strided would have
+diverged from the one tenferro-rs uses
 ([`REPOSITORY_RULES.md`](REPOSITORY_RULES.md),
 [`PERFORMANCE_TIPS.md`](PERFORMANCE_TIPS.md)).
 
@@ -184,7 +186,6 @@ Contributions should include attributable sources, numerical checks and
 reproducible evidence for performance claims; see the
 [provenance policy](docs/provenance.md).
 
-strided-rs, tensorprimitives-rs and strided-rs-benchmark-suite were imported
-with history in Phase 0 ([provenance](docs/provenance.md)); imported code keeps
-its own licenses. No crate has been published from this repository. The
+tensorprimitives-rs was imported with history in Phase 0
+([provenance](docs/provenance.md)); imported code keeps its own licenses. No crate has been published from this repository. The
 license of the new tprims code is pending a maintainer choice.

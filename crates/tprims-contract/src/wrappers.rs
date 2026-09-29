@@ -1,7 +1,7 @@
-use strided_basic::run_with_exec;
 use strided_view::{StridedView, StridedViewMut};
 use tensorcontract::Element;
 use tprims_blas::{is_injective_layout, Scalar};
+use tprims_exec::strided::run_with_exec;
 use tprims_exec::Exec;
 
 use crate::{Error, Result};

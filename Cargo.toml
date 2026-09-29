@@ -9,18 +9,12 @@ members = [
     "crates/tprims-blas",
     "crates/tprims-linalg",
     "crates/tprims-contract",
-    "strided/strided-traits",
-    "strided/strided-view",
-    "strided/strided-perm",
-    "strided/strided-basic",
-    "strided/strided-fused",
-    "strided/strided-kernel",
     "tensorprimitives/crates/tensorcontract",
     "tensorprimitives/crates/tensorprimitives-tapp",
     "tensorprimitives/crates/tensorprimitives-bench",
     "benchmarks",
 ]
-exclude = ["experiments", "strided/deprecated", "benchmarks/deprecated"]
+exclude = ["experiments"]
 
 [workspace.package]
 edition = "2021"
@@ -29,12 +23,12 @@ edition = "2021"
 rust-version = "1.89"
 
 [workspace.dependencies]
-strided-basic = { version = "0.4.4", path = "strided/strided-basic", default-features = false }
-strided-fused = { version = "0.4.4", path = "strided/strided-fused", default-features = false }
-strided-traits = { version = "0.4.4", path = "strided/strided-traits" }
-strided-view = { version = "0.4.4", path = "strided/strided-view" }
-strided-perm = { version = "0.4.4", path = "strided/strided-perm" }
-strided-kernel = { version = "0.4.4", path = "strided/strided-kernel" }
+# strided-rs v0.4.4 release commit (tag v0.4.4), spelled exactly as in
+# tenferro-rs so both resolve one strided-rs source and share `StridedView`.
+strided-basic = { git = "https://github.com/tensor4all/strided-rs.git", rev = "25705339d45583f5eb77bdbde22f2349b48e3f95", version = "0.4.4", default-features = false }
+strided-view = { git = "https://github.com/tensor4all/strided-rs.git", rev = "25705339d45583f5eb77bdbde22f2349b48e3f95", version = "0.4.4" }
+strided-perm = { git = "https://github.com/tensor4all/strided-rs.git", rev = "25705339d45583f5eb77bdbde22f2349b48e3f95", version = "0.4.4" }
+strided-kernel = { git = "https://github.com/tensor4all/strided-rs.git", rev = "25705339d45583f5eb77bdbde22f2349b48e3f95", version = "0.4.4" }
 tensorcontract = { version = "0.1.0", path = "tensorprimitives/crates/tensorcontract" }
 tprims-exec = { version = "0.1.0", path = "crates/tprims-exec" }
 tprims-core = { version = "0.1.0", path = "crates/tprims-core" }
@@ -85,10 +79,10 @@ inherits = "release"
 inherits = "release"
 debug = true
 
-# Imported strided-rs code was not clippy-gated upstream. These two lints fire
-# on index-driven numerical kernels and wide kernel signatures, where the
-# suggested rewrites change loop structure in hot paths; they stay allowed
-# workspace-wide rather than being "fixed" without a benchmark.
+# These two lints fire on index-driven numerical kernels and wide kernel
+# signatures, where the suggested rewrites change loop structure in hot paths;
+# they stay allowed workspace-wide rather than being "fixed" without a
+# benchmark.
 [workspace.lints.clippy]
 too_many_arguments = "allow"
 needless_range_loop = "allow"

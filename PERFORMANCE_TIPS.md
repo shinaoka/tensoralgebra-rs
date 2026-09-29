@@ -24,8 +24,8 @@ is evidence to inspect, not a finding by itself.
 Human/process protocol.
 
 1. Scope: audit the requested paths, or with `full` the crates under
-   `crates/`, `strided/strided-*`, `tensorprimitives/crates/`, then
-   `benchmarks/`, examples, and doc snippets. Skip `deprecated/`,
+   `crates/`, `tensorprimitives/crates/`, then
+   `benchmarks/`, examples, and doc snippets. Skip
    `docs/superpowers/` and `docs/worklogs/`.
 2. For each section below, search the scope for its `Detect` patterns and read
    the surrounding code. Respect an `// INVARIANT:` marker that explains the

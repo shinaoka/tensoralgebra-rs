@@ -22,6 +22,9 @@ mod exec;
 mod pool;
 mod width;
 
+#[cfg(feature = "strided")]
+pub mod strided;
+
 pub use error::ExecError;
 pub use exec::{Exec, Par};
 pub use pool::{Pool, PoolStats};

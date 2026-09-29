@@ -52,7 +52,7 @@ The name `contract` was chosen over `tensordot` because NumPy, PyTorch and JAX `
 
 ### Dependency rules
 
-- `tprims-exec` and `tprims-core` are the bottom of the graph. `strided-*` crates may depend on them and on nothing else in the stack.
+- `tprims-exec` and `tprims-core` are the bottom of the tprims graph; their only stack dependency is strided-rs (`tprims-exec` optionally, for `strided::run_with_exec`; `tprims-core` for `strided-view`). strided-rs depends on nothing in tprims.
 - `tprims-gemm-kernel` depends only on `strided-view` / `strided-traits`. It takes no execution context.
 - `tprims-blas`, `tprims-linalg` and `tprims-contract` take an explicit `tprims-exec` context for every expensive operation.
 - A C ABI crate depends on its Rust part and `tprims-core` only. It contains no algorithm.
@@ -264,18 +264,13 @@ Return a per-item status and define the contents of failed outputs. Batched GEMM
 
 ## Relationship to `strided-rs`
 
-The [current `strided-rs` workspace](https://github.com/tensor4all/strided-rs/blob/main/Cargo.toml) provides views, basic and fused kernels, HPTT-inspired permutation, binary einsum, N-ary planning, adapters, and a facade. Its crates keep their names and, since Phase 0, live in this repository under `strided/`; the facade, `strided-einsum2`, `strided-opteinsum` and the `mdarray-`/`ndarray-opteinsum` adapters are frozen under `strided/deprecated/`. Proposed changes:
+[strided-rs](https://github.com/tensor4all/strided-rs) provides the views, basic and fused kernels and HPTT-inspired permutation this stack builds on. It is an external dependency, pinned to the same commit as tenferro-rs so both share one `StridedView` type. It was imported into this repository in Phase 0 and removed again on 2026-09-30, when strided-rs dropped its facade and einsum crates (strided-rs #282). Binary contraction is `tprims-contract`; N-ary planning stays above the stack, in the consumer.
 
-| Current component | Proposed role and review |
+| Component | Role here |
 | --- | --- |
-| `strided-traits`, `strided-view` | Reused unchanged as the shared view contract. Preserve checked borrowing and lazy conjugation. |
-| `strided-perm`, `strided-kernel` | Gain an explicit `tprims-exec` context where they currently rely on ambient threading. Preserve [HPTT provenance and license](https://github.com/tensor4all/strided-rs/blob/main/docs/PROVENANCE_AND_CITATION_POLICY.md). |
-| `strided-capi` (planned in [strided-rs #234](https://github.com/tensor4all/strided-rs/issues/234)) | Becomes an `rlib` over `tprims-core` types (DLPack operands, `tprims_exec`) and joins `tprims-bundle`, instead of shipping its own `cdylib`/`staticlib`. |
-| `strided-einsum2` | Frozen under `strided/deprecated/`. Its binary contraction role is taken over by `tprims-contract`; semantic tests and provider comparisons are reimplemented there. |
-| `strided-opteinsum` | Frozen under `strided/deprecated/`. N-ary planning stays above the stack: in the published strided-opteinsum 0.4.x releases (upstream repository) or in the consumer, calling `tprims-contract` per binary step. |
-| `mdarray-opteinsum`, `ndarray-opteinsum`, `strided-rs` facade | Frozen under `strided/deprecated/`: adapters above the stack. Current consumers, including tenferro, keep using the published 0.4.x releases until equivalent correctness and performance are verified. |
-
-Current binary einsum [passes operands through a contiguous-preparation path before GEMM](https://github.com/tensor4all/strided-rs/blob/main/strided-einsum2/src/lib.rs); compatible views may avoid a copy, but a direct tensor packer is a different architecture. Moving Julia/HPTT-derived code also requires preserving its source attribution and file-level licenses under the [provenance policy](provenance.md). strided-rs was imported with its history, attribution and license files in Phase 0.
+| `strided-traits`, `strided-view` | Reused unchanged as the shared view contract. |
+| `strided-perm`, `strided-basic`, `strided-kernel` | Used for copies, permutations and elementwise work. `tprims_exec::strided::run_with_exec` bridges an `Exec` to strided's `ExecContext`. An explicit `tprims-exec` context inside strided itself would be a change proposed to strided-rs. |
+| `strided-capi` (planned in [strided-rs #234](https://github.com/tensor4all/strided-rs/issues/234)) | Would become an `rlib` over `tprims-core` types (DLPack operands, `tprims_exec`) joining `tprims-bundle`. |
 
 ## Implementation order
 
@@ -283,7 +278,7 @@ Phase 1 puts being usable as the tenferro-rs CPU backend first. It also builds a
 
 | Phase | Content | Done when |
 | --- | --- | --- |
-| 0 | Import strided-rs, tensorprimitives-rs and strided-rs-benchmark-suite with history; one workspace; rules ported from tenferro-rs; root CI. | Workspace fmt, clippy, tests, MSRV and docs pass; history preserved. |
+| 0 | Import strided-rs, tensorprimitives-rs and strided-rs-benchmark-suite with history; one workspace; rules ported from tenferro-rs; root CI. (strided-rs and its benchmarks were made external again on 2026-09-30.) | Workspace fmt, clippy, tests, MSRV and docs pass; history preserved. |
 | 1a | `tprims-exec`: borrowed Rayon pool, width chosen from work, kernel-level entry, `broadcast(n, f)`. | tenferro's pool runs a faer kernel and a TBLIS SPMD kernel through `tprims-exec`, with no entry for serial work. Tests: active width below pool width, partition above budget (repartitioned, no new threads, no barrier deadlock), nested and concurrent SPMD. Benchmark: fixed large pool, several active widths. |
 | 1b | `tprims-blas`: GEMM and batched GEMM, faer plus loop and TBLIS-style; TRSM on faer (heavily used by AD rules). | Both batched GEMM implementations pass the same correctness suite; a measured selection rule by shape. |
 | 1c | `tprims-contract`: permute plus batched GEMM (ported from tenferro) and TBLIS-style direct (ported from tensorprimitives-rs); batch dimensions, conjugation, `alpha`/`beta`. | Both strategies agree with a reference; comparison recorded on a predeclared corpus. |
