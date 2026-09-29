@@ -13,7 +13,7 @@ use tensorcontract::Element;
 use tprims_blas::Scalar;
 use tprims_exec::Exec;
 
-use crate::util::{abs, flops, install, rhs_mut};
+use crate::util::{abs, factor_policy, flops, install, install_with, rhs_mut};
 use crate::{Matrix, Result};
 
 /// Householder reflectors and block factors shared by both QR kinds.
@@ -124,22 +124,27 @@ pub fn qr<T: Scalar>(exec: &Exec<'_>, a: &StridedView<'_, T>) -> Result<Qr<T>> {
     let mut coeff = Matrix::zeros(bs, k);
     if k > 0 {
         let (mat, c) = (qrm.as_faer_mut(), coeff.as_faer_mut());
-        install(exec, flops::<T>(2.0 * (m * n * k) as f64), move |par| {
-            let mut mem = MemBuffer::new(no_pivoting::factor::qr_in_place_scratch::<T>(
-                m,
-                n,
-                bs,
-                par,
-                Default::default(),
-            ));
-            no_pivoting::factor::qr_in_place(
-                mat,
-                c,
-                par,
-                MemStack::new(&mut mem),
-                Default::default(),
-            );
-        });
+        install_with(
+            exec,
+            flops::<T>(2.0 * (m * n * k) as f64),
+            factor_policy(),
+            move |par| {
+                let mut mem = MemBuffer::new(no_pivoting::factor::qr_in_place_scratch::<T>(
+                    m,
+                    n,
+                    bs,
+                    par,
+                    Default::default(),
+                ));
+                no_pivoting::factor::qr_in_place(
+                    mat,
+                    c,
+                    par,
+                    MemStack::new(&mut mem),
+                    Default::default(),
+                );
+            },
+        );
     }
     Ok(Qr {
         h: Householder { qr: qrm, coeff },
@@ -212,24 +217,30 @@ pub fn qr_col_piv<T: Scalar>(exec: &Exec<'_>, a: &StridedView<'_, T>) -> Result<
     if k > 0 {
         let (mat, c) = (qrm.as_faer_mut(), coeff.as_faer_mut());
         let (p, pi) = (&mut perm[..], &mut perm_inv[..]);
-        install(exec, flops::<T>(2.0 * (m * n * k) as f64), move |par| {
-            let mut mem = MemBuffer::new(col_pivoting::factor::qr_in_place_scratch::<usize, T>(
-                m,
-                n,
-                bs,
-                par,
-                Default::default(),
-            ));
-            let _ = col_pivoting::factor::qr_in_place(
-                mat,
-                c,
-                p,
-                pi,
-                par,
-                MemStack::new(&mut mem),
-                Default::default(),
-            );
-        });
+        install_with(
+            exec,
+            flops::<T>(2.0 * (m * n * k) as f64),
+            factor_policy(),
+            move |par| {
+                let mut mem =
+                    MemBuffer::new(col_pivoting::factor::qr_in_place_scratch::<usize, T>(
+                        m,
+                        n,
+                        bs,
+                        par,
+                        Default::default(),
+                    ));
+                let _ = col_pivoting::factor::qr_in_place(
+                    mat,
+                    c,
+                    p,
+                    pi,
+                    par,
+                    MemStack::new(&mut mem),
+                    Default::default(),
+                );
+            },
+        );
     }
     Ok(ColPivQr {
         h: Householder { qr: qrm, coeff },

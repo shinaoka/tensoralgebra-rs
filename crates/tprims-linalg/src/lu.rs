@@ -7,7 +7,7 @@ use tensorcontract::{Element, Real};
 use tprims_blas::{Op, Scalar};
 use tprims_exec::Exec;
 
-use crate::util::{abs, eps, flops, install, rhs_mut, square};
+use crate::util::{abs, eps, factor_policy, flops, install, install_with, rhs_mut, square};
 use crate::{Error, Matrix, Result};
 
 /// `P A = L U` with partial (row) pivoting; `A` may be rectangular.
@@ -33,8 +33,11 @@ pub fn lu<T: Scalar>(exec: &Exec<'_>, a: &StridedView<'_, T>) -> Result<Lu<T>> {
         let mat = lu.as_faer_mut();
         let (p, pi) = (&mut perm[..], &mut perm_inv[..]);
         let k = m.min(n);
-        transpositions =
-            install(exec, flops::<T>((m * n * k) as f64), move |par| {
+        transpositions = install_with(
+            exec,
+            flops::<T>((m * n * k) as f64),
+            factor_policy(),
+            move |par| {
                 let mut mem = MemBuffer::new(partial_pivoting::factor::lu_in_place_scratch::<
                     usize,
                     T,
@@ -49,7 +52,8 @@ pub fn lu<T: Scalar>(exec: &Exec<'_>, a: &StridedView<'_, T>) -> Result<Lu<T>> {
                 )
                 .0
                 .transposition_count
-            });
+            },
+        );
     }
     Ok(Lu {
         lu,
@@ -246,24 +250,30 @@ pub fn lu_full<T: Scalar>(exec: &Exec<'_>, a: &StridedView<'_, T>) -> Result<Ful
     if n > 0 {
         let mat = lu.as_faer_mut();
         let (a1, a2, a3, a4) = (&mut rp[..], &mut rpi[..], &mut cp[..], &mut cpi[..]);
-        install(exec, flops::<T>((n * n * n) as f64), move |par| {
-            let mut mem = MemBuffer::new(full_pivoting::factor::lu_in_place_scratch::<usize, T>(
-                n,
-                n,
-                par,
-                Default::default(),
-            ));
-            let _ = full_pivoting::factor::lu_in_place(
-                mat,
-                a1,
-                a2,
-                a3,
-                a4,
-                par,
-                MemStack::new(&mut mem),
-                Default::default(),
-            );
-        });
+        install_with(
+            exec,
+            flops::<T>((n * n * n) as f64),
+            factor_policy(),
+            move |par| {
+                let mut mem =
+                    MemBuffer::new(full_pivoting::factor::lu_in_place_scratch::<usize, T>(
+                        n,
+                        n,
+                        par,
+                        Default::default(),
+                    ));
+                let _ = full_pivoting::factor::lu_in_place(
+                    mat,
+                    a1,
+                    a2,
+                    a3,
+                    a4,
+                    par,
+                    MemStack::new(&mut mem),
+                    Default::default(),
+                );
+            },
+        );
     }
     Ok(FullPivLu {
         lu,

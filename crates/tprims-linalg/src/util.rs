@@ -1,6 +1,6 @@
 use strided_view::StridedViewMut;
 use tprims_blas::{is_injective_layout, GemmPolicy, Scalar};
-use tprims_exec::{Exec, Par};
+use tprims_exec::{Exec, Par, WidthPolicy};
 
 use crate::{Error, Result};
 
@@ -10,8 +10,29 @@ pub(crate) fn install<R: Send>(
     flops: f64,
     op: impl FnOnce(faer::Par) -> R + Send,
 ) -> R {
+    install_with(exec, flops, GemmPolicy::default().width, op)
+}
+
+/// Serial threshold for faer's blocked LU and QR: measured on an EPYC 7713P
+/// (2026-09-30, `benchmarks/benchmarks/tprims/linalg`), their parallel paths
+/// are slower than serial at n = 128 (0.6x LU, 0.4x QR at 4 threads) and gain
+/// at most 1.3x at n = 512, so they stay serial below an estimated 1 ms.
+pub(crate) fn factor_policy() -> WidthPolicy {
+    WidthPolicy {
+        serial_below_ns: 1.0e6,
+        ..WidthPolicy::default()
+    }
+}
+
+/// [`install`] with a kernel-specific width policy.
+pub(crate) fn install_with<R: Send>(
+    exec: &Exec<'_>,
+    flops: f64,
+    policy: WidthPolicy,
+    op: impl FnOnce(faer::Par) -> R + Send,
+) -> R {
     let p = GemmPolicy::default();
-    let k = exec.width_for(flops * p.ns_per_flop, &p.width);
+    let k = exec.width_for(flops * p.ns_per_flop, &policy);
     exec.install(k, |par| {
         op(match par {
             Par::Seq => faer::Par::Seq,
