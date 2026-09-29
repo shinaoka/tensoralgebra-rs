@@ -1377,6 +1377,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "tprims-blas"
+version = "0.1.0"
+dependencies = [
+ "faer",
+ "num-complex",
+ "rayon",
+ "strided-view",
+ "tensorcontract",
+ "thiserror",
+ "tprims-exec",
+]
+
+[[package]]
 name = "tprims-exec"
 version = "0.1.0"
 dependencies = [
