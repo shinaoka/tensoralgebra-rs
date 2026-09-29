@@ -333,7 +333,16 @@ fn copy_compact<T: Scalar>(
 ) -> Result<Vec<T>> {
     let sp = permuted(src, perm)?;
     let dims = sp.dims().to_vec();
-    let len: usize = dims.iter().product();
+    // A broadcast (stride-0) operand can address far more elements than
+    // back it; its compact copy must fit one allocation.
+    let len = dims
+        .iter()
+        .try_fold(1usize, |acc, &d| acc.checked_mul(d))
+        .filter(|&l| {
+            l.checked_mul(std::mem::size_of::<T>())
+                .is_some_and(|b| b <= isize::MAX as usize)
+        })
+        .ok_or_else(|| Error::Shape(format!("operand copy of extents {dims:?} is too large")))?;
     let mut buf = vec![<T as Element>::zero(); len];
     let strides = col_major(&dims);
     {
@@ -372,4 +381,23 @@ fn col_major(dims: &[usize]) -> Vec<isize> {
         acc *= d.max(1) as isize;
     }
     s
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn copying_an_oversized_broadcast_operand_is_a_shape_error() {
+        // A stride-0 view over one element whose compact copy would exceed
+        // isize::MAX bytes (same class as tprims-linalg #15).
+        let data = [1.0f64];
+        let v = StridedView::new(&data, &[1usize << 61], &[0], 0).unwrap();
+        let r = std::panic::catch_unwind(|| copy_compact(&Exec::serial(), &v, &[0]));
+        assert!(
+            matches!(r, Ok(Err(Error::Shape(_)))),
+            "expected Err(Error::Shape), got {:?}",
+            r.map(|x| x.map(|_| ()))
+        );
+    }
 }
