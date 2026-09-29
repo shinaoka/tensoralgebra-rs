@@ -36,3 +36,18 @@ fn det_of_non_finite_input_is_nan_but_exact_zero_pivot_is_zero() {
     assert_eq!(det(&e, &z.view()).unwrap(), 0.0);
     let _ = <f64 as Scalar>::IS_COMPLEX_SCALAR;
 }
+
+#[test]
+fn from_view_of_an_oversized_broadcast_view_is_a_shape_error() {
+    // #15: both strides zero, so one element backs a 2^31 x 2^31 view whose
+    // copy would exceed isize::MAX bytes.
+    let data = [1.0f64];
+    let v =
+        strided_view::StridedView::new(&data, &[1usize << 31, 1usize << 31], &[0, 0], 0).unwrap();
+    let r = std::panic::catch_unwind(|| Matrix::<f64>::from_view(&v));
+    assert!(
+        matches!(r, Ok(Err(Error::Shape(_)))),
+        "expected Err(Error::Shape), got {:?}",
+        r.map(|x| x.map(|_| ()))
+    );
+}

@@ -190,12 +190,9 @@ pub fn layout(t: &tprims_tensor, dt: DType) -> Result<Layout, FfiError> {
             .collect::<Result<_, _>>()?
     };
     let size = dt.size();
-    if v.byte_offset % size as u64 != 0 {
-        return Err(FfiError::new(
-            TPRIMS_ERR_INVALID_ARGUMENT,
-            "byte_offset is not a multiple of the element size",
-        ));
-    }
+    // `byte_offset` itself is unconstrained: only the effective address
+    // `data + byte_offset` must be aligned to the element (the real type's
+    // alignment for complex dtypes), checked below.
     let empty = dims.contains(&0);
     let (mut lo, mut hi) = (0isize, 0isize);
     if !empty {

@@ -27,13 +27,7 @@ impl<T: Scalar> Matrix<T> {
     ///
     /// [`Error::Shape`] when `rows * cols` overflows.
     pub fn zeros(rows: usize, cols: usize) -> Result<Self> {
-        let len = rows
-            .checked_mul(cols)
-            .filter(|&l| {
-                l.checked_mul(std::mem::size_of::<T>())
-                    .is_some_and(|b| b <= isize::MAX as usize)
-            })
-            .ok_or_else(|| Error::Shape(format!("{rows}x{cols} matrix is too large")))?;
+        let len = checked_len::<T>(rows, cols)?;
         Ok(Self {
             rows,
             cols,
@@ -83,9 +77,9 @@ impl<T: Scalar> Matrix<T> {
         let (rows, cols) = (v.dims()[0], v.dims()[1]);
         let (rs, cs) = (v.strides()[0], v.strides()[1]);
         let p = v.ptr();
-        let len = rows
-            .checked_mul(cols)
-            .ok_or_else(|| Error::Shape(format!("{rows}x{cols} matrix is too large")))?;
+        // A broadcast (stride-0) view can address far more elements than
+        // back it, so its copy is size-checked like `zeros`.
+        let len = checked_len::<T>(rows, cols)?;
         let mut data = Vec::with_capacity(len);
         for j in 0..cols {
             for i in 0..rows {
@@ -157,4 +151,15 @@ impl<T: Scalar> Matrix<T> {
     pub(crate) fn as_faer_mut(&mut self) -> faer::MatMut<'_, T> {
         faer::MatMut::from_column_major_slice_mut(&mut self.data, self.rows, self.cols)
     }
+}
+
+/// `rows * cols`, when that many `T` fit one allocation (at most
+/// `isize::MAX` bytes).
+fn checked_len<T>(rows: usize, cols: usize) -> Result<usize> {
+    rows.checked_mul(cols)
+        .filter(|&l| {
+            l.checked_mul(std::mem::size_of::<T>())
+                .is_some_and(|b| b <= isize::MAX as usize)
+        })
+        .ok_or_else(|| Error::Shape(format!("{rows}x{cols} matrix is too large")))
 }
