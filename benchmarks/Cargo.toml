@@ -23,6 +23,7 @@ bench = false
 tprims-exec = { workspace = true }
 tprims-blas = { workspace = true }
 tprims-linalg = { workspace = true }
+tprims-contract = { workspace = true }
 strided-basic = { workspace = true, features = ["tprims-exec"] }
 tensorcontract = { workspace = true }
 strided-kernel = { workspace = true }
@@ -38,6 +39,10 @@ serde_json = "1"
 [[bin]]
 name = "linalg"
 path = "benchmarks/tprims/linalg/linalg.rs"
+
+[[bin]]
+name = "contract"
+path = "benchmarks/tprims/contract/contract.rs"
 
 [[bin]]
 name = "blas"
