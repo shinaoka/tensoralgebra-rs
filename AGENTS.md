@@ -41,5 +41,6 @@ This is a research repository, not a production tensor-algebra library. Read `RE
   `cargo test -j 16 -p strided-basic -p strided-kernel -p strided-perm --features parallel`,
   the strided crates alone without features (the workspace run unifies
   `parallel` on through `tprims-bench`), and
-  `cargo test -j 16 -p tensorcontract --release`. CI uses stable clippy,
+  `cargo test -j 16 -p tensorcontract --release`. Build `cargo build -j 16 -p tprims-bundle`
+  before the workspace tests (the C ABI test links the built `libtprims.so`). CI uses stable clippy,
   which may be newer than a local toolchain.
