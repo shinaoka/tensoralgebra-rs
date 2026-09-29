@@ -1368,9 +1368,12 @@ dependencies = [
  "rayon",
  "serde",
  "serde_json",
+ "strided-basic",
  "strided-kernel",
  "strided-perm",
  "strided-view",
+ "tensorcontract",
+ "tprims-exec",
 ]
 
 [[package]]
