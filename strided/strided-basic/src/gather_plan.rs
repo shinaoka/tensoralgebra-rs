@@ -767,6 +767,8 @@ impl GatherPlan {
         // INVARIANT: compile and check_call validated compact rank-one layouts,
         // so incrementing these offsets once per logical element stays within
         // the validated allocations and cannot overflow isize.
+        #[allow(clippy::explicit_counter_loop)]
+        // INVARIANT: isize pointer offsets, see above; an enumerate counter would be usize.
         for _ in 0..self.total {
             // SAFETY: the invariant above proves all three offsets are in bounds.
             unsafe {
@@ -1461,7 +1463,7 @@ impl DynamicUpdateSlicePlan {
             clamped_starts,
         )?;
         let source_base = update.offset();
-        let dest_base = checked_strided_offset(dest.offset(), &self.dest_strides, &clamped_starts)?;
+        let dest_base = checked_strided_offset(dest.offset(), &self.dest_strides, clamped_starts)?;
         let mut state = replay.decode(0, source_base, dest_base)?;
         let update_data = update.data();
 
@@ -2008,6 +2010,8 @@ impl ScatterPlan {
 
         // INVARIANT: compile and check_call validated compact rank-one index
         // and update layouts. Ordered replay preserves repeated-index semantics.
+        #[allow(clippy::explicit_counter_loop)]
+        // INVARIANT: isize pointer offsets, see above; an enumerate counter would be usize.
         for _ in 0..self.batch_elems {
             // SAFETY: the invariant above proves index/update reads and the
             // clamped destination offset are in their validated allocations.

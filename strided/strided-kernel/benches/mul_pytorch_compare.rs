@@ -511,12 +511,11 @@ fn main() {
         for case in profile_cases() {
             let (median_ms, iqr_ms) = run_case_for_dtype(dtype, case);
             println!(
-                "mul,{},{},{},{},{},{:.6},{:.6},ok",
+                "mul,{},{},{},{},strided-kernel,{:.6},{:.6},ok",
                 case.benchmark(),
                 dtype.label(),
                 threads,
                 case.shape_label(),
-                "strided-kernel",
                 median_ms,
                 iqr_ms
             );

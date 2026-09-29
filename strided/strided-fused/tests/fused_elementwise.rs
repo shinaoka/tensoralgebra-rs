@@ -586,6 +586,8 @@ fn fused_all_real_ops_have_basic_parity() {
         let y = y.get(&[i]);
         let expected = [
             x / y,
+            // INVARIANT: mirrors the kernel op max-then-min (NaN semantics differ from clamp).
+            #[allow(clippy::manual_clamp)]
             x.max(1.5).min(2.0),
             x.ln(),
             x.sin(),

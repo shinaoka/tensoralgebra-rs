@@ -125,7 +125,7 @@ fn run(case: &str, runs: usize, timing: bool) {
                     let keep = if kind == "triu" {
                         row as i64 <= col as i64 + 1
                     } else {
-                        row as i64 >= col as i64 + 1
+                        row as i64 > col as i64
                     };
                     if keep {
                         a[flat]

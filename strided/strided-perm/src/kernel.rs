@@ -393,7 +393,7 @@ mod tests {
         // Conflicting strides means no fusion possible
         assert_eq!(fused_dims.len(), 2);
         assert_eq!(fused_strides.len(), 2);
-        assert!(plan.block.len() >= 1);
+        assert!(!plan.block.is_empty());
     }
 
     #[test]

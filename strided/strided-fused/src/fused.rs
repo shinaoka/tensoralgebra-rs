@@ -1061,7 +1061,7 @@ fn interpret_fused_elementwise_into<T: FusedScalar>(
     #[cfg(feature = "parallel")]
     {
         let dims = dests[0].dims().to_vec();
-        if dests[0].len() == 0 {
+        if dests[0].is_empty() {
             return Ok(());
         }
 
@@ -1145,7 +1145,7 @@ fn interpret_fused_elementwise_into_serial<T: FusedScalar>(
     plan: &FusedPlan,
 ) -> Result<()> {
     let dims = dests[0].dims().to_vec();
-    if dests[0].len() == 0 {
+    if dests[0].is_empty() {
         return Ok(());
     }
 
@@ -1246,7 +1246,7 @@ pub(crate) fn fused_elementwise_into_uninit<T: FusedScalar>(
     }
 
     let dims = dest.dims();
-    if dest.len() == 0 {
+    if dest.is_empty() {
         return Ok(());
     }
     let dst_ptr = dest.as_mut_ptr();

@@ -82,7 +82,7 @@ pub fn erased_map_into(
     // SAFETY: input/output overlap was rejected before forming references.
     let input = unsafe { input.try_as_ref_after_no_overlap() }?;
 
-    let result = ctx.run(|| match (input_dtype, op) {
+    ctx.run(|| match (input_dtype, op) {
         (KernelDType::C32, ErasedMapOp::Abs) => {
             execute_one_shot_map_with::<f32, Complex32>(dest, &input, |value| value.norm())
         }
@@ -99,8 +99,7 @@ pub fn erased_map_into(
         _ => Err(StridedError::UnsupportedDType {
             dtype: input_dtype.label(),
         }),
-    });
-    result
+    })
 }
 
 /// Apply one runtime-selected binary operation without compiling a plan.
@@ -132,7 +131,7 @@ pub fn erased_zip_into(
     // SAFETY: the owning erased entry rejected all input/output overlap before conversion.
     let rhs = unsafe { rhs.try_as_ref_after_no_overlap() }?;
 
-    let result = ctx.run(|| match dtype {
+    ctx.run(|| match dtype {
         KernelDType::F32 => execute_one_shot_zip::<f32>(op, dest, &lhs, &rhs),
         KernelDType::F64 => execute_one_shot_zip::<f64>(op, dest, &lhs, &rhs),
         KernelDType::I32 => execute_one_shot_zip::<i32>(op, dest, &lhs, &rhs),
@@ -143,8 +142,7 @@ pub fn erased_zip_into(
         _ => Err(StridedError::UnsupportedDType {
             dtype: dtype.label(),
         }),
-    });
-    result
+    })
 }
 
 /// Dtype-erased static-slice wrapper.
@@ -216,7 +214,7 @@ impl ErasedSlicePlan {
         check_dtype(self.dtype, dest.dtype())?;
         check_dtype(self.dtype, operand.dtype())?;
 
-        let result = ctx.run(|| match self.dtype {
+        ctx.run(|| match self.dtype {
             KernelDType::F32 => execute_slice::<f32>(&self.plan, dest, operand),
             KernelDType::F64 => execute_slice::<f64>(&self.plan, dest, operand),
             KernelDType::I32 => execute_slice::<i32>(&self.plan, dest, operand),
@@ -227,8 +225,7 @@ impl ErasedSlicePlan {
             _ => Err(StridedError::UnsupportedDType {
                 dtype: self.dtype.label(),
             }),
-        });
-        result
+        })
     }
 
     /// Execute a static slice as a full overwrite of uninitialized output storage.
@@ -301,7 +298,7 @@ impl ErasedReversePlan {
         check_dtype(self.dtype, dest.dtype())?;
         check_dtype(self.dtype, operand.dtype())?;
 
-        let result = ctx.run(|| match self.dtype {
+        ctx.run(|| match self.dtype {
             KernelDType::F32 => execute_reverse::<f32>(&self.plan, dest, operand),
             KernelDType::F64 => execute_reverse::<f64>(&self.plan, dest, operand),
             KernelDType::I32 => execute_reverse::<i32>(&self.plan, dest, operand),
@@ -312,8 +309,7 @@ impl ErasedReversePlan {
             _ => Err(StridedError::UnsupportedDType {
                 dtype: self.dtype.label(),
             }),
-        });
-        result
+        })
     }
 
     /// Execute reverse as a full overwrite of uninitialized output storage.
@@ -400,7 +396,7 @@ impl ErasedPadPlan {
         check_dtype(self.dtype, operand.dtype())?;
         validate_scalar_bytes(self.dtype, fill)?;
 
-        let result = ctx.run(|| match self.dtype {
+        ctx.run(|| match self.dtype {
             KernelDType::F32 => execute_pad::<f32>(&self.plan, dest, operand, fill),
             KernelDType::F64 => execute_pad::<f64>(&self.plan, dest, operand, fill),
             KernelDType::I32 => execute_pad::<i32>(&self.plan, dest, operand, fill),
@@ -411,8 +407,7 @@ impl ErasedPadPlan {
             _ => Err(StridedError::UnsupportedDType {
                 dtype: self.dtype.label(),
             }),
-        });
-        result
+        })
     }
 
     /// Execute pad as a full overwrite of uninitialized output storage.
@@ -544,13 +539,13 @@ impl ErasedGatherPlan {
         check_dtype(self.dtype, operand.dtype())?;
         check_dtype(self.index_dtype, start_indices.dtype())?;
 
-        let result = ctx.run(|| match self.dtype {
+        ctx.run(|| match self.dtype {
             KernelDType::F32 => dispatch_gather_index::<f32>(
                 &self.plan,
                 self.index_dtype,
                 dest,
-                &operand,
-                &start_indices,
+                operand,
+                start_indices,
             ),
             KernelDType::F64 => dispatch_gather_index::<f64>(
                 &self.plan,
@@ -597,8 +592,7 @@ impl ErasedGatherPlan {
             _ => Err(StridedError::UnsupportedDType {
                 dtype: self.dtype.label(),
             }),
-        });
-        result
+        })
     }
 
     /// Execute gather into a destination whose reachable slots may be
@@ -745,13 +739,13 @@ impl ErasedDynamicSlicePlan {
         check_dtype(self.dtype, operand.dtype())?;
         check_dtype(self.index_dtype, starts.dtype())?;
 
-        let result = ctx.run(|| match self.dtype {
+        ctx.run(|| match self.dtype {
             KernelDType::F32 => dispatch_dynamic_slice_index::<f32>(
                 &self.plan,
                 self.index_dtype,
                 dest,
-                &operand,
-                &starts,
+                operand,
+                starts,
             ),
             KernelDType::F64 => dispatch_dynamic_slice_index::<f64>(
                 &self.plan,
@@ -798,8 +792,7 @@ impl ErasedDynamicSlicePlan {
             _ => Err(StridedError::UnsupportedDType {
                 dtype: self.dtype.label(),
             }),
-        });
-        result
+        })
     }
 
     /// Execute dynamic slice into a destination whose reachable slots may be
@@ -949,14 +942,14 @@ impl ErasedDynamicUpdateSlicePlan {
         check_dtype(self.dtype, update.dtype())?;
         check_dtype(self.index_dtype, starts.dtype())?;
 
-        let result = ctx.run(|| match self.dtype {
+        ctx.run(|| match self.dtype {
             KernelDType::F32 => dispatch_dynamic_update_slice_index::<f32>(
                 &self.plan,
                 self.index_dtype,
                 dest,
-                &operand,
-                &update,
-                &starts,
+                operand,
+                update,
+                starts,
             ),
             KernelDType::F64 => dispatch_dynamic_update_slice_index::<f64>(
                 &self.plan,
@@ -1009,8 +1002,7 @@ impl ErasedDynamicUpdateSlicePlan {
             _ => Err(StridedError::UnsupportedDType {
                 dtype: self.dtype.label(),
             }),
-        });
-        result
+        })
     }
 
     /// On success, the copy phase initializes every reachable destination
@@ -1173,14 +1165,14 @@ impl ErasedScatterPlan {
         check_dtype(self.dtype, updates.dtype())?;
         check_dtype(self.index_dtype, scatter_indices.dtype())?;
 
-        let result = ctx.run(|| match self.dtype {
+        ctx.run(|| match self.dtype {
             KernelDType::F32 => dispatch_scatter_index::<f32>(
                 &self.plan,
                 self.index_dtype,
                 dest,
-                &operand,
-                &scatter_indices,
-                &updates,
+                operand,
+                scatter_indices,
+                updates,
             ),
             KernelDType::F64 => dispatch_scatter_index::<f64>(
                 &self.plan,
@@ -1225,8 +1217,7 @@ impl ErasedScatterPlan {
             _ => Err(StridedError::UnsupportedDType {
                 dtype: self.dtype.label(),
             }),
-        });
-        result
+        })
     }
 
     /// On success, the copy phase initializes every reachable destination

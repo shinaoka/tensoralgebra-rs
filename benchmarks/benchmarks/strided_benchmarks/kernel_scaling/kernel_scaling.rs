@@ -50,7 +50,7 @@ struct Cfg {
 
 impl Cfg {
     fn enabled(&self, case: &str) -> bool {
-        self.filter.as_deref().map_or(true, |f| case.contains(f))
+        self.filter.as_deref().is_none_or(|f| case.contains(f))
     }
 
     /// Run `f` once (check mode) or `warmup` + `runs` times and print the median.
@@ -94,7 +94,10 @@ impl Cfg {
 fn env_usize(name: &str, default: usize) -> usize {
     env::var(name)
         .ok()
-        .map(|v| v.parse().unwrap_or_else(|_| panic!("{name} must be an integer")))
+        .map(|v| {
+            v.parse()
+                .unwrap_or_else(|_| panic!("{name} must be an integer"))
+        })
         .unwrap_or(default)
 }
 
@@ -123,7 +126,11 @@ fn os_thread_count() -> Option<usize> {
 /// Verify inside the pool that the effective thread budget is `cfg.threads`.
 fn verify_threads(cfg: &Cfg) {
     let pool = rayon::current_num_threads();
-    assert_eq!(pool, cfg.threads, "rayon pool size {pool} != requested {}", cfg.threads);
+    assert_eq!(
+        pool, cfg.threads,
+        "rayon pool size {pool} != requested {}",
+        cfg.threads
+    );
     assert!(
         rayon::current_thread_index().is_some(),
         "benchmark body must run on a pool worker"
@@ -149,7 +156,10 @@ fn verify_threads(cfg: &Cfg) {
         .iter()
         .filter(|f| f.load(Ordering::Relaxed))
         .count();
-    assert!(!SEEN_WORKER[255].load(Ordering::Relaxed), "work ran outside the pool");
+    assert!(
+        !SEEN_WORKER[255].load(Ordering::Relaxed),
+        "work ran outside the pool"
+    );
     assert!(
         observed <= cfg.threads,
         "probe observed {observed} workers > requested {}",
@@ -171,7 +181,10 @@ fn verify_threads(cfg: &Cfg) {
         );
     }
     if cfg.threads > 1 && observed == 1 {
-        eprintln!("# warning: typed map_into probe stayed on one worker at {} threads", cfg.threads);
+        eprintln!(
+            "# warning: typed map_into probe stayed on one worker at {} threads",
+            cfg.threads
+        );
     }
 }
 
@@ -322,7 +335,10 @@ fn check_all<T: Copy + std::fmt::Debug>(
 ) {
     for (k, &v) in out.iter().enumerate() {
         let e = expected(k);
-        assert!(close(v, e), "{case} {variant}: index {k}: got {v:?}, expected {e:?}");
+        assert!(
+            close(v, e),
+            "{case} {variant}: index {k}: got {v:?}, expected {e:?}"
+        );
     }
 }
 
@@ -420,7 +436,11 @@ fn bench_binary<T: Elem>(
 
     // raw
     {
-        let (pa, pb, pd) = (SendConst(a.as_ptr()), SendConst(b.as_ptr()), SendPtr(out.as_mut_ptr()));
+        let (pa, pb, pd) = (
+            SendConst(a.as_ptr()),
+            SendConst(b.as_ptr()),
+            SendPtr(out.as_mut_ptr()),
+        );
         let (rows, cols, len) = (s.rows, s.cols, s.len);
         let threads = cfg.threads;
         cfg.measure(&case, "raw", || {
@@ -443,7 +463,8 @@ fn bench_binary<T: Elem>(
                             let ie = (ib + TILE).min(rows);
                             for j in jb..je {
                                 for i in ib..ie {
-                                    *d.add(i + j * rows) = f(*a.add(j + i * cols), *b.add(i + j * rows));
+                                    *d.add(i + j * rows) =
+                                        f(*a.add(j + i * cols), *b.add(i + j * rows));
                                 }
                             }
                         }
@@ -476,10 +497,22 @@ fn bench_binary<T: Elem>(
     {
         let ar = ErasedRawStridedRef::from_slice(&a, &s.dims, &s.lhs_strides, 0).unwrap();
         let br = ErasedRawStridedRef::from_slice(&b, &s.dims, &s.col_strides, 0).unwrap();
-        let (ap, bp) = (ErasedRawStridedPtr::from_ref(&ar), ErasedRawStridedPtr::from_ref(&br));
-        let mut dest = ErasedRawStridedMut::from_slice_mut(&mut out, &s.dims, &s.col_strides, 0).unwrap();
+        let (ap, bp) = (
+            ErasedRawStridedPtr::from_ref(&ar),
+            ErasedRawStridedPtr::from_ref(&br),
+        );
+        let mut dest =
+            ErasedRawStridedMut::from_slice_mut(&mut out, &s.dims, &s.col_strides, 0).unwrap();
         cfg.measure(&case, "erased", || {
-            erased_zip_into(T::DTYPE, op, &cfg.exec, &mut dest, black_box(&ap), black_box(&bp)).unwrap();
+            erased_zip_into(
+                T::DTYPE,
+                op,
+                &cfg.exec,
+                &mut dest,
+                black_box(&ap),
+                black_box(&bp),
+            )
+            .unwrap();
             black_box(&mut dest);
         });
     }
@@ -492,16 +525,33 @@ fn bench_binary<T: Elem>(
     {
         let ar = ErasedRawStridedRef::from_slice(&a, &s.dims, &s.lhs_strides, 0).unwrap();
         let br = ErasedRawStridedRef::from_slice(&b, &s.dims, &s.col_strides, 0).unwrap();
-        let (ap, bp) = (ErasedRawStridedPtr::from_ref(&ar), ErasedRawStridedPtr::from_ref(&br));
+        let (ap, bp) = (
+            ErasedRawStridedPtr::from_ref(&ar),
+            ErasedRawStridedPtr::from_ref(&br),
+        );
         let mut dest =
-            ErasedRawStridedUninitMut::from_uninit_slice(&mut out_u, &s.dims, &s.col_strides, 0).unwrap();
-        cfg.measure(&case, "erased_uninit", || {
-            erased_zip_into_uninit(T::DTYPE, op, &cfg.exec, &mut dest, black_box(&ap), black_box(&bp))
+            ErasedRawStridedUninitMut::from_uninit_slice(&mut out_u, &s.dims, &s.col_strides, 0)
                 .unwrap();
+        cfg.measure(&case, "erased_uninit", || {
+            erased_zip_into_uninit(
+                T::DTYPE,
+                op,
+                &cfg.exec,
+                &mut dest,
+                black_box(&ap),
+                black_box(&bp),
+            )
+            .unwrap();
             black_box(&mut dest);
         });
     }
-    check_all(&case, "erased_uninit", assume_init(&out_u), T::close, expected);
+    check_all(
+        &case,
+        "erased_uninit",
+        assume_init(&out_u),
+        T::close,
+        expected,
+    );
     cfg.ok(&case, "erased_uninit");
 }
 
@@ -561,7 +611,8 @@ fn bench_unary<T: Elem, U: Elem>(
         let av: StridedView<T> = StridedView::new(&a, &s.dims, &s.lhs_strides, 0).unwrap();
         let mut dv = StridedViewMut::new(&mut out, &s.dims, &s.col_strides, 0).unwrap();
         cfg.measure(&case, "typed", || {
-            cfg.exec.run(|| map_into(&mut dv, black_box(&av), f).unwrap());
+            cfg.exec
+                .run(|| map_into(&mut dv, black_box(&av), f).unwrap());
             black_box(&mut dv);
         });
     }
@@ -572,7 +623,8 @@ fn bench_unary<T: Elem, U: Elem>(
     {
         let ar = ErasedRawStridedRef::from_slice(&a, &s.dims, &s.lhs_strides, 0).unwrap();
         let ap = ErasedRawStridedPtr::from_ref(&ar);
-        let mut dest = ErasedRawStridedMut::from_slice_mut(&mut out, &s.dims, &s.col_strides, 0).unwrap();
+        let mut dest =
+            ErasedRawStridedMut::from_slice_mut(&mut out, &s.dims, &s.col_strides, 0).unwrap();
         cfg.measure(&case, "erased", || {
             erased_map_into(T::DTYPE, op, &cfg.exec, &mut dest, black_box(&ap)).unwrap();
             black_box(&mut dest);
@@ -587,13 +639,20 @@ fn bench_unary<T: Elem, U: Elem>(
         let ar = ErasedRawStridedRef::from_slice(&a, &s.dims, &s.lhs_strides, 0).unwrap();
         let ap = ErasedRawStridedPtr::from_ref(&ar);
         let mut dest =
-            ErasedRawStridedUninitMut::from_uninit_slice(&mut out_u, &s.dims, &s.col_strides, 0).unwrap();
+            ErasedRawStridedUninitMut::from_uninit_slice(&mut out_u, &s.dims, &s.col_strides, 0)
+                .unwrap();
         cfg.measure(&case, "erased_uninit", || {
             erased_map_into_uninit(T::DTYPE, op, &cfg.exec, &mut dest, black_box(&ap)).unwrap();
             black_box(&mut dest);
         });
     }
-    check_all(&case, "erased_uninit", assume_init(&out_u), U::close, expected);
+    check_all(
+        &case,
+        "erased_uninit",
+        assume_init(&out_u),
+        U::close,
+        expected,
+    );
     cfg.ok(&case, "erased_uninit");
 }
 
@@ -615,7 +674,9 @@ fn elementwise(cfg: &Cfg) {
     bench_unary::<Complex64, Complex64>(cfg, "neg", c, ErasedMapOp::Negate, |a| -a);
     bench_unary::<Complex64, Complex64>(cfg, "conj", c, ErasedMapOp::Conj, |a| a.conj());
     bench_unary::<Complex64, f64>(cfg, "abs", c, ErasedMapOp::Abs, |a| a.norm());
-    bench_unary::<Complex64, Complex64>(cfg, "conj", Layout::Trans, ErasedMapOp::Conj, |a| a.conj());
+    bench_unary::<Complex64, Complex64>(cfg, "conj", Layout::Trans, ErasedMapOp::Conj, |a| {
+        a.conj()
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -629,7 +690,7 @@ fn gen_pred(i: usize) -> bool {
 
 /// Clamp operand: the lhs generator with a sparse NaN to exercise propagation.
 fn gen_clamp_x(i: usize) -> f64 {
-    if i % 1021 == 0 {
+    if i.is_multiple_of(1021) {
         f64::NAN
     } else {
         f64::gen(i, 0)
@@ -762,13 +823,26 @@ fn bench_ternary<P: KernelStorageElement + Send + Sync + std::fmt::Debug>(
             ErasedRawStridedPtr::from_ref(&cr),
         );
         let mut dest =
-            ErasedRawStridedUninitMut::from_uninit_slice(&mut out_u, &s.dims, &s.col_strides, 0).unwrap();
+            ErasedRawStridedUninitMut::from_uninit_slice(&mut out_u, &s.dims, &s.col_strides, 0)
+                .unwrap();
         cfg.measure(&case, "erased_uninit", || {
-            erased(&cfg.exec, &mut dest, black_box(&pp), black_box(&bp), black_box(&cp));
+            erased(
+                &cfg.exec,
+                &mut dest,
+                black_box(&pp),
+                black_box(&bp),
+                black_box(&cp),
+            );
             black_box(&mut dest);
         });
     }
-    check_all(&case, "erased_uninit", assume_init(&out_u), same_f64, expected);
+    check_all(
+        &case,
+        "erased_uninit",
+        assume_init(&out_u),
+        same_f64,
+        expected,
+    );
     cfg.ok(&case, "erased_uninit");
 }
 
@@ -946,14 +1020,24 @@ fn bench_reduce(cfg: &Cfg, red: Red, axes: Axes, rows0: usize, cols0: usize) {
     let reference: Vec<f64> = match axes {
         Axes::All => vec![a.iter().fold(red.init(), |acc, &x| red.apply(acc, x))],
         Axes::Axis0 => (0..cols)
-            .map(|j| a[j * rows..(j + 1) * rows].iter().fold(red.init(), |acc, &x| red.apply(acc, x)))
+            .map(|j| {
+                a[j * rows..(j + 1) * rows]
+                    .iter()
+                    .fold(red.init(), |acc, &x| red.apply(acc, x))
+            })
             .collect(),
         Axes::Axis1 => (0..rows)
             .map(|i| (0..cols).fold(red.init(), |acc, j| red.apply(acc, a[i + j * rows])))
             .collect(),
     };
     let check = |variant: &str, out: &[f64]| {
-        check_all(&case, variant, out, |x, y| red.close(x, y), |k| reference[k]);
+        check_all(
+            &case,
+            variant,
+            out,
+            |x, y| red.close(x, y),
+            |k| reference[k],
+        );
         cfg.ok(&case, variant);
     };
     let threads = cfg.threads;
@@ -967,9 +1051,14 @@ fn bench_reduce(cfg: &Cfg, red: Red, axes: Axes, rows0: usize, cols0: usize) {
             match axes {
                 Axes::All => {
                     let parts = par_map_ranges(threads, n, 4096, |lo, hi| unsafe {
-                        raw_reduce_contig(red, std::slice::from_raw_parts(pa.get().add(lo), hi - lo))
+                        raw_reduce_contig(
+                            red,
+                            std::slice::from_raw_parts(pa.get().add(lo), hi - lo),
+                        )
                     });
-                    let r = parts.into_iter().fold(red.init(), |acc, v| red.apply(acc, v));
+                    let r = parts
+                        .into_iter()
+                        .fold(red.init(), |acc, v| red.apply(acc, v));
                     unsafe { *pd.get() = r };
                 }
                 Axes::Axis0 => par_ranges(threads, cols, 1, |c0, c1| unsafe {
@@ -1001,7 +1090,9 @@ fn bench_reduce(cfg: &Cfg, red: Red, axes: Axes, rows0: usize, cols0: usize) {
                         // Rare path: recompute with exact NaN propagation.
                         for (k, d) in d.iter_mut().enumerate() {
                             let i = r0 + k;
-                            *d = (0..cols).fold(red.init(), |acc, j| red.apply(acc, *pa.get().add(i + j * rows)));
+                            *d = (0..cols).fold(red.init(), |acc, j| {
+                                red.apply(acc, *pa.get().add(i + j * rows))
+                            });
                         }
                     }
                 }),
@@ -1017,11 +1108,23 @@ fn bench_reduce(cfg: &Cfg, red: Red, axes: Axes, rows0: usize, cols0: usize) {
         let mut last = Vec::new();
         cfg.measure(&case, "typed", || {
             let res = cfg.exec.run(|| match axes {
-                Axes::All => vec![reduce(black_box(&av), |x| x, move |p, q| red.apply(p, q), red.init()).unwrap()],
+                Axes::All => vec![reduce(
+                    black_box(&av),
+                    |x| x,
+                    move |p, q| red.apply(p, q),
+                    red.init(),
+                )
+                .unwrap()],
                 Axes::Axis0 | Axes::Axis1 => {
                     let axis = if axes == Axes::Axis0 { 0 } else { 1 };
-                    let arr = reduce_axis(black_box(&av), axis, |x| x, move |p, q| red.apply(p, q), red.init())
-                        .unwrap();
+                    let arr = reduce_axis(
+                        black_box(&av),
+                        axis,
+                        |x| x,
+                        move |p, q| red.apply(p, q),
+                        red.init(),
+                    )
+                    .unwrap();
                     arr.into_data()
                 }
             });
@@ -1039,7 +1142,9 @@ fn bench_reduce(cfg: &Cfg, red: Red, axes: Axes, rows0: usize, cols0: usize) {
             Axes::Axis1 => (vec![rows], vec![1]),
         };
         let plan = match axes {
-            Axes::All => ErasedReducePlan::compile(KernelDType::F64, red.op(), &dims, &strides).unwrap(),
+            Axes::All => {
+                ErasedReducePlan::compile(KernelDType::F64, red.op(), &dims, &strides).unwrap()
+            }
             _ => ErasedReducePlan::compile_axes(
                 KernelDType::F64,
                 red.op(),
@@ -1052,7 +1157,8 @@ fn bench_reduce(cfg: &Cfg, red: Red, axes: Axes, rows0: usize, cols0: usize) {
             .unwrap(),
         };
         let src = ErasedRawStridedRef::from_slice(&a, &dims, &strides, 0).unwrap();
-        let mut dest = ErasedRawStridedMut::from_slice_mut(&mut out, &dest_dims, &dest_strides, 0).unwrap();
+        let mut dest =
+            ErasedRawStridedMut::from_slice_mut(&mut out, &dest_dims, &dest_strides, 0).unwrap();
         cfg.measure(&case, "erased", || {
             plan.execute(&cfg.exec, &mut dest, black_box(&src)).unwrap();
             black_box(&mut dest);
@@ -1080,8 +1186,21 @@ fn gen_copy(i: usize) -> f64 {
 }
 
 /// Destination column-major `rows x cols`, checked against `expected(i, j)`.
-fn check_2d(cfg: &Cfg, case: &str, variant: &str, out: &[f64], rows: usize, expected: impl Fn(usize, usize) -> f64) {
-    check_all(case, variant, out, |a, b| a == b, |k| expected(k % rows, k / rows));
+fn check_2d(
+    cfg: &Cfg,
+    case: &str,
+    variant: &str,
+    out: &[f64],
+    rows: usize,
+    expected: impl Fn(usize, usize) -> f64,
+) {
+    check_all(
+        case,
+        variant,
+        out,
+        |a, b| a == b,
+        |k| expected(k % rows, k / rows),
+    );
     cfg.ok(case, variant);
 }
 
@@ -1099,7 +1218,11 @@ fn struct_slice_step2(cfg: &Cfg) {
     let expected = |i: usize, j: usize| a[2 * i + j * r];
     let mut out = vec![f64::NAN; dr * dc];
     {
-        let (pa, pd, t) = (SendConst(a.as_ptr()), SendPtr(out.as_mut_ptr()), cfg.threads);
+        let (pa, pd, t) = (
+            SendConst(a.as_ptr()),
+            SendPtr(out.as_mut_ptr()),
+            cfg.threads,
+        );
         cfg.measure(case, "raw", || {
             par_ranges(t, dc, 1, |c0, c1| unsafe {
                 for j in c0..c1 {
@@ -1120,14 +1243,25 @@ fn struct_slice_step2(cfg: &Cfg) {
         let src = RawStridedRef::new(&a, &od, &os, 0).unwrap();
         let mut dst = RawStridedMut::new(&mut out, &dd, &ds, 0).unwrap();
         cfg.measure(case, "typed", || {
-            cfg.exec.run(|| plan.execute(&mut dst, black_box(&src)).unwrap());
+            cfg.exec
+                .run(|| plan.execute(&mut dst, black_box(&src)).unwrap());
             black_box(&mut dst);
         });
     }
     check_2d(cfg, case, "typed", &out, dr, expected);
     out.fill(f64::NAN);
     {
-        let plan = ErasedSlicePlan::compile(KernelDType::F64, &od, &os, &dd, &ds, &starts, &limits, &steps).unwrap();
+        let plan = ErasedSlicePlan::compile(
+            KernelDType::F64,
+            &od,
+            &os,
+            &dd,
+            &ds,
+            &starts,
+            &limits,
+            &steps,
+        )
+        .unwrap();
         let src = ErasedRawStridedRef::from_slice(&a, &od, &os, 0).unwrap();
         let mut dst = ErasedRawStridedMut::from_slice_mut(&mut out, &dd, &ds, 0).unwrap();
         cfg.measure(case, "erased", || {
@@ -1139,17 +1273,31 @@ fn struct_slice_step2(cfg: &Cfg) {
 }
 
 fn struct_reverse(cfg: &Cfg, axis: usize) {
-    let case = if axis == 0 { "copy_reverse_axis0" } else { "copy_reverse_axis1" };
+    let case = if axis == 0 {
+        "copy_reverse_axis0"
+    } else {
+        "copy_reverse_axis1"
+    };
     if !cfg.enabled(case) {
         return;
     }
     let (r, c) = (cfg.d(4096), cfg.d(4096));
     let a: Vec<f64> = (0..r * c).map(gen_copy).collect();
     let (dims, st) = ([r, c], [1isize, r as isize]);
-    let expected = |i: usize, j: usize| if axis == 0 { a[(r - 1 - i) + j * r] } else { a[i + (c - 1 - j) * r] };
+    let expected = |i: usize, j: usize| {
+        if axis == 0 {
+            a[(r - 1 - i) + j * r]
+        } else {
+            a[i + (c - 1 - j) * r]
+        }
+    };
     let mut out = vec![f64::NAN; r * c];
     {
-        let (pa, pd, t) = (SendConst(a.as_ptr()), SendPtr(out.as_mut_ptr()), cfg.threads);
+        let (pa, pd, t) = (
+            SendConst(a.as_ptr()),
+            SendPtr(out.as_mut_ptr()),
+            cfg.threads,
+        );
         cfg.measure(case, "raw", || {
             par_ranges(t, c, 1, |c0, c1| unsafe {
                 for j in c0..c1 {
@@ -1175,7 +1323,8 @@ fn struct_reverse(cfg: &Cfg, axis: usize) {
         let src = RawStridedRef::new(&a, &dims, &st, 0).unwrap();
         let mut dst = RawStridedMut::new(&mut out, &dims, &st, 0).unwrap();
         cfg.measure(case, "typed", || {
-            cfg.exec.run(|| plan.execute(&mut dst, black_box(&src)).unwrap());
+            cfg.exec
+                .run(|| plan.execute(&mut dst, black_box(&src)).unwrap());
             black_box(&mut dst);
         });
     }
@@ -1194,7 +1343,11 @@ fn struct_reverse(cfg: &Cfg, axis: usize) {
 }
 
 fn struct_concat(cfg: &Cfg, axis: usize) {
-    let case = if axis == 0 { "copy_concat_axis0" } else { "copy_concat_axis1" };
+    let case = if axis == 0 {
+        "copy_concat_axis0"
+    } else {
+        "copy_concat_axis1"
+    };
     if !cfg.enabled(case) {
         return;
     }
@@ -1206,7 +1359,11 @@ fn struct_concat(cfg: &Cfg, axis: usize) {
     let (dd, ds) = ([r, c], [1isize, r as isize]);
     let expected = |i: usize, j: usize| {
         if axis == 0 {
-            if i < hr { a1[i + j * hr] } else { a2[(i - hr) + j * hr] }
+            if i < hr {
+                a1[i + j * hr]
+            } else {
+                a2[(i - hr) + j * hr]
+            }
         } else if j < hc {
             a1[i + j * hr]
         } else {
@@ -1215,13 +1372,26 @@ fn struct_concat(cfg: &Cfg, axis: usize) {
     };
     let mut out = vec![f64::NAN; r * c];
     {
-        let (p1, p2, pd, t) = (SendConst(a1.as_ptr()), SendConst(a2.as_ptr()), SendPtr(out.as_mut_ptr()), cfg.threads);
+        let (p1, p2, pd, t) = (
+            SendConst(a1.as_ptr()),
+            SendConst(a2.as_ptr()),
+            SendPtr(out.as_mut_ptr()),
+            cfg.threads,
+        );
         cfg.measure(case, "raw", || {
             if axis == 0 {
                 par_ranges(t, c, 1, |c0, c1| unsafe {
                     for j in c0..c1 {
-                        std::ptr::copy_nonoverlapping(p1.get().add(j * hr), pd.get().add(j * r), hr);
-                        std::ptr::copy_nonoverlapping(p2.get().add(j * hr), pd.get().add(j * r + hr), hr);
+                        std::ptr::copy_nonoverlapping(
+                            p1.get().add(j * hr),
+                            pd.get().add(j * r),
+                            hr,
+                        );
+                        std::ptr::copy_nonoverlapping(
+                            p2.get().add(j * hr),
+                            pd.get().add(j * r + hr),
+                            hr,
+                        );
                     }
                 });
             } else {
@@ -1243,21 +1413,25 @@ fn struct_concat(cfg: &Cfg, axis: usize) {
         ];
         let mut dst = RawStridedMut::new(&mut out, &dd, &ds, 0).unwrap();
         cfg.measure(case, "typed", || {
-            cfg.exec.run(|| plan.execute(&mut dst, black_box(&inputs)).unwrap());
+            cfg.exec
+                .run(|| plan.execute(&mut dst, black_box(&inputs)).unwrap());
             black_box(&mut dst);
         });
     }
     check_2d(cfg, case, "typed", &out, r, expected);
     out.fill(f64::NAN);
     {
-        let plan = ErasedConcatenatePlan::compile(KernelDType::F64, &in_dims, &in_strides, &dd, &ds, axis).unwrap();
+        let plan =
+            ErasedConcatenatePlan::compile(KernelDType::F64, &in_dims, &in_strides, &dd, &ds, axis)
+                .unwrap();
         let inputs = [
             ErasedRawStridedRef::from_slice(&a1, &hd, &hs, 0).unwrap(),
             ErasedRawStridedRef::from_slice(&a2, &hd, &hs, 0).unwrap(),
         ];
         let mut dst = ErasedRawStridedMut::from_slice_mut(&mut out, &dd, &ds, 0).unwrap();
         cfg.measure(case, "erased", || {
-            plan.execute(&cfg.exec, &mut dst, black_box(&inputs)).unwrap();
+            plan.execute(&cfg.exec, &mut dst, black_box(&inputs))
+                .unwrap();
             black_box(&mut dst);
         });
     }
@@ -1265,7 +1439,11 @@ fn struct_concat(cfg: &Cfg, axis: usize) {
 }
 
 fn struct_dynamic_slice(cfg: &Cfg, rank: usize) {
-    let case = if rank == 1 { "copy_dynslice_rank1" } else { "copy_dynslice_rank2" };
+    let case = if rank == 1 {
+        "copy_dynslice_rank1"
+    } else {
+        "copy_dynslice_rank2"
+    };
     if !cfg.enabled(case) {
         return;
     }
@@ -1275,7 +1453,11 @@ fn struct_dynamic_slice(cfg: &Cfg, rank: usize) {
         (vec![2 * w], vec![w], vec![(w / 3) as i64])
     } else {
         let (o, w) = (cfg.d(4608), cfg.d(4096));
-        (vec![o, o], vec![w, w], vec![(cfg.d(100)) as i64, (cfg.d(200)) as i64])
+        (
+            vec![o, o],
+            vec![w, w],
+            vec![(cfg.d(100)) as i64, (cfg.d(200)) as i64],
+        )
     };
     let os = strided_kernel::col_major_strides(&od);
     let ws = strided_kernel::col_major_strides(&wd);
@@ -1284,18 +1466,29 @@ fn struct_dynamic_slice(cfg: &Cfg, rank: usize) {
     let wr = wd[0];
     let wc = if rank == 1 { 1 } else { wd[1] };
     let or = od[0];
-    let (s0, s1) = (starts[0] as usize, if rank == 1 { 0 } else { starts[1] as usize });
+    let (s0, s1) = (
+        starts[0] as usize,
+        if rank == 1 { 0 } else { starts[1] as usize },
+    );
     let expected = |i: usize, j: usize| a[(i + s0) + (j + s1) * or];
     let mut out = vec![f64::NAN; wr * wc];
     {
-        let (pa, pd, t) = (SendConst(a.as_ptr()), SendPtr(out.as_mut_ptr()), cfg.threads);
+        let (pa, pd, t) = (
+            SendConst(a.as_ptr()),
+            SendPtr(out.as_mut_ptr()),
+            cfg.threads,
+        );
         cfg.measure(case, "raw", || {
             if rank == 1 {
                 par_copy(t, pd.get(), unsafe { pa.get().add(s0) }, wr);
             } else {
                 par_ranges(t, wc, 1, |c0, c1| unsafe {
                     for j in c0..c1 {
-                        std::ptr::copy_nonoverlapping(pa.get().add(s0 + (j + s1) * or), pd.get().add(j * wr), wr);
+                        std::ptr::copy_nonoverlapping(
+                            pa.get().add(s0 + (j + s1) * or),
+                            pd.get().add(j * wr),
+                            wr,
+                        );
                     }
                 });
             }
@@ -1310,21 +1503,34 @@ fn struct_dynamic_slice(cfg: &Cfg, rank: usize) {
         let st = RawStridedRef::new(&starts, &sd, &ss, 0).unwrap();
         let mut dst = RawStridedMut::new(&mut out, &wd, &ws, 0).unwrap();
         cfg.measure(case, "typed", || {
-            cfg.exec.run(|| plan.execute(&mut dst, black_box(&src), black_box(&st)).unwrap());
+            cfg.exec.run(|| {
+                plan.execute(&mut dst, black_box(&src), black_box(&st))
+                    .unwrap()
+            });
             black_box(&mut dst);
         });
     }
     check_2d(cfg, case, "typed", &out, wr, expected);
     out.fill(f64::NAN);
     {
-        let plan =
-            ErasedDynamicSlicePlan::compile(KernelDType::F64, KernelDType::I64, &od, &os, &sd, &ss, &wd, &ws, &wd)
-                .unwrap();
+        let plan = ErasedDynamicSlicePlan::compile(
+            KernelDType::F64,
+            KernelDType::I64,
+            &od,
+            &os,
+            &sd,
+            &ss,
+            &wd,
+            &ws,
+            &wd,
+        )
+        .unwrap();
         let src = ErasedRawStridedRef::from_slice(&a, &od, &os, 0).unwrap();
         let st = ErasedRawStridedRef::from_slice(&starts, &sd, &ss, 0).unwrap();
         let mut dst = ErasedRawStridedMut::from_slice_mut(&mut out, &wd, &ws, 0).unwrap();
         cfg.measure(case, "erased", || {
-            plan.execute(&cfg.exec, &mut dst, black_box(&src), black_box(&st)).unwrap();
+            plan.execute(&cfg.exec, &mut dst, black_box(&src), black_box(&st))
+                .unwrap();
             black_box(&mut dst);
         });
     }
@@ -1352,7 +1558,11 @@ fn struct_pad(cfg: &Cfg) {
     };
     let mut out = vec![f64::NAN; dr * dc];
     {
-        let (pa, pd, t) = (SendConst(a.as_ptr()), SendPtr(out.as_mut_ptr()), cfg.threads);
+        let (pa, pd, t) = (
+            SendConst(a.as_ptr()),
+            SendPtr(out.as_mut_ptr()),
+            cfg.threads,
+        );
         cfg.measure(case, "raw", || {
             par_ranges(t, dc, 1, |c0, c1| unsafe {
                 for j in c0..c1 {
@@ -1361,7 +1571,10 @@ fn struct_pad(cfg: &Cfg) {
                         d.fill(0.0);
                     } else {
                         d[..p].fill(0.0);
-                        d[p..p + r].copy_from_slice(std::slice::from_raw_parts(pa.get().add((j - p) * r), r));
+                        d[p..p + r].copy_from_slice(std::slice::from_raw_parts(
+                            pa.get().add((j - p) * r),
+                            r,
+                        ));
                         d[p + r..].fill(0.0);
                     }
                 }
@@ -1376,19 +1589,23 @@ fn struct_pad(cfg: &Cfg) {
         let src = RawStridedRef::new(&a, &od, &os, 0).unwrap();
         let mut dst = RawStridedMut::new(&mut out, &dd, &ds, 0).unwrap();
         cfg.measure(case, "typed", || {
-            cfg.exec.run(|| plan.execute(&mut dst, black_box(&src), 0.0).unwrap());
+            cfg.exec
+                .run(|| plan.execute(&mut dst, black_box(&src), 0.0).unwrap());
             black_box(&mut dst);
         });
     }
     check_2d(cfg, case, "typed", &out, dr, expected);
     out.fill(f64::NAN);
     {
-        let plan = ErasedPadPlan::compile(KernelDType::F64, &od, &os, &dd, &ds, &lo, &hi, &interior).unwrap();
+        let plan =
+            ErasedPadPlan::compile(KernelDType::F64, &od, &os, &dd, &ds, &lo, &hi, &interior)
+                .unwrap();
         let src = ErasedRawStridedRef::from_slice(&a, &od, &os, 0).unwrap();
         let mut dst = ErasedRawStridedMut::from_slice_mut(&mut out, &dd, &ds, 0).unwrap();
         let fill = 0.0f64.to_ne_bytes();
         cfg.measure(case, "erased", || {
-            plan.execute(&cfg.exec, &mut dst, black_box(&src), &fill).unwrap();
+            plan.execute(&cfg.exec, &mut dst, black_box(&src), &fill)
+                .unwrap();
             black_box(&mut dst);
         });
     }
@@ -1417,7 +1634,7 @@ fn main() {
         .and_then(|p| args.get(p + 1))
         .and_then(|v| v.parse().ok())
         .expect("usage: kernel_scaling --threads N [--time]");
-    assert!(threads >= 1 && threads < 255);
+    assert!((1..255).contains(&threads));
     let runs = env_usize("BENCH_RUNS", 11);
     let warmup = env_usize("BENCH_WARMUP", 2);
     let shrink = env_usize("KERNEL_SCALING_SHRINK", 1).max(1);

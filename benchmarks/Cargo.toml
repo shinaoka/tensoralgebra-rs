@@ -47,3 +47,6 @@ path = "benchmarks/strided_benchmarks/dense_kernels/dense_kernels.rs"
 name = "kernel_scaling"
 path = "benchmarks/strided_benchmarks/kernel_scaling/kernel_scaling.rs"
 required-features = ["parallel"]
+
+[lints]
+workspace = true

@@ -42,3 +42,6 @@ all-features = true
 # What makes the choice moot is that both are `#[doc(hidden)]`, so neither
 # renders on any target and the doc-visible surface is target-independent.
 targets = ["x86_64-unknown-linux-gnu"]
+
+[lints]
+workspace = true

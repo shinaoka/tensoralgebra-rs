@@ -12,12 +12,7 @@ use strided_kernel::{
 const LARGE_LEN: usize = (1 << 15) + 65;
 
 fn as_bytes<T>(data: &[T]) -> &[u8] {
-    unsafe {
-        core::slice::from_raw_parts(
-            data.as_ptr().cast::<u8>(),
-            data.len() * core::mem::size_of::<T>(),
-        )
-    }
+    unsafe { core::slice::from_raw_parts(data.as_ptr().cast::<u8>(), std::mem::size_of_val(data)) }
 }
 
 fn bounded_context() -> ExecContext {
@@ -644,7 +639,7 @@ fn large_erased_concatenate_matches_serial_for_initialized_and_uninit_outputs() 
             .collect::<Vec<_>>()
     };
     for ctx in [ExecContext::serial(), bounded_context()] {
-        assert_eq!(run(ctx.clone()), expected);
+        assert_eq!(run(ctx), expected);
         assert_eq!(run_uninit(ctx), expected);
     }
 }

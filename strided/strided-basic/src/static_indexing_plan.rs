@@ -1398,7 +1398,7 @@ fn compile_pad_copy_cursor(
 
     check_offset_span(&shape, &source_steps)?;
     check_offset_span(&shape, &dest_steps)?;
-    let total = if shape.iter().any(|&extent| extent == 0) {
+    let total = if shape.contains(&0) {
         0
     } else {
         checked_total_len(&shape)?

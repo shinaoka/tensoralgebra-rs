@@ -222,9 +222,7 @@ fn test_kernel_nd_iterative_total_elements_match() {
 fn verify_kernel_total_and_offsets(rank: usize) {
     // Build dims: dim[0] = 3 for block variety, rest = 2
     let mut dims = vec![3usize];
-    for _ in 1..rank {
-        dims.push(2);
-    }
+    dims.resize(rank, 2);
     let blocks = vec![2usize; rank];
 
     // Column-major strides
@@ -322,11 +320,9 @@ fn test_macro_kernels_total_elements_8d() {
 /// Verify that macro-generated kernels visit every element exactly once
 /// by collecting all linear offsets and checking them against the expected set.
 fn verify_kernel_visits_all_elements(rank: usize) {
-    assert!(rank >= 2 && rank <= 8);
+    assert!((2..=8).contains(&rank));
     let mut dims = vec![3usize];
-    for _ in 1..rank {
-        dims.push(2);
-    }
+    dims.resize(rank, 2);
     let blocks = vec![2usize; rank];
 
     // Column-major strides (single array for simplicity)

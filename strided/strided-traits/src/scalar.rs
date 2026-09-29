@@ -66,6 +66,8 @@ mod tests {
 
         impl std::ops::Mul for TropicalLike {
             type Output = Self;
+            // INVARIANT: tropical semiring test type; multiplication is `+` by definition.
+            #[allow(clippy::suspicious_arithmetic_impl)]
             fn mul(self, rhs: Self) -> Self {
                 // tropical mul = add
                 TropicalLike(self.0 + rhs.0)

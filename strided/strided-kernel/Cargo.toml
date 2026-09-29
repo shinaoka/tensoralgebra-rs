@@ -77,3 +77,6 @@ required-features = ["parallel"]
 name = "issue_187_uninit_indexed"
 harness = false
 required-features = ["parallel"]
+
+[lints]
+workspace = true

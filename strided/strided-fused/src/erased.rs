@@ -59,7 +59,7 @@ impl ErasedFusedPlan {
             check_dtype(self.dtype, input.dtype())?;
         }
 
-        let result = match self.dtype {
+        match self.dtype {
             KernelDType::F32 => execute_fused::<f32>(&self.plan, ctx, dest, inputs),
             KernelDType::F64 => execute_fused::<f64>(&self.plan, ctx, dest, inputs),
             KernelDType::I32 => execute_fused::<i32>(&self.plan, ctx, dest, inputs),
@@ -70,8 +70,7 @@ impl ErasedFusedPlan {
             _ => Err(StridedError::UnsupportedDType {
                 dtype: self.dtype.label(),
             }),
-        };
-        result
+        }
     }
 
     /// Execute a single-output fused plan into fully overwritten uninitialized storage.

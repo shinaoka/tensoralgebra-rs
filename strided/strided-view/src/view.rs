@@ -16,7 +16,7 @@ use crate::{Result, StridedError};
 
 #[inline]
 fn empty_layout(dims: &[usize]) -> bool {
-    dims.iter().any(|&dim| dim == 0)
+    dims.contains(&0)
 }
 
 #[inline]
@@ -44,7 +44,7 @@ pub(crate) fn validate_bounds(
         return Err(StridedError::StrideLengthMismatch);
     }
     // Empty array - no access needed
-    if dims.iter().any(|&d| d == 0) {
+    if dims.contains(&0) {
         return Ok(());
     }
     // Compute min and max offsets
@@ -232,7 +232,7 @@ impl<'a, T, Op> StridedView<'a, T, Op> {
     /// Returns `true` if any dimension is zero.
     #[inline]
     pub fn is_empty(&self) -> bool {
-        self.dims.iter().any(|&d| d == 0)
+        self.dims.contains(&0)
     }
 
     /// Returns a reference to the backing data slice.
@@ -552,7 +552,7 @@ impl<'a, T> StridedViewMut<'a, T> {
     /// Returns `true` if any dimension is zero.
     #[inline]
     pub fn is_empty(&self) -> bool {
-        self.dims.iter().any(|&d| d == 0)
+        self.dims.contains(&0)
     }
 
     /// Raw const pointer to element at the view's base offset.
@@ -570,13 +570,13 @@ impl<'a, T> StridedViewMut<'a, T> {
     /// Returns a reference to the backing data slice.
     #[inline]
     pub fn data(&self) -> &[T] {
-        &self.data
+        self.data
     }
 
     /// Returns a mutable reference to the backing data slice.
     #[inline]
     pub fn data_mut(&mut self) -> &mut [T] {
-        &mut self.data
+        self.data
     }
 
     /// Permute dimensions, consuming the mutable view.
@@ -809,7 +809,7 @@ impl<T> StridedArray<T> {
     /// Returns `true` if any dimension is zero.
     #[inline]
     pub fn is_empty(&self) -> bool {
-        self.dims.iter().any(|&d| d == 0)
+        self.dims.contains(&0)
     }
 
     /// Returns a reference to the backing data slice.
@@ -936,6 +936,9 @@ impl<T: Copy> StridedArray<T> {
     pub unsafe fn col_major_uninit(dims: &[usize]) -> Self {
         let total: usize = dims.iter().product();
         let mut data = Vec::with_capacity(total);
+        // INVARIANT: `T: Copy` has no drop glue and this `unsafe fn` requires the
+        // caller to write every element before reading (see `# Safety`).
+        #[allow(clippy::uninit_vec)]
         data.set_len(total);
         let strides = col_major_strides(dims);
         Self {

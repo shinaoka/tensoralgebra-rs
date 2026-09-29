@@ -230,11 +230,11 @@ mod tests {
         let lda = 20isize; // src leading dim
         let ldb = 18isize; // dst leading dim
 
-        let src: Vec<f64> = (0..(block_a as isize * 1 + (block_b - 1) as isize * lda + 1) as usize)
+        let src: Vec<f64> = (0..((block_a as isize) + (block_b - 1) as isize * lda + 1) as usize)
             .map(|i| i as f64)
             .collect();
         let mut dst =
-            vec![0.0f64; ((block_b - 1) as isize * 1 + (block_a - 1) as isize * ldb + 1) as usize];
+            vec![0.0f64; (((block_b - 1) as isize) + (block_a - 1) as isize * ldb + 1) as usize];
 
         unsafe {
             macro_kernel_f64(src.as_ptr(), lda, block_a, dst.as_mut_ptr(), ldb, block_b);
@@ -287,7 +287,7 @@ mod tests {
 
     #[test]
     fn test_const_stride1_copy_strided() {
-        let src = vec![1.0f64, 0.0, 2.0, 0.0, 3.0];
+        let src = [1.0f64, 0.0, 2.0, 0.0, 3.0];
         let mut dst = vec![0.0f64; 5];
         unsafe {
             const_stride1_copy(src.as_ptr(), dst.as_mut_ptr(), 3, 2, 1);

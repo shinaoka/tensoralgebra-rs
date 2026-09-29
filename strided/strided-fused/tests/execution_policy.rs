@@ -1213,7 +1213,7 @@ fn production_parallelism_is_routed_through_the_execution_policy_layer() {
     let mut violations = Vec::new();
     for path in files {
         let source = std::fs::read_to_string(&path).unwrap();
-        let relative = path.strip_prefix(&source_root).unwrap();
+        let relative = path.strip_prefix(source_root).unwrap();
         violations.extend(parallel_source_violations(relative, &source));
     }
     assert!(violations.is_empty(), "{}", violations.join("\n"));

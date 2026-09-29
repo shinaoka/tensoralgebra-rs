@@ -27,3 +27,6 @@ all-features = true
 # Nothing here is `cfg`-gated by architecture, and the engine's ISA modules are
 # `#[doc(hidden)]`, so this affects neither crate's rendered surface.
 targets = ["x86_64-unknown-linux-gnu"]
+
+[lints]
+workspace = true

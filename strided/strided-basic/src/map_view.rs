@@ -696,6 +696,8 @@ unsafe fn run_contiguous_mul_row_block<
 
     #[cfg(feature = "parallel")]
     if total.saturating_sub(base_index) >= block_len {
+        #[allow(clippy::collapsible_match)]
+        // INVARIANT: each arm returns only when its SIMD tile succeeds; guards would duplicate the unsafe calls.
         match transposed_scalar_tile_kind(plan) {
             Some(TransposedScalarTileKind::RhsScalar) => {
                 if simd::try_mul_transposed_scalar_rhs_2d::<D, A, B>(
@@ -1831,6 +1833,9 @@ fn broadcast_strides_for_axes(
 
     let mut seen = AxisVec::<bool>::new();
     seen.resize(target_dims.len(), false);
+    // INVARIANT: `AxisVec` is `Vec` or `SmallVec` depending on features, so
+    // `vec![0; n]` would not type-check in every configuration.
+    #[allow(clippy::slow_vector_initialization)]
     let mut strides = AxisVec::<isize>::new();
     strides.resize(target_dims.len(), 0);
     for (src_axis, &dst_axis) in axes.iter().enumerate() {

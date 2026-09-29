@@ -439,7 +439,7 @@ fn transpose_tile_rows(size: usize, block: usize) -> usize {
     if size == 0 {
         0
     } else {
-        (size + block - 1) / block
+        size.div_ceil(block)
     }
 }
 
@@ -655,7 +655,7 @@ mod tests {
         // src [3, 2] col-major: [1,2,3,4,5,6]
         // Permuted view: dims [2, 3], strides [3, 1]
         // dst col-major [2, 3]: strides [1, 2]
-        let src = vec![1.0f64, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let src = [1.0f64, 2.0, 3.0, 4.0, 5.0, 6.0];
         let mut dst = vec![0.0f64; 6];
         let plan = build_permute_plan(&[2, 3], &[3, 1], &[1, 2], 8).unwrap();
         unsafe {
@@ -756,7 +756,7 @@ mod tests {
 
     #[test]
     fn test_execute_rank0_scalar() {
-        let src = vec![42.0f64];
+        let src = [42.0f64];
         let mut dst = vec![0.0f64];
         let plan = build_permute_plan(&[], &[], &[], 8).unwrap();
         unsafe {
@@ -768,7 +768,7 @@ mod tests {
     #[cfg(feature = "parallel")]
     #[test]
     fn test_execute_par_transpose_2d() {
-        let src = vec![1.0f64, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let src = [1.0f64, 2.0, 3.0, 4.0, 5.0, 6.0];
         let mut dst = vec![0.0f64; 6];
         let plan = build_permute_plan(&[2, 3], &[3, 1], &[1, 2], 8).unwrap();
         unsafe {

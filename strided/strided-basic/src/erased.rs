@@ -87,7 +87,7 @@ impl ErasedCopyPlan {
         self.check_dtype(dest.dtype())?;
         self.check_dtype(src.dtype())?;
 
-        let result = ctx.run(|| match self.dtype {
+        ctx.run(|| match self.dtype {
             KernelDType::F32 => execute_copy::<f32>(&self.plan, dest, src),
             KernelDType::F64 => execute_copy::<f64>(&self.plan, dest, src),
             KernelDType::I32 => execute_copy::<i32>(&self.plan, dest, src),
@@ -98,8 +98,7 @@ impl ErasedCopyPlan {
             _ => Err(StridedError::UnsupportedDType {
                 dtype: self.dtype.label(),
             }),
-        });
-        result
+        })
     }
 
     fn check_dtype(&self, actual: KernelDType) -> Result<()> {
@@ -158,7 +157,7 @@ impl ErasedConcatenatePlan {
             check_dtype(self.dtype, input.dtype())?;
         }
 
-        let result = ctx.run(|| match self.dtype {
+        ctx.run(|| match self.dtype {
             KernelDType::F32 => execute_concatenate::<f32>(&self.plan, dest, inputs),
             KernelDType::F64 => execute_concatenate::<f64>(&self.plan, dest, inputs),
             KernelDType::I32 => execute_concatenate::<i32>(&self.plan, dest, inputs),
@@ -169,8 +168,7 @@ impl ErasedConcatenatePlan {
             _ => Err(StridedError::UnsupportedDType {
                 dtype: self.dtype.label(),
             }),
-        });
-        result
+        })
     }
 
     /// Execute concatenate as a full overwrite of uninitialized output storage.

@@ -20,3 +20,6 @@ parallel = ["dep:rayon"]
 
 [lib]
 bench = false
+
+[lints]
+workspace = true

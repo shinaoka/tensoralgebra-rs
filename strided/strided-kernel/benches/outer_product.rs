@@ -99,7 +99,7 @@ fn main() {
                 }
             }
             for col in 0..o {
-                let rhs_value = unsafe { *rhs_ptr.offset((batch * o + col) as isize) };
+                let rhs_value = unsafe { *rhs_ptr.add(batch * o + col) };
                 let dst_base = batch * j * k * o + col * j * k;
                 for row in 0..j * k {
                     unsafe {

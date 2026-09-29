@@ -69,3 +69,11 @@ inherits = "release"
 [profile.release-with-debug]
 inherits = "release"
 debug = true
+
+# Imported strided-rs code was not clippy-gated upstream. These two lints fire
+# on index-driven numerical kernels and wide kernel signatures, where the
+# suggested rewrites change loop structure in hot paths; they stay allowed
+# workspace-wide rather than being "fixed" without a benchmark.
+[workspace.lints.clippy]
+too_many_arguments = "allow"
+needless_range_loop = "allow"

@@ -38,3 +38,6 @@ bench = false
 [[bench]]
 name = "fused_elementwise"
 harness = false
+
+[lints]
+workspace = true

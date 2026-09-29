@@ -253,9 +253,9 @@ unsafe fn naive_strided_copy(
     }
 }
 
-/// Convenience: naive permuted copy from col-major source.
-///
-/// B[i_0, ..., i_{N-1}] = A[i_{perm[0]}, ..., i_{perm[N-1]}]
+// Convenience: naive permuted copy from col-major source.
+//
+// B[i_0, ..., i_{N-1}] = A[i_{perm[0]}, ..., i_{perm[N-1]}]
 // ---------------------------------------------------------------------------
 // Unified pattern runner
 // ---------------------------------------------------------------------------
@@ -546,7 +546,7 @@ fn current_thread_count() -> usize {
     }
 }
 
-fn selected_patterns<'a>(suite: &'a PatternSuite) -> Vec<&'a PermutePattern> {
+fn selected_patterns(suite: &PatternSuite) -> Vec<&PermutePattern> {
     match std::env::var("PATTERN_ID") {
         Ok(id) => suite
             .patterns

@@ -13,3 +13,6 @@ categories = ["science", "mathematics"]
 [dependencies]
 num-traits.workspace = true
 num-complex.workspace = true
+
+[lints]
+workspace = true

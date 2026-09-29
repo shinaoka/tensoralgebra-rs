@@ -742,9 +742,7 @@ fn parallel_simd_sum<T: Copy + Zero + Add<Output = T> + simd::MaybeSimdOps + Sen
     src: &[T],
 ) -> Option<T> {
     // Check that T has SIMD support
-    if T::try_simd_sum(&[]).is_none() {
-        return None;
-    }
+    T::try_simd_sum(&[])?;
     let nthreads = crate::execution_policy::rayon_threads();
     let result = crate::threading::parallel_map_reduce(
         0..src.len(),
@@ -763,21 +761,19 @@ pub fn sum<
     src: &StridedView<T, Op>,
 ) -> Result<T> {
     // SIMD fast path: contiguous Identity view with SIMD support
-    if Op::IS_IDENTITY {
-        if same_contiguous_layout(src.dims(), &[src.strides()]).is_some() {
-            let len = total_len(src.dims())?;
-            let src_slice = unsafe { std::slice::from_raw_parts(src.ptr(), len) };
+    if Op::IS_IDENTITY && same_contiguous_layout(src.dims(), &[src.strides()]).is_some() {
+        let len = total_len(src.dims())?;
+        let src_slice = unsafe { std::slice::from_raw_parts(src.ptr(), len) };
 
-            #[cfg(feature = "parallel")]
-            if len > MINTHREADLENGTH {
-                if let Some(result) = parallel_simd_sum(src_slice) {
-                    return Ok(result);
-                }
-            }
-
-            if let Some(result) = T::try_simd_sum(src_slice) {
+        #[cfg(feature = "parallel")]
+        if len > MINTHREADLENGTH {
+            if let Some(result) = parallel_simd_sum(src_slice) {
                 return Ok(result);
             }
+        }
+
+        if let Some(result) = T::try_simd_sum(src_slice) {
+            return Ok(result);
         }
     }
     reduce(src, |x| x, |a, b| a + b, T::zero())

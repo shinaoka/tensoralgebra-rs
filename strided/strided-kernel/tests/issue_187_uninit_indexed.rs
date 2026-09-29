@@ -728,7 +728,7 @@ fn dynamic_update_hole_layout_preserves_unreachable_bytes() {
     let source = ErasedRawStridedRef::from_slice(&operand, &dims, &[1], 0).unwrap();
     let update = ErasedRawStridedRef::from_slice(&updates, &ud, &[1], 0).unwrap();
     let start = ErasedRawStridedRef::from_slice(&starts, &sd, &[1], 0).unwrap();
-    let mut raw = vec![MaybeUninit::<i32>::new(0xa5 as i32); 10];
+    let mut raw = vec![MaybeUninit::<i32>::new(0xa5_i32); 10];
     let before = raw.clone();
     let mut out = ErasedRawStridedUninitMut::from_uninit_slice(&mut raw, &dims, &[2], 0).unwrap();
     plan.execute_uninit(
@@ -1346,7 +1346,6 @@ fn aligned_uninit_lifecycle_all_indexed_families() {
             &ErasedRawStridedPtr::from_ref(&source),
         )
         .unwrap();
-    drop(reduce_out);
 }
 
 #[test]

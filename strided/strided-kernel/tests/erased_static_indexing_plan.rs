@@ -7,12 +7,7 @@ use strided_kernel::{
 };
 
 fn as_bytes<T>(data: &[T]) -> &[u8] {
-    unsafe {
-        core::slice::from_raw_parts(
-            data.as_ptr().cast::<u8>(),
-            data.len() * core::mem::size_of::<T>(),
-        )
-    }
+    unsafe { core::slice::from_raw_parts(data.as_ptr().cast::<u8>(), std::mem::size_of_val(data)) }
 }
 
 fn assume_init_vec<T>(data: Vec<MaybeUninit<T>>) -> Vec<T> {

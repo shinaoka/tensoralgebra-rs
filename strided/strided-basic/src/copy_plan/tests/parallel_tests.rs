@@ -6,7 +6,7 @@ use num_complex::Complex64;
 
 /// Smallest backing length covering every reachable offset from `offset`.
 fn span(dims: &[usize], strides: &[isize], offset: isize) -> usize {
-    if dims.iter().any(|&d| d == 0) {
+    if dims.contains(&0) {
         return 0;
     }
     let mut max = offset;
