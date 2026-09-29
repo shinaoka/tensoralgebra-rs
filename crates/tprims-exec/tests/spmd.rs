@@ -161,8 +161,11 @@ fn os_thread_count_does_not_grow_after_partitions() {
         exec.for_each_partition(64, &|_| {});
         exec.broadcast(2, &|_| {}).unwrap();
     }
+    // Threads of a pool dropped by an earlier test may still be exiting, so
+    // the count can shrink meanwhile; it must never grow.
     if before > 0 {
-        assert_eq!(os_threads(), before);
+        let after = os_threads();
+        assert!(after <= before, "OS threads grew from {before} to {after}");
     }
 }
 

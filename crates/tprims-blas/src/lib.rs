@@ -29,6 +29,7 @@
 mod batched;
 mod error;
 mod gemm;
+mod grouped;
 mod operand;
 mod scalar;
 mod tblis;
@@ -37,6 +38,7 @@ mod trsm;
 pub use batched::{gemm_batched, BatchIn, BatchStrategy, Selected};
 pub use error::{Error, Result};
 pub use gemm::{gemm, GemmPolicy};
+pub use grouped::{gemm_grouped, GroupedJob};
 pub use operand::{is_injective_layout, Conj, MatIn};
 pub use scalar::Scalar;
 pub use trsm::{trsm, Diag, Op, Side, Uplo};

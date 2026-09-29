@@ -28,8 +28,13 @@ Protocol`, `CPU Threading Contract`); read those sections first.
    It pins with `taskset`, checks the cores are idle before and after, keeps
    only valid runs and retries spoiled ones. The per-benchmark runners already
    use it and pair thread counts per case, one process per case:
-   `benchmarks/benchmarks/tprims/{linalg,contract}/run.sh CPUS1 CPUS4 OUT`,
-   `benchmarks/c/run.sh CPUS1 CPUS4 OUT`. For a single binary:
+   `benchmarks/benchmarks/tprims/contract/run.sh OUT CPUS 1 4 8` and
+   `CORPUS=file benchmarks/benchmarks/tprims/blas/run.sh OUT CPUS 1 4 8`
+   (both `benchmarks/scripts/paired.sh`, which also writes `manifest.txt`),
+   `benchmarks/benchmarks/tprims/linalg/run.sh CPUS1 CPUS4 OUT`,
+   `benchmarks/c/run.sh CPUS1 CPUS4 OUT`. A recorded workload is replayed
+   with `CORPUS=file` (`contract --corpus`, `blas --corpus`; format in
+   `benchmarks/src/corpus.rs`). For a single binary:
    `BENCH_CASE=<case> benchmarks/scripts/pinned.sh 8 -- target/release/blas --threads 1`.
 5. **Thread counts:** every tensor-sized case at 1T and 4T in the same run;
    add 8T (one full L3 domain) where the experiment calls for it. The binary

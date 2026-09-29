@@ -2,12 +2,16 @@
 
 `tprims-blas` at an enforced thread count: `gemm`, `gemm_batched` with both
 strategies (faer plus a loop over items; TBLIS-style through Lukas Devos's
-`tensorcontract`), and `trsm`, for f64 and c64. Column-major operands;
+`tensorcontract`), `gemm_grouped` (variable-size jobs in shared buffers,
+against a loop of `gemm` calls on the same blocks), and `trsm`, for f64 and
+c64. Column-major operands;
 `gemm_batched` batch axis last. `# selected` lines show the schedule each
 batched call chose; `CHECK` lines compare the two strategies' outputs.
 
 ```bash
 cargo build --release -p tprims-bench --bin blas
+# recorded batched-GEMM shapes, faer loop vs TBLIS-style, paired thread counts:
+CORPUS=path/to/corpus.json benchmarks/benchmarks/tprims/blas/run.sh /tmp/blas "$(python3 benchmarks/scripts/idle_cpus.py pick 8)" 1 4 8
 taskset -c 57    target/release/blas --threads 1
 taskset -c 57-60 target/release/blas --threads 4
 ```

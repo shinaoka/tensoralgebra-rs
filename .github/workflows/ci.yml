@@ -25,7 +25,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: python3 scripts/check-agent-skills.py
       - run: python3 benchmarks/scripts/test_idle_cpus.py
-      - run: bash -n benchmarks/scripts/pinned.sh benchmarks/benchmarks/tprims/linalg/run.sh benchmarks/benchmarks/tprims/contract/run.sh benchmarks/c/run.sh
+      - run: bash -n benchmarks/scripts/pinned.sh benchmarks/scripts/paired.sh benchmarks/benchmarks/tprims/linalg/run.sh benchmarks/benchmarks/tprims/contract/run.sh benchmarks/benchmarks/tprims/blas/run.sh benchmarks/c/run.sh
 
   clippy:
     runs-on: ubuntu-latest

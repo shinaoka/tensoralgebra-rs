@@ -1,17 +1,22 @@
 //! tprims-contract at an enforced thread count: a predeclared corpus of
-//! binary contractions, both strategies (permute + batched GEMM, TBLIS-style
-//! direct), f64 and c64. Planning and execution are timed separately.
+//! binary contractions, or a recorded one (`--corpus FILE`, see
+//! `tprims_bench::corpus`), both strategies (permute + batched GEMM,
+//! TBLIS-style direct). Planning and execution are timed separately.
 //!
-//! Usage: `contract --threads N`. CSV `case,variant,threads,median_ns,samples`
-//! where `variant` is `<strategy>_<plan|exec>`; `# selected` lines report
-//! what each plan runs (including materialized operands); `CHECK` lines
-//! compare the strategies' results. Environment: `BENCH_RUNS` (default 20),
-//! `BENCH_WARMUP` (3), `BENCH_CASE` (exact case name).
+//! Usage: `contract --threads N [--corpus FILE] [--list]`. CSV
+//! `case,variant,threads,median_ns,samples` where `variant` is
+//! `<strategy>_<plan|exec>`; `# selected` lines report what each plan runs
+//! (including materialized operands); `CHECK` lines compare the strategies'
+//! results. `--list` prints the case names and exits. Environment:
+//! `BENCH_RUNS` (default 20), `BENCH_WARMUP` (3), `BENCH_CASE` (exact case
+//! name). The built-in corpus runs in f64 and c64; a corpus file sets each
+//! entry's dtype.
 use std::hint::black_box;
 
-use num_complex::Complex64;
+use num_complex::{Complex32, Complex64};
 use strided_view::{StridedView, StridedViewMut};
 use tensorcontract::Element;
+use tprims_bench::corpus::{Corpus, DotGeneralEntry, Dtype, Entry, Operand};
 use tprims_bench::threads::BenchThreads;
 use tprims_bench::timing::{env_usize, median_ns};
 use tprims_blas::{Conj, Scalar};
@@ -142,27 +147,68 @@ fn strides(dims: &[usize], order: &[usize]) -> Vec<isize> {
     s
 }
 
-fn run<T: Scalar>(case: &Case, exec: &Exec<'_>, threads: usize, warmup: usize, runs: usize) {
-    let tag = if T::IS_COMPLEX_SCALAR { "c64" } else { "f64" };
-    let name = format!("{}_{tag}", case.name);
-    let (sa, sb) = (strides(case.a, case.a_order), strides(case.b, case.b_order));
-    let ad: Vec<T> = fill(case.a.iter().product(), 1);
-    let bd: Vec<T> = fill(case.b.iter().product(), 2);
+/// A built-in case as a corpus entry: operands stored in `a_order` /
+/// `b_order`, output compact column-major.
+fn entry(case: &Case, dtype: Dtype) -> DotGeneralEntry {
     let cfg = DotGeneral::new(case.lc, case.rc, case.lb, case.rb);
     let cdims = cfg.validate(case.a, case.b).expect("config").out_dims;
-    let sc = strides(&cdims, &(0..cdims.len()).collect::<Vec<_>>());
-    let clen: usize = cdims.iter().product();
-    let av = StridedView::new(&ad, case.a, &sa, 0).expect("a");
-    let bv = StridedView::new(&bd, case.b, &sb, 0).expect("b");
+    let order: Vec<usize> = (0..cdims.len()).collect();
+    DotGeneralEntry {
+        name: format!("{}_{}", case.name, dtype.tag()),
+        dtype,
+        a: Operand {
+            dims: case.a.to_vec(),
+            strides: strides(case.a, case.a_order),
+        },
+        b: Operand {
+            dims: case.b.to_vec(),
+            strides: strides(case.b, case.b_order),
+        },
+        c: Operand {
+            strides: strides(&cdims, &order),
+            dims: cdims,
+        },
+        lc: case.lc.to_vec(),
+        rc: case.rc.to_vec(),
+        lb: case.lb.to_vec(),
+        rb: case.rb.to_vec(),
+        conj: [false, false],
+        calls: None,
+        time_share: None,
+    }
+}
+
+fn conj(c: bool) -> Conj {
+    if c {
+        Conj::Yes
+    } else {
+        Conj::No
+    }
+}
+
+fn run<T: Scalar>(
+    e: &DotGeneralEntry,
+    exec: &Exec<'_>,
+    threads: usize,
+    warmup: usize,
+    runs: usize,
+) {
+    let name = &e.name;
+    let ((oa, la), (ob, lb), (oc, lc)) = (e.a.span(), e.b.span(), e.c.span());
+    let ad: Vec<T> = fill(la, 1);
+    let bd: Vec<T> = fill(lb, 2);
+    let cfg = DotGeneral::new(&e.lc, &e.rc, &e.lb, &e.rb);
+    let av = StridedView::new(&ad, &e.a.dims, &e.a.strides, oa as isize).expect("a");
+    let bv = StridedView::new(&bd, &e.b.dims, &e.b.strides, ob as isize).expect("b");
     let mut outs = Vec::new();
     for (tag, strategy) in [("pg", Strategy::PermuteGemm), ("tblis", Strategy::Tblis)] {
         let mk = || {
             ContractPlan::<T>::new(
                 &cfg,
-                (case.a, &sa),
-                (case.b, &sb),
-                (&cdims, &sc),
-                (Conj::No, Conj::No),
+                (&e.a.dims, &e.a.strides),
+                (&e.b.dims, &e.b.strides),
+                (&e.c.dims, &e.c.strides),
+                (conj(e.conj[0]), conj(e.conj[1])),
                 strategy,
                 Flags::default(),
             )
@@ -174,9 +220,10 @@ fn run<T: Scalar>(case: &Case, exec: &Exec<'_>, threads: usize, warmup: usize, r
         println!("{name},{tag}_plan,{threads},{ns:.0},{runs}");
         let plan = mk();
         println!("# selected {name} {tag}: {:?}", plan.selected());
-        let mut c = vec![<T as Element>::zero(); clen];
+        let mut c = vec![<T as Element>::zero(); lc];
         let ns = median_ns(warmup, runs, || {
-            let mut cv = StridedViewMut::new(&mut c, &cdims, &sc, 0).expect("c");
+            let mut cv =
+                StridedViewMut::new(&mut c, &e.c.dims, &e.c.strides, oc as isize).expect("c");
             plan.execute(
                 exec,
                 <T as Element>::one(),
@@ -215,13 +262,59 @@ fn run<T: Scalar>(case: &Case, exec: &Exec<'_>, threads: usize, warmup: usize, r
         })
         .fold(0.0, f64::max)
         / scale;
+    let tol = if matches!(e.dtype, Dtype::F32 | Dtype::C32) {
+        1e-4
+    } else {
+        1e-12
+    };
     println!(
         "CHECK {name} threads={threads} pg_vs_tblis_rel={err:e} {}",
-        if err < 1e-12 { "ok" } else { "MISMATCH" }
+        if err < tol { "ok" } else { "MISMATCH" }
     );
 }
 
+fn dispatch(e: &DotGeneralEntry, exec: &Exec<'_>, threads: usize, warmup: usize, runs: usize) {
+    match e.dtype {
+        Dtype::F32 => run::<f32>(e, exec, threads, warmup, runs),
+        Dtype::F64 => run::<f64>(e, exec, threads, warmup, runs),
+        Dtype::C32 => run::<Complex32>(e, exec, threads, warmup, runs),
+        Dtype::C64 => run::<Complex64>(e, exec, threads, warmup, runs),
+    }
+}
+
+/// Built-in cases (f64 and c64) or the `dot_general` entries of `--corpus`.
+fn cases() -> Vec<DotGeneralEntry> {
+    let args: Vec<String> = std::env::args().collect();
+    match args.iter().position(|a| a == "--corpus") {
+        Some(i) => {
+            let path = args
+                .get(i + 1)
+                .unwrap_or_else(|| panic!("--corpus needs a file"));
+            let corpus = Corpus::load(path).unwrap_or_else(|e| panic!("{e}"));
+            corpus
+                .entries
+                .into_iter()
+                .filter_map(|e| match e {
+                    Entry::DotGeneral(d) => Some(d),
+                    _ => None,
+                })
+                .collect()
+        }
+        None => CORPUS
+            .iter()
+            .flat_map(|c| [entry(c, Dtype::F64), entry(c, Dtype::C64)])
+            .collect(),
+    }
+}
+
 fn main() {
+    let cases = cases();
+    if std::env::args().any(|a| a == "--list") {
+        for c in &cases {
+            println!("{}", c.name);
+        }
+        return;
+    }
     let threads = BenchThreads::from_args();
     threads.verify();
     let warmup = env_usize("BENCH_WARMUP", 3);
@@ -229,23 +322,14 @@ fn main() {
     let exact = std::env::var("BENCH_CASE").ok().filter(|f| !f.is_empty());
     println!("case,variant,threads,median_ns,samples");
     threads.with_exec(|exec, _| {
-        for case in CORPUS {
-            for complex in [false, true] {
-                let full = format!("{}_{}", case.name, if complex { "c64" } else { "f64" });
-                if exact.as_deref().is_some_and(|e| e != full) {
-                    continue;
-                }
-                let r = if case.name.starts_with("large") || case.name.starts_with("matmul") {
-                    runs.min(10)
-                } else {
-                    runs
-                };
-                if complex {
-                    run::<Complex64>(case, exec, threads.requested, warmup, r);
-                } else {
-                    run::<f64>(case, exec, threads.requested, warmup, r);
-                }
+        for e in &cases {
+            if exact.as_deref().is_some_and(|x| x != e.name) {
+                continue;
             }
+            let mults: usize = e.c.dims.iter().product::<usize>()
+                * e.lc.iter().map(|&i| e.a.dims[i]).product::<usize>();
+            let r = if mults >= 1 << 24 { runs.min(10) } else { runs };
+            dispatch(e, exec, threads.requested, warmup, r);
         }
     });
 }
