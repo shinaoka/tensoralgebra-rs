@@ -4,7 +4,9 @@
 //!
 //! Usage: `linalg --threads N`. CSV `case,variant,threads,median_ns,samples`.
 //! Environment: `BENCH_RUNS` (default 30, capped for large cases),
-//! `BENCH_WARMUP` (3), `BENCH_FILTER`.
+//! `BENCH_WARMUP` (3), `BENCH_FILTER` (substring), `BENCH_CASE` (exact case
+//! name; `run.sh` uses it to measure every case in its own process, because
+//! parallel cases leave the pool in a state that slows later serial rows).
 use std::hint::black_box;
 
 use num_complex::Complex64;
@@ -23,10 +25,14 @@ struct Cfg {
     warmup: usize,
     runs: usize,
     filter: Option<String>,
+    exact: Option<String>,
 }
 
 impl Cfg {
     fn want(&self, case: &str) -> bool {
+        if let Some(exact) = &self.exact {
+            return case == exact;
+        }
         self.filter.as_deref().is_none_or(|f| case.contains(f))
     }
     fn runs_for(&self, n: usize) -> usize {
@@ -191,6 +197,7 @@ fn main() {
         warmup: env_usize("BENCH_WARMUP", 3),
         runs: env_usize("BENCH_RUNS", 30),
         filter: std::env::var("BENCH_FILTER").ok().filter(|f| !f.is_empty()),
+        exact: std::env::var("BENCH_CASE").ok().filter(|f| !f.is_empty()),
     };
     println!("case,variant,threads,median_ns,samples");
     threads.with_exec(|exec, _| {
