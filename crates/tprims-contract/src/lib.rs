@@ -44,7 +44,9 @@ mod permute_gemm;
 mod plan;
 mod tblis;
 mod util;
+mod wrappers;
 
 pub use config::{DotGeneral, Shape};
 pub use error::{Error, Result};
 pub use plan::{ContractPlan, Flags, Selected, Strategy};
+pub use wrappers::{add, permute};
