@@ -5,6 +5,7 @@ members = [
     "crates/tprims-core",
     "crates/tprims-blas-capi",
     "crates/tprims-contract-capi",
+    "crates/tprims-bundle",
     "crates/tprims-blas",
     "crates/tprims-linalg",
     "crates/tprims-contract",

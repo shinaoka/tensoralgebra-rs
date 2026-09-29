@@ -1402,6 +1402,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "tprims-bundle"
+version = "0.1.0"
+dependencies = [
+ "tprims-blas-capi",
+ "tprims-contract-capi",
+ "tprims-core",
+]
+
+[[package]]
 name = "tprims-contract"
 version = "0.1.0"
 dependencies = [

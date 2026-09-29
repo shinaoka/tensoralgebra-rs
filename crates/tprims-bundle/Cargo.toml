@@ -1,0 +1,25 @@
+[package]
+name = "tprims-bundle"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Builds libtprims (shared and static) from the selected tprims C ABI parts"
+
+[lib]
+name = "tprims"
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[features]
+default = ["blas", "contract"]
+blas = ["dep:tprims-blas-capi"]
+contract = ["dep:tprims-contract-capi"]
+
+[dependencies]
+tprims-core = { workspace = true }
+tprims-blas-capi = { workspace = true, optional = true }
+tprims-contract-capi = { workspace = true, optional = true }
+
+[lints]
+workspace = true
