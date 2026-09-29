@@ -77,3 +77,6 @@ debug = true
 [workspace.lints.clippy]
 too_many_arguments = "allow"
 needless_range_loop = "allow"
+# New in clippy 1.98: suggests `as_chunks` for constant-size `chunks_exact` in
+# hot reduction loops; rewriting them needs a benchmark first.
+chunks_exact_to_as_chunks = "allow"
