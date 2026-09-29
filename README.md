@@ -164,6 +164,11 @@ the same run.
 | 1e | tenferro-rs integration behind a feature, with an explicit per-op fallback to the current backend, A/B correctness and a same-run performance gate |
 | 1f | A thin C ABI slice (core, blas, contract, bundle) and C benchmarks, to test the design across the C boundary early |
 
+**Status (2026-09-30):** 1a, 1b, 1c, 1d and 1f are implemented
+(`crates/tprims-{exec,blas,linalg,contract,core,blas-capi,contract-capi,bundle}`),
+each with 1T/4T benchmarks under [`benchmarks/benchmarks/tprims/`](benchmarks/benchmarks/tprims/README.md)
+and [`benchmarks/c/`](benchmarks/c/README.md); 1e (tenferro-rs integration) is next.
+
 Full C ABI coverage is Phase 2. [Full plan](docs/architecture.md#implementation-order).
 
 The motivating [FFI measurement](https://github.com/tensor4all/tenferro-rs/issues/1945)

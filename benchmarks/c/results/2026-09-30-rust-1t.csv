@@ -1,0 +1,5 @@
+# threads: requested=1 pool=1 budget=1
+case,variant,threads,median_ns,samples
+empty_call,rust,1,0.3,101
+gemm_8,rust,1,145.2,101
+contract_2x2x2,rust,1,264.1,101

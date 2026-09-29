@@ -49,6 +49,19 @@ jobs:
       - run: cargo package -j 16 -p tensorcontract --list --allow-dirty
       - run: cargo build -j 16 -p tensorcontract --no-default-features
 
+  capi:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      # The C test (tests/c_abi.rs) compiles and runs a C program against the
+      # built libtprims.so; a blas-only bundle must not export contract symbols.
+      - run: cargo test -j 16 -p tprims-bundle
+      - run: |
+          cargo build -j 16 -p tprims-bundle --no-default-features --features blas
+          nm -D --defined-only target/debug/libtprims.so | grep -q ' tprims_blas_gemm$'
+          ! nm -D --defined-only target/debug/libtprims.so | grep -q ' tprims_contract_'
+
   msrv:
     runs-on: ubuntu-latest
     steps:
