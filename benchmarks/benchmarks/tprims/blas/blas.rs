@@ -1,15 +1,19 @@
 //! tprims-blas at an enforced thread count: gemm, batched gemm (faer loop
 //! and TBLIS-style, compared), trsm. f64 and c64.
 //!
-//! Usage: `blas --threads N`. CSV `case,variant,threads,median_ns,samples`;
-//! `CHECK` lines compare the two batched strategies. Environment:
-//! `BENCH_RUNS` (default 50, large cases capped), `BENCH_WARMUP` (5),
-//! `BENCH_FILTER`.
+//! Usage: `blas --threads N [--corpus FILE] [--list]`. CSV
+//! `case,variant,threads,median_ns,samples`; `CHECK` lines compare the two
+//! batched strategies. With `--corpus` only the file's `gemm_batched`
+//! entries run (any dtype, recorded strides; `tprims_bench::corpus`), and
+//! `--list` prints their names. Environment: `BENCH_RUNS` (default 50, large
+//! cases capped), `BENCH_WARMUP` (5), `BENCH_FILTER` (substring of the
+//! built-in case groups), `BENCH_CASE` (exact corpus entry name).
 use std::hint::black_box;
 
-use num_complex::Complex64;
+use num_complex::{Complex32, Complex64};
 use strided_view::{StridedView, StridedViewMut};
 use tensorcontract::Element;
+use tprims_bench::corpus::{Corpus, Dtype, Entry, GemmBatchedEntry};
 use tprims_bench::threads::BenchThreads;
 use tprims_bench::timing::{env_usize, median_ns};
 use tprims_blas::{
@@ -208,6 +212,99 @@ fn batched_cases<T: Scalar>(cfg: &Cfg, exec: &Exec<'_>) {
     }
 }
 
+/// One recorded `gemm_batched` entry, both strategies.
+fn corpus_batched<T: Scalar>(cfg: &Cfg, exec: &Exec<'_>, e: &GemmBatchedEntry) {
+    let ((oa, la), (ob, lb), (oc, lc)) = (e.a.span(), e.b.span(), e.c.span());
+    let a: Vec<T> = fill(la, 4);
+    let b: Vec<T> = fill(lb, 5);
+    let av = StridedView::new(&a, &e.a.dims, &e.a.strides, oa as isize).expect("a");
+    let bv = StridedView::new(&b, &e.b.dims, &e.b.strides, ob as isize).expect("b");
+    let runs = cfg.runs_for(mul_cost::<T>() * (e.m * e.n * e.k * e.batch) as f64);
+    let mut outs = Vec::new();
+    for (tag, strategy) in [
+        ("faer", BatchStrategy::FaerLoop),
+        ("tblis", BatchStrategy::Tblis),
+    ] {
+        let mut c: Vec<T> = vec![<T as Element>::zero(); lc];
+        let mut sel = None;
+        let ns = median_ns(cfg.warmup.min(runs), runs, || {
+            let mut cv =
+                StridedViewMut::new(&mut c, &e.c.dims, &e.c.strides, oc as isize).expect("c");
+            sel = Some(
+                gemm_batched(
+                    exec,
+                    <T as Element>::one(),
+                    BatchIn::new(&av),
+                    BatchIn::new(&bv),
+                    <T as Element>::zero(),
+                    &mut cv,
+                    strategy,
+                )
+                .expect("batched"),
+            );
+        });
+        cfg.row(&e.name, tag, ns, runs);
+        println!("# selected {} {tag}: {sel:?}", e.name);
+        outs.push(c);
+    }
+    let mag = |z: T| {
+        let (re, im): (f64, f64) = (
+            tensorcontract::Real::to_f64(Element::re(z)),
+            tensorcontract::Real::to_f64(Element::im(z)),
+        );
+        re.hypot(im)
+    };
+    let scale = outs[0].iter().map(|&z| mag(z)).fold(1.0, f64::max);
+    let err = outs[0]
+        .iter()
+        .zip(&outs[1])
+        .map(|(&x, &y)| {
+            mag(Element::add(
+                x,
+                Element::mul(
+                    y,
+                    <T as Element>::from_parts(
+                        tensorcontract::Real::from_f64(-1.0),
+                        tensorcontract::Real::from_f64(0.0),
+                    ),
+                ),
+            ))
+        })
+        .fold(0.0, f64::max)
+        / scale;
+    let tol = if matches!(e.dtype, Dtype::F32 | Dtype::C32) {
+        1e-4
+    } else {
+        1e-12
+    };
+    println!(
+        "CHECK {} threads={} faer_vs_tblis_rel={err:e} {}",
+        e.name,
+        cfg.threads,
+        if err < tol { "ok" } else { "MISMATCH" }
+    );
+}
+
+/// The `gemm_batched` entries of `--corpus FILE`, if given.
+fn corpus_entries() -> Option<Vec<GemmBatchedEntry>> {
+    let args: Vec<String> = std::env::args().collect();
+    let i = args.iter().position(|a| a == "--corpus")?;
+    let path = args
+        .get(i + 1)
+        .unwrap_or_else(|| panic!("--corpus needs a file"));
+    let corpus = Corpus::load(path).unwrap_or_else(|e| panic!("{e}"));
+    Some(
+        corpus
+            .entries
+            .into_iter()
+            .filter_map(|e| match e {
+                Entry::GemmBatched(g) => Some(g),
+                _ => None,
+            })
+            .collect(),
+    )
+}
+
 fn trsm_cases<T: Scalar>(cfg: &Cfg, exec: &Exec<'_>) {
     let case = format!("trsm_{}", name::<T>());
     if !cfg.want(&case) {
@@ -249,6 +346,13 @@ fn trsm_cases<T: Scalar>(cfg: &Cfg, exec: &Exec<'_>) {
 }
 
 fn main() {
+    let corpus = corpus_entries();
+    if std::env::args().any(|a| a == "--list") {
+        for e in corpus.iter().flatten() {
+            println!("{}", e.name);
+        }
+        return;
+    }
     let threads = BenchThreads::from_args();
     threads.verify();
     let cfg = Cfg {
@@ -258,6 +362,23 @@ fn main() {
         filter: std::env::var("BENCH_FILTER").ok().filter(|f| !f.is_empty()),
     };
     println!("case,variant,threads,median_ns,samples");
+    if let Some(entries) = corpus {
+        let exact = std::env::var("BENCH_CASE").ok().filter(|f| !f.is_empty());
+        threads.with_exec(|exec, _| {
+            for e in entries
+                .iter()
+                .filter(|e| exact.as_deref().is_none_or(|x| x == e.name))
+            {
+                match e.dtype {
+                    Dtype::F32 => corpus_batched::<f32>(&cfg, exec, e),
+                    Dtype::F64 => corpus_batched::<f64>(&cfg, exec, e),
+                    Dtype::C32 => corpus_batched::<Complex32>(&cfg, exec, e),
+                    Dtype::C64 => corpus_batched::<Complex64>(&cfg, exec, e),
+                }
+            }
+        });
+        return;
+    }
     threads.with_exec(|exec, _| {
         gemm_cases::<f64>(&cfg, exec);
         gemm_cases::<Complex64>(&cfg, exec);

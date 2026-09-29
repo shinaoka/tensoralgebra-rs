@@ -17,12 +17,19 @@ execution (`execute`, alpha = 1, beta = 0) are timed separately.
 
 ```bash
 cargo build --release -p tprims-bench --bin contract
-benchmarks/benchmarks/tprims/contract/run.sh 57 57-60 /tmp/contract   # 1T cores, 4T cores, output
+cpus=$(python3 benchmarks/scripts/idle_cpus.py pick 8)            # one idle L3 domain
+benchmarks/benchmarks/tprims/contract/run.sh /tmp/contract "$cpus" 1 4 8
+CORPUS=path/to/corpus.json benchmarks/benchmarks/tprims/contract/run.sh /tmp/c2 "$cpus" 1 4 8
 ```
 
-`run.sh` runs every case in its own process, 1T and 4T back to back, and
-keeps the `# selected` (materialized operands) and `CHECK` (pg vs tblis)
-lines in a log.
+`run.sh` (`benchmarks/scripts/paired.sh`) runs every case in its own process,
+all thread counts of a case back to back, each through `pinned.sh`, and keeps
+the `# selected` (materialized operands) and `CHECK` (pg vs tblis) lines in a
+log and the commit, CPU, core set and corpus hash in `manifest.txt`.
+`contract --corpus FILE` replays the `dot_general` entries of a corpus
+(`tprims_bench::corpus`; example: `../corpus/example.json`) in any of
+f32/f64/c32/c64 with the recorded strides. The observation below predates
+corpus mode and used the older `run.sh CPUS1 CPUS4 OUT` (1T/4T only).
 
 ## Observation, 2026-09-30 (single run, not a claim)
 

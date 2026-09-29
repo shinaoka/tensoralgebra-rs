@@ -8,6 +8,8 @@ batched call chose; `CHECK` lines compare the two strategies' outputs.
 
 ```bash
 cargo build --release -p tprims-bench --bin blas
+# recorded batched-GEMM shapes, faer loop vs TBLIS-style, paired thread counts:
+CORPUS=path/to/corpus.json benchmarks/benchmarks/tprims/blas/run.sh /tmp/blas "$(python3 benchmarks/scripts/idle_cpus.py pick 8)" 1 4 8
 taskset -c 57    target/release/blas --threads 1
 taskset -c 57-60 target/release/blas --threads 4
 ```
