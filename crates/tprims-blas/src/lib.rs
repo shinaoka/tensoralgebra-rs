@@ -26,11 +26,14 @@
 //! gemm(&Exec::serial(), 1.0, MatIn::new(&av), MatIn::new(&bv), 0.0, &mut cv).unwrap();
 //! assert_eq!(c, a);
 //! ```
+mod batched;
 mod error;
 mod gemm;
 mod operand;
 mod scalar;
+mod tblis;
 
+pub use batched::{gemm_batched, BatchIn, BatchStrategy, Selected};
 pub use error::{Error, Result};
 pub use gemm::{gemm, GemmPolicy};
 pub use operand::{Conj, MatIn};
