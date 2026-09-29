@@ -1,7 +1,7 @@
 # exec_entry
 
 Entry cost of the `tprims-exec` primitives, and two kernels driven through
-`Exec`: a transposing strided map (`strided_basic::run_with_exec`) and a
+`Exec`: a transposing strided map (`tprims_exec::strided::run_with_exec`) and a
 512³ f64 GEMM through tensorcontract's `Spmd` seam (`Plan::run_with` with
 `Exec::broadcast`). `# stats` lines give pool entry and broadcast counts per
 case, so "serial work never enters the pool" is counted, not inferred.

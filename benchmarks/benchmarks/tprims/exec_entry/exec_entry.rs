@@ -6,11 +6,12 @@
 //! (default 200), `BENCH_WARMUP` (default 20), `BENCH_FILTER`.
 use std::hint::black_box;
 
-use strided_basic::{map_into, run_with_exec, StridedArray};
+use strided_basic::{map_into, StridedArray};
 use tensorcontract::spmd::Spmd;
 use tensorcontract::{Layout, Operand, Plan, TensorView, TensorViewMut};
 use tprims_bench::threads::BenchThreads;
 use tprims_bench::timing::{env_usize, median_ns};
+use tprims_exec::strided::run_with_exec;
 use tprims_exec::{Exec, Pool};
 
 struct ExecSpmd<'a> {

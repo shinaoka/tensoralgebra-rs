@@ -27,7 +27,6 @@ jobs:
         with:
           components: clippy
       - run: cargo clippy -j 16 --workspace --all-targets -- -D warnings
-      - run: cargo clippy -j 16 --workspace --all-targets --features strided-basic/parallel,strided-basic/tprims-exec,strided-kernel/parallel,strided-perm/parallel,tprims-bench/parallel -- -D warnings
 
   test:
     runs-on: ubuntu-latest
@@ -38,11 +37,8 @@ jobs:
       # does not build (it only builds the rlib the harness needs).
       - run: cargo build -j 16 --profile ci -p tprims-bundle
       - run: cargo test -j 16 --profile ci --workspace --no-fail-fast
-      - run: cargo test -j 16 --profile ci -p strided-basic -p strided-kernel -p strided-perm --features parallel --no-fail-fast
-      # tprims-bench enables strided-basic/tprims-exec, so the workspace run
-      # unifies `parallel` on; test strided's default configuration alone.
-      - run: cargo test -j 16 --profile ci -p strided-traits -p strided-view -p strided-perm -p strided-basic -p strided-fused -p strided-kernel --no-fail-fast
-      - run: cargo test -j 16 --profile ci -p strided-basic --features tprims-exec --no-fail-fast
+      # tprims-exec alone, without the `strided` adapter the workspace unifies on.
+      - run: cargo test -j 16 --profile ci -p tprims-exec --no-fail-fast
       # tensorcontract's micro-kernels are written for the release profile
       # (thin LTO, one codegen unit); upstream CI tests both.
       - run: cargo test -j 16 -p tensorcontract --release

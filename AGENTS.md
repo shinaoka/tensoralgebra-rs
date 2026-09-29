@@ -7,8 +7,8 @@ relevant to the task and do not vendor them here. Then read
 `REPOSITORY_RULES.md`. Read `PERFORMANCE_TIPS.md` in full before implementing
 or reviewing kernels, planning, caches, execution/threading code or
 benchmarks, and before creating a PR that touches them. Work inside
-`strided/`, `tensorprimitives/` or `benchmarks/` also follows that
-directory's own `AGENTS.md`; where it conflicts with this file, this file and
+`tensorprimitives/` or `benchmarks/` also follows that directory's own
+`AGENTS.md`; where it conflicts with this file, this file and
 `PERFORMANCE_TIPS.md` win for cross-cutting execution and benchmark rules.
 
 This is a research repository, not a production tensor-algebra library. Read `README.md`, `docs/research-map.md`, `docs/experiments.md`, and `docs/provenance.md` before adding an experiment.
@@ -22,25 +22,23 @@ This is a research repository, not a production tensor-algebra library. Read `RE
 ## Layout
 
 - `crates/`: new `tprims-*` crates.
-- `strided/`: strided-rs, imported with history (`strided-traits`, `-view`,
-  `-perm`, `-basic`, `-fused`, `-kernel`).
 - `tensorprimitives/`: tensorprimitives-rs by Lukas Devos, imported with
   history (`tensorcontract`, `tensorprimitives-tapp`, `tensorprimitives-bench`).
-- `benchmarks/`: strided-rs-benchmark-suite, imported with history, package
-  `tprims-bench`. Every new operation adds rows here at 1T and 4T.
+- `benchmarks/`: package `tprims-bench` (started as an import of
+  strided-rs-benchmark-suite). Every new operation adds rows here at 1T and 4T.
 - `experiments/`: standalone measurement probes, excluded from the workspace.
-- `deprecated/` directories are frozen: not built, not edited.
+- strided-rs is an external git dependency pinned to the v0.4.4 commit,
+  spelled exactly as in tenferro-rs (`Cargo.toml`); strided changes and
+  strided benchmarks go to tensor4all/strided-rs and
+  tensor4all/strided-rs-benchmark-suite.
 
 ## Build
 
 - Every cargo invocation uses `-j 16`.
 - Local gate before a PR: `cargo fmt --all -- --check`,
-  `cargo clippy -j 16 --workspace --all-targets -- -D warnings`, the same with
-  `--features strided-basic/parallel,strided-basic/tprims-exec,strided-kernel/parallel,strided-perm/parallel,tprims-bench/parallel`,
-  `cargo test -j 16 --workspace`, and
-  `cargo test -j 16 -p strided-basic -p strided-kernel -p strided-perm --features parallel`,
-  the strided crates alone without features (the workspace run unifies
-  `parallel` on through `tprims-bench`), and
+  `cargo clippy -j 16 --workspace --all-targets -- -D warnings`,
+  `cargo test -j 16 --workspace`, `cargo test -j 16 -p tprims-exec` (without
+  the `strided` feature the workspace unifies on), and
   `cargo test -j 16 -p tensorcontract --release`. Build `cargo build -j 16 -p tprims-bundle`
   before the workspace tests (the C ABI test links the built `libtprims.so`). CI uses stable clippy,
   which may be newer than a local toolchain.

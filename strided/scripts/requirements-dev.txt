@@ -1,2 +1,0 @@
-# Local-only helpers for repository maintenance scripts (not used in CI).
-python-dotenv>=1.0.0

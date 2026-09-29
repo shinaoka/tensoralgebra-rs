@@ -8,10 +8,10 @@
 //! smallest set of operands that makes the rest fuse is copied once into
 //! compact column-major buffers in canonical `[M, K, H]`, `[K, N, H]`,
 //! `[M, N, H]` order.
-use strided_basic::run_with_exec;
 use strided_view::{StridedView, StridedViewMut};
 use tensorcontract::Element;
 use tprims_blas::{gemm_batched, BatchIn, BatchStrategy, Conj, Scalar};
+use tprims_exec::strided::run_with_exec;
 use tprims_exec::Exec;
 
 use crate::config::{DotGeneral, Shape};

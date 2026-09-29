@@ -168,13 +168,13 @@ keeps its existing layout until it is otherwise changed.
 
 ## Imported Code
 
-- `strided/`, `tensorprimitives/` and `benchmarks/` were imported with
-  `git subtree` (no squash) and keep upstream history; see
-  `docs/provenance.md`.
+- `tensorprimitives/` and `benchmarks/` were imported with `git subtree`
+  (no squash) and keep upstream history; see `docs/provenance.md`.
+  strided-rs was imported the same way and later removed again; it is an
+  external dependency, and strided changes go to tensor4all/strided-rs.
 - Files there keep their upstream copyright and license notices. A change to
   imported code is an ordinary commit here; say in the message when it
   diverges from upstream behaviour.
-- `deprecated/` directories are frozen: not built, not edited.
 - Authorship is never dropped. Imported history is never rewritten
   (no squash merges of import branches, no history filtering). Imported
   crates keep their upstream `authors` (Lukas Devos for `tensorcontract` and

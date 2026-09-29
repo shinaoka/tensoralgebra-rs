@@ -1,25 +1,18 @@
 # tprims-bench
 
-Benchmarks for the tprims stack. The package was imported from
+Benchmarks for the tprims stack. The package started as an import of
 [strided-rs-benchmark-suite](https://github.com/tensor4all/strided-rs-benchmark-suite)
-(upstream `0550611`) with its history; its einsum half (strided-opteinsum and
-OMEinsum.jl runners, Python dataset pipeline, fixtures) is frozen under
-[`deprecated/`](deprecated/README.md).
-
-## Live benchmarks
-
-[`benchmarks/strided_benchmarks/`](benchmarks/strided_benchmarks/README.md):
-kernel-level comparisons of naive loops, strided-rs and HPTT.
+(upstream `0550611`, with history); the strided-rs kernel benchmarks moved
+back there when strided-rs became an external dependency again, and this
+package now holds only the tprims benchmarks.
 
 | Binary | Page |
 | --- | --- |
-| `permute` | [permute](benchmarks/strided_benchmarks/permute/) |
-| `scale_transpose` | [transpose_scale](benchmarks/strided_benchmarks/transpose_scale/) |
-| `fused_elementwise` | [fused_elementwise](benchmarks/strided_benchmarks/fused_elementwise/) |
-| `dense_kernels` | [dense_kernels](benchmarks/strided_benchmarks/dense_kernels/README.md) |
-| `kernel_scaling` (feature `parallel`) | [kernel_scaling](benchmarks/strided_benchmarks/kernel_scaling/) |
-
-New tprims benchmarks (Phase 1 onward) live under `benchmarks/tprims/`.
+| `exec_entry` | [exec_entry](benchmarks/tprims/exec_entry/README.md) |
+| `blas` | [blas](benchmarks/tprims/blas/README.md) |
+| `linalg` | [linalg](benchmarks/tprims/linalg/README.md) |
+| `contract` | [contract](benchmarks/tprims/contract/README.md) |
+| `capi_rust` | [C ABI comparison](c/README.md) |
 
 ## Build and run
 
@@ -27,16 +20,9 @@ The package is a member of the root workspace, so binaries land in the
 repository's `target/`:
 
 ```bash
-cargo build -j 16 --release -p tprims-bench --features parallel --bins
-taskset -c 0   ../target/release/kernel_scaling --threads 1 --time
-taskset -c 0-3 ../target/release/kernel_scaling --threads 4 --time
-```
-
-Julia baselines (`permute.jl`, `kernel_scaling.jl`) use this directory's
-Julia environment (`Project.toml`: JSON, Strided):
-
-```bash
-julia --project=. -e 'using Pkg; Pkg.instantiate()'
+cargo build -j 16 --release -p tprims-bench --bins
+taskset -c 0   ../target/release/blas --threads 1
+taskset -c 0-3 ../target/release/blas --threads 4
 ```
 
 ## Rules

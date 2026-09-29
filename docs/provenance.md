@@ -6,9 +6,16 @@ history and authorship are preserved:
 
 | Directory | Upstream | Commit | License | Notices kept |
 | --- | --- | --- | --- | --- |
-| `strided/` | [tensor4all/strided-rs](https://github.com/tensor4all/strided-rs) | `71b7cb9` | MIT OR Apache-2.0; `strided-perm` also BSD-3-Clause (HPTT-derived) | `strided/LICENSE-*`, `strided/NOTICE`, `strided/THIRD-PARTY-LICENSES` |
+| `strided/` (removed) | [tensor4all/strided-rs](https://github.com/tensor4all/strided-rs) | `71b7cb9` | MIT OR Apache-2.0; `strided-perm` also BSD-3-Clause (HPTT-derived) | removed with the directory |
 | `tensorprimitives/` | [lkdvos/tensorprimitives-rs](https://github.com/lkdvos/tensorprimitives-rs) (Lukas Devos) | `8cda75e` | MIT OR Apache-2.0 | `tensorprimitives/LICENSE-*`, per-crate `LICENSE-*` |
 | `benchmarks/` | [tensor4all/strided-rs-benchmark-suite](https://github.com/tensor4all/strided-rs-benchmark-suite) | `0550611` | MIT | `benchmarks/LICENSE` |
+
+On 2026-09-30 `strided/` and the strided and einsum benchmarks under
+`benchmarks/` were removed: strided-rs is again an external dependency
+(pinned to its v0.4.4 commit, as in tenferro-rs), and its benchmarks live in
+strided-rs-benchmark-suite. The only tprims addition to strided,
+`run_with_exec`, moved to `tprims_exec::strided`. Their history stays
+reachable through the import merges.
 
 `crates/tprims-core/include/dlpack/dlpack.h` is DLPack v1.1
 (<https://github.com/dmlc/dlpack>, tag `v1.1`), copied verbatim under the
