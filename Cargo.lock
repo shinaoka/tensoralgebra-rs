@@ -1374,6 +1374,7 @@ dependencies = [
  "strided-view",
  "tensorcontract",
  "tprims-blas",
+ "tprims-contract",
  "tprims-exec",
  "tprims-linalg",
 ]
