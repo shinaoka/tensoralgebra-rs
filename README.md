@@ -19,32 +19,23 @@ correctness before measurement, measurement before optimization.
 
 ## Parts, not a facade
 
-**Arrows mean "depends on."** Rust crates carry no C symbols. Each C ABI crate
-is an `rlib` owned by the part it exposes; only `tprims-bundle` produces a
-shared or static library.
+**Arrows mean "depends on."** Only the nearest dependency of each part is
+drawn; the dashed arrow marks the one direct dependency that matters for the
+design. Every part except `tprims-gemm-kernel` also takes `tprims-exec`
+directly. [Full dependency list](docs/architecture.md#crates). Rust crates
+carry no C symbols. Each C ABI crate is an `rlib` owned by the part it
+exposes; only `tprims-bundle` produces a shared or static library.
 
 ```mermaid
 flowchart TB
-    subgraph R["Rust parts (usable independently)"]
-        CT["tprims-contract<br/>Binary contraction: plan, tensor pack, scatter"]
-        LA["tprims-linalg<br/>Factorizations, direct solves, lstsq, eigh, batched"]
-        BL["tprims-blas<br/>GEMM driver, TRSM, SYRK / HERK, batched GEMM"]
-        GK["tprims-gemm-kernel<br/>Packed format, microkernels, ISA dispatch"]
-        ST["strided-view / traits / perm / kernel<br/>Existing strided-rs crates"]
-        EX["tprims-exec<br/>Serial, Rayon pool, host callbacks; thread budget, scratch"]
-    end
-    CT --> BL
-    CT --> GK
-    CT --> LA
-    CT --> ST
-    LA --> BL
-    LA --> ST
-    BL --> GK
-    GK --> ST
-    BL --> EX
-    LA --> EX
-    CT --> EX
-    ST --> EX
+    CT["<b>tprims-contract</b><br/>Binary contraction<br/>plan, tensor pack, scatter"]
+    LA["<b>tprims-linalg</b><br/>Factorizations, solves<br/>lstsq, eigh, batched"]
+    BL["<b>tprims-blas</b><br/>GEMM, TRSM, SYRK / HERK<br/>batched GEMM"]
+    GK["<b>tprims-gemm-kernel</b><br/>Packed format<br/>microkernels"]
+    ST["<b>strided-*</b> (existing)<br/>Views, permutation<br/>elementwise kernels"]
+    EX["<b>tprims-exec</b><br/>Execution context<br/>thread budget, scratch"]
+    CT --> LA --> BL --> GK --> ST --> EX
+    CT -.->|"direct tensor path"| GK
     classDef tensor fill:#e8f2ff,stroke:#2563a6,color:#132f50
     classDef matrix fill:#e7f5ec,stroke:#28784c,color:#173d27
     classDef base fill:#edf0f4,stroke:#536477,color:#233244
