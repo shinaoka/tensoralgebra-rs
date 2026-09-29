@@ -1,0 +1,11 @@
+# Isolated runs (BENCH_FILTER, one op per process) at 91f23cd, before LU/QR got
+# their own width policy. AMD EPYC 7713P; 1T taskset -c 1, 4T taskset -c 1-4.
+# case,variant,threads,median_ns,samples
+lu_f64,n128,1,106344,10
+lu_f64,n512,1,3187624,3
+lu_f64,n128,4,169546,10
+lu_f64,n512,4,2767049,3
+qr_f64,n128,1,278330,10
+qr_f64,n512,1,5611361,3
+qr_f64,n128,4,648413,10
+qr_f64,n512,4,4379617,3

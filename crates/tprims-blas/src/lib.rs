@@ -37,6 +37,6 @@ mod trsm;
 pub use batched::{gemm_batched, BatchIn, BatchStrategy, Selected};
 pub use error::{Error, Result};
 pub use gemm::{gemm, GemmPolicy};
-pub use operand::{Conj, MatIn};
+pub use operand::{is_injective_layout, Conj, MatIn};
 pub use scalar::Scalar;
 pub use trsm::{trsm, Diag, Op, Side, Uplo};

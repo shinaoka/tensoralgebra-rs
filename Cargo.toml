@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/tprims-exec",
     "crates/tprims-blas",
+    "crates/tprims-linalg",
     "strided/strided-traits",
     "strided/strided-view",
     "strided/strided-perm",
@@ -32,6 +33,7 @@ strided-kernel = { version = "0.4.4", path = "strided/strided-kernel" }
 tensorcontract = { version = "0.1.0", path = "tensorprimitives/crates/tensorcontract" }
 tprims-exec = { version = "0.1.0", path = "crates/tprims-exec" }
 tprims-blas = { version = "0.1.0", path = "crates/tprims-blas" }
+tprims-linalg = { version = "0.1.0", path = "crates/tprims-linalg" }
 
 approx = "0.5"
 criterion = "0.5"
