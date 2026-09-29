@@ -80,35 +80,47 @@ fn gemm_cases<T: Scalar>(cfg: &Cfg, exec: &Exec<'_>) {
     if !cfg.want(&case) {
         return;
     }
-    for (n, transposed) in [
-        (8, false),
-        (32, false),
-        (128, false),
-        (512, false),
-        (512, true),
-        (1024, false),
-    ] {
-        let a: Vec<T> = fill(n * n, 1);
-        let b: Vec<T> = fill(n * n, 2);
-        let mut c: Vec<T> = fill(n * n, 3);
+    // (m, n, k, A transposed)
+    let mut shapes = vec![
+        (8, 8, 8, false),
+        (32, 32, 32, false),
+        (128, 128, 128, false),
+        (512, 512, 512, false),
+        (512, 512, 512, true),
+        (1024, 1024, 1024, false),
+        (256, 1024, 64, false),
+        (1024, 64, 256, false),
+    ];
+    if !T::IS_COMPLEX_SCALAR {
+        shapes.push((2048, 2048, 2048, false));
+    }
+    for (m, n, k, transposed) in shapes {
+        let a: Vec<T> = fill(m * k, 1);
+        let b: Vec<T> = fill(k * n, 2);
+        let mut c: Vec<T> = fill(m * n, 3);
         let s = if transposed {
-            [n as isize, 1]
+            [k as isize, 1]
         } else {
-            [1, n as isize]
+            [1, m as isize]
         };
-        let av = StridedView::new(&a, &[n, n], &s, 0).expect("a");
-        let bv = StridedView::new(&b, &[n, n], &[1, n as isize], 0).expect("b");
-        let runs = cfg.runs_for(mul_cost::<T>() * (n * n * n) as f64);
+        let av = StridedView::new(&a, &[m, k], &s, 0).expect("a");
+        let bv = StridedView::new(&b, &[k, n], &[1, k as isize], 0).expect("b");
+        let runs = cfg.runs_for(mul_cost::<T>() * (m * n * k) as f64);
         let one = <T as Element>::one();
         let zero = <T as Element>::zero();
         let ns = median_ns(cfg.warmup.min(runs), runs, || {
-            let mut cv = StridedViewMut::new(&mut c, &[n, n], &[1, n as isize], 0).expect("c");
+            let mut cv = StridedViewMut::new(&mut c, &[m, n], &[1, m as isize], 0).expect("c");
             gemm(exec, one, MatIn::new(&av), MatIn::new(&bv), zero, &mut cv).expect("gemm");
         });
         black_box(&c);
+        let v = if m == n && n == k {
+            format!("n{n}")
+        } else {
+            format!("m{m}_n{n}_k{k}")
+        };
         cfg.row(
             &case,
-            &format!("n{n}{}", if transposed { "_at" } else { "" }),
+            &format!("{v}{}", if transposed { "_at" } else { "" }),
             ns,
             runs,
         );
@@ -121,7 +133,9 @@ fn batched_cases<T: Scalar>(cfg: &Cfg, exec: &Exec<'_>) {
         return;
     }
     for (n, nb) in [
+        (2, 1),
         (2, 1024),
+        (2, 4096),
         (4, 1024),
         (8, 1024),
         (32, 256),

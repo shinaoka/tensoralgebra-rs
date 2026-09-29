@@ -46,6 +46,7 @@ impl<'v, 'a, T> BatchIn<'v, 'a, T> {
 /// assert_ne!(tprims_blas::BatchStrategy::FaerLoop, tprims_blas::BatchStrategy::Tblis);
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum BatchStrategy {
     /// Let the library choose (currently [`BatchStrategy::FaerLoop`]; the rule
     /// is replaced once the Phase 1b comparison is recorded).
@@ -65,6 +66,7 @@ pub enum BatchStrategy {
 /// assert!(matches!(s, tprims_blas::Selected::FaerLoop { .. }));
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Selected {
     /// faer per item; `outer_parallel` when items were spread over the pool.
     FaerLoop {
@@ -87,8 +89,7 @@ pub(crate) struct Batch {
     pub sc: isize,
 }
 
-fn split3<T>(name: &'static str, v: &[usize], s: &[isize]) -> Result<(usize, isize)> {
-    let _ = std::marker::PhantomData::<T>;
+fn split3(name: &'static str, v: &[usize], s: &[isize]) -> Result<(usize, isize)> {
     if v.len() != 3 {
         return Err(Error::Rank {
             operand: name,
@@ -104,9 +105,9 @@ pub(crate) fn check_batch<T>(
     b: &StridedView<'_, T>,
     c: &StridedViewMut<'_, T>,
 ) -> Result<Batch> {
-    let (na, sa) = split3::<T>("A", a.dims(), a.strides())?;
-    let (nb, sb) = split3::<T>("B", b.dims(), b.strides())?;
-    let (nc, sc) = split3::<T>("C", c.dims(), c.strides())?;
+    let (na, sa) = split3("A", a.dims(), a.strides())?;
+    let (nb, sb) = split3("B", b.dims(), b.strides())?;
+    let (nc, sc) = split3("C", c.dims(), c.strides())?;
     if na != nb || na != nc {
         return Err(Error::Shape(format!("batch extents {na}, {nb}, {nc}")));
     }
@@ -168,7 +169,31 @@ pub fn gemm_batched<T: Scalar>(
     strategy: BatchStrategy,
 ) -> Result<Selected> {
     let s = check_batch(a.view, b.view, c)?;
+    let selected = |outer_parallel| match strategy {
+        BatchStrategy::Tblis => Selected::Tblis { outer_parallel },
+        _ => Selected::FaerLoop { outer_parallel },
+    };
+    let (m, n, k) = (s.item.c.rows, s.item.c.cols, s.item.a.cols);
+    // Empty problems touch no pointer: an empty view's pointer and batch
+    // stride are not validated by strided-view.
+    if m == 0 || n == 0 || s.count == 0 {
+        return Ok(selected(false));
+    }
+    if k == 0 || alpha == crate::scalar::zero() {
+        // C = beta * C per item; A and B are not referenced. C is non-empty,
+        // so its pointer and batch stride were bounds-checked.
+        let cp = c.as_mut_ptr();
+        for i in 0..s.count {
+            // SAFETY: i < count inside C's validated layout.
+            unsafe {
+                crate::operand::scale_in_place(cp.offset(i as isize * s.sc), &s.item.c, beta)
+            };
+        }
+        return Ok(selected(false));
+    }
     let sched = schedule::<T>(exec, &s);
+    // All three operands are non-empty here, so their pointers and batch
+    // strides were validated at view construction.
     let (ap, bp, cp) = (
         SendConst(a.view.ptr()),
         SendConst(b.view.ptr()),
@@ -205,9 +230,12 @@ pub fn gemm_batched<T: Scalar>(
                     lanes.for_each_partition(s.count, &|i| item(i, faer::Par::Seq));
                 }
                 None => {
-                    for i in 0..s.count {
-                        exec.install(sched.inner, |par: Par| item(i, to_faer(par)));
-                    }
+                    // One pool entry for the whole batch.
+                    exec.install(sched.inner, |par: Par| {
+                        for i in 0..s.count {
+                            item(i, to_faer(par));
+                        }
+                    });
                 }
             }
             Ok(Selected::FaerLoop {

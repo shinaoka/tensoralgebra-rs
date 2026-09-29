@@ -91,6 +91,10 @@ pub(crate) fn mat2(name: &'static str, dims: &[usize], strides: &[isize]) -> Res
 
 /// Sufficient test that distinct `(i, j)` map to distinct addresses.
 pub(crate) fn check_injective(extents_strides: &[(usize, isize)]) -> Result<()> {
+    // An empty layout addresses nothing.
+    if extents_strides.iter().any(|&(e, _)| e == 0) {
+        return Ok(());
+    }
     let mut axes: Vec<(usize, usize)> = extents_strides
         .iter()
         .filter(|(e, _)| *e > 1)

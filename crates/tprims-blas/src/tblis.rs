@@ -98,6 +98,7 @@ pub(crate) fn run<T: Scalar>(
             lanes.for_each_partition(s.count, &|i| item(i, &serial));
         }
         None => {
+            // Each item is one co-scheduled SPMD broadcast of its own.
             let spmd = ExecSpmd {
                 exec,
                 width: sched.inner,

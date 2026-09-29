@@ -85,7 +85,8 @@ pub(crate) unsafe fn gemm_raw<T: Scalar>(
     if m == 0 || n == 0 {
         return;
     }
-    if k == 0 {
+    if k == 0 || alpha == zero() {
+        // alpha == 0 or an empty K: C = beta * C; A and B are not referenced.
         // SAFETY: forwarded.
         unsafe { scale_in_place(c, &s.c, beta) };
         return;
@@ -113,7 +114,7 @@ pub(crate) unsafe fn gemm_raw<T: Scalar>(
 /// `C = alpha * op(A) * op(B) + beta * C`, where `op` is the operand's
 /// conjugation flag and transposes are expressed by the views' strides.
 ///
-/// `beta == 0` never reads C. Serial-size products run on the caller; larger
+/// `beta == 0` never reads C; `alpha == 0` never reads A or B. Serial-size products run on the caller; larger
 /// ones enter the context's pool once with a width chosen from the flop count.
 ///
 /// # Errors

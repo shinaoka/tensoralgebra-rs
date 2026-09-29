@@ -77,7 +77,8 @@ pub enum Diag {
 /// `op(A) X = alpha B` (Left) or `X op(A) = alpha B` (Right).
 ///
 /// Only the `uplo` triangle of A is read (and not its diagonal for
-/// [`Diag::Unit`]). Singular diagonals are not detected (BLAS semantics).
+/// [`Diag::Unit`]); `alpha == 0` sets B to zero without reading A. Singular
+/// diagonals are not detected (BLAS semantics).
 ///
 /// # Errors
 ///
@@ -108,6 +109,12 @@ pub fn trsm<T: Scalar>(
         )));
     }
     check_injective(&[(bm.rows, bm.rs), (bm.cols, bm.cs)])?;
+    if alpha == crate::scalar::zero() || bm.rows == 0 || bm.cols == 0 {
+        // B = 0 without referencing A (BLAS semantics).
+        // SAFETY: B's validated layout (nothing to do when empty).
+        unsafe { scale_in_place(b.as_mut_ptr(), &bm, alpha) };
+        return Ok(());
+    }
     // op(A) as a view: T and C swap strides (and so the triangle).
     let (mut rs, mut cs, mut lower, conj) = match op {
         Op::N => (am.rs, am.cs, uplo == Uplo::Lower, Conj::No),
