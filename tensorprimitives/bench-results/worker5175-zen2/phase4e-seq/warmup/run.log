@@ -1,0 +1,9 @@
+SCOPED GRID: only arms [base] -- this is not the full grid
+host worker5175  128 physical cores, SMT width 1, 32 L3 domains
+2 arms, 1 concurrent, cpus 0
+  18:03:22 bl-base-f64c64   cpu0    dom0    1322.7s  rc=0  self 100%  co-tenants: none
+  18:14:32 bl-base-f32c32   cpu0    dom0     670.5s  rc=0  self 100%  co-tenants: none
+
+2 arms in 33.2 min wall (sum of arm times 33.2 min)
+observed overlap per arm: min 0, max 0
+grid complete; score rules with scripts/blocking-score-rules.py

@@ -1,0 +1,51 @@
+[package]
+name = "tensorprimitives-bench"
+description = "Benchmark and correctness harness for tensorcontract (not published)"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/lkdvos/tensorprimitives-rs"
+authors = ["Lukas Devos <ldevos@flatironinstitute.org>"]
+publish = false
+
+[dependencies]
+tensorcontract.workspace = true
+num-complex.workspace = true
+rand = "0.8"
+rand_chacha = "0.3"
+
+[features]
+default = []
+# Link the C++ TBLIS baseline. Requires TBLIS_ROOT to point at an install
+# prefix containing lib/libtblis.{so,a}.
+tblis = []
+# Target the TBLIS 1.3.0 ABI instead of 2.x. The two releases swap the
+# TYPE_DOUBLE and TYPE_SCOMPLEX enumerators, which is a silent mismatch, so the
+# harness self-checks at startup.
+tblis13 = ["tblis"]
+# Link a CBLAS-compatible BLAS for the TTGT (transpose-transpose-GEMM-transpose)
+# baseline. Requires BLAS_ROOT or a system libopenblas.
+blas = []
+# Satisfy `blas` with Apple's Accelerate framework instead of OpenBLAS. macOS
+# only; needs no install and no root variable.
+#
+# **Accelerate is not a like-for-like substitute and must not be quoted as this
+# project's GEMM roofline.** Its GEMM reaches Apple's undocumented AMX matrix
+# coprocessor, which no NEON kernel can target — not this engine's, not
+# OpenBLAS's, not TBLIS's. A3's "same-shape vendor GEMM as the achievable
+# ceiling" therefore measures something different here: against Accelerate the
+# ratio is an *off-ISA* comparison, so OpenBLAS is the roofline and Accelerate is
+# reported beside it and labelled. See D55.
+#
+# It also has no `openblas_set_num_threads`; pin it with the environment variable
+# `VECLIB_MAXIMUM_THREADS=1`, which `pin_single_threaded` cannot do for you
+# because Accelerate reads it once at first use.
+accelerate = ["blas"]
+
+[[bin]]
+name = "tcbench"
+path = "src/main.rs"
+
+[lints]
+workspace = true

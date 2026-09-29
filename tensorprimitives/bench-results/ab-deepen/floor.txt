@@ -1,0 +1,62 @@
+dtype  engine  or   n  geomean     min     max
+  c32      1m  AB  37    0.991   0.949   1.037
+  c32      1m  BA  12    1.008   0.974   1.069
+  c32      3m  AB  37    0.993   0.951   1.041
+  c32      3m  BA  12    1.013   0.998   1.033
+  c32  planar  AB  37    0.999   0.922   1.035
+  c32  planar  BA  12    1.012   0.983   1.086
+  c64      1m  AB  37    1.001   0.954   1.067
+  c64      1m  BA  12    0.986   0.939   1.011
+  c64      3m  AB  37    1.000   0.948   1.108
+  c64      3m  BA  12    0.985   0.931   1.004
+  c64  planar  AB  37    1.002   0.956   1.033
+  c64  planar  BA  12    0.987   0.951   1.021
+  f32      1m  AB  37    0.986   0.893   1.082
+  f32      1m  BA  12    1.002   0.984   1.029
+  f32      3m  AB  37    0.986   0.893   1.082
+  f32      3m  BA  12    1.002   0.984   1.029
+  f32  planar  AB  37    0.986   0.893   1.082
+  f32  planar  BA  12    1.002   0.984   1.029
+  f64      1m  AB  37    0.989   0.811   1.074
+  f64      1m  BA  12    0.993   0.959   1.010
+  f64      3m  AB  37    0.989   0.811   1.074
+  f64      3m  BA  12    0.993   0.959   1.010
+  f64  planar  AB  37    0.989   0.811   1.074
+  f64  planar  BA  12    0.993   0.959   1.010
+
+--- outside the +/-6% per-case noise floor (22 of 588) ---
+  0.811      adbjc-cbdka-kj  f64      1m  AB      1.4 ->     1.1
+  0.811      adbjc-cbdka-kj  f64      3m  AB      1.4 ->     1.1
+  0.811      adbjc-cbdka-kj  f64  planar  AB      1.4 ->     1.1
+  0.893      abjcd-dkbac-jk  f32      1m  AB      5.9 ->     5.2
+  0.893      abjcd-dkbac-jk  f32      3m  AB      5.9 ->     5.2
+  0.893      abjcd-dkbac-jk  f32  planar  AB      5.9 ->     5.2
+  0.916      abjcd-dkbac-jk  f64      1m  AB      2.5 ->     2.3
+  0.916      abjcd-dkbac-jk  f64      3m  AB      2.5 ->     2.3
+  0.916      abjcd-dkbac-jk  f64  planar  AB      2.5 ->     2.3
+  0.922        abjc-cbka-kj  c32  planar  AB     33.7 ->    31.0
+  ...
+  1.067          ij-ikl-ljk  c64      1m  AB     49.7 ->    53.0
+  1.069    abcijk-ikmc-mjab  c32      1m  BA     76.8 ->    82.1
+  1.074      ijkl-imnk-njml  f64      1m  AB     66.9 ->    71.8
+  1.074      ijkl-imnk-njml  f64      3m  AB     66.9 ->    71.8
+  1.074      ijkl-imnk-njml  f64  planar  AB     66.9 ->    71.8
+  1.082    abcijk-jkma-mibc  f32      1m  AB     37.6 ->    40.7
+  1.082    abcijk-jkma-mibc  f32      3m  AB     37.6 ->    40.7
+  1.082    abcijk-jkma-mibc  f32  planar  AB     37.6 ->    40.7
+  1.086    abcijk-ikmb-mjac  c32  planar  BA     59.7 ->    64.8
+  1.108        abjc-kbac-jk  c64      3m  AB     46.1 ->    51.1
+
+--- overall, all cases (what a user sees) ---
+  c32      1m  0.996
+  c32      3m  0.998
+  c32  planar  1.003
+  c64      1m  0.997
+  c64      3m  0.996
+  c64  planar  0.999
+  f32      1m  0.990
+  f32      3m  0.990
+  f32  planar  0.990
+  f64      1m  0.990
+  f64      3m  0.990
+  f64  planar  0.990

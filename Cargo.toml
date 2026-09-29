@@ -1,0 +1,82 @@
+[workspace]
+resolver = "2"
+members = [
+    "strided/strided-traits",
+    "strided/strided-view",
+    "strided/strided-perm",
+    "strided/strided-basic",
+    "strided/strided-fused",
+    "strided/strided-kernel",
+    "tensorprimitives/crates/tensorcontract",
+    "tensorprimitives/crates/tensorprimitives-tapp",
+    "tensorprimitives/crates/tensorprimitives-bench",
+    "benchmarks",
+]
+exclude = ["experiments", "strided/deprecated", "benchmarks/deprecated"]
+
+[workspace.package]
+edition = "2021"
+# 1.89 stabilised the AVX-512 intrinsics and `is_x86_feature_detected!`, which
+# tensorcontract needs (tensorprimitives-rs decision D20).
+rust-version = "1.89"
+
+[workspace.dependencies]
+strided-basic = { version = "0.4.4", path = "strided/strided-basic", default-features = false }
+strided-fused = { version = "0.4.4", path = "strided/strided-fused", default-features = false }
+strided-traits = { version = "0.4.4", path = "strided/strided-traits" }
+strided-view = { version = "0.4.4", path = "strided/strided-view" }
+strided-perm = { version = "0.4.4", path = "strided/strided-perm" }
+strided-kernel = { version = "0.4.4", path = "strided/strided-kernel" }
+tensorcontract = { version = "0.1.0", path = "tensorprimitives/crates/tensorcontract" }
+
+approx = "0.5"
+criterion = "0.5"
+faer = { version = "0.24", default-features = false, features = ["std", "rayon"] }
+faer-traits = "0.24"
+num-complex = "0.4"
+num-traits = "0.2"
+pulp = "0.22"
+rand = "0.8"
+rand_distr = "0.4"
+rayon = "1.10"
+smallvec = "1"
+thiserror = "1.0"
+
+# Workspace tests instantiate large generic kernels in many executables.
+# Omitting debuginfo keeps those artifacts small while preserving debug
+# assertions and overflow checks from Cargo's default development profiles.
+[profile.dev]
+debug = 0
+
+[profile.test]
+debug = 0
+
+# Hosted CI starts from cold caches, where incremental state has no value.
+[profile.ci]
+inherits = "test"
+incremental = false
+strip = "symbols"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+debug = 1
+
+[profile.bench]
+inherits = "release"
+
+[profile.release-with-debug]
+inherits = "release"
+debug = true
+
+# Imported strided-rs code was not clippy-gated upstream. These two lints fire
+# on index-driven numerical kernels and wide kernel signatures, where the
+# suggested rewrites change loop structure in hot paths; they stay allowed
+# workspace-wide rather than being "fixed" without a benchmark.
+[workspace.lints.clippy]
+too_many_arguments = "allow"
+needless_range_loop = "allow"
+# New in clippy 1.98: suggests `as_chunks` for constant-size `chunks_exact` in
+# hot reduction loops; rewriting them needs a benchmark first.
+chunks_exact_to_as_chunks = "allow"

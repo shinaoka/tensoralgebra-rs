@@ -1,0 +1,124 @@
+# callgrind format
+version: 1
+creator: callgrind-3.22.0
+pid: 25923
+cmd:  /tmp/dense-kernels-optimized
+part: 1
+
+
+desc: I1 cache: 
+desc: D1 cache: 
+desc: LL cache: 
+
+desc: Timerange: Basic block 0 - 5483030
+desc: Trigger: Program termination
+
+positions: line
+events: Ir
+summary: 11796915
+
+
+ob=(1) /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+fl=(1) ???
+fn=(0) 0x000000000001f540
+cob=(6) /tmp/dense-kernels-optimized
+cfi=(162) ???
+cfn=(534) (below main)
+calls=1 0 
+0 11796915
+
+ob=(6)
+fl=(162)
+fn=(788) std::rt::lang_start::<()>::{closure#0}
+cfn=(790) std::sys::backtrace::__rust_begin_short_backtrace::<fn(), ()>
+calls=1 0 
+0 11796915
+
+fn=(534)
+cob=(2) /usr/lib/x86_64-linux-gnu/libc.so.6
+cfi=(163) ./csu/../csu/libc-start.c
+cfn=(536) __libc_start_main@@GLIBC_2.34
+calls=1 242 
+0 11796915
+
+fn=(854) profile_dense
+0 3
+cfn=(840) dense_kernels::run::{closure#3}
+calls=3 0 
+0 11796912
+
+fn=(844) strided_basic::dense_update::same_len
+0 51
+
+fn=(842) strided_basic::dense_update::axpby_accum::<f64>
+0 54
+cfn=(844)
+calls=4 0 
+0 51
+0 30
+cfn=(846) strided_basic::threading::parallel_threads_for_len
+calls=4 0 
+0 93
+0 11796579
+
+fn=(850) <strided_basic::execution_policy::ACTIVE_POLICY::{K#0}::{closure#1} as core::ops::function::FnOnce<(core::option::Option<&mut core::option::Option<core::cell::Cell<strided_basic::execution_policy::ExecutionPolicy>>>,)>>::call_once
+0 15
+
+fn=(568) std::rt::lang_start_internal
+cfn=(788)
+calls=1 0 
+0 11796915
+
+fn=(792) dense_kernels::main
+cfn=(854)
+calls=3 0 
+0 11796915
+
+fn=(846)
+0 15
+cfn=(848) <strided_basic::execution_policy::ACTIVE_FANOUT::{K#0}::{closure#1} as core::ops::function::FnOnce<(core::option::Option<&mut core::option::Option<core::cell::Cell<bool>>>,)>>::call_once
+calls=4 0 
+0 15
+0 18
+cfn=(850)
+calls=4 0 
+0 15
+0 30
+
+fn=(848)
+0 15
+
+fn=(566) main
+cfn=(568)
+calls=1 0 
+0 11796915
+
+fn=(790)
+cfn=(792)
+calls=1 0 
+0 11796915
+
+fn=(840)
+0 75
+cfn=(842)
+calls=4 0 
+0 11796807
+0 30
+
+ob=(2)
+fl=(163)
+fn=(536)
+cfi=(165) ./csu/../sysdeps/nptl/libc_start_call_main.h
+cfn=(558) (below main)
+calls=1 29 
+360 11796915
+
+fl=(165)
+fn=(558)
+cob=(6)
+cfi=(162)
+cfn=(566)
+calls=1 0 
+58 11796915
+
+totals: 11796915

@@ -1,0 +1,32 @@
+The traffic-sensitive blocking arms, re-measured sequentially.
+
+  machine : worker5175 (Rusty, `gen` partition, `rome`) -- NOT worker5040
+            AMD EPYC Zen2, 2 x 64 cores, SMT off, avx2 + fma, no AVX-512
+            32 KiB L1d 8-way, 512 KiB L2 8-way, 16 MiB L3 per 4 cores
+  date    : 2026-08-03, ~18:03 -> ~21:30 (204 min)
+  slurm   : job 6745978, --constraint=rome --exclusive
+  script  : sbatch scripts/rusty-phase4-seq.sbatch
+  host    : phase4e-seq/topology.json
+
+**The directory name is wrong and is kept anyway.** The job was submitted with
+OUT=bench-results/worker5040-zen2 so its results would sit beside the placed
+grid, but worker5040 was still held by job 6745376, so Slurm allocated
+worker5175. The full account, including the check that the two nodes are the
+same configuration, is in `phase4e-seq/PROVENANCE.txt` -- read that one; this
+file exists so the fact is visible from the directory root.
+
+What is in it: `phase4e-seq/` only -- 5 arms (`base`, `nc25`, `nc400`, `model`,
+`base2`) in two dtype pairs, with a discarded warm-up grid nested under
+`phase4e-seq/warmup/`.
+
+Why it exists at all: A27. Concurrent one-arm-per-L3-domain placement was
+validated on the corpus (+0.3%) and *rejected* on the memory-bound half (-3.2%),
+so the three arms that change memory traffic could not use it and were given
+their own sequential job. The confound turned out to be real and small --
+|delta| <= 1.8 percentage points, mostly under 1 -- and no conclusion moved. The
+point is that it was measured rather than assumed.
+
+Not comparable to anything measured on ccqlin038.
+
+Read with: docs/notebook/ part 7, subsection "The `nc` and `model` arms,
+re-measured sequentially", and part 10.

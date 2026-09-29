@@ -1,0 +1,7 @@
+# arm bl-mc400-f64c64 on cpu116, L3 domain 29 = cpus 116-119, numa 7
+# window 1326.2s; env TENSORCONTRACT_MC_PCT=400
+cpu116 busy 100.0% <- measurement thread
+cpu117 busy 0.0%
+cpu118 busy 0.0%
+cpu119 busy 0.0%
+# domain co-tenancy: none above 5%

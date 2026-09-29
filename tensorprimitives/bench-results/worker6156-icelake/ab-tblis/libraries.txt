@@ -1,0 +1,6 @@
+=== A: /mnt/home/ldevos/Projects/tensorcontract-rs/cleanup/../baselines/tblis-2.0-install ===
+bli_ symbols: 1364
+contexts    : skx 
+=== B: /mnt/home/ldevos/Projects/tensorcontract-rs/cleanup/../baselines/tblis-2.0-x86_64-install ===
+bli_ symbols: 3809
+contexts    : bulldozer excavator generic haswell knl penryn piledriver sandybridge skx steamroller zen zen2 zen3 

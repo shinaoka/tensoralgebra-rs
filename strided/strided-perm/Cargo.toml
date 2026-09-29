@@ -1,0 +1,25 @@
+[package]
+name = "strided-perm"
+version = "0.4.4"
+edition.workspace = true
+rust-version.workspace = true
+license = "(MIT OR Apache-2.0) AND BSD-3-Clause"
+authors = ["Satoshi Terasaki", "Hiroshi Shinaoka"]
+repository = "https://github.com/tensor4all/strided-rs"
+description = "Cache-efficient tensor permutation / transpose (HPTT-inspired)."
+keywords = ["tensor", "permutation", "transpose", "multidimensional"]
+categories = ["science", "mathematics", "algorithms"]
+
+[dependencies]
+strided-view.workspace = true
+thiserror.workspace = true
+rayon = { workspace = true, optional = true }
+
+[features]
+parallel = ["dep:rayon"]
+
+[lib]
+bench = false
+
+[lints]
+workspace = true

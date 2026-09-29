@@ -1,0 +1,56 @@
+dtype  engine  or   n  geomean     min     max
+  c64      1m  AB   9    1.793   1.467   1.951
+  c64      1m  BA   3    1.785   1.652   1.891
+  c64      3m  AB   9    1.684   1.362   1.850
+  c64      3m  BA   3    1.707   1.586   1.861
+  c64  planar  AB   9    1.820   1.535   1.895
+  c64  planar  BA   3    1.845   1.730   1.936
+  c64   tblis  AB   9    1.002   0.991   1.011
+  c64   tblis  BA   3    1.015   0.998   1.043
+  c64    ttgt  AB   9    1.008   0.991   1.027
+  c64    ttgt  BA   3    1.001   0.999   1.002
+  f64      1m  AB   9    1.827   1.586   2.023
+  f64      1m  BA   3    1.876   1.704   2.028
+  f64      3m  AB   9    1.827   1.586   2.023
+  f64      3m  BA   3    1.876   1.704   2.028
+  f64  planar  AB   9    1.827   1.586   2.023
+  f64  planar  BA   3    1.876   1.704   2.028
+  f64   tblis  AB   9    1.000   0.983   1.018
+  f64   tblis  BA   3    1.002   0.996   1.011
+  f64    ttgt  AB   9    0.987   0.880   1.017
+  f64    ttgt  BA   3    1.024   1.001   1.070
+
+--- outside the +/-6% per-case noise floor (74 of 120) ---
+  0.880    abcijk-ikma-mjbc  f64    ttgt  AB     25.1 ->    22.1
+  1.070    abcijk-ikmb-mjac  f64    ttgt  BA     17.1 ->    18.3
+  1.362      abjcd-dkbac-jk  c64      3m  AB     16.7 ->    22.7
+  1.467      abjcd-dkbac-jk  c64      1m  AB     15.0 ->    22.0
+  1.535      abjcd-dkbac-jk  c64  planar  AB     16.1 ->    24.7
+  1.586        abrs-qb-aqrs  c64      3m  BA     29.4 ->    46.7
+  1.586    abcijk-ikma-mjbc  f64      1m  AB     19.0 ->    30.1
+  1.586    abcijk-ikma-mjbc  f64      3m  AB     19.0 ->    30.1
+  1.586    abcijk-ikma-mjbc  f64  planar  AB     19.0 ->    30.1
+  1.616        ajbc-ckba-jk  c64      3m  AB     27.2 ->    43.9
+  ...
+  2.011      ijkl-imnj-nlkm  f64  planar  AB     26.2 ->    52.7
+  2.014      ijkl-imkn-jnlm  f64      1m  AB     26.0 ->    52.4
+  2.014      ijkl-imkn-jnlm  f64      3m  AB     26.0 ->    52.4
+  2.014      ijkl-imkn-jnlm  f64  planar  AB     26.0 ->    52.4
+  2.023      ijkl-imjn-nlmk  f64      1m  AB     26.1 ->    52.8
+  2.023      ijkl-imjn-nlmk  f64      3m  AB     26.1 ->    52.8
+  2.023      ijkl-imjn-nlmk  f64  planar  AB     26.1 ->    52.8
+  2.028          abc-bk-akc  f64      1m  BA     24.6 ->    49.8
+  2.028          abc-bk-akc  f64      3m  BA     24.6 ->    49.8
+  2.028          abc-bk-akc  f64  planar  BA     24.6 ->    49.8
+
+--- overall, all cases (what a user sees) ---
+  c64      1m  1.791
+  c64      3m  1.690
+  c64  planar  1.826
+  c64   tblis  1.005
+  c64    ttgt  1.006
+  f64      1m  1.840
+  f64      3m  1.840
+  f64  planar  1.840
+  f64   tblis  1.001
+  f64    ttgt  0.996

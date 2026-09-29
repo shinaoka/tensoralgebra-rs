@@ -1,0 +1,7 @@
+# arm bl-ck384-f64c64 on cpu36, L3 domain 9 = cpus 36-39, numa 2
+# window 1319.2s; env TENSORCONTRACT_KC_COUPLE=384
+cpu36 busy 100.0% <- measurement thread
+cpu37 busy 0.0%
+cpu38 busy 0.0%
+cpu39 busy 0.0%
+# domain co-tenancy: none above 5%

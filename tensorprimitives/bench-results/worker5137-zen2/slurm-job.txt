@@ -1,0 +1,28 @@
+JobId=6751550 JobName=tp-phase4
+   UserId=ldevos(2699) GroupId=ldevos(2699) MCS_label=N/A
+   Priority=1 Nice=0 Account=ccq QOS=gen
+   JobState=RUNNING Reason=None Dependency=(null)
+   Requeue=0 Restarts=0 BatchFlag=1 Reboot=0 ExitCode=0:0
+   RunTime=00:00:13 TimeLimit=12:00:00 TimeMin=N/A
+   SubmitTime=2026-08-04T08:49:40 EligibleTime=2026-08-04T08:49:40
+   AccrueTime=2026-08-04T08:49:40
+   StartTime=2026-08-04T08:49:41 EndTime=2026-08-04T20:49:41 Deadline=N/A
+   SuspendTime=None SecsPreSuspend=0 LastSchedEval=2026-08-04T08:49:41 Scheduler=Main
+   Partition=gen AllocNode:Sid=ccqlin038:311631
+   ReqNodeList=(null) ExcNodeList=(null)
+   NodeList=worker5137
+   BatchHost=worker5137
+   NumNodes=1 NumCPUs=128 NumTasks=1 CPUs/Task=1 ReqB:S:C:T=0:0:*:*
+   ReqTRES=cpu=1,mem=1000G,node=1,billing=1
+   AllocTRES=cpu=128,mem=1000G,node=1,billing=128
+   Socks/Node=* NtasksPerN:B:S:C=0:0:*:* CoreSpec=*
+   MinCPUsNode=1 MinMemoryNode=0 MinTmpDiskNode=0
+   Features=rome DelayBoot=00:00:00
+   OverSubscribe=NO Contiguous=0 Licenses=(null) Network=(null)
+   Command=/mnt/home/ldevos/Projects/tensorcontract-rs/main/scripts/rusty-phase4.sbatch
+   WorkDir=/mnt/home/ldevos/Projects/tensorcontract-rs/main
+   StdErr=/mnt/home/ldevos/Projects/tensorcontract-rs/main/slurm-tp-phase4-6751550.out
+   StdIn=/dev/null
+   StdOut=/mnt/home/ldevos/Projects/tensorcontract-rs/main/slurm-tp-phase4-6751550.out
+   
+

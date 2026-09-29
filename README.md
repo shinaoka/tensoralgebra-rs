@@ -8,8 +8,18 @@ ABI can be built from any subset of parts into a single shared library,
 `libtprims`, with zero-copy DLPack-compatible data exchange. AI-assisted
 contributions are welcome.
 
-**Status:** design and experiments; no stable API, ABI or performance claim.
-This repository holds design notes and small measurement experiments under `experiments/`.
+**Status:** design, experiments and imported building blocks; no stable API,
+ABI or performance claim. The repository holds design notes, measurement
+experiments under `experiments/`, and code imported with its history in
+Phase 0:
+
+- `strided/`: strided-rs (`strided-traits`, `-view`, `-perm`, `-basic`,
+  `-fused`, `-kernel`); its facade and einsum crates are frozen under
+  `strided/deprecated/`.
+- `tensorprimitives/`: tensorprimitives-rs by Lukas Devos (`tensorcontract`,
+  the TBLIS-style direct contraction).
+- `benchmarks/`: strided-rs-benchmark-suite, now the `tprims-bench` package.
+- `crates/`: the new `tprims-*` parts (from Phase 1).
 
 **Design principles** ([full text](docs/design-principles.md)): parts, not a
 facade; one direction of dependency; short names under the `tprims-` prefix;
@@ -58,8 +68,8 @@ Crate, header and symbol names map one to one: `tprims-blas` exposes
 rename on import, for example `blas = { package = "tprims-blas" }`.
 
 **Deliberately excluded:** N-ary einsum and contraction-order planning (they
-stay in `strided-opteinsum` or the frontend and call `tprims-contract` per
-binary step); iterative Krylov solvers (deferred, see the
+stay above the stack, in the published `strided-opteinsum` releases or the
+frontend, and call `tprims-contract` per binary step); iterative Krylov solvers (deferred, see the
 [decision log](docs/decision-log.md)); AD, tracing, device transfer and GPU
 backends.
 
@@ -132,7 +142,18 @@ Every expensive operation takes an explicit `tprims_exec`. Rust callers pass an 
 
 `tprims-contract` ports two existing implementations behind one plan API: tenferro-rs's permute plus batched GEMM, and the [TBLIS](https://arxiv.org/abs/1607.00291)-style direct contraction of Lukas Devos's [tensorprimitives-rs](https://github.com/lkdvos/tensorprimitives-rs), which packs general strides straight into microkernel panels and scatters output tiles. Batched GEMM likewise has two implementations, faer plus a loop over items and the TBLIS-style kernel. Measurement decides which one a plan selects for which shapes. Ported code keeps its authorship, history and license notices.
 
+## Phase 0: one repository
+
+strided-rs, tensorprimitives-rs and strided-rs-benchmark-suite were imported
+with `git subtree` (history kept) into one Cargo workspace, and the
+repository and performance rules were ported from tenferro-rs
+([`REPOSITORY_RULES.md`](REPOSITORY_RULES.md),
+[`PERFORMANCE_TIPS.md`](PERFORMANCE_TIPS.md)).
+
 ## Phase 1: a tenferro-rs CPU backend
+
+Every step adds benchmarks to `tprims-bench`, measured at 1 and 4 threads in
+the same run.
 
 | Step | Content |
 | --- | --- |
@@ -158,5 +179,7 @@ Contributions should include attributable sources, numerical checks and
 reproducible evidence for performance claims; see the
 [provenance policy](docs/provenance.md).
 
-No source migration or crate publication has been performed. The repository
-license is pending a maintainer choice.
+strided-rs, tensorprimitives-rs and strided-rs-benchmark-suite were imported
+with history in Phase 0 ([provenance](docs/provenance.md)); imported code keeps
+its own licenses. No crate has been published from this repository. The
+license of the new tprims code is pending a maintainer choice.

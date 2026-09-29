@@ -1,0 +1,862 @@
+   Compiling tenferro-cpu v0.5.0 (/home/shinaoka/tensor4all/.worktrees/cpu-kernel-migration/tenferro-rs/crates/tenferro-cpu)
+    Finished `test` profile [unoptimized] target(s) in 28.12s
+     Running unittests src/lib.rs (target/debug/deps/tenferro_cpu-b46edabd2e2fe1b4)
+
+running 543 tests
+test affinity::tests::affinity_mask_builds_sparse_logical_cpu_ids ... ok
+test affinity::tests::affinity_mask_preserves_sparse_logical_cpu_ids ... ok
+test affinity::tests::affinity_mask_rejects_extreme_cpu_ids_before_allocation ... ok
+test affinity::tests::count_affinity_mask_bits_returns_none_for_zero_masks ... ok
+test affinity::tests::count_affinity_mask_bits_sums_all_set_bits ... ok
+test affinity::tests::linux_next_affinity_mask_bytes_retries_only_on_einval ... ok
+test affinity_policy::tests::all_unknown_inputs_use_the_default_domain ... ok
+test affinity_policy::tests::byte_width_multiplication_overflow_is_a_typed_input_error ... ok
+test affinity::tests::available_parallelism_helpers_report_positive_counts ... ok
+test affinity::tests::windows_group_affinity_probe_documents_expected_failure_path ... ok
+test affinity_policy::tests::dominant_input_bytes_aggregates_repeated_domains ... ok
+test affinity_policy::tests::checked_overflow_remains_typed_after_many_distinct_domains ... ok
+test affinity_policy::tests::checked_accounting_reports_the_smallest_overflowing_domain_deterministically ... ok
+test affinity_policy::tests::dominant_input_bytes_is_deterministic_and_keeps_inputs_in_place ... ok
+test affinity_policy::tests::dominant_ties_use_the_smallest_id_independent_of_input_order ... ok
+test affinity_policy::tests::explicit_override_wins_before_policy_validation_or_accounting ... ok
+test affinity_policy::tests::input_overflow_remains_typed_through_the_error_trait ... ok
+test affinity_policy::tests::positive_bytes_win_over_zero_byte_domains ... ok
+test affinity_policy::tests::more_than_eight_distinct_domains_keep_aggregation_semantics ... ok
+test affinity_policy::tests::require_single_domain_reports_the_two_smallest_domains_deterministically ... ok
+test affinity_policy::tests::require_single_domain_selects_the_only_known_domain_even_when_zero_bytes ... ok
+test affinity_policy::tests::require_single_domain_uses_default_when_all_affinities_are_unknown ... ok
+test affinity_policy::tests::scalar_and_zero_extent_logical_byte_counts_are_exact ... ok
+test affinity_policy::tests::shape_product_overflow_is_a_typed_input_error ... ok
+test affinity_policy::tests::unknown_affinities_do_not_contribute ... ok
+test affinity_policy::tests::zero_byte_inputs_do_not_contribute_to_dominant_selection ... ok
+test affinity_policy::tests::tensor_input_uses_checked_shape_product_and_dtype_width ... ok
+test arbiter::tests::blocking_same_thread_reentrant_request_completes ... ok
+test arbiter::tests::disjoint_domains_run_together_but_all_allowed_waits ... ok
+test arbiter::tests::panic_releases_provider_exclusive_reservation ... ok
+test arbiter::tests::poisoned_state_returns_a_typed_error ... ok
+test arbiter::tests::released_active_request_retains_reusable_storage ... ok
+test arbiter::tests::same_thread_reentrant_request_does_not_wait_on_its_own_permit ... ok
+test backend::tests::backend_error_keeps_placement_failure_typed ... ok
+test arbiter::tests::provider_exclusive_conflicts_with_every_cpu_domain ... ok
+test arbiter::tests::exhaustion_recovery_waiter_wakes_when_last_active_permit_drops ... ok
+test backend::tests::cpu_session_profile_helpers_cover_current_profile_mode ... ok
+test backend::tests::cpu_tensor_kernel_parallel_features_are_wired ... ok
+test backend::tests::external_managed::bundle_install_allows_controlled_external_budget_one_inline ... ok
+test arbiter::tests::older_blocked_node_waiter_does_not_serialize_a_disjoint_node ... ok
+test arbiter::tests::older_all_allowed_waiter_blocks_younger_disjoint_admission ... ok
+test backend::tests::external_managed::bundle_install_allows_external_workers_for_advisory_or_process_wide_domains ... ok
+test backend::tests::external_managed::bundle_install_rejects_external_workers_for_a_strict_multithread_subdomain ... ok
+test backend::tests::external_managed::caller_managed_constructor_rejects_external_provider_workers_before_execution ... ok
+test backend::tests::external_managed::bundle_install_rejects_uncontrolled_count_with_typed_source ... ok
+test backend::tests::external_managed::bundle_install_checks_lazily_constructible_exact_numa_domains ... ok
+test backend::tests::cpu_hot_kernels_delegate_to_erased_strided_replay ... ok
+test backend::tests::external_managed::explicit_unregistered_external_placement_is_typed_and_never_falls_back ... ok
+test backend::tests::external_managed::external_constructor_accepts_the_initial_standard_faer_bundle ... ok
+test backend::tests::external_managed::external_diagnostics_distinguish_worker_count_and_thread_budget ... ok
+test backend::tests::external_managed::external_diagnostics_never_upgrade_caller_affinity_or_shutdown_ownership ... ok
+test backend::tests::external_managed::external_domain_rejects_nested_backend_entry ... ok
+test backend::tests::external_managed::external_executor_error_is_preserved_as_a_typed_tensor_source ... ok
+test backend::tests::external_managed::external_registry_rejects_an_empty_registry ... ok
+test backend::tests::external_managed::distinct_external_placement_identities_may_overlap ... ok
+test backend::tests::external_managed::external_registry_rejects_duplicate_domain_ids ... ok
+test backend::tests::external_managed::external_registry_rejects_duplicate_placement_identities ... ok
+test backend::tests::external_managed::external_registry_requires_the_declared_default_domain ... ok
+test backend::tests::external_managed::external_elementwise_and_session_operations_use_the_supplied_no_inner_executor ... ok
+test backend::tests::external_managed::external_provider_dot_uses_the_supplied_no_inner_executor ... ok
+test backend::tests::fresh_tagging_is_field_only_and_has_no_dynamic_lookup_or_metadata_clone ... ok
+test backend::tests::external_managed::external_domain_permit_releases_when_the_operation_panics ... ok
+test backend::tests::external_managed::external_prebuilt_engines_are_counted_once_by_buffer_controls ... ok
+test backend::tests::external_managed::external_executor_error_keeps_its_diagnostic_and_releases_the_permit ... ok
+test backend::tests::external_managed::external_registry_and_handle_clones_retain_executor_owners ... ok
+test backend::tests::external_managed::external_registry_rejects_cpus_outside_the_process_allowed_set ... ok
+test backend::tests::external_managed::external_constructor_rejects_an_initial_incompatible_bundle_atomically ... ok
+test backend::tests::external_managed::external_linalg_execution_uses_the_supplied_no_inner_executor ... ok
+test backend::tests::external_managed::shared_scope_rejects_external_domain_without_executor_admission ... ok
+test backend::tests::external_managed::sequential_direct_session_native_dot_and_linalg_each_enter_exactly_once ... ok
+test backend::tests::placement_error_conversion_keeps_unsupported_affinity_distinct ... ok
+test backend::tests::placement_error_conversion_uses_runtime_state_for_environment_failures ... ok
+test backend::tests::provider_bundle_custom_builder_rejects_missing_mandatory_slots ... ok
+test backend::tests::output_affinity::fresh_tagging_preserves_device_and_memory_kind_fields ... ok
+test backend::tests::native_production_entry_points_use_the_centralized_context_policy ... ok
+test backend::tests::provider_bundle_installation_validates_lazy_exact_numa_domains_at_the_source_boundary ... ok
+test backend::tests::external_managed::disjoint_external_domains_execute_concurrently ... ok
+test backend::tests::external_managed::caller_managed_same_pool_entry_uses_only_the_declared_rayon_team ... ok
+test backend::tests::with_threads_rejects_invalid_thread_count ... ok
+test capability::tests::capability_descriptor_helpers_set_axes_and_output_dtypes ... ok
+test backend::tests::provider_context_source_cannot_reenter_or_bypass_the_executor_boundary ... ok
+test backend::tests::external_managed::exact_all_allowed_external_domain_must_equal_the_allowed_set ... ok
+test backend::tests::external_managed::caller_managed_public_reentry_is_rejected_and_unwind_releases_admission ... ok
+test backend::tests::fallible_backend_construction_preserves_topology_error_category ... ok
+test backend::tests::external_managed::overlapping_exact_and_advisory_external_domains_serialize ... ok
+test backend::tests::external_managed::distinct_caller_managed_domains_overlap_and_select_by_id ... ok
+test context::tests::direct_context_reports_inline_capabilities_and_runs_inline ... ok
+test context::tests::managed_context_preserves_job_error_categories ... ok
+test context::tests::managed_context_reports_verified_rayon_capabilities ... ok
+test context::tests::context_constructor_registers_every_rayon_worker_execution_scope ... ok
+test backend::tests::native_kernel_modules_cannot_select_ambient_or_ad_hoc_execution_policies ... ok
+test context::tests::pinned_context_rejects_invalid_worker_counts ... ok
+test context::tests::pin_failure_aborts_context_construction ... ok
+test context::tests::trait_install_reenters_the_matching_context_without_a_second_pool_entry ... ok
+test context::tests::with_threads_rejects_zero ... ok
+test context::tests::worker_assignment_spreads_a_reduced_budget_across_the_domain ... ok
+test domain_executor::tests::arbitrary_operation_error_survives_executor_dispatch_unchanged ... ok
+test domain_executor::tests::executor_capabilities_preserve_each_declared_axis ... ok
+test domain_executor::tests::executor_error_categories_remain_distinct_and_matchable ... ok
+test domain_executor::tests::executor_is_object_safe_and_accepts_borrowed_jobs ... ok
+test domain_executor::tests::indexed_jobs_rejects_index_equal_to_len_without_running_the_closure ... ok
+test domain_executor::tests::caller_owned_rayon_adapter_uses_only_the_supplied_pool_for_install_and_submit ... ok
+test context::tests::pinned_context_reports_verified_affinity_with_test_setter ... ok
+test context::tests::pooled_submit_leaves_a_foreign_rayon_pool_for_the_selected_context ... ok
+test domain_executor::tests::indexed_jobs_audits_an_invalid_index_even_when_its_error_is_ignored ... ok
+test domain_executor::tests::install_scoped_preserves_admission_error_without_running_operation ... ok
+test domain_executor::tests::install_scoped_rejects_executor_success_without_running_the_job ... ok
+test domain_executor::tests::outer_submission_is_synchronous_and_indexed ... ok
+test domain_executor::tests::indexed_jobs_audit_represents_usize_max_without_a_sentinel_collision ... ok
+test backend::tests::indexed_plan_cache_configuration_poison_is_typed ... ok
+test context::tests::pinned_context_reports_only_assigned_cpus ... ok
+test domain_executor::tests::scoped_job_second_run_is_scheduling_error_and_operation_runs_once ... ok
+test context::tests::pinned_single_worker_context_still_enters_a_real_rayon_pool ... ok
+test dot_runtime::tests::axis_group_role_conflict_preserves_ordered_error_parity ... ok
+test context::tests::pooled_submit_runs_every_index_once_on_the_selected_context ... ok
+test dot_runtime::tests::axis_group_competing_errors_match_existing_precedence_through_rank_seventy ... ok
+test domain_executor::tests::zero_job_submission_is_empty_and_runs_nothing ... ok
+test dot_runtime::tests::axis_groups_match_existing_rank_validation_through_rank_seventy ... ok
+test dot_runtime::tests::dot_general_validation_checks_extents_output_and_accumulation ... ok
+test dot_runtime::tests::dot_general_validation_accepts_checked_negative_stride_output ... ok
+test dot_runtime::tests::layout_validation_checks_strides_and_reachable_ranges ... ok
+test dot_runtime::tests::engine_outer_real_faer_writes_only_nonzero_base_output_view_jobs ... ok
+test dot_runtime::tests::packed_grouped_job_states_keep_two_usize_bit_widths_inline_then_spill ... ok
+test dot_runtime::tests::axis_groups_preserve_order_and_find_free_axes ... ok
+test dot_runtime::tests::packed_grouped_job_states_do_not_clobber_adjacent_or_boundary_jobs ... ok
+test dot_runtime::tests::opted_in_layout_provider_unsupported_falls_back_to_zeroed_materialization ... ok
+test dot_runtime::tests::opted_out_layout_provider_keeps_zeroed_canonical_operand_values ... ok
+test dot_runtime::tests::route_budget_one_enters_controlled_external_provider_sequentially ... ok
+test dot_runtime::tests::route_budget_one_rejects_non_inline_provider_before_output_mutation ... ok
+test backend::tests::unavailable_affinity_auto_placement_reuses_compatibility_engine ... ok
+test dot_runtime::tests::route_engine_outer_grouped_submits_once_with_sequential_children ... ok
+test dot_runtime::tests::route_gemm_conjugation_unsupported_materializes_conjugate_and_retries ... ok
+test dot_runtime::tests::route_gemm_output_layout_unsupported_is_terminal_without_mutation ... ok
+test backend::tests::placement_capabilities_follow_public_backend_kind ... ok
+test dot_runtime::tests::route_engine_outer_preserves_exact_provider_error_after_successful_submit ... ok
+test dot_runtime::tests::route_gemm_lhs_layout_unsupported_materializes_and_retries ... ok
+test dot_runtime::tests::route_gemm_canonical_retry_unsupported_is_terminal_without_mutation ... ok
+test dot_runtime::tests::route_engine_outer_preserves_submit_error_before_missing_job_audit ... ok
+test dot_runtime::tests::route_engine_outer_rejects_ignored_index_equal_to_len_after_valid_jobs ... ok
+test backend::tests::with_threads_and_kind_records_selection_and_validates_threads ... ok
+test dot_runtime::tests::route_engine_outer_rejects_output_boundary_before_submission ... ok
+test dot_runtime::tests::route_engine_outer_rejects_sequential_duplicate_after_all_valid_jobs ... ok
+test dot_runtime::tests::route_engine_outer_rejects_successful_submit_that_omits_a_job ... ok
+test dot_runtime::tests::route_engine_outer_rejects_duplicate_while_first_provider_call_is_running ... ok
+test backend::tests::output_affinity::direct_tensor_read_reshape_preserves_remote_storage_affinity ... ok
+test dot_runtime::tests::route_engine_outer_reports_running_job_when_executor_catches_provider_panic ... ok
+test dot_runtime::tests::route_engine_outer_submit_error_overrides_ignored_invalid_index_audit ... ok
+test dot_runtime::tests::route_engine_outer_submit_error_overrides_prior_provider_error ... ok
+test dot_runtime::tests::route_gemm_unsupported_is_terminal ... ok
+test dot_runtime::tests::route_gemm_rhs_layout_unsupported_materializes_and_retries ... ok
+test dot_runtime::tests::route_gemm_canonical_retry_error_reclaims_both_materializations ... ok
+test dot_runtime::tests::route_engine_outer_rejects_ignored_usize_max_index_after_valid_jobs ... ok
+test dot_runtime::tests::route_engine_outer_rejects_concurrent_duplicate_job_before_provider_mutation ... ok
+test dot_runtime::tests::route_general_error_is_terminal ... ok
+test dot_runtime::tests::route_gemm_provider_error_is_terminal_without_mutation ... ok
+test dot_runtime::tests::route_canonical_fallback_uses_layout_slot_before_gemm ... ok
+test dot_runtime::tests::route_general_executed_short_circuits_gemm ... ok
+test dot_runtime::tests::route_general_unsupported_falls_back_only_when_preferred ... ok
+test dot_runtime::tests::route_install_failure_precedes_provider_and_output_mutation ... ok
+test dot_runtime::tests::route_provider_owned_grouped_installs_once_with_inner_parallelism ... ok
+test engine::tests::engine_from_context_preserves_placement_context_and_resources ... ok
+test engine::tests::external_engine_moves_the_resource_domain_without_a_staging_context ... ok
+test gemm::tests::checked_batch_offset_reports_batch_conversion_overflow ... ok
+test gemm::tests::checked_product_rejects_product_overflow ... ok
+test gemm::tests::canonical_gemm_layout_remains_behind_dot_general_validation ... ok
+test dot_runtime::tests::provider_capabilities_are_snapshotted_once_when_the_bundle_is_built ... ok
+test gemm::tests::faer_singleton_strides_are_normalized_before_raw_gemm ... ok
+test dot_runtime::tests::route_required_general_unsupported_is_typed_and_terminal ... ok
+test gemm::tests::faer_strided_gemm_accumulates_with_nontrivial_beta ... ok
+test gemm::tests::faer_strided_gemm_accumulates_with_unit_beta_without_prescaling ... ok
+test gemm::tests::gemm_analysis_cache_exposes_debug_capacity_and_clear_contract ... ok
+test gemm::tests::gemm_analysis_cache_keeps_direct_and_canonical_candidates_separate ... ok
+test gemm::tests::provider_bundle_identity_reuses_and_invalidates_slots_without_aba ... ok
+test gemm::tests::gemm_analysis_cache_matches_view_layouts_before_reusing_a_plan ... ok
+test gemm::tests::gemm_analysis_cache_reuses_matching_direct_plan_and_reports_stats ... ok
+test gemm::tests::try_fuse_dims_empty ... ok
+test gemm::tests::gemm_analysis_cache_shrink_invalidates_entries_instead_of_truncating_by_slot ... ok
+test gemm::tests::try_fuse_dims_rejects_extent_that_does_not_fit_isize ... ok
+test gemm::tests::try_fuse_dims_rejects_fused_stride_overflow ... ok
+test gemm::tests::try_fuse_dims_reversed_strides ... ok
+test gemm::tests::try_fuse_dims_single_dim ... ok
+test gemm::tests::try_fuse_dims_sorted_strides_unchanged ... ok
+test indexed_plan_cache::tests::byte_limit_and_clear_are_accounted ... ok
+test indexed_plan_cache::tests::key_distinguishes_family_layout_and_config_boundaries ... ok
+test indexed_plan_cache::tests::entry_limit_evicts_least_recently_used_plan ... ok
+test indexed_plan_cache::tests::repeated_key_compiles_once_and_reports_hit ... ok
+test dot_runtime::tests::route_provider_default_compatibility_preserves_legacy_entry_modes ... ok
+test dot_runtime::tests::route_strided_batch_allows_inner_parallelism ... ok
+test engine::tests::engine_caps_workers_to_its_cpu_domain_and_owns_resources ... ok
+test gemm::tests::try_fuse_dims_non_adjacent_fails ... ok
+test indexed_plan_cache::tests::retained_bytes_charge_inline_and_spilled_plan_payloads ... ok
+test indexing::tests::dynamic_slice_validation_identifies_the_starts_argument ... ok
+test indexing::tests::float_index_validation_identifies_the_index_argument ... ok
+test indexing::tests::inline_strides_cover_zero_extent_and_spill_without_overflow ... ok
+test placement::tests::explicit_unknown_node_is_an_error_without_fallback ... ok
+test placement::tests::faer_resolves_auto_and_explicit_managed_placements ... ok
+test indexing::tests::inline_strides_report_isize_overflow_as_typed_error ... ok
+test indexing::tests::typed_concatenate_rejects_empty_typed_inputs_without_panicking ... ok
+test indexing::tests::typed_concatenate_accepts_nonempty_typed_inputs ... ok
+test placement::tests::explicit_external_provider_placement_never_falls_back ... ok
+test placement::tests::unregistered_external_placement_error_preserves_the_request ... ok
+test placement::tests::unavailable_managed_affinity_keeps_auto_compatible_and_rejects_explicit_placement ... ok
+test placement::tests::explicit_node_requires_discovered_numa_domains ... ok
+test provider::tests::cpu_execution_context_debug_format_is_runnable ... ok
+test provider::tests::external_worker_inner_entry_does_not_require_rayon_capability ... ok
+test provider::tests::faer_gemm_into_uninit_matches_initialized_gemm ... ok
+test provider::tests::cross_domain_enter_or_reuse_reports_scheduling_error ... ok
+test provider::tests::engine_worker_inner_entry_installs_once_into_the_actual_rayon_pool ... ok
+test provider::tests::execution_context_is_the_single_source_of_faer_parallelism ... ok
+test provider::tests::faer_provider_covers_f32_c32_and_c64_conjugation ... ok
+test provider::tests::execution_context_is_the_single_source_of_erased_strided_replay_policy ... ok
+test provider::tests::faer_provider_executes_into_preallocated_output ... ok
+test provider::tests::faer_unsupported_dtype_preserves_output ... ok
+test provider::tests::gemm_request_borrows_prevalidated_views_and_output ... ok
+test provider::tests::faer_provider_executes_non_unit_strides_and_strided_batches ... ok
+test provider::tests::grouped_gemm_request_into_parts_is_covered ... ok
+test provider::tests::layout_provider_fuses_conjugation_into_materialization ... ok
+test provider::tests::layout_provider_materializes_into_preallocated_output ... ok
+test provider::tests::layout_materialize_into_uninit_matches_initialized_materialization ... ok
+test provider::tests::outer_entry_submits_once_without_install_and_creates_sequential_children ... ok
+test provider::tests::outer_mode_is_rejected_before_install_or_operation_mutation ... ok
+test provider::tests::parallel_mode_exposes_the_complete_execution_contract ... ok
+test provider::tests::faer_provider_executes_grouped_jobs_without_owning_scheduling ... ok
+test provider::tests::outer_submission_does_not_add_calls_when_budget_covers_all_jobs ... ok
+test provider::tests::outer_submission_limits_logical_participants_to_thread_budget ... ok
+test provider::tests::unavailable_blas_provider_preserves_output ... ok
+test provider::tests::uninit_witness_is_exposed_only_by_the_builtin_providers ... ok
+test provider::tests::unsupported_is_typed ... ok
+test provider_capability::tests::binary_clamp_to_one_never_selects_auto_for_a_finite_domain_budget ... ok
+test provider_capability::tests::builtin_blas_without_a_wired_scope_guard_stays_conservative ... ok
+test provider_capability::tests::domain_compatibility_table_enforces_count_and_placement_independently ... ok
+test provider_capability::tests::injected_explicit_descriptor_is_preserved_exactly ... ok
+test provider_capability::tests::injected_probe_table_classifies_known_and_unknown_blas_once ... ok
+test provider_capability::tests::openblas_global_set_restore_never_claims_per_call_count_control ... ok
+test provider_capability::tests::strict_budget_one_allows_only_providers_that_can_force_inline_execution ... ok
+test resource_domain::tests::caller_managed_domain_has_no_fabricated_placement_and_validates_budget ... ok
+test resource_domain::tests::defensive_validation_rejects_empty_placement ... ok
+test resource_domain::tests::empty_cpu_set_is_rejected_at_the_safe_public_boundary ... ok
+test resource_domain::tests::defensive_validation_rejects_zero_executor_workers ... ok
+test resource_domain::tests::external_all_allowed_domain_reports_public_diagnostics ... ok
+test resource_domain::tests::external_domain_guarantees_round_trip_without_upgrading_affinity ... ok
+test resource_domain::tests::external_domain_moves_into_resource_domain_without_replacing_executor ... ok
+test resource_domain::tests::managed_resource_domain_preserves_ownership_and_executor_arc ... ok
+test resource_domain::tests::worker_budget_mismatch_returns_typed_error ... ok
+test resource_domain::tests::zero_thread_budget_is_unrepresentable_at_the_safe_public_boundary ... ok
+test runtime_adapter::tests::concrete_axis_projection_overflow_is_reported_before_allocation ... ok
+test runtime_adapter::tests::cpu_family_minimum_specialization_matches_adapter_contract ... ok
+test runtime_adapter::tests::cpu_specialization_projection_retained_bytes_count_spilled_exact_strides ... ok
+test runtime_adapter::tests::cpu_specialization_projection_retained_bytes_count_owned_heap_payloads ... ok
+test runtime_adapter::tests::current_core_vocabulary_has_explicit_cpu_family_classification ... ok
+test runtime_adapter::tests::public_cpu_runtime_registration_allows_two_selected_cpu_domains_in_one_runtime ... ok
+test runtime_adapter::tests::public_cpu_runtime_registration_tracks_distinct_selected_cpu_domains ... ok
+test runtime_adapter::tests::cpu_runtime_adapter_has_only_the_six_runtime_trait_impls_on_cpu_backend ... ok
+test runtime_adapter::tests::cpu_runtime_adapter_source_stays_metadata_only ... ok
+test backend::tests::external_managed::overlap_observer_times_out_and_releases_serialized_workers ... ok
+test resource_domain::tests::external_node_domain_reports_public_diagnostics ... ok
+test provider::tests::outer_submission_rejects_a_single_thread_budget_without_executor_entry ... ok
+test tests::backend_misc::contraction_unsupported_dtype_message_lists_recovery ... ok
+test resource_domain::tests::external_domain_retains_executor_owner ... ok
+test provider::tests::provider_context_exposes_only_execution_policy ... ok
+test backend::tests::direct_native_scope_uses_the_selected_rayon_budget ... ok
+test backend::tests::direct_and_cached_sessions_share_the_installed_provider_slot ... ok
+test backend::tests::cross_pool_wait_cannot_misclassify_a_scheduled_sibling_as_direct_nesting ... ok
+test tests::backend_misc::cpu_structural_read_direct_helpers_match_owned_validation_errors ... ok
+test tests::backend_misc::cpu_structural_read_empty_pathological_layout_returns_typed_errors_without_panicking ... ok
+test backend::tests::direct_nested_clone_install_is_rejected_in_a_managed_scope ... ok
+test backend::tests::direct_nested_independent_engine_is_rejected_in_a_managed_scope ... ok
+test backend::tests::output_affinity::validation_failure_does_not_mutate_or_retag_caller_owned_output ... ok
+test backend::tests::output_affinity::metadata_only_reshape_and_caller_owned_output_are_not_retagged ... ok
+test backend::tests::external_managed::overlap_observer_tolerates_slow_initial_worker_scheduling ... ok
+test exec_session::tests::native_operation_enters_the_selected_rayon_executor ... ok
+test tests::backend_misc::cpu_view_materialization_rejects_backend_buffer_with_caller_operation_name ... ok
+test tests::backend_misc::cpu_view_materialization_uses_pool_aware_strided_copy ... ok
+test provider::tests::native_policy_restores_after_error_and_panic_without_contaminating_ambient_work ... ok
+test backend::tests::provider_bundle_is_installed_at_construction_and_shared_by_clones ... ok
+test provider::tests::native_inner_parallelism_uses_only_the_selected_rayon_budget ... ok
+test backend::tests::cpu_backend_can_be_bound_to_a_shared_allocation_domain ... ok
+test backend::tests::parallel_rayon_sibling_backend_reentry_is_rejected ... ok
+test provider::tests::native_sequential_mode_has_one_participant_inside_a_multithreaded_pool ... ok
+test backend::tests::execution_info_exposes_stable_kind_and_placement_contract ... ok
+test provider::tests::external_worker_inner_mode_keeps_native_work_sequential ... ok
+test backend::tests::shared_context_work_is_not_mistaken_for_backend_reentry ... ok
+test backend::tests::stolen_rayon_child_task_backend_reentry_is_rejected ... ok
+test backend::tests::default_backend_kind_prefers_blas_when_compiled ... ok
+test backend::tests::public_buffer_pool_controls_report_poisoned_engine_resources ... ok
+test backend::tests::cpu_runtime_identity_changes_when_provider_bundle_changes ... ok
+test tests::backend_misc::test_materialize_tensor_read_covers_host_tensor_and_view_variants ... ok
+test backend::tests::explicit_backend_kind_constructor_records_selection ... ok
+test tests::backend_misc::test_pool_backed_analytic_public_paths_cover_supported_dtypes ... ok
+test tests::backend_misc::test_pool_backed_elementwise_public_paths_cover_dtypes_and_scalars ... ok
+test tests::backend_misc::cpu_structural_read_direct_helpers_preserve_view_placement ... ok
+test tests::backend_misc::cpu_view_materialization_handles_empty_and_rank_zero_views ... ok
+test tests::backend_misc::cpu_view_materialization_handles_negative_and_zero_strides ... ok
+test tests::backend_misc::cpu_view_materialization_preserves_static_rank_and_placement ... ok
+test tests::backend_misc::cpu_structural_read_direct_helpers_cover_zero_stride_empty_and_rank_zero ... ok
+test tests::backend_misc::cpu_structural_read_direct_helpers_cover_all_dtypes ... ok
+test backend::tests::nested_clone_tensor_operation_is_rejected_in_a_managed_scope ... ok
+test backend::tests::output_affinity::lazy_tensor_value_tags_its_fresh_base ... ok
+test backend::tests::output_affinity::session_tensor_read_reshape_preserves_remote_storage_affinity ... ok
+test backend::tests::output_affinity::reshaping_a_borrowed_view_tags_only_the_materialized_output ... ok
+test backend::tests::with_linalg_pool_restores_backend_pool_and_context ... ok
+test backend::tests::output_affinity::direct_and_session_cpu_noop_transfers_preserve_remote_storage_affinity ... ok
+test backend::tests::placement_handle_clones_share_coordinator_engine_and_resources ... ok
+test gemm::tests::faer_read_transposed_view_uses_provider_runtime ... ok
+test tests::backend_misc::cpu_copy_into_copies_exactly_between_strided_host_views ... ok
+test backend::tests::execution_scope::shared_scope_rejects_wrong_witness_and_nested_scopes ... ok
+test backend::tests::execution_scope::shared_scope_does_not_admit_child_worker_backend_reentry ... ok
+test backend::tests::output_affinity::direct_and_session_fresh_outputs_use_the_selected_domain ... ok
+test backend::tests::linalg_pool_acquire_then_panic_replenishes_buffer_but_reports_poison ... ok
+test tests::backend_misc::cpu_copy_into_rejects_host_source_with_device_placement ... ok
+test backend::tests::shared_execution_scope_is_cleared_after_panic ... ok
+test tests::backend_misc::test_install_with_pool_preserves_buffers ... ok
+test backend::tests::uninit_output_partial_write_then_panic_discards_without_replenishment ... ok
+test runtime_adapter::tests::cpu_backend_cache_owner_hooks_report_and_clear_current_engine_caches ... ok
+test tests::basic_ops::test_add_mul ... ok
+test tests::basic_ops::test_add_mul_i64 ... ok
+test tests::basic_ops::float_div_rem_preserve_ieee_special_values ... ok
+test tests::backend_misc::cpu_runtime_copy_handles_strided_source_and_destination_without_allocation ... ok
+test tests::basic_ops::test_add_mul_rank0_broadcast ... ok
+test backend::tests::external_managed::external_registry_routes_without_reconstructing_executors ... ok
+test tests::backend_misc::test_backend_session_reports_poison_after_panic ... ok
+test backend::tests::execution_scope::shared_scope_preserves_borrowed_session_reentry_guard_and_unwind_recovery ... ok
+test backend::tests::cached_dot_dispatch_reports_dtype_mismatches ... ok
+test backend::tests::unavailable_blas_backend_kind_reports_config_errors ... ok
+test tests::backend_misc::test_with_linalg_pool_reports_poison_after_panic ... ok
+test backend::tests::output_affinity::dot_and_fusion_vec_outputs_use_the_selected_domain ... ok
+test backend::tests::public_buffer_pool_controls_report_poisoned_engine_registry ... ok
+test tests::backend_misc::cpu_copy_into_rejects_host_destination_with_device_placement ... ok
+test tests::basic_ops::test_float_rem_matches_rust_remainder_sign ... ok
+test backend::tests::execution_scope::shared_scope_installs_once_and_reuses_resources_across_operations ... ok
+test tests::basic_ops::test_from_vec_uses_column_major_indices ... ok
+test tests::basic_ops::test_integer_add_mul_wrap_on_overflow ... ok
+test tests::basic_ops::test_integer_div_rem_pow_contract ... ok
+test tests::basic_ops::test_integer_div_rem_pow_domain_errors_are_structured ... ok
+test tests::basic_ops::test_integer_reduce_sum_prod_wrap_on_overflow ... ok
+test tests::basic_ops::test_integer_unary_ops_use_wrapping_semantics ... ok
+test tests::basic_ops::test_integer_maximum_minimum_and_reductions ... ok
+test tests::basic_ops::test_mul_rank0_complex_scalar_broadcasts_over_complex_tensor ... ok
+test tests::basic_ops::test_mul_rank0_real_scalar_broadcasts_over_complex_tensor ... ok
+test tests::basic_ops::test_pow_accepts_rank_zero_operands ... ok
+test tests::basic_ops::test_rank0_typed_tensor_behaves_like_scalar ... ok
+test tests::basic_ops::test_reduce_max_and_min ... ok
+test tests::basic_ops::test_reduce_prod ... ok
+test tests::basic_ops::test_reshape ... ok
+test tests::basic_ops::test_reduce_sum ... ok
+test tests::backend_misc::cpu_view_materialization_preserves_transposed_and_scattered_values ... ok
+test tests::basic_ops::test_tensor_metadata ... ok
+test tests::basic_ops::test_zeros_ones ... ok
+test provider::tests::outer_children_keep_native_work_sequential_without_double_fanout ... ok
+test tests::blas1::blas1_compact_view_destinations_cover_all_supported_dtypes ... ok
+test tests::backend_misc::cpu_runtime_copy_reports_dtype_shape_and_placement_errors ... ok
+test tests::blas1::blas1_invalid_axpby_requests_leave_y_byte_identical ... ok
+test tests::blas1::blas1_cg_microfixture_uses_session_primitives_without_element_loops ... ok
+test tests::blas1::blas1_rankn_and_empty_inputs_reduce_all_axes ... ok
+test tests::context::cpu_affinity_available_parallelism_reports_positive_count ... ok
+test tests::context::cpu_backend_from_context_shares_runtime_owner ... ok
+test tests::context::cpu_backend_multi_operation_session_enters_executor_once ... ok
+test runtime_adapter::tests::public_cpu_runtime_registration_exposes_complete_preparation_capabilities ... ok
+test tests::blas1::blas1_compact_f32_f64_c32_c64_matches_scalar_references ... ok
+test tests::blas1::blas1_strided_reads_are_supported_and_x_is_materialized_once ... ok
+test tests::backend_misc::cpu_runtime_materialization_dispatches_all_dtypes_with_backend_session_parity ... ok
+test tests::backend_misc::cpu_copy_into_rejects_backend_destination_without_download ... ok
+test tests::backend_misc::cpu_runtime_copy_dispatches_all_dtypes_with_backend_session_parity ... ok
+test tests::backend_misc::cpu_structural_read_backend_and_exec_session_outputs_match ... ok
+test tests::context::cpu_backend_shared_context ... ok
+test tests::backend_misc::cpu_runtime_materialization_rejects_owned_host_buffer_with_device_placement ... ok
+test tests::context::cpu_context_install_executes_closure ... ok
+test tests::context::cpu_context_install_enters_owned_pool ... ok
+test tests::backend_misc::cpu_structural_read_reshape_explicit_stride_exact_output ... ok
+test tests::context::cpu_context_with_threads_reports_requested_size ... ok
+test tests::backend_misc::cpu_copy_into_reports_shape_mismatch_with_canonical_op_name ... ok
+test tests::backend_misc::test_broadcast_multiply_fusion_computes_outer_product_without_materialized_inputs ... ok
+test tests::backend_misc::cpu_runtime_materialization_rejects_host_view_with_device_placement ... ok
+test tests::context::cpu_context_with_threads_zero_returns_error ... ok
+test tests::backend_misc::cpu_copy_into_rejects_backend_source_without_download ... ok
+test tests::basic_ops::test_gather_rejects_malformed_offset_dims ... ok
+test tests::context::performance_notes_match_current_cpu_threading_contract ... ok
+test runtime_adapter::tests::cpu_backend_coerces_to_all_runtime_traits ... ok
+test tests::cpu_elementwise_kernels_live_in_internal_crate ... ok
+test tests::dot_structural_analytic::test_broadcast_in_dim ... ok
+test tests::backend_misc::test_cpu_elementwise_fusion_broadcasts_mapped_unit_axes ... ok
+test tests::basic_ops::test_integer_add_mul_read_views_wrap_on_overflow ... ok
+test tests::context::cpu_install_accepts_send_state ... ok
+test tests::backend_misc::test_cpu_elementwise_fusion_executes_broadcast_chain_plan ... ok
+test tests::backend_misc::test_backend_and_session_read_delegates_cover_non_add_ops ... ok
+test tests::backend_misc::test_cpu_elementwise_fusion_executes_add_mul_plan ... ok
+test tests::context::test_with_backend_session_runs_compiled_ops ... ok
+test tests::backend_misc::test_cast_acquires_output_from_dtype_pool ... ok
+test tests::backend_misc::cpu_structural_read_transpose_explicit_stride_exact_output ... ok
+test tests::basic_ops::test_reverse_axis_zero ... ok
+test tests::backend_misc::test_pad_acquires_and_zeroes_output_from_pool ... ok
+test tests::backend_misc::test_dynamic_update_slice_acquires_clone_from_pool ... ok
+test tests::basic_ops::test_invalid_slice_config_returns_error ... ok
+test tests::basic_ops::test_reduce_sum_squares_f32_and_f64 ... ok
+test tests::backend_misc::test_exec_session_read_reductions_and_reclaim_cover_typed_paths ... ok
+test tests::backend_misc::test_elementwise_add_acquires_output_from_pool ... ok
+test tests::dot_structural_analytic::test_embed_diagonal ... ok
+test tests::basic_ops::test_gather_rejects_complex_indices ... ok
+test tests::basic_ops::test_dynamic_slice_rejects_oversized_window ... ok
+test tests::basic_ops::test_reduce_sum_squares_read_accepts_noncompact_view ... ok
+test tests::dot_structural_analytic::test_neg_and_conj ... ok
+test tests::dot_structural_analytic::test_extract_diagonal ... ok
+test tests::dot_structural_analytic::test_transpose ... ok
+test tests::dot_structural_analytic::test_triangular_masks_rectangular_batched_nonzero_diagonal ... ok
+test tests::backend_misc::test_structural_transpose_acquires_output_from_pool ... ok
+test tests::dot_structural_analytic::test_tril_3x3 ... ok
+test tests::dot_structural_analytic::test_tril_triu_extreme_offsets_do_not_overflow ... ok
+test tests::dot_structural_analytic::test_triangular_masks_use_checked_index_arithmetic_contract ... ok
+test tests::dot_structural_analytic::test_tril_triu_zero_sized_batch_return_empty_tensor ... ok
+test tests::basic_ops::test_integer_maximum_minimum_and_reduction_read_views ... ok
+test tests::dot_structural_analytic::test_triu_3x3 ... ok
+test tests::basic_ops::test_gather_rejects_fractional_float_indices ... ok
+test tests::backend_misc::cpu_structural_read_broadcast_in_dim_explicit_stride_exact_output ... ok
+test tests::basic_ops::test_backend_reduce_prod_max_and_min_delegate_to_cpu_reduction_impls ... ok
+test tests::backend_misc::test_pool_backed_structural_public_paths_cover_dispatch_and_helpers ... ok
+test tests::basic_ops::test_integer_unary_read_views_use_wrapping_semantics ... ok
+test tests::basic_ops::test_slice ... ok
+test tests::elementwise_reduction_helpers::equal_bool_add_and_mul_report_unsupported_dtype_not_mismatch ... ok
+test tests::elementwise_reduction_helpers::maximum_and_minimum_propagate_nan_independent_of_argument_order ... ok
+test tests::basic_ops::test_invalid_pad_config_returns_error ... ok
+test tests::elementwise_reduction_helpers::reduce_max_and_min_propagate_nan_instead_of_leaking_sentinel ... ok
+test tests::basic_ops::test_large_float_index_outside_exact_integer_range_returns_error ... ok
+test tests::basic_ops::test_integer_div_rem_pow_read_views_contract ... ok
+test tests::elementwise_reduction_helpers::reduce_sum_zero_length_axis_is_rejected_like_other_reductions ... ok
+test tests::elementwise_reduction_helpers::unsupported_elementwise_dtype_messages_list_operation_sets ... ok
+test tests::elementwise_reduction_helpers::test_reduction_helpers_cover_complex_and_error_paths ... ok
+test tests::basic_ops::test_concatenate_axis_zero ... ok
+test tests::elementwise_reduction_helpers::test_direct_elementwise_helpers_cover_f32_c32_and_error_paths ... ok
+test tests::elementwise_reduction_helpers::test_direct_elementwise_helpers_cover_f64_c64_dispatch_and_mismatch_paths ... ok
+test tests::elementwise_reduction_helpers::test_structural_helpers_cover_f32_success_and_error_paths ... ok
+test tests::context::cpu_backend_new_falls_back_to_affinity_when_rayon_num_threads_is_absent ... ok
+test tests::faer_parallelism_capability_runs_inside_a_cpu_session ... ok
+test tests::indexing::test_backend_buffer_pool_controls_report_and_update_limits ... ok
+test tests::context::cpu_backend_new_matches_context_from_env ... ok
+test tests::context::cpu_backend_try_new_propagates_invalid_rayon_num_threads ... ok
+test tests::indexing::indexed_plan_cache_reuses_gather_plan_through_exec_session ... ok
+test tests::indexing::indexed_plan_cache_reuses_public_gather_plan_and_obeys_controls ... ok
+test tests::basic_ops::tensor_index_select_trailing_axis_returns_expected_values ... ok
+test tests::backend_misc::test_reclaim_buffer_returns_host_buffer_to_pool ... ok
+test tests::basic_ops::tensor_stack_trailing_axis_packs_scalars_vectors_and_matrices ... ok
+test tests::indexing::indexed_plan_cache_limit_snapshots_remain_coherent_across_clones ... ok
+test tests::basic_ops::tensor_index_select_rejects_invalid_axis_and_position ... ok
+test tests::basic_ops::tensor_stack_reuses_reclaimed_cpu_buffer ... ok
+test tests::indexing::test_bool_index_error_lists_supported_index_dtypes ... ok
+test tests::dot_structural_analytic::test_dot_general_falls_back_for_mixed_batch_orders ... ok
+test tests::indexing::test_dynamic_slice_accepts_i64_starts ... ok
+test tests::indexing::test_gather_1d_indices ... ok
+test tests::backend_misc::test_reclaim_buffer_covers_all_dtypes ... ok
+test tests::basic_ops::test_reverse_axis_out_of_bounds_returns_error ... ok
+test tests::basic_ops::test_scatter_rejects_update_window_dim_out_of_bounds ... ok
+test tests::indexing::test_dynamic_slice_clamps_starts ... ok
+test tests::basic_ops::test_integer_reduce_read_views_wrap_on_overflow ... ok
+test tests::indexing::test_dynamic_update_slice_clamps_starts ... ok
+test tests::dot_structural_analytic::test_cpu_backend_dispatches_tensor_backend_ops ... ok
+test tests::basic_ops::tensor_index_select_reuses_reclaimed_cpu_buffer ... ok
+test tests::basic_ops::test_scatter_rejects_too_many_update_window_dims ... ok
+test tests::basic_ops::test_reverse_accepts_i64_data_tensor ... ok
+test tests::capability::cpu_capability_table_reports_core_elementwise_reduction_and_dot_support ... ok
+test tests::backend_misc::test_slice_acquires_output_from_pool ... ok
+test tests::indexing::test_gather_accepts_i64_indices ... ok
+test tests::indexing::test_gather_with_implicit_index_vector_dim ... ok
+test tests::indexing::test_pad_with_interior_spacing ... ok
+test tests::indexing::test_pad_adds_zero_edges ... ok
+test tests::indexing::test_scatter_accepts_i64_indices ... ok
+test tests::indexing::test_scatter_bool_error_lists_supported_data_dtypes ... ok
+test tests::indexing::test_structural_convert_rejects_lossy_dtype_projection ... ok
+test tests::indexing::test_scatter_to_diagonal ... ok
+test tests::indexing::test_scatter_clamps_negative_and_out_of_bounds_windows ... ok
+test tests::blas1::blas1_vdot_and_norm_reject_invalid_metadata_and_placement ... ok
+test tests::indexing::test_structural_convert_helper_returns_result ... ok
+test tests::indexing_coverage::cpu_pad_does_not_reject_signed_edges_before_checked_shape_validation ... ok
+test tests::indexing_coverage::cpu_pad_skips_extreme_signed_positions_without_overflow ... ok
+test tests::indexing_coverage::cpu_pad_supports_signed_edge_cropping ... ok
+test tests::basic_ops::unsupported_reduction_dtype_messages_prescribe_known_recovery ... ok
+test tests::basic_ops::test_pow_rank_zero_read_views_and_domain_contracts ... ok
+test topology::tests::cpu_set_clones_share_the_immutable_cpu_domain ... ok
+test topology::tests::cpu_sets_are_sorted_and_deduplicated ... ok
+test topology::tests::discovery_falls_back_to_all_allowed_when_node_files_are_unavailable ... ok
+test topology::tests::discovery_parses_sparse_nodes_then_applies_process_affinity ... ok
+test topology::tests::empty_cpu_sets_are_rejected ... ok
+test topology::tests::linux_cpu_list_parser_handles_ranges_gaps_and_whitespace ... ok
+test tests::uninit_dot_output::opted_in_gemm_provider_unsupported_falls_back_to_zeroed_dot ... ok
+test tests::uninit_dot_output::opted_out_gemm_provider_keeps_zeroed_dot_output_values ... ok
+test tests::blas1::blas1_norm_rejects_integer_and_bool_without_allocating_a_result ... ok
+test tests::uninit_dot_output::uninit_dot_path_values_match_zeroed_path_for_allocated_dots ... ok
+test topology::tests::linux_cpu_list_parser_rejects_reversed_or_malformed_ranges ... ok
+test topology::tests::live_discovery_stays_within_the_process_affinity_mask ... ok
+test topology::tests::topology_intersects_nodes_with_allowed_cpus_without_renumbering ... ok
+test tests::dot_structural_analytic::test_dot_general_read_into_writes_compact_and_strided_outputs ... ok
+test tests::indexing_coverage::static_erased_indexing_preserves_bool_values_and_empty_shapes ... ok
+test topology::tests::topology_rejects_duplicate_node_ids_even_when_one_copy_is_unusable ... ok
+test topology::tests::topology_rejects_overlapping_usable_nodes ... ok
+test tests::dot_structural_analytic::test_dot_general_read_into_rejects_output_shape_and_dtype_mismatch ... ok
+test tests::context::cpu_context_from_env_falls_back_to_affinity_when_rayon_num_threads_is_absent ... ok
+test tests::context::cpu_context_from_env_falls_back_to_single_threaded_when_rayon_num_threads_is_invalid ... ok
+test tests::grouped_gemm_rejects_overlapping_output_ranges ... ok
+test tests::dot_structural_analytic::test_dot_general_zero_sized_matmul_returns_empty_matrix ... ok
+test tests::indexing::test_backend_dot_general_f32_c32_and_dtype_mismatch ... ok
+test tests::context::cpu_context_from_env_respects_rayon_num_threads ... ok
+test tests::context::cpu_context_try_from_env_rejects_invalid_rayon_num_threads ... ok
+test tests::context::cpu_context_try_from_env_rejects_non_unicode_rayon_num_threads ... ok
+test tests::context::cpu_context_try_from_env_rejects_zero_rayon_num_threads ... ok
+test tests::dot_structural_analytic::test_tier2_elementwise_ops_complex ... ok
+test tests::dot_structural_analytic::test_cpu_backend_analytic_ops_real ... ok
+test tests::dot_structural_analytic::test_dot_general_read_into_accum_applies_complex_conj_and_scalars ... ok
+test tests::dot_structural_analytic::test_dot_general_matmul ... ok
+test tests::dot_structural_analytic::test_dot_general_inner_product_returns_rank0_scalar ... ok
+test tests::dot_structural_analytic::test_dot_general_zero_contracting_dim_returns_zero_filled_output ... ok
+test tests::dot_structural_analytic::test_dot_general_read_into_accum_updates_existing_output ... ok
+test tests::dot_structural_analytic::test_cpu_backend_analytic_ops_complex ... ok
+test tests::elementwise_reduction_helpers::reduce_read_views_cover_dtype_and_validation_branches ... ok
+test tests::dot_structural_analytic::test_dot_general_read_into_accum_rejects_scalar_dtype_mismatch ... ok
+test tests::indexing_coverage::cpu_slice_limit_over_dimension_is_invalid_configuration ... ok
+test tests::dot_structural_analytic::test_dot_general_read_accepts_tensor_and_view_inputs ... ok
+test tests::dot_structural_analytic::test_dot_general_read_accepts_transposed_host_view_input ... ok
+test tests::dot_structural_analytic::test_tier2_elementwise_ops_real ... ok
+test tests::indexing::test_slice_concatenate_and_reverse_edge_cases ... ok
+test tests::elementwise_reduction_helpers::empty_reduction_axes_are_noop_before_dtype_dispatch ... ok
+test tests::elementwise_reduction_helpers::elementwise_add_read_promotes_c32_tensor_with_rank0_f32_view ... ok
+test tests::elementwise_reduction_helpers::elementwise_add_read_promotes_rank0_f64_view_with_c64_tensor ... ok
+test tests::dot_structural_analytic::test_dot_general_falls_back_for_unfusable_lhs_batch_layout ... ok
+test tests::dot_structural_analytic::test_dot_general_with_conj_matches_materialized_complex_matmul ... ok
+test tests::grouped_gemm_covers_f32_and_c32 ... ok
+test tests::indexing_coverage::cpu_indexing_validation_covers_error_branches ... ok
+test tests::grouped_gemm_shared_buffers_c64_matches_sequential_reference ... ok
+test tests::indexing::test_backend_default_and_buffer_pool_len ... ok
+test tests::grouped_gemm_shared_buffers_f64_matches_sequential_reference ... ok
+test tests::grouped_gemm_zero_jobs_is_noop_and_empty_contract_scales_output ... ok
+test tests::elementwise_reduction_helpers::reduce_read_empty_axes_materializes_views_for_all_dtypes ... ok
+test tests::indexing::test_backend_gather_scatter_dynamic_slice_dispatch ... ok
+test tests::elementwise_reduction_helpers::elementwise_add_accepts_transposed_host_view_input ... ok
+test tests::elementwise_reduction_helpers::reduce_sum_accepts_transposed_host_view_input ... ok
+test tests::indexing::test_cpu_supports_i32_and_bool_structural_paths ... ok
+test tests::indexing::test_backend_cast_rejects_nonfinite_or_out_of_range_float_to_int_values ... ok
+test tests::indexing_coverage::cpu_exec_session_covers_dot_errors_and_reclaim_dispatch ... ok
+test tests::indexing::test_backend_structural_ops_dispatch ... ok
+test tests::indexing::test_backend_mul_neg_conj_dispatch ... ok
+test tests::elementwise_reduction_helpers::reduce_read_tensors_cover_host_dtype_dispatch ... ok
+test tests::indexing::test_backend_cast_supports_real_complex_and_precision_changes ... ok
+test tests::with_cpu_exec_session_checks_exact_marker_and_scopes_borrow ... ok
+test tests::dot_structural_analytic::test_dot_general_read_into_accum_covers_supported_scalar_dtypes ... ok
+test tests::indexing_coverage::cpu_indexing_dispatch_covers_supported_dtypes ... ok
+test tests::backend_misc::test_default_backend_session_methods_cover_cache_fallbacks ... ok
+
+test result: ok. 543 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.31s
+
+     Running tests/blas1_pool_aliasing.rs (target/debug/deps/blas1_pool_aliasing-9393e169658bce29)
+
+running 1 test
+test blas1_scalars_do_not_overwrite_live_session_results ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/blas1_thread_counts.rs (target/debug/deps/blas1_thread_counts-b1824d3078200823)
+
+running 1 test
+test vdot_and_norm_squared_hold_across_thread_counts_and_lengths ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+     Running tests/install_allocation_tests/main.rs (target/debug/deps/install_allocation_tests-4fd884e68ea5318b)
+
+running 1 test
+test warm_empty_backend_install_has_no_mandatory_allocation ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/integration.rs (target/debug/deps/integration-53077e12b766a097)
+
+running 50 tests
+test backend_capability_contracts::cpu_backend_exposes_narrow_capability_bounds ... ok
+test backend_capability_contracts::concatenate_hot_loop_does_not_linearly_scan_input_segments ... ok
+test backend_capability_contracts::cpu_surfaces_override_elementwise_read_into_with_pooled_context ... ok
+test backend_capability_contracts::gather_delegates_bulk_traversal_to_strided_kernel_plan ... ok
+test backend_capability_contracts::indexing_hot_loops_do_not_recompute_multi_indices_from_flat_offsets ... ok
+test backend_capability_contracts::backend_surface_no_longer_uses_forwarding_macro ... ok
+test backend_capability_contracts::rust_public_function_scan_is_format_and_literal_independent ... ok
+test backend_capability_contracts::strided_kernel_ownership_requires_backend_execution_resources ... ok
+test provider_feature_contract::cpu_crate_rejects_ambiguous_explicit_provider_features ... ok
+test provider_feature_contract::cpu_provider_features_select_matching_source_provider ... ok
+test backend_capability_contracts::read_elementwise_and_analytic_paths_do_not_materialize_views ... ok
+test backend_capability_contracts::structural_read_paths_dispatch_directly_to_typed_view_helpers ... ok
+test backend_capability_contracts::indirect_indexed_writes_delegate_to_strided_plans ... ok
+test provider_feature_contract::external_tblis_provider_example_owns_unpublished_source_build_path ... ok
+test runtime_error_tests::backend_failure_helper_preserves_op_and_message ... ok
+test backend_capability_contracts::cpu_public_ops_require_backend_owner ... ok
+test provider_feature_contract::public_cpu_user_crates_expose_provider_passthrough_features ... ok
+test provider_feature_contract::provider_inject_call_through_is_owned_by_the_registered_integration_fixture ... ok
+test runtime_error_tests::affinity_unsafe_blocks_document_safety_invariants ... ok
+test provider_feature_contract::provider_capabilities_require_wired_per_call_controls ... ok
+test backend_capability_contracts::install_pool_has_no_placeholder_construction_or_gemm_descriptor_clones ... ok
+test runtime_error_tests::cpu_backend_with_threads_rejects_zero_without_panicking ... ok
+test provider_feature_contract::tenferro_cpu_does_not_ship_tblis_provider_features_or_dependencies ... ok
+test runtime_error_tests::cpu_diagonal_pooled_outputs_use_checked_shape_product ... ok
+test runtime_error_tests::cpu_reductions_use_common_empty_axes_validation_helpers ... ok
+test runtime_error_tests::cpu_reshape_concatenate_scatter_use_checked_boundary_arithmetic_contract ... ok
+test runtime_error_tests::cpu_linalg_dispatch_does_not_use_panic_catching_as_error_handling ... ok
+test runtime_error_tests::integer_reductions_record_the_delegated_wrapping_contract ... ok
+test backend_capability_contracts::cpu_provider_dispatch_has_no_runtime_registry_lookup_or_legacy_staging ... ok
+test static_replay::static_pow_replay_preserves_wrapping_and_domain_checks ... ok
+test static_replay::ordinary_cpu_retains_supported_fusion_hook ... ok
+test static_replay::static_analytic_replay_preserves_owned_and_reversed_values ... ok
+test runtime_error_tests::add_rejects_shape_mismatch ... ok
+test runtime_error_tests::pow_returns_error_on_shape_mismatch_instead_of_panicking ... ok
+test runtime_error_tests::concatenate_returns_error_on_empty_inputs ... ok
+test backend_capability_contracts::tensor_public_surface_has_no_context_free_materialization_api ... ok
+test runtime_error_tests::pad_returns_error_instead_of_panicking ... ok
+test runtime_error_tests::cpu_device_transfer_rejects_backend_buffers_at_boundary ... ok
+test runtime_error_tests::scatter_negative_start_indices_clamp_like_dynamic_slice ... ok
+test runtime_error_tests::concatenate_returns_error_on_shape_mismatch ... ok
+test backend_capability_contracts::backend_session_exposes_narrow_capability_bounds ... ok
+test runtime_error_tests::concatenate_returns_error_on_rank_mismatch ... ok
+test runtime_error_tests::concatenate_returns_error_on_axis_out_of_bounds ... ok
+test runtime_error_tests::transpose_returns_error_instead_of_panicking ... ok
+test runtime_error_tests::slice_returns_error_instead_of_panicking ... ok
+test runtime_error_tests::concatenate_accepts_valid_inputs ... ok
+test runtime_error_tests::concatenate_returns_error_on_dtype_mismatch ... ok
+test runtime_error_tests::cpu_backend_rejects_backend_buffers_without_panicking ... ok
+test runtime_error_tests::dot_general_rejects_out_of_bounds_contracting_dim ... ok
+test runtime_error_tests::reshape_returns_error_instead_of_panicking ... ok
+
+test result: ok. 50 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.37s
+
+     Running tests/provider_boundary_allocation_tests/main.rs (target/debug/deps/provider_boundary_allocation_tests-439c3212f852806e)
+
+running 3 tests
+test warmed_compact_axpby_has_no_steady_state_allocation ... ok
+test warmed_public_session_request_provider_dispatch_does_not_allocate ... ok
+test warmed_tiny_cpu_backend_cases_do_not_exceed_fixed_main_allocations ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.36s
+
+   Doc-tests tenferro_cpu
+
+running 219 tests
+test crates/tenferro-cpu/src/affinity_policy.rs - affinity_policy::CpuAffinityInput (line 33) ... ok
+test crates/tenferro-cpu/src/affinity_policy.rs - affinity_policy::CpuAffinityPolicy (line 12) ... ok
+test crates/tenferro-cpu/src/affinity_policy.rs - affinity_policy::CpuAffinitySelectionReason (line 177) ... ok
+test crates/tenferro-cpu/src/affinity_policy.rs - affinity_policy::CpuAffinitySelection (line 199) ... ok
+test crates/tenferro-cpu/src/affinity.rs - affinity::process_cpu_affinity_count (line 181) ... ok
+test crates/tenferro-cpu/src/affinity.rs - affinity::available_parallelism (line 164) ... ok
+test crates/tenferro-cpu/src/affinity_policy.rs - affinity_policy::resolve_cpu_affinity (line 260) ... ok
+test crates/tenferro-cpu/src/affinity_policy.rs - affinity_policy::CpuAffinityInputError (line 148) ... ok
+test crates/tenferro-cpu/src/affinity_policy.rs - affinity_policy::CpuAffinityInput::from_parts (line 89) ... ok
+test crates/tenferro-cpu/src/affinity.rs - affinity::process_cpu_affinity (line 198) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuBackend::buffer_pool_len (line 2241) ... ok
+test crates/tenferro-cpu/src/affinity_policy.rs - affinity_policy::CpuAffinityResolutionError (line 221) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuBackend::install (line 2599) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuBackendKind::default_compiled (line 277) ... ok
+test crates/tenferro-cpu/src/affinity.rs - affinity::CpuAffinityError (line 15) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuBackendKind (line 254) ... ok
+test crates/tenferro-cpu/src/affinity_policy.rs - affinity_policy::resolve_cpu_affinity_with_override (line 299) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuBackend::from_context (line 1713) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuBackend::with_allocation_domain (line 3562) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuBackend::new (line 1337) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuBackend::from_external_managed_domains (line 1365) ... ok
+test crates/tenferro-cpu/src/affinity_policy.rs - affinity_policy::CpuAffinityInput::from_tensor (line 60) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuBackend::buffer_pool_cache_stats (line 2301) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuBackend::for_placement (line 1836) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuBackendError::placement_error (line 432) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuBackend::allocation_domain (line 3589) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuBackend::num_threads (line 2227) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuBackend::buffer_pool_stats (line 2269) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuBackend::shared_allocation_domain (line 3602) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuExecutionInfo::backend_kind (line 518) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuBackend::for_domain (line 1862) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuExecutionInfo::placement_guarantee (line 634) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuBackend::with_threads (line 1767) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuBackend::with_kind (line 1654) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuExecutionInfo::domain_cpus (line 592) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuExecutionInfo::executor_affinity (line 676) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuBackend::buffer_pool_limit_bytes (line 2469) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuBackend::reset_buffer_pool (line 2535) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuBackend::supports_placement (line 2026) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuBackend::kind (line 2110) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuBackend::try_new (line 1683) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuBackend::set_buffer_pool_limit_bytes (line 2490) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuBackend::indexed_plan_cache_stats (line 2409) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuBackend::from_external_managed_domains_with_provider_bundle (line 1444) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuExecutionInfo (line 487) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuExecutionInfo::domain_id (line 580) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuBackend::clear_indexed_plan_cache (line 2438) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuBackendError (line 398) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuBackendSessionMarker (line 1061) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuBackend::indexed_plan_cache_limits (line 2331) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuBackend::with_threads_and_kind (line 1795) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuExecutionInfo::execution_mode (line 530) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuBackend::placement (line 1972) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuBackend::resolved_placement (line 1987) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuExecutionInfo::executor_shutdown (line 690) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuBackend::with_linalg_pool (line 2786) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuExecutionInfo::admission_mode (line 648) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuBackend::topology (line 2013) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuBackend::execution_info (line 2043) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuBackend::set_indexed_plan_cache_limits (line 2363) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuBackend::from_context_with_buffer_pool_limit (line 1736) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuExecutionInfo::requested_placement (line 544) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuExecutionInfo::provider_diagnostic (line 706) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuExecutionInfo::domain_ownership (line 662) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuBackend::with_provider_bundle (line 2141) ... ok
+test crates/tenferro-cpu/src/domain_executor.rs - domain_executor::CpuDomainExecutorCapabilities (line 91) ... ok
+test crates/tenferro-cpu/src/domain_executor.rs - domain_executor::CpuExecutorAffinity (line 51) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuExecutionInfo::resolved_placement (line 556) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuExecutionInfo::thread_budget (line 621) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuExecutionInfo::topology (line 568) ... ok
+test crates/tenferro-cpu/src/domain_executor.rs - domain_executor::CpuInnerParallelism (line 12) ... ok
+test crates/tenferro-cpu/src/domain_executor.rs - domain_executor::CpuDomainExecutor::capabilities (line 344) ... ok
+test crates/tenferro-cpu/src/context.rs - context::CpuContext::install (line 361) ... ok
+test crates/tenferro-cpu/src/domain_executor.rs - domain_executor::CpuExecutorShutdown (line 71) ... ok
+test crates/tenferro-cpu/src/domain_executor.rs - domain_executor::CpuExecutorReentrancy (line 33) ... ok
+test crates/tenferro-cpu/src/context.rs - context::CpuContext::pinned_cpus (line 347) ... ok
+test crates/tenferro-cpu/src/domain_executor.rs - domain_executor::ScopedCpuJobs::is_empty (line 258) ... ok
+test crates/tenferro-cpu/src/context.rs - context::CpuContext::from_env (line 100) ... ok
+test crates/tenferro-cpu/src/dot_runtime.rs - dot_runtime::CpuProviderBundleInstallError (line 1398) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::ExternalCpuDomainRegistryError (line 339) ... ok
+test crates/tenferro-cpu/src/capability.rs - capability::cpu_capabilities (line 16) ... ok
+test crates/tenferro-cpu/src/domain_executor.rs - domain_executor::CpuDomainExecutor (line 308) ... ok
+test crates/tenferro-cpu/src/lib.rs - FaerParallelismExt (line 221) ... ok
+test crates/tenferro-cpu/src/dot_runtime.rs - dot_runtime::GeneralContractionPolicy (line 32) ... ok
+test crates/tenferro-cpu/src/lib.rs - FaerParallelismExt::with_faer_parallelism (line 250) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuContractionAxes (line 1320) ... ok
+test crates/tenferro-cpu/src/context.rs - context::CpuContext (line 76) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuExecutionMode (line 308) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuRuntimeIdentity (line 1091) ... ok
+test crates/tenferro-cpu/src/domain_executor.rs - domain_executor::ScopedCpuJobs::len (line 242) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuBatchedMatrixLayout (line 671) ... ok
+test crates/tenferro-cpu/src/context.rs - context::CpuContext::try_from_env (line 119) ... ok
+test crates/tenferro-cpu/src/context.rs - context::CpuContext::num_threads (line 330) ... ok
+test crates/tenferro-cpu/src/context.rs - context::CpuContext::with_pinned_cpus (line 223) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuDotGeneralRequest (line 1407) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuExecutionContext<'a>::cpus (line 190) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuDotGeneralRequest<'request,'input,'output>::into_parts (line 1473) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuExecutionContext (line 139) ... ok
+test crates/tenferro-cpu/src/backend/execution_scope.rs - backend::execution_scope::CpuBackend::with_execution_scope (line 86) ... ok
+test crates/tenferro-cpu/src/context.rs - context::CpuContextError (line 23) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuExecutionContext<'a>::admission_mode (line 206) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuExecutionContext<'a>::faer_parallelism (line 366) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuExecutionContext<'a>::placement_guarantee (line 234) ... ok
+test crates/tenferro-cpu/src/domain_executor.rs - domain_executor::CpuDomainExecutorError (line 132) ... ok
+test crates/tenferro-cpu/src/domain_executor.rs - domain_executor::CpuDomainExecutor::submit (line 373) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuExecutionContext<'a>::domain_id (line 176) ... ok
+test crates/tenferro-cpu/src/context.rs - context::CpuContext::with_threads (line 165) ... ok
+test crates/tenferro-cpu/src/backend.rs - backend::CpuExecutionInfo::worker_count (line 606) ... ok
+test crates/tenferro-cpu/src/domain_executor.rs - domain_executor::RayonCpuDomainExecutor::new (line 494) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuExecutionContext<'a>::parallel_mode (line 251) ... ok
+test crates/tenferro-cpu/src/domain_executor.rs - domain_executor::RayonCpuDomainExecutor (line 466) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuGemmProvider (line 1505) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuGemmRequest (line 729) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuGemmProvider::uninit_provider (line 1573) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuExecutionContext<'a>::thread_budget (line 220) ... ok
+test crates/tenferro-cpu/src/domain_executor.rs - domain_executor::ScopedCpuJob::run (line 194) ... ok
+test crates/tenferro-cpu/src/indexed_plan_cache.rs - indexed_plan_cache::IndexedPlanCacheLimits::new (line 37) ... ok
+test crates/tenferro-cpu/src/indexed_plan_cache.rs - indexed_plan_cache::IndexedPlanCacheLimits::max_entries (line 54) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuGemmUninitRequest<'request,'input>::accumulation (line 1116) ... ok
+test crates/tenferro-cpu/src/domain_executor.rs - domain_executor::CpuDomainExecutor::install (line 419) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuGemmRequest<'request,'input,'output>::columns (line 845) ... ok
+test crates/tenferro-cpu/src/domain_executor.rs - domain_executor::ScopedCpuJob (line 175) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuGemmUninitRequest<'request,'input>::rows (line 1018) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuGemmUninitRequest<'request,'input>::rhs_layout (line 1088) ... ok
+test crates/tenferro-cpu/src/indexed_plan_cache.rs - indexed_plan_cache::IndexedPlanCacheLimits::max_retained_bytes (line 67) ... ok
+test crates/tenferro-cpu/src/placement.rs - placement::CpuPlacementGuarantee (line 62) ... ok
+test crates/tenferro-cpu/src/dot_runtime.rs - dot_runtime::CpuProviderSlot (line 1376) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuGemmUninitRequest<'request,'input>::rhs (line 1004) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuGemmRequest<'request,'input,'output>::rhs (line 812) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuGemmUninitRequest<'request,'input>::lhs (line 990) ... ok
+test crates/tenferro-cpu/src/placement.rs - placement::CpuPlacementError (line 153) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuGemmUninitRequest<'request,'input>::columns (line 1032) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuGemmRequest<'request,'input,'output>::lhs (line 798) ... ok
+test crates/tenferro-cpu/src/domain_executor.rs - domain_executor::ScopedCpuJobs::run (line 276) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuGemmUninitRequest (line 911) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuGemmUninitRequest (line 922) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuGemmUninitRequest<'request,'input>::batch_count (line 1060) ... ok
+test crates/tenferro-cpu/src/placement.rs - placement::CpuEngineConstructionError (line 14) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuGemmRequest<'request,'input,'output>::rows (line 831) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuLayoutTransformRequest (line 1245) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuLayoutTransformProvider::uninit_provider (line 1682) ... ok
+test crates/tenferro-cpu/src/placement.rs - placement::ResolvedCpuPlacement (line 82) ... ok
+test crates/tenferro-cpu/src/indexed_plan_cache.rs - indexed_plan_cache::IndexedPlanCacheLimits (line 19) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuLayoutTransformIntent (line 1228) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::BlasGemmProvider (line 1883) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuGemmUninitRequest<'request,'input>::lhs_layout (line 1074) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuProviderOutcome (line 93) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuGemmUninitRequest<'request,'input>::contracted (line 1046) ... ok
+test crates/tenferro-cpu/src/placement.rs - placement::ResolvedCpuPlacement::node_id (line 131) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuGeneralContractionProvider (line 1760) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuLayoutTransformProvider (line 1647) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuGroupedGemmRequest (line 1147) ... ok
+test crates/tenferro-cpu/src/dot_runtime.rs - dot_runtime::CpuProviderBundleBuildError (line 1361) ... ok
+test crates/tenferro-cpu/src/domain_executor.rs - domain_executor::ScopedCpuJobs (line 222) ... ok
+test crates/tenferro-cpu/src/placement.rs - placement::CpuPlacement (line 38) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuLayoutTransformRequest<'request,'input,'output>::conjugate (line 1294) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuUninitGemmProvider::gemm_into_uninit (line 1621) ... ok
+test crates/tenferro-cpu/src/placement.rs - placement::ResolvedCpuPlacement::cpus (line 112) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuGemmUninitRequest<'request,'input>::output_layout (line 1102) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuUninitLayoutTransformProvider (line 1705) ... ok
+test crates/tenferro-cpu/src/dot_runtime.rs - dot_runtime::CpuProviderBundle (line 218) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuUninitGemmProvider (line 1597) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuUninitLayoutTransformProvider::materialize_into_uninit (line 1730) ... ok
+test crates/tenferro-cpu/src/dot_runtime.rs - dot_runtime::CpuProviderBundleBuilder (line 1426) ... ok
+test crates/tenferro-cpu/src/provider_capability.rs - provider_capability::CpuProviderExecutionCapabilities (line 66) ... ok
+test crates/tenferro-cpu/src/resource_domain.rs - resource_domain::ExternalCpuDomain::id (line 338) ... ok
+test crates/tenferro-cpu/src/resource_domain.rs - resource_domain::CpuAdmissionMode (line 36) ... ok
+test crates/tenferro-cpu/src/resource_domain.rs - resource_domain::CpuDomainOwnership (line 16) ... ok
+test crates/tenferro-cpu/src/resource_domain.rs - resource_domain::ExternalCpuDomain::executor_capabilities (line 469) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuExecutionContext<'a>::with_materialized_tensor_read (line 280) ... ok
+test crates/tenferro-cpu/src/lib.rs - (line 5) ... ok
+test crates/tenferro-cpu/src/resource_domain.rs - resource_domain::ExternalCpuDomain::ownership (line 455) ... ok
+test crates/tenferro-cpu/src/resource_domain.rs - resource_domain::ExternalCpuDomain::thread_budget (line 418) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuExecutionContext<'a>::reshape_tensor (line 335) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuExecutionContext<'a>::native_thread_count (line 390) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuProviderUnsupported (line 56) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::CpuOperand (line 35) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::ParallelMode (line 113) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::FaerGemmProvider (line 1792) ... ok
+test crates/tenferro-cpu/src/provider.rs - provider::StridedLayoutTransformProvider (line 1953) ... ok
+test crates/tenferro-cpu/src/provider_capability.rs - provider_capability::CpuProviderDomainError (line 113) ... ok
+test crates/tenferro-cpu/src/provider_capability.rs - provider_capability::CpuPlacementControl (line 39) ... ok
+test crates/tenferro-cpu/src/resource_domain.rs - resource_domain::ExternalCpuDomain::cpus (line 374) ... ok
+test crates/tenferro-cpu/src/resource_domain.rs - resource_domain::ExternalCpuDomain::admission_mode (line 396) ... ok
+test crates/tenferro-cpu/src/topology.rs - topology::CpuNode::id (line 311) ... ok
+test crates/tenferro-cpu/src/provider_capability.rs - provider_capability::CpuThreadCountControl (line 11) ... ok
+test crates/tenferro-cpu/src/resource_domain.rs - resource_domain::ExternalCpuDomain::new (line 238) ... ok
+test crates/tenferro-cpu/src/topology.rs - topology::CpuNode::new (line 296) ... ok
+test crates/tenferro-cpu/src/topology.rs - topology::CpuId (line 12) ... ok
+test crates/tenferro-cpu/src/resource_domain.rs - resource_domain::ExternalCpuDomain::new_caller_managed (line 296) ... ok
+test crates/tenferro-cpu/src/resource_domain.rs - resource_domain::ExternalCpuDomain (line 203) ... ok
+test crates/tenferro-cpu/src/resource_domain.rs - resource_domain::ExternalCpuDomainError (line 67) ... ok
+test crates/tenferro-cpu/src/topology.rs - topology::CpuSet::as_usize_vec (line 215) ... ok
+test crates/tenferro-cpu/src/topology.rs - topology::CpuId::new (line 25) ... ok
+test crates/tenferro-cpu/src/topology.rs - topology::CpuId::as_usize (line 38) ... ok
+test crates/tenferro-cpu/src/topology.rs - topology::CpuSet::is_empty (line 186) ... ok
+test crates/tenferro-cpu/src/resource_domain.rs - resource_domain::ExternalCpuDomain::placement_guarantee (line 433) ... ok
+test crates/tenferro-cpu/src/topology.rs - topology::CpuSet::contains (line 230) ... ok
+test crates/tenferro-cpu/src/topology.rs - topology::CpuTopology::allowed_cpus (line 614) ... ok
+test crates/tenferro-cpu/src/topology.rs - topology::CpuTopology (line 539) ... ok
+test crates/tenferro-cpu/src/topology.rs - topology::CpuSetError (line 106) ... ok
+test crates/tenferro-cpu/src/topology.rs - topology::CpuSet (line 122) ... ok
+test crates/tenferro-cpu/src/resource_domain.rs - resource_domain::ExternalCpuDomain::placement (line 352) ... ok
+test crates/tenferro-cpu/src/topology.rs - topology::CpuTopology::has_numa_nodes (line 677) ... ok
+test crates/tenferro-cpu/src/topology.rs - topology::CpuTopology::all_allowed (line 560) ... ok
+test crates/tenferro-cpu/src/topology.rs - topology::CpuNode::cpus (line 326) ... ok
+test crates/tenferro-cpu/src/topology.rs - topology::discover_cpu_topology (line 459) ... ok
+test crates/tenferro-cpu/src/topology.rs - topology::NumaNodeId::as_usize (line 86) ... ok
+test crates/tenferro-cpu/src/topology.rs - topology::CpuSet::len (line 170) ... ok
+test crates/tenferro-cpu/src/topology.rs - topology::CpuTopology::node (line 659) ... ok
+test crates/tenferro-cpu/src/topology.rs - topology::NumaNodeId::new (line 73) ... ok
+test crates/tenferro-cpu/src/topology.rs - topology::CpuSet::new (line 145) ... ok
+test crates/tenferro-cpu/src/topology.rs - topology::NumaNodeId (line 60) ... ok
+test crates/tenferro-cpu/src/topology.rs - topology::CpuSet::as_slice (line 200) ... ok
+test crates/tenferro-cpu/src/topology.rs - topology::CpuTopology::node_ids (line 644) ... ok
+test crates/tenferro-cpu/src/topology.rs - topology::CpuNode (line 278) ... ok
+test crates/tenferro-cpu/src/topology.rs - topology::CpuTopology::nodes (line 629) ... ok
+test crates/tenferro-cpu/src/topology.rs - topology::CpuTopologyError (line 342) ... ok
+test crates/tenferro-cpu/src/runtime_adapter.rs - runtime_adapter::runtime_engine_registration_with_id (line 81) ... ok
+
+test result: ok. 219 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.83s
+

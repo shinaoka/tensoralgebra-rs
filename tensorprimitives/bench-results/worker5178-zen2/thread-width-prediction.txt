@@ -1,0 +1,332 @@
+392 case-dtype-methods; per-dtype best observed GF/s: c32=168  c64=83  f32=161  f64=71
+partition rule replayed with PACK_WEIGHT = 8 (must match plan.rs)
+
+========================================================================
+=== P = 1 threads
+========================================================================
+--- M-direction width (the 1-D partition, i.e. TENSORCONTRACT_PARTITION=m)
+fills 1 strips from M alone                       392   frac of best: median 0.53  max 1.00
+cannot fill 1 from M                             0
+
+--- adding N-direction parallelism (no accumulators needed)
+fixed by M x N together                          0
+still short of 1 -> would need K-parallelism     0
+
+--- achieved width: what the shipped rule actually asks for
+    (pm * pn < P is a modelled refusal to split N, not a shape limit;
+     these are the cases whose scaling curve must flatten)
+rule uses all 1 threads                           392   frac of best: median 0.53  max 1.00
+rule leaves threads idle (pm*pn < 1)             0
+  ... though M x N could have reached 1          0
+rule splits N at all (2-D)                       0
+  of which integer-division waste (>= 90% of P)  0
+  of which a genuine limit (< 90% of P)          0
+
+========================================================================
+=== P = 2 threads
+========================================================================
+--- M-direction width (the 1-D partition, i.e. TENSORCONTRACT_PARTITION=m)
+fills 2 strips from M alone                       392   frac of best: median 0.53  max 1.00
+cannot fill 2 from M                             0
+  M width <= 1                                   0
+
+--- adding N-direction parallelism (no accumulators needed)
+fixed by M x N together                          0
+still short of 2 -> would need K-parallelism     0
+
+--- achieved width: what the shipped rule actually asks for
+    (pm * pn < P is a modelled refusal to split N, not a shape limit;
+     these are the cases whose scaling curve must flatten)
+rule uses all 2 threads                           392   frac of best: median 0.53  max 1.00
+rule leaves threads idle (pm*pn < 2)             0
+  ... though M x N could have reached 2          0
+rule splits N at all (2-D)                       0
+  of which integer-division waste (>= 90% of P)  0
+  of which a genuine limit (< 90% of P)          0
+
+========================================================================
+=== P = 4 threads
+========================================================================
+--- M-direction width (the 1-D partition, i.e. TENSORCONTRACT_PARTITION=m)
+fills 4 strips from M alone                       392   frac of best: median 0.53  max 1.00
+cannot fill 4 from M                             0
+  M width <= 1                                   0
+  M width <= 2                                   0
+
+--- adding N-direction parallelism (no accumulators needed)
+fixed by M x N together                          0
+still short of 4 -> would need K-parallelism     0
+
+--- achieved width: what the shipped rule actually asks for
+    (pm * pn < P is a modelled refusal to split N, not a shape limit;
+     these are the cases whose scaling curve must flatten)
+rule uses all 4 threads                           392   frac of best: median 0.53  max 1.00
+rule leaves threads idle (pm*pn < 4)             0
+  ... though M x N could have reached 4          0
+rule splits N at all (2-D)                       0
+  of which integer-division waste (>= 90% of P)  0
+  of which a genuine limit (< 90% of P)          0
+
+========================================================================
+=== P = 8 threads
+========================================================================
+--- M-direction width (the 1-D partition, i.e. TENSORCONTRACT_PARTITION=m)
+fills 8 strips from M alone                       391   frac of best: median 0.53  max 1.00
+cannot fill 8 from M                                1   frac of best: median 0.35  max 0.35
+  M width <= 1                                   0
+  M width <= 2                                   0
+  M width <= 4                                   0
+
+--- adding N-direction parallelism (no accumulators needed)
+fixed by M x N together                             1   frac of best: median 0.35  max 0.35
+still short of 8 -> would need K-parallelism     0
+
+--- achieved width: what the shipped rule actually asks for
+    (pm * pn < P is a modelled refusal to split N, not a shape limit;
+     these are the cases whose scaling curve must flatten)
+rule uses all 8 threads                           392   frac of best: median 0.53  max 1.00
+rule leaves threads idle (pm*pn < 8)             0
+  ... though M x N could have reached 8          0
+rule splits N at all (2-D)                          1   frac of best: median 0.35  max 0.35
+  of which integer-division waste (>= 90% of P)  0
+  of which a genuine limit (< 90% of P)          0
+
+========================================================================
+=== P = 16 threads
+========================================================================
+--- M-direction width (the 1-D partition, i.e. TENSORCONTRACT_PARTITION=m)
+fills 16 strips from M alone                      384   frac of best: median 0.54  max 1.00
+cannot fill 16 from M                               8   frac of best: median 0.47  max 0.61
+  M width <= 1                                   0
+  M width <= 2                                   0
+  M width <= 4                                   0
+  M width <= 8                                      1   frac of best: median 0.35  max 0.35
+
+--- adding N-direction parallelism (no accumulators needed)
+fixed by M x N together                             8   frac of best: median 0.47  max 0.61
+still short of 16 -> would need K-parallelism    0
+
+--- achieved width: what the shipped rule actually asks for
+    (pm * pn < P is a modelled refusal to split N, not a shape limit;
+     these are the cases whose scaling curve must flatten)
+rule uses all 16 threads                          390   frac of best: median 0.54  max 1.00
+rule leaves threads idle (pm*pn < 16)               2   frac of best: median 0.40  max 0.40
+  ... though M x N could have reached 16            2   frac of best: median 0.40  max 0.40
+rule splits N at all (2-D)                          6   frac of best: median 0.48  max 0.61
+  of which integer-division waste (>= 90% of P)  0
+  of which a genuine limit (< 90% of P)             2   frac of best: median 0.40  max 0.40
+    of the idle-leaving cases, achieved fraction of P: median 0.88  min 0.88
+
+--- the 2 genuinely partition-limited case-dtype-methods at P = 16
+    (these are the scaling curves that must flatten; expect them to)
+case                     dtype meth     panels  blocks  MR  NR     rule  width   MxN    GF/s  frac
+ij-kil-lkj               f32   real         14      34  16   6     14x1     14    16    64.0  0.40
+ij-ikl-ljk               f32   real         14      34  16   6     14x1     14    16    62.0  0.38
+
+--- all 2 case-dtype-methods that cannot reach 16 threads under the rule
+case                     dtype meth     panels  blocks  MR  NR     rule  width   MxN    GF/s  frac
+ij-kil-lkj               f32   real         14      34  16   6     14x1     14    16    64.0  0.40
+ij-ikl-ljk               f32   real         14      34  16   6     14x1     14    16    62.0  0.38
+
+========================================================================
+=== P = 32 threads
+========================================================================
+--- M-direction width (the 1-D partition, i.e. TENSORCONTRACT_PARTITION=m)
+fills 32 strips from M alone                      369   frac of best: median 0.53  max 1.00
+cannot fill 32 from M                              23   frac of best: median 0.56  max 0.86
+  M width <= 1                                   0
+  M width <= 2                                   0
+  M width <= 4                                   0
+  M width <= 8                                      1   frac of best: median 0.35  max 0.35
+  M width <= 16                                     8   frac of best: median 0.47  max 0.61
+
+--- adding N-direction parallelism (no accumulators needed)
+fixed by M x N together                            23   frac of best: median 0.56  max 0.86
+still short of 32 -> would need K-parallelism    0
+
+--- achieved width: what the shipped rule actually asks for
+    (pm * pn < P is a modelled refusal to split N, not a shape limit;
+     these are the cases whose scaling curve must flatten)
+rule uses all 32 threads                          382   frac of best: median 0.53  max 1.00
+rule leaves threads idle (pm*pn < 32)              10   frac of best: median 0.57  max 0.62
+  ... though M x N could have reached 32           10   frac of best: median 0.57  max 0.62
+rule splits N at all (2-D)                         15   frac of best: median 0.56  max 0.86
+  of which integer-division waste (>= 90% of P)  0
+  of which a genuine limit (< 90% of P)            10   frac of best: median 0.57  max 0.62
+    of the idle-leaving cases, achieved fraction of P: median 0.84  min 0.84
+
+--- the 10 genuinely partition-limited case-dtype-methods at P = 32
+    (these are the scaling curves that must flatten; expect them to)
+case                     dtype meth     panels  blocks  MR  NR     rule  width   MxN    GF/s  frac
+ij-kil-lkj               c32   planar       27      41   8   5     27x1     27    32   105.0  0.62
+ij-ikl-ljk               c32   planar       27      41   8   5     27x1     27    32    98.0  0.58
+ij-kil-lkj               c32   3m           27      51   8   4     27x1     27    32    95.9  0.57
+ij-ikl-ljk               c32   1m           27      34   8   6     27x1     27    32    95.7  0.57
+ij-kil-lkj               c32   1m           27      34   8   6     27x1     27    32    95.5  0.57
+ij-kil-lkj               f64   real         27      34   8   6     27x1     27    32    38.2  0.54
+ij-ikl-ljk               c32   3m           27      51   8   4     27x1     27    32    90.9  0.54
+ij-ikl-ljk               f64   real         27      34   8   6     27x1     27    32    35.3  0.50
+ij-kil-lkj               f32   real         14      34  16   6     14x2     28    32    64.0  0.40
+ij-ikl-ljk               f32   real         14      34  16   6     14x2     28    32    62.0  0.38
+
+--- all 10 case-dtype-methods that cannot reach 32 threads under the rule
+case                     dtype meth     panels  blocks  MR  NR     rule  width   MxN    GF/s  frac
+ij-kil-lkj               c32   planar       27      41   8   5     27x1     27    32   105.0  0.62
+ij-ikl-ljk               c32   planar       27      41   8   5     27x1     27    32    98.0  0.58
+ij-kil-lkj               c32   3m           27      51   8   4     27x1     27    32    95.9  0.57
+ij-ikl-ljk               c32   1m           27      34   8   6     27x1     27    32    95.7  0.57
+ij-kil-lkj               c32   1m           27      34   8   6     27x1     27    32    95.5  0.57
+ij-kil-lkj               f64   real         27      34   8   6     27x1     27    32    38.2  0.54
+ij-ikl-ljk               c32   3m           27      51   8   4     27x1     27    32    90.9  0.54
+ij-ikl-ljk               f64   real         27      34   8   6     27x1     27    32    35.3  0.50
+ij-kil-lkj               f32   real         14      34  16   6     14x2     28    32    64.0  0.40
+ij-ikl-ljk               f32   real         14      34  16   6     14x2     28    32    62.0  0.38
+
+========================================================================
+=== P = 64 threads
+========================================================================
+--- M-direction width (the 1-D partition, i.e. TENSORCONTRACT_PARTITION=m)
+fills 64 strips from M alone                      360   frac of best: median 0.52  max 1.00
+cannot fill 64 from M                              32   frac of best: median 0.57  max 0.86
+  M width <= 1                                   0
+  M width <= 2                                   0
+  M width <= 4                                   0
+  M width <= 8                                      1   frac of best: median 0.35  max 0.35
+  M width <= 16                                     8   frac of best: median 0.47  max 0.61
+
+--- adding N-direction parallelism (no accumulators needed)
+fixed by M x N together                            32   frac of best: median 0.57  max 0.86
+still short of 64 -> would need K-parallelism    0
+
+--- achieved width: what the shipped rule actually asks for
+    (pm * pn < P is a modelled refusal to split N, not a shape limit;
+     these are the cases whose scaling curve must flatten)
+rule uses all 64 threads                          376   frac of best: median 0.53  max 1.00
+rule leaves threads idle (pm*pn < 64)              16   frac of best: median 0.57  max 0.68
+  ... though M x N could have reached 64           16   frac of best: median 0.57  max 0.68
+rule splits N at all (2-D)                         26   frac of best: median 0.57  max 0.86
+  of which integer-division waste (>= 90% of P)  0
+  of which a genuine limit (< 90% of P)            16   frac of best: median 0.57  max 0.68
+    of the idle-leaving cases, achieved fraction of P: median 0.84  min 0.84
+
+--- the 16 genuinely partition-limited case-dtype-methods at P = 64
+    (these are the scaling curves that must flatten; expect them to)
+case                     dtype meth     panels  blocks  MR  NR     rule  width   MxN    GF/s  frac
+ij-kil-lkj               c64   planar       54      41   4   5     54x1     54    64    57.1  0.68
+ij-kil-lkj               c64   1m           54      34   4   6     54x1     54    64    53.4  0.64
+ij-kil-lkj               c32   planar       27      41   8   5     27x2     54    64   105.0  0.62
+ij-kil-lkj               c64   3m           54      51   4   4     54x1     54    64    49.8  0.60
+ij-ikl-ljk               c64   planar       54      41   4   5     54x1     54    64    49.3  0.59
+ij-ikl-ljk               c32   planar       27      41   8   5     27x2     54    64    98.0  0.58
+ij-kil-lkj               c32   3m           27      51   8   4     27x2     54    64    95.9  0.57
+ij-ikl-ljk               c32   1m           27      34   8   6     27x2     54    64    95.7  0.57
+ij-kil-lkj               c32   1m           27      34   8   6     27x2     54    64    95.5  0.57
+ij-ikl-ljk               c64   1m           54      34   4   6     54x1     54    64    45.9  0.55
+ij-kil-lkj               f64   real         27      34   8   6     27x2     54    64    38.2  0.54
+ij-ikl-ljk               c32   3m           27      51   8   4     27x2     54    64    90.9  0.54
+ij-ikl-ljk               c64   3m           54      51   4   4     54x1     54    64    43.9  0.53
+ij-ikl-ljk               f64   real         27      34   8   6     27x2     54    64    35.3  0.50
+ij-kil-lkj               f32   real         14      34  16   6     14x4     56    64    64.0  0.40
+ij-ikl-ljk               f32   real         14      34  16   6     14x4     56    64    62.0  0.38
+
+--- all 16 case-dtype-methods that cannot reach 64 threads under the rule
+case                     dtype meth     panels  blocks  MR  NR     rule  width   MxN    GF/s  frac
+ij-kil-lkj               c64   planar       54      41   4   5     54x1     54    64    57.1  0.68
+ij-kil-lkj               c64   1m           54      34   4   6     54x1     54    64    53.4  0.64
+ij-kil-lkj               c32   planar       27      41   8   5     27x2     54    64   105.0  0.62
+ij-kil-lkj               c64   3m           54      51   4   4     54x1     54    64    49.8  0.60
+ij-ikl-ljk               c64   planar       54      41   4   5     54x1     54    64    49.3  0.59
+ij-ikl-ljk               c32   planar       27      41   8   5     27x2     54    64    98.0  0.58
+ij-kil-lkj               c32   3m           27      51   8   4     27x2     54    64    95.9  0.57
+ij-ikl-ljk               c32   1m           27      34   8   6     27x2     54    64    95.7  0.57
+ij-kil-lkj               c32   1m           27      34   8   6     27x2     54    64    95.5  0.57
+ij-ikl-ljk               c64   1m           54      34   4   6     54x1     54    64    45.9  0.55
+ij-kil-lkj               f64   real         27      34   8   6     27x2     54    64    38.2  0.54
+ij-ikl-ljk               c32   3m           27      51   8   4     27x2     54    64    90.9  0.54
+ij-ikl-ljk               c64   3m           54      51   4   4     54x1     54    64    43.9  0.53
+ij-ikl-ljk               f64   real         27      34   8   6     27x2     54    64    35.3  0.50
+ij-kil-lkj               f32   real         14      34  16   6     14x4     56    64    64.0  0.40
+ij-ikl-ljk               f32   real         14      34  16   6     14x4     56    64    62.0  0.38
+
+========================================================================
+=== P = 128 threads
+========================================================================
+--- M-direction width (the 1-D partition, i.e. TENSORCONTRACT_PARTITION=m)
+fills 128 strips from M alone                     360   frac of best: median 0.52  max 1.00
+cannot fill 128 from M                             32   frac of best: median 0.57  max 0.86
+  M width <= 1                                   0
+  M width <= 2                                   0
+  M width <= 4                                   0
+  M width <= 8                                      1   frac of best: median 0.35  max 0.35
+  M width <= 16                                     8   frac of best: median 0.47  max 0.61
+
+--- adding N-direction parallelism (no accumulators needed)
+fixed by M x N together                            32   frac of best: median 0.57  max 0.86
+still short of 128 -> would need K-parallelism   0
+
+--- achieved width: what the shipped rule actually asks for
+    (pm * pn < P is a modelled refusal to split N, not a shape limit;
+     these are the cases whose scaling curve must flatten)
+rule uses all 128 threads                         372   frac of best: median 0.52  max 1.00
+rule leaves threads idle (pm*pn < 128)             20   frac of best: median 0.58  max 0.86
+  ... though M x N could have reached 128          20   frac of best: median 0.58  max 0.86
+rule splits N at all (2-D)                         32   frac of best: median 0.57  max 0.86
+  of which integer-division waste (>= 90% of P)     6   frac of best: median 0.79  max 0.86
+  of which a genuine limit (< 90% of P)            14   frac of best: median 0.57  max 0.68
+    of the idle-leaving cases, achieved fraction of P: median 0.84  min 0.84
+
+--- the 14 genuinely partition-limited case-dtype-methods at P = 128
+    (these are the scaling curves that must flatten; expect them to)
+case                     dtype meth     panels  blocks  MR  NR     rule  width   MxN    GF/s  frac
+ij-kil-lkj               c64   planar       54      41   4   5     54x2    108   128    57.1  0.68
+ij-kil-lkj               c64   1m           54      34   4   6     54x2    108   128    53.4  0.64
+ij-kil-lkj               c32   planar       27      41   8   5     27x4    108   128   105.0  0.62
+ij-kil-lkj               c64   3m           54      51   4   4     54x2    108   128    49.8  0.60
+ij-ikl-ljk               c64   planar       54      41   4   5     54x2    108   128    49.3  0.59
+ij-ikl-ljk               c32   planar       27      41   8   5     27x4    108   128    98.0  0.58
+ij-kil-lkj               c32   3m           27      51   8   4     27x4    108   128    95.9  0.57
+ij-ikl-ljk               c32   1m           27      34   8   6     27x4    108   128    95.7  0.57
+ij-kil-lkj               c32   1m           27      34   8   6     27x4    108   128    95.5  0.57
+ij-ikl-ljk               c64   1m           54      34   4   6     54x2    108   128    45.9  0.55
+ij-kil-lkj               f64   real         27      34   8   6     27x4    108   128    38.2  0.54
+ij-ikl-ljk               c32   3m           27      51   8   4     27x4    108   128    90.9  0.54
+ij-ikl-ljk               c64   3m           54      51   4   4     54x2    108   128    43.9  0.53
+ij-ikl-ljk               f64   real         27      34   8   6     27x4    108   128    35.3  0.50
+
+--- all 20 case-dtype-methods that cannot reach 128 threads under the rule
+case                     dtype meth     panels  blocks  MR  NR     rule  width   MxN    GF/s  frac
+ijk-il-jlk               c32   planar       27    8813   8   5     9x14    126   128   145.3  0.86
+ijk-il-jlk               c32   1m           27    7344   8   6     9x14    126   128   143.9  0.85
+ijk-il-jlk               c32   3m           27   11016   8   4     9x14    126   128   133.1  0.79
+ij-kil-lkj               c64   planar       54      41   4   5     54x2    108   128    57.1  0.68
+ijk-il-jlk               f64   real         27    7344   8   6     9x14    126   128    46.4  0.66
+ij-kil-lkj               c64   1m           54      34   4   6     54x2    108   128    53.4  0.64
+ij-kil-lkj               c32   planar       27      41   8   5     27x4    108   128   105.0  0.62
+ij-kil-lkj               c64   3m           54      51   4   4     54x2    108   128    49.8  0.60
+ij-ikl-ljk               c64   planar       54      41   4   5     54x2    108   128    49.3  0.59
+ij-ikl-ljk               c32   planar       27      41   8   5     27x4    108   128    98.0  0.58
+ij-kil-lkj               c32   3m           27      51   8   4     27x4    108   128    95.9  0.57
+ij-ikl-ljk               c32   1m           27      34   8   6     27x4    108   128    95.7  0.57
+ij-kil-lkj               c32   1m           27      34   8   6     27x4    108   128    95.5  0.57
+ij-ikl-ljk               c64   1m           54      34   4   6     54x2    108   128    45.9  0.55
+ij-kil-lkj               f64   real         27      34   8   6     27x4    108   128    38.2  0.54
+ij-ikl-ljk               c32   3m           27      51   8   4     27x4    108   128    90.9  0.54
+ij-ikl-ljk               c64   3m           54      51   4   4     54x2    108   128    43.9  0.53
+ij-ikl-ljk               f64   real         27      34   8   6     27x4    108   128    35.3  0.50
+ij-kil-lkj               f32   real         14      34  16   6     14x9    126   128    64.0  0.40
+ij-ikl-ljk               f32   real         14      34  16   6     14x9    126   128    62.0  0.38
+
+=== summary: how the rule's reach changes with P
+    P  no fill from M  rule 2-D   idle  int-div  genuine  need K
+    1               0         0      0        0        0       0
+    2               0         0      0        0        0       0
+    4               0         0      0        0        0       0
+    8               1         1      0        0        0       0
+   16               8         6      2        0        2       0
+   32              23        15     10        0       10       0
+   64              32        26     16        0       16       0
+  128              32        32     20        6       14       0
+
+`need K` is the column that would justify per-thread accumulators and a
+reduction (A21). It is 0 at every P above, which extends A21's refutation
+from the 8 threads it was argued at to a whole 128-core node.

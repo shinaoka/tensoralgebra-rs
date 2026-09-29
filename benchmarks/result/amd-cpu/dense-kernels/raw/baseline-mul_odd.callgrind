@@ -1,0 +1,235 @@
+# callgrind format
+version: 1
+creator: callgrind-3.22.0
+pid: 21059
+cmd:  /tmp/dense-kernels-baseline
+part: 1
+
+
+desc: I1 cache: 
+desc: D1 cache: 
+desc: LL cache: 
+
+desc: Timerange: Basic block 0 - 17051216
+desc: Trigger: Program termination
+
+positions: line
+events: Ir
+summary: 26007417
+
+
+ob=(1) /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2
+fl=(1) ???
+fn=(0) 0x000000000001f540
+cob=(6) /tmp/dense-kernels-baseline
+cfi=(162) ???
+cfn=(534) (below main)
+calls=1 0 
+0 26007417
+
+ob=(6)
+fl=(162)
+fn=(566) main
+cfn=(568) std::rt::lang_start_internal
+calls=1 0 
+0 26007417
+
+fn=(840) dense_kernels::run::{closure#3}
+0 72
+cfn=(842) strided_basic::map_view::mul_into_uninit::<f64, f64, f64, strided_traits::element_op::Identity, strided_traits::element_op::Identity>
+calls=4 0 
+0 26007318
+0 24
+
+fn=(792) dense_kernels::main
+cfn=(880) profile_dense
+calls=3 0 
+0 26007417
+
+fn=(534)
+cob=(2) /usr/lib/x86_64-linux-gnu/libc.so.6
+cfi=(163) ./csu/../csu/libc-start.c
+cfn=(536) __libc_start_main@@GLIBC_2.34
+calls=1 242 
+0 26007417
+
+fn=(848) strided_basic::layout_check::has_disjoint_stride_spans
+0 846
+
+fn=(850) strided_basic::map_view::reachable_byte_range
+0 1176
+
+fn=(854) strided_basic::kernel::total_len
+0 126
+
+fn=(790) std::sys::backtrace::__rust_begin_short_backtrace::<fn(), ()>
+cfn=(792)
+calls=1 0 
+0 26007417
+
+fn=(844) strided_basic::kernel::ensure_same_shape
+0 108
+cob=(2)
+cfi=(229) ./string/../sysdeps/x86_64/multiarch/memcmp-avx2-movbe.S
+cfn=(824) __memcmp_avx2_movbe
+calls=8 73 
+0 132
+0 78
+
+fn=(858) strided_basic::kernel::contiguous_layout
+0 513
+
+fn=(868) <pulp::x86::v3::V3>::vectorize::imp_fastcall::<<pulp::x86::v3::V3 as pulp::Simd>::vectorize::Impl<strided_basic::simd::simd_mul_f64_into::Mul>>
+0 26003139
+
+fn=(788) std::rt::lang_start::<()>::{closure#0}
+cfn=(790)
+calls=1 0 
+0 26007417
+
+fn=(852) strided_basic::map_view::mul_identity_into_raw::<strided_basic::map_view::UninitializedOutput, f64, f64, f64>
+0 63
+cfn=(854)
+calls=4 0 
+0 63
+0 9
+cfn=(856) strided_basic::execution_policy::rayon_threads
+calls=4 0 
+0 42
+0 21
+cfn=(858)
+calls=4 0 
+0 171
+0 24
+cfn=(858)
+calls=4 0 
+0 171
+0 21
+cfn=(858)
+calls=4 0 
+0 171
+0 15
+cfn=(854)
+calls=4 0 
+0 63
+0 21
+cfn=(860) strided_basic::simd::simd_mul_f64_into
+calls=4 0 
+0 26003226
+0 30
+
+fn=(856)
+0 42
+
+fn=(568)
+cfn=(788)
+calls=1 0 
+0 26007417
+
+fn=(842)
+0 69
+cfn=(844)
+calls=4 0 
+0 150
+0 48
+cfn=(844)
+calls=4 0 
+0 168
+0 39
+cfn=(846) strided_basic::layout_check::is_injective_layout
+calls=4 0 
+0 1164
+0 36
+cfn=(850)
+calls=4 0 
+0 294
+0 81
+cfn=(850)
+calls=4 0 
+0 294
+0 114
+cfn=(850)
+calls=4 0 
+0 294
+0 66
+cfn=(850)
+calls=4 0 
+0 294
+0 87
+cfn=(852)
+calls=4 0 
+0 26004111
+0 9
+
+fn=(860)
+0 87
+cfn=(868)
+calls=4 0 
+0 26003139
+
+fn=(846)
+0 306
+cfn=(848)
+calls=4 0 
+0 846
+0 12
+
+fn=(880)
+0 3
+cfn=(840)
+calls=3 0 
+0 26007414
+
+ob=(2)
+fl=(163)
+fn=(536)
+cfi=(165) ./csu/../sysdeps/nptl/libc_start_call_main.h
+cfn=(558) (below main)
+calls=1 29 
+360 26007417
+
+fl=(229)
+fn=(824)
+73 6
++7 6
++1 6
+401 6
++1 6
++5 6
++1 6
++1 6
++1 6
++1 6
++3 3
++1 3
++1 3
++1 3
++3 3
++1 3
++1 3
++1 6
++6 3
++1 3
++82 3
++1 3
++1 3
++1 3
++1 3
++4 3
++1 3
++1 3
++1 3
++1 3
++1 3
++2 3
++2 3
+
+fl=(165)
+fn=(558)
+cob=(6)
+cfi=(162)
+cfn=(566)
+calls=1 0 
+58 26007417
+
+totals: 26007417

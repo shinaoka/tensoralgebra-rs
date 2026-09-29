@@ -1,0 +1,19 @@
+# arm B-f32c32 on cpu4, L3 domain 0 = cpus 0-7,16-23, numa 0
+# window 413.6s; env TENSORCONTRACT_DEEPEN=on
+cpu0 busy 7.0%
+cpu1 busy 17.5%
+cpu2 busy 21.0%
+cpu3 busy 23.8%
+cpu4 busy 100.0% <- measurement thread
+cpu5 busy 18.1%
+cpu6 busy 34.5%
+cpu7 busy 22.1%
+cpu16 busy 34.9%
+cpu17 busy 16.1%
+cpu18 busy 12.1%
+cpu19 busy 10.5%
+cpu20 busy 3.3%
+cpu21 busy 5.4%
+cpu22 busy 5.9%
+cpu23 busy 7.3%
+# domain co-tenancy: cpu0=7.0%, cpu1=17.5%, cpu2=21.0%, cpu3=23.8%, cpu5=18.1%, cpu6=34.5%, cpu7=22.1%, cpu16=34.9%, cpu17=16.1%, cpu18=12.1%, cpu19=10.5%, cpu21=5.4%, cpu22=5.9%, cpu23=7.3%

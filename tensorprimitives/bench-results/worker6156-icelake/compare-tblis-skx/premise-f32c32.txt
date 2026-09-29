@@ -1,0 +1,113 @@
+host        : worker6156
+target      : x86_64 / linux
+cpu features: avx2 fma avx512f avx512dq 
+caches      : L1=48KiB/12-way/1sh L2=1280KiB/20-way/1sh L3=49152KiB/12-way/32sh (via sysfs), blocking=legacy
+baselines   : tblis=true blas=true
+tblis       : abi 2.x, 1 thread(s)
+
+premise check: 12 cases at 200 MiB nominal tensor size, 3 reps, stress=none
+
+  abjcd-dkbac-jk : m=2359296 n=48 k=32 macs=3.624e9
+  ajbc-ckba-jk : m=373248 n=72 k=72 macs=1.935e9
+  abcijk-ikmb-mjac : m=6144 n=6144 k=24 macs=9.060e8
+  abrs-qb-aqrs : m=72 n=373248 k=72 macs=1.935e9
+  ij-ikl-ljk : m=312 n=296 k=92352 macs=8.529e9
+  ijkl-imjn-nlmk : m=5184 n=5184 k=5184 macs=1.393e11
+  ijkl-imkn-jnlm : m=5184 n=5184 k=5184 macs=1.393e11
+  ijkl-imnj-nlkm : m=5184 n=5184 k=5184 macs=1.393e11
+  abcijk-ikma-mjbc : m=9216 n=4096 k=24 macs=9.060e8
+  abcijk-eiab-jkec : m=6144 n=6144 k=24 macs=9.060e8
+  abcijk-ejac-ikeb : m=6144 n=6144 k=24 macs=9.060e8
+  abc-bk-akc : m=312 n=92352 k=296 macs=8.529e9
+
+=== tblis: complex vs real efficiency against the GEMM ceiling ===
+             case | regA | f32 GF/s | gemm f32 |   eff | c32 GF/s | gemm c32 |   eff | eff ratio 
+------------------+------+----------+----------+-------+----------+----------+-------+-----------
+   abjcd-dkbac-jk | 1.00 |     12.5 |     44.9 | 0.278 |     33.6 |     64.0 | 0.525 |     1.885 
+     ajbc-ckba-jk | 0.67 |     39.9 |    100.5 | 0.398 |     76.8 |    125.6 | 0.612 |     1.539 
+ abcijk-ikmb-mjac | 0.00 |     18.3 |     60.2 | 0.304 |     36.1 |     87.4 | 0.413 |     1.358 
+     abrs-qb-aqrs | 0.67 |     48.3 |     89.3 | 0.540 |     86.5 |    117.7 | 0.735 |     1.360 
+       ij-ikl-ljk | 1.00 |     87.3 |    135.7 | 0.643 |    132.8 |    152.0 | 0.873 |     1.359 
+   ijkl-imjn-nlmk | 0.67 |    160.0 |    187.7 | 0.852 |    168.2 |    191.8 | 0.877 |     1.029 
+   ijkl-imkn-jnlm | 0.67 |    153.9 |    187.7 | 0.820 |    165.1 |    191.8 | 0.861 |     1.050 
+   ijkl-imnj-nlkm | 0.67 |    160.0 |    187.7 | 0.853 |    168.3 |    191.8 | 0.878 |     1.029 
+ abcijk-ikma-mjbc | 0.00 |     43.0 |     60.9 | 0.707 |     89.3 |     88.3 | 1.012 |     1.432 
+ abcijk-eiab-jkec | 1.00 |     37.5 |     60.0 | 0.625 |     55.4 |     87.3 | 0.634 |     1.015 
+ abcijk-ejac-ikeb | 0.00 |     18.4 |     60.0 | 0.306 |     36.1 |     87.2 | 0.414 |     1.351 
+       abc-bk-akc | 0.92 |    110.0 |    139.5 | 0.788 |    141.2 |    148.2 | 0.953 |     1.209 
+             MEAN |      |          |          |       |          |          |       |     1.301 
+
+=== ttgt: complex vs real efficiency against the GEMM ceiling ===
+             case | regA | f32 GF/s | gemm f32 |   eff | c32 GF/s | gemm c32 |   eff | eff ratio 
+------------------+------+----------+----------+-------+----------+----------+-------+-----------
+   abjcd-dkbac-jk | 1.00 |      6.6 |     44.9 | 0.148 |     17.6 |     64.0 | 0.274 |     1.856 
+     ajbc-ckba-jk | 0.67 |     22.9 |    100.5 | 0.228 |     43.1 |    125.6 | 0.344 |     1.509 
+ abcijk-ikmb-mjac | 0.00 |      9.4 |     60.2 | 0.156 |     20.4 |     87.4 | 0.234 |     1.502 
+     abrs-qb-aqrs | 0.67 |     28.8 |     89.3 | 0.323 |     55.2 |    117.7 | 0.469 |     1.455 
+       ij-ikl-ljk | 1.00 |     89.5 |    135.7 | 0.660 |    124.0 |    152.0 | 0.816 |     1.237 
+   ijkl-imjn-nlmk | 0.67 |    175.3 |    187.7 | 0.934 |    185.8 |    191.8 | 0.968 |     1.037 
+   ijkl-imkn-jnlm | 0.67 |    175.0 |    187.7 | 0.932 |    186.0 |    191.8 | 0.970 |     1.040 
+   ijkl-imnj-nlkm | 0.67 |    175.6 |    187.7 | 0.936 |    186.2 |    191.8 | 0.971 |     1.038 
+ abcijk-ikma-mjbc | 0.00 |     14.7 |     60.9 | 0.242 |     30.2 |     88.3 | 0.342 |     1.414 
+ abcijk-eiab-jkec | 1.00 |     18.9 |     60.0 | 0.315 |     35.1 |     87.3 | 0.402 |     1.278 
+ abcijk-ejac-ikeb | 0.00 |     15.2 |     60.0 | 0.253 |     31.0 |     87.2 | 0.356 |     1.409 
+       abc-bk-akc | 0.92 |     68.2 |    139.5 | 0.489 |    105.1 |    148.2 | 0.709 |     1.452 
+             MEAN |      |          |          |       |          |          |       |     1.352 
+
+=== planar: complex vs real efficiency against the GEMM ceiling ===
+             case | regA | f32 GF/s | gemm f32 |   eff | c32 GF/s | gemm c32 |   eff | eff ratio 
+------------------+------+----------+----------+-------+----------+----------+-------+-----------
+   abjcd-dkbac-jk | 1.00 |     11.5 |     44.9 | 0.257 |     29.5 |     64.0 | 0.461 |     1.794 
+     ajbc-ckba-jk | 0.67 |     27.7 |    100.5 | 0.276 |     66.3 |    125.6 | 0.528 |     1.916 
+ abcijk-ikmb-mjac | 0.00 |     48.4 |     60.2 | 0.804 |     80.0 |     87.4 | 0.915 |     1.138 
+     abrs-qb-aqrs | 0.67 |     92.2 |     89.3 | 1.032 |    125.6 |    117.7 | 1.067 |     1.034 
+       ij-ikl-ljk | 1.00 |     87.9 |    135.7 | 0.648 |    130.9 |    152.0 | 0.861 |     1.329 
+   ijkl-imjn-nlmk | 0.67 |    167.7 |    187.7 | 0.894 |    176.9 |    191.8 | 0.922 |     1.032 
+   ijkl-imkn-jnlm | 0.67 |    170.1 |    187.7 | 0.906 |    178.7 |    191.8 | 0.931 |     1.028 
+   ijkl-imnj-nlkm | 0.67 |    167.7 |    187.7 | 0.893 |    176.9 |    191.8 | 0.922 |     1.032 
+ abcijk-ikma-mjbc | 0.00 |     65.0 |     60.9 | 1.067 |    103.0 |     88.3 | 1.166 |     1.093 
+ abcijk-eiab-jkec | 1.00 |     74.5 |     60.0 | 1.241 |    120.2 |     87.3 | 1.376 |     1.109 
+ abcijk-ejac-ikeb | 0.00 |     48.5 |     60.0 | 0.808 |     79.8 |     87.2 | 0.915 |     1.132 
+       abc-bk-akc | 0.92 |    156.9 |    139.5 | 1.125 |    184.6 |    148.2 | 1.246 |     1.108 
+             MEAN |      |          |          |       |          |          |       |     1.229 
+
+=== 1m: complex vs real efficiency against the GEMM ceiling ===
+             case | regA | f32 GF/s | gemm f32 |   eff | c32 GF/s | gemm c32 |   eff | eff ratio 
+------------------+------+----------+----------+-------+----------+----------+-------+-----------
+   abjcd-dkbac-jk | 1.00 |     11.5 |     44.9 | 0.257 |     22.8 |     64.0 | 0.356 |     1.384 
+     ajbc-ckba-jk | 0.67 |     27.7 |    100.5 | 0.276 |     58.2 |    125.6 | 0.464 |     1.683 
+ abcijk-ikmb-mjac | 0.00 |     48.4 |     60.2 | 0.804 |    110.6 |     87.4 | 1.266 |     1.574 
+     abrs-qb-aqrs | 0.67 |     92.2 |     89.3 | 1.032 |    117.6 |    117.7 | 0.999 |     0.969 
+       ij-ikl-ljk | 1.00 |     87.9 |    135.7 | 0.648 |    125.0 |    152.0 | 0.822 |     1.269 
+   ijkl-imjn-nlmk | 0.67 |    167.7 |    187.7 | 0.894 |    172.2 |    191.8 | 0.898 |     1.005 
+   ijkl-imkn-jnlm | 0.67 |    170.1 |    187.7 | 0.906 |    176.9 |    191.8 | 0.922 |     1.017 
+   ijkl-imnj-nlkm | 0.67 |    167.7 |    187.7 | 0.893 |    172.3 |    191.8 | 0.898 |     1.005 
+ abcijk-ikma-mjbc | 0.00 |     65.0 |     60.9 | 1.067 |    124.3 |     88.3 | 1.408 |     1.319 
+ abcijk-eiab-jkec | 1.00 |     74.5 |     60.0 | 1.241 |    104.2 |     87.3 | 1.194 |     0.962 
+ abcijk-ejac-ikeb | 0.00 |     48.5 |     60.0 | 0.808 |    109.9 |     87.2 | 1.261 |     1.560 
+       abc-bk-akc | 0.92 |    156.9 |    139.5 | 1.125 |    172.3 |    148.2 | 1.163 |     1.034 
+             MEAN |      |          |          |       |          |          |       |     1.232 
+
+=== 3m: complex vs real efficiency against the GEMM ceiling ===
+             case | regA | f32 GF/s | gemm f32 |   eff | c32 GF/s | gemm c32 |   eff | eff ratio 
+------------------+------+----------+----------+-------+----------+----------+-------+-----------
+   abjcd-dkbac-jk | 1.00 |     11.5 |     44.9 | 0.257 |     24.2 |     64.0 | 0.378 |     1.471 
+     ajbc-ckba-jk | 0.67 |     27.7 |    100.5 | 0.276 |     52.4 |    125.6 | 0.418 |     1.516 
+ abcijk-ikmb-mjac | 0.00 |     48.4 |     60.2 | 0.804 |     81.0 |     87.4 | 0.927 |     1.152 
+     abrs-qb-aqrs | 0.67 |     92.2 |     89.3 | 1.032 |     82.5 |    117.7 | 0.701 |     0.679 
+       ij-ikl-ljk | 1.00 |     87.9 |    135.7 | 0.648 |     92.5 |    152.0 | 0.609 |     0.940 
+   ijkl-imjn-nlmk | 0.67 |    167.7 |    187.7 | 0.894 |    120.2 |    191.8 | 0.627 |     0.701 
+   ijkl-imkn-jnlm | 0.67 |    170.1 |    187.7 | 0.906 |    120.1 |    191.8 | 0.626 |     0.691 
+   ijkl-imnj-nlkm | 0.67 |    167.7 |    187.7 | 0.893 |    120.2 |    191.8 | 0.626 |     0.701 
+ abcijk-ikma-mjbc | 0.00 |     65.0 |     60.9 | 1.067 |     85.2 |     88.3 | 0.965 |     0.904 
+ abcijk-eiab-jkec | 1.00 |     74.5 |     60.0 | 1.241 |     83.9 |     87.3 | 0.961 |     0.774 
+ abcijk-ejac-ikeb | 0.00 |     48.5 |     60.0 | 0.808 |     80.9 |     87.2 | 0.928 |     1.148 
+       abc-bk-akc | 0.92 |    156.9 |    139.5 | 1.125 |    118.1 |    148.2 | 0.797 |     0.709 
+             MEAN |      |          |          |       |          |          |       |     0.949 
+
+interpretation: 'eff' is contraction GF/s divided by same-shape GEMM GF/s.
+'eff ratio' is complex eff over real eff. Below 1.0 means the engine loses
+more to overheads on complex data than on real data -- the headroom this
+project targets. At or above 1.0 the complex-weakness thesis is refuted.
+
+wrote bench-results/worker6156-icelake/premise-f32c32.csv

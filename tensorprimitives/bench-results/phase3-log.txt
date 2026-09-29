@@ -1,0 +1,1348 @@
+
+
+########## ./target/release/tcbench verify --size 32 ##########
+
+host        : ccqlin038.flatironinstitute.org
+target      : x86_64 / linux
+cpu features: avx2 fma avx512f avx512dq 
+baselines   : tblis=true blas=true
+tblis       : abi 2.x, 1 thread(s)
+
+verifying 49 cases at 32 MiB nominal size
+
+             case | dtype |      m |     n |     k | vs ttgt | vs tblis | status 
+------------------+-------+--------+-------+-------+---------+----------+--------
+         ij-ik-kj |   f32 |   2064 |  2048 |  2064 |  4.2e-7 |    0.0e0 |     ok 
+         ij-ik-kj |   f64 |   2064 |  2048 |  2064 | 6.3e-16 |  1.1e-16 |     ok 
+         ij-ik-kj |   c32 |   2064 |  2048 |  2064 |  5.3e-7 |   4.7e-7 |     ok 
+         ij-ik-kj |   c64 |   2064 |  2048 |  2064 | 8.4e-16 |  7.6e-16 |     ok 
+       ij-ikl-ljk |   f32 |    168 |   160 | 26880 |  4.7e-7 |   5.2e-7 |     ok 
+       ij-ikl-ljk |   f64 |    168 |   160 | 26880 | 8.1e-16 |  8.9e-16 |     ok 
+       ij-ikl-ljk |   c32 |    168 |   160 | 26880 |  6.0e-7 |   6.4e-7 |     ok 
+       ij-ikl-ljk |   c64 |    168 |   160 | 26880 | 1.0e-15 |  1.1e-15 |     ok 
+       ij-kil-lkj |   f32 |    168 |   160 | 28224 |  4.8e-7 |    0.0e0 |     ok 
+       ij-kil-lkj |   f64 |    168 |   160 | 28224 | 8.2e-16 |  9.0e-17 |     ok 
+       ij-kil-lkj |   c32 |    168 |   160 | 28224 |  6.0e-7 |   5.5e-7 |     ok 
+       ij-kil-lkj |   c64 |    168 |   160 | 28224 | 1.0e-15 |  9.6e-16 |     ok 
+       ijk-ikl-lj |   f32 |  26880 |   160 |   168 |   0.0e0 |    0.0e0 |     ok 
+       ijk-ikl-lj |   f64 |  26880 |   160 |   168 |   0.0e0 |    0.0e0 |     ok 
+       ijk-ikl-lj |   c32 |  26880 |   160 |   168 |  3.7e-7 |   1.2e-7 |     ok 
+       ijk-ikl-lj |   c64 |  26880 |   160 |   168 | 6.7e-16 |  4.6e-16 |     ok 
+       ijk-il-jlk |   f32 |    168 | 26880 |   160 |   0.0e0 |    0.0e0 |     ok 
+       ijk-il-jlk |   f64 |    168 | 26880 |   160 |   0.0e0 |    0.0e0 |     ok 
+       ijk-il-jlk |   c32 |    168 | 26880 |   160 |  3.6e-7 |   1.2e-7 |     ok 
+       ijk-il-jlk |   c64 |    168 | 26880 |   160 | 6.5e-16 |  2.2e-16 |     ok 
+       ijk-ilk-jl |   f32 |  26880 |   168 |   160 |   0.0e0 |    0.0e0 |     ok 
+       ijk-ilk-jl |   f64 |  26880 |   168 |   160 |   0.0e0 |    0.0e0 |     ok 
+       ijk-ilk-jl |   c32 |  26880 |   168 |   160 |  3.6e-7 |   1.2e-7 |     ok 
+       ijk-ilk-jl |   c64 |  26880 |   168 |   160 | 6.5e-16 |  2.2e-16 |     ok 
+       ijk-ilk-lj |   f32 |  26880 |   160 |   168 |   0.0e0 |    0.0e0 |     ok 
+       ijk-ilk-lj |   f64 |  26880 |   160 |   168 |   0.0e0 |    0.0e0 |     ok 
+       ijk-ilk-lj |   c32 |  26880 |   160 |   168 |  3.7e-7 |   1.2e-7 |     ok 
+       ijk-ilk-lj |   c64 |  26880 |   160 |   168 | 6.7e-16 |  4.6e-16 |     ok 
+     ijk-ilmk-mjl |   f32 |   2112 |    44 |  2112 |  4.3e-7 |   4.7e-7 |     ok 
+     ijk-ilmk-mjl |   f64 |   2112 |    44 |  2112 | 6.4e-16 |  7.4e-16 |     ok 
+     ijk-ilmk-mjl |   c32 |   2112 |    44 |  2112 |  5.3e-7 |   5.8e-7 |     ok 
+     ijk-ilmk-mjl |   c64 |   2112 |    44 |  2112 | 8.3e-16 |  9.1e-16 |     ok 
+   ijkl-imjn-lnkm |   f32 |   2112 |  2112 |  1936 |  4.2e-7 |   6.4e-8 |     ok 
+   ijkl-imjn-lnkm |   f64 |   2112 |  2112 |  1936 | 6.5e-16 |    0.0e0 |     ok 
+   ijkl-imjn-lnkm |   c32 |   2112 |  2112 |  1936 |  5.4e-7 |   4.9e-7 |     ok 
+   ijkl-imjn-lnkm |   c64 |   2112 |  2112 |  1936 | 8.3e-16 |  7.3e-16 |     ok 
+   ijkl-imjn-nlmk |   f32 |   2112 |  1936 |  2112 |  4.3e-7 |   4.7e-7 |     ok 
+   ijkl-imjn-nlmk |   f64 |   2112 |  1936 |  2112 | 6.4e-16 |  7.5e-16 |     ok 
+   ijkl-imjn-nlmk |   c32 |   2112 |  1936 |  2112 |  5.3e-7 |   5.8e-7 |     ok 
+   ijkl-imjn-nlmk |   c64 |   2112 |  1936 |  2112 | 8.3e-16 |  9.1e-16 |     ok 
+   ijkl-imkn-jnlm |   f32 |   2112 |  2112 |  1936 |  4.2e-7 |   6.4e-8 |     ok 
+   ijkl-imkn-jnlm |   f64 |   2112 |  2112 |  1936 | 6.5e-16 |    0.0e0 |     ok 
+   ijkl-imkn-jnlm |   c32 |   2112 |  2112 |  1936 |  5.4e-7 |   4.9e-7 |     ok 
+   ijkl-imkn-jnlm |   c64 |   2112 |  2112 |  1936 | 8.3e-16 |  7.3e-16 |     ok 
+   ijkl-imkn-njml |   f32 |   2112 |  1936 |  2112 |  4.3e-7 |   4.7e-7 |     ok 
+   ijkl-imkn-njml |   f64 |   2112 |  1936 |  2112 | 6.4e-16 |  7.5e-16 |     ok 
+   ijkl-imkn-njml |   c32 |   2112 |  1936 |  2112 |  5.3e-7 |   5.8e-7 |     ok 
+   ijkl-imkn-njml |   c64 |   2112 |  1936 |  2112 | 8.3e-16 |  9.1e-16 |     ok 
+   ijkl-imln-jnkm |   f32 |   2112 |  2112 |  1936 |  4.2e-7 |   6.4e-8 |     ok 
+   ijkl-imln-jnkm |   f64 |   2112 |  2112 |  1936 | 6.5e-16 |    0.0e0 |     ok 
+   ijkl-imln-jnkm |   c32 |   2112 |  2112 |  1936 |  5.4e-7 |   4.9e-7 |     ok 
+   ijkl-imln-jnkm |   c64 |   2112 |  2112 |  1936 | 8.3e-16 |  7.3e-16 |     ok 
+   ijkl-imln-njmk |   f32 |   2112 |  1936 |  2112 |  4.3e-7 |   4.7e-7 |     ok 
+   ijkl-imln-njmk |   f64 |   2112 |  1936 |  2112 | 6.4e-16 |  7.5e-16 |     ok 
+   ijkl-imln-njmk |   c32 |   2112 |  1936 |  2112 |  5.3e-7 |   5.8e-7 |     ok 
+   ijkl-imln-njmk |   c64 |   2112 |  1936 |  2112 | 8.3e-16 |  9.1e-16 |     ok 
+   ijkl-imnj-nlkm |   f32 |   2112 |  1936 |  2112 |  4.3e-7 |   4.7e-7 |     ok 
+   ijkl-imnj-nlkm |   f64 |   2112 |  1936 |  2112 | 6.4e-16 |  7.5e-16 |     ok 
+   ijkl-imnj-nlkm |   c32 |   2112 |  1936 |  2112 |  5.3e-7 |   5.9e-7 |     ok 
+   ijkl-imnj-nlkm |   c64 |   2112 |  1936 |  2112 | 8.3e-16 |  9.1e-16 |     ok 
+   ijkl-imnk-njml |   f32 |   2112 |  1936 |  2112 |  4.3e-7 |   4.7e-7 |     ok 
+   ijkl-imnk-njml |   f64 |   2112 |  1936 |  2112 | 6.4e-16 |  7.5e-16 |     ok 
+   ijkl-imnk-njml |   c32 |   2112 |  1936 |  2112 |  5.3e-7 |   5.8e-7 |     ok 
+   ijkl-imnk-njml |   c64 |   2112 |  1936 |  2112 | 8.3e-16 |  9.1e-16 |     ok 
+   ijkl-minj-nlmk |   f32 |   2112 |  1936 |  2304 |  4.3e-7 |    0.0e0 |     ok 
+   ijkl-minj-nlmk |   f64 |   2112 |  1936 |  2304 | 6.9e-16 |    0.0e0 |     ok 
+   ijkl-minj-nlmk |   c32 |   2112 |  1936 |  2304 |  5.5e-7 |   4.9e-7 |     ok 
+   ijkl-minj-nlmk |   c64 |   2112 |  1936 |  2304 | 8.4e-16 |  7.6e-16 |     ok 
+   ijkl-mink-jnlm |   f32 |   2112 |  2112 |  2112 |  4.3e-7 |    0.0e0 |     ok 
+   ijkl-mink-jnlm |   f64 |   2112 |  2112 |  2112 | 6.4e-16 |  1.7e-16 |     ok 
+   ijkl-mink-jnlm |   c32 |   2112 |  2112 |  2112 |  5.3e-7 |   4.7e-7 |     ok 
+   ijkl-mink-jnlm |   c64 |   2112 |  2112 |  2112 | 8.3e-16 |  7.4e-16 |     ok 
+   ijkl-minl-njmk |   f32 |   2112 |  1936 |  2304 |  4.3e-7 |    0.0e0 |     ok 
+   ijkl-minl-njmk |   f64 |   2112 |  1936 |  2304 | 6.9e-16 |    0.0e0 |     ok 
+   ijkl-minl-njmk |   c32 |   2112 |  1936 |  2304 |  5.5e-7 |   4.9e-7 |     ok 
+   ijkl-minl-njmk |   c64 |   2112 |  1936 |  2304 | 8.4e-16 |  7.6e-16 |     ok 
+     aqrs-pa-pqrs |   f32 |     48 | 85184 |    48 |   0.0e0 |    0.0e0 |     ok 
+     aqrs-pa-pqrs |   f64 |     48 | 85184 |    48 |   0.0e0 |    0.0e0 |     ok 
+     aqrs-pa-pqrs |   c32 |     48 | 85184 |    48 |  2.0e-7 |   8.6e-8 |     ok 
+     aqrs-pa-pqrs |   c64 |     48 | 85184 |    48 | 3.7e-16 |  1.6e-16 |     ok 
+     abrs-qb-aqrs |   f32 |     44 | 92928 |    48 |   0.0e0 |    0.0e0 |     ok 
+     abrs-qb-aqrs |   f64 |     44 | 92928 |    48 |   0.0e0 |    0.0e0 |     ok 
+     abrs-qb-aqrs |   c32 |     44 | 92928 |    48 |  1.9e-7 |    0.0e0 |     ok 
+     abrs-qb-aqrs |   c64 |     44 | 92928 |    48 | 3.7e-16 |    0.0e0 |     ok 
+     abcs-rc-abrs |   f32 |     44 | 92928 |    48 |   0.0e0 |    0.0e0 |     ok 
+     abcs-rc-abrs |   f64 |     44 | 92928 |    48 |   0.0e0 |    0.0e0 |     ok 
+     abcs-rc-abrs |   c32 |     44 | 92928 |    48 |  1.9e-7 |    0.0e0 |     ok 
+     abcs-rc-abrs |   c64 |     44 | 92928 |    48 | 3.7e-16 |    0.0e0 |     ok 
+       abj-bka-kj |   f32 |  28224 |   160 |   168 |   0.0e0 |    0.0e0 |     ok 
+       abj-bka-kj |   f64 |  28224 |   160 |   168 |   0.0e0 |    0.0e0 |     ok 
+       abj-bka-kj |   c32 |  28224 |   160 |   168 |  3.7e-7 |   1.2e-7 |     ok 
+       abj-bka-kj |   c64 |  28224 |   160 |   168 | 6.7e-16 |  4.6e-16 |     ok 
+       ajb-kba-jk |   f32 |  26880 |   168 |   168 |   0.0e0 |    0.0e0 |     ok 
+       ajb-kba-jk |   f64 |  26880 |   168 |   168 |   0.0e0 |    0.0e0 |     ok 
+       ajb-kba-jk |   c32 |  26880 |   168 |   168 |  3.7e-7 |   1.2e-7 |     ok 
+       ajb-kba-jk |   c64 |  26880 |   168 |   168 | 6.7e-16 |  4.6e-16 |     ok 
+     abjc-cbka-kj |   f32 | 101376 |    44 |    48 |   0.0e0 |    0.0e0 |     ok 
+     abjc-cbka-kj |   f64 | 101376 |    44 |    48 |   0.0e0 |    0.0e0 |     ok 
+     abjc-cbka-kj |   c32 | 101376 |    44 |    48 |  2.0e-7 |   8.6e-8 |     ok 
+     abjc-cbka-kj |   c64 | 101376 |    44 |    48 | 3.7e-16 |  1.6e-16 |     ok 
+     ajbc-ckba-jk |   f32 | 101376 |    48 |    44 |   0.0e0 |    0.0e0 |     ok 
+     ajbc-ckba-jk |   f64 | 101376 |    48 |    44 |   0.0e0 |    0.0e0 |     ok 
+     ajbc-ckba-jk |   c32 | 101376 |    48 |    44 |  1.9e-7 |   8.4e-8 |     ok 
+     ajbc-ckba-jk |   c64 | 101376 |    48 |    44 | 3.6e-16 |  1.6e-16 |     ok 
+     abjc-kbac-jk |   f32 |  92928 |    48 |    48 |   0.0e0 |    0.0e0 |     ok 
+     abjc-kbac-jk |   f64 |  92928 |    48 |    48 |   0.0e0 |    0.0e0 |     ok 
+     abjc-kbac-jk |   c32 |  92928 |    48 |    48 |  2.0e-7 |   8.6e-8 |     ok 
+     abjc-kbac-jk |   c64 |  92928 |    48 |    48 | 3.7e-16 |  1.6e-16 |     ok 
+   abjcd-dkbac-jk |   f32 | 230400 |    24 |    20 |   0.0e0 |    0.0e0 |     ok 
+   abjcd-dkbac-jk |   f64 | 230400 |    24 |    20 |   0.0e0 |    0.0e0 |     ok 
+   abjcd-dkbac-jk |   c32 | 230400 |    24 |    20 |  1.3e-7 |   6.9e-8 |     ok 
+   abjcd-dkbac-jk |   c64 | 230400 |    24 |    20 | 2.5e-16 |  1.3e-16 |     ok 
+   adbjc-cbdka-kj |   f32 | 230400 |    20 |    24 |   0.0e0 |    0.0e0 |     ok 
+   adbjc-cbdka-kj |   f64 | 230400 |    20 |    24 |   0.0e0 |    0.0e0 |     ok 
+   adbjc-cbdka-kj |   c32 | 230400 |    20 |    24 |  1.4e-7 |   7.2e-8 |     ok 
+   adbjc-cbdka-kj |   c64 | 230400 |    20 |    24 | 2.7e-16 |  1.3e-16 |     ok 
+   ajbdc-ckbad-jk |   f32 | 230400 |    24 |    20 |   0.0e0 |    0.0e0 |     ok 
+   ajbdc-ckbad-jk |   f64 | 230400 |    24 |    20 |   0.0e0 |    0.0e0 |     ok 
+   ajbdc-ckbad-jk |   c32 | 230400 |    24 |    20 |  1.3e-7 |   6.9e-8 |     ok 
+   ajbdc-ckbad-jk |   c64 | 230400 |    24 |    20 | 2.5e-16 |  1.3e-16 |     ok 
+ abcijk-ijma-mkbc |   f32 |   6912 |  1728 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ijma-mkbc |   f64 |   6912 |  1728 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ijma-mkbc |   c32 |   6912 |  1728 |    24 |  1.4e-7 |   7.2e-8 |     ok 
+ abcijk-ijma-mkbc |   c64 |   6912 |  1728 |    24 | 2.7e-16 |  1.3e-16 |     ok 
+ abcijk-ijmb-mkac |   f32 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ijmb-mkac |   f64 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ijmb-mkac |   c32 |   3456 |  3456 |    24 |  1.4e-7 |    0.0e0 |     ok 
+ abcijk-ijmb-mkac |   c64 |   3456 |  3456 |    24 | 2.7e-16 |    0.0e0 |     ok 
+ abcijk-ijmc-mkab |   f32 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ijmc-mkab |   f64 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ijmc-mkab |   c32 |   3456 |  3456 |    24 |  1.4e-7 |    0.0e0 |     ok 
+ abcijk-ijmc-mkab |   c64 |   3456 |  3456 |    24 | 2.7e-16 |    0.0e0 |     ok 
+ abcijk-ikma-mjbc |   f32 |   6912 |  1728 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ikma-mjbc |   f64 |   6912 |  1728 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ikma-mjbc |   c32 |   6912 |  1728 |    24 |  1.4e-7 |   7.2e-8 |     ok 
+ abcijk-ikma-mjbc |   c64 |   6912 |  1728 |    24 | 2.7e-16 |  1.3e-16 |     ok 
+ abcijk-ikmb-mjac |   f32 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ikmb-mjac |   f64 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ikmb-mjac |   c32 |   3456 |  3456 |    24 |  1.4e-7 |    0.0e0 |     ok 
+ abcijk-ikmb-mjac |   c64 |   3456 |  3456 |    24 | 2.7e-16 |    0.0e0 |     ok 
+ abcijk-ikmc-mjab |   f32 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ikmc-mjab |   f64 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ikmc-mjab |   c32 |   3456 |  3456 |    24 |  1.4e-7 |    0.0e0 |     ok 
+ abcijk-ikmc-mjab |   c64 |   3456 |  3456 |    24 | 2.7e-16 |    0.0e0 |     ok 
+ abcijk-jkma-mibc |   f32 |   6912 |  1728 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-jkma-mibc |   f64 |   6912 |  1728 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-jkma-mibc |   c32 |   6912 |  1728 |    24 |  1.4e-7 |   7.2e-8 |     ok 
+ abcijk-jkma-mibc |   c64 |   6912 |  1728 |    24 | 2.7e-16 |  1.3e-16 |     ok 
+ abcijk-jkmb-miac |   f32 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-jkmb-miac |   f64 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-jkmb-miac |   c32 |   3456 |  3456 |    24 |  1.4e-7 |    0.0e0 |     ok 
+ abcijk-jkmb-miac |   c64 |   3456 |  3456 |    24 | 2.7e-16 |    0.0e0 |     ok 
+ abcijk-jkmc-miab |   f32 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-jkmc-miab |   f64 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-jkmc-miab |   c32 |   3456 |  3456 |    24 |  1.4e-7 |    0.0e0 |     ok 
+ abcijk-jkmc-miab |   c64 |   3456 |  3456 |    24 | 2.7e-16 |    0.0e0 |     ok 
+ abcijk-eiab-jkec |   f32 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-eiab-jkec |   f64 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-eiab-jkec |   c32 |   3456 |  3456 |    24 |  1.4e-7 |   7.2e-8 |     ok 
+ abcijk-eiab-jkec |   c64 |   3456 |  3456 |    24 | 2.7e-16 |  1.3e-16 |     ok 
+ abcijk-eiac-jkeb |   f32 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-eiac-jkeb |   f64 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-eiac-jkeb |   c32 |   3456 |  3456 |    24 |  1.4e-7 |   7.2e-8 |     ok 
+ abcijk-eiac-jkeb |   c64 |   3456 |  3456 |    24 | 2.7e-16 |  1.3e-16 |     ok 
+ abcijk-eibc-jkea |   f32 |   1728 |  6912 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-eibc-jkea |   f64 |   1728 |  6912 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-eibc-jkea |   c32 |   1728 |  6912 |    24 |  1.4e-7 |    0.0e0 |     ok 
+ abcijk-eibc-jkea |   c64 |   1728 |  6912 |    24 | 2.7e-16 |    0.0e0 |     ok 
+ abcijk-ejab-ikec |   f32 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ejab-ikec |   f64 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ejab-ikec |   c32 |   3456 |  3456 |    24 |  1.4e-7 |   7.2e-8 |     ok 
+ abcijk-ejab-ikec |   c64 |   3456 |  3456 |    24 | 2.7e-16 |  1.3e-16 |     ok 
+ abcijk-ejac-ikeb |   f32 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ejac-ikeb |   f64 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ejac-ikeb |   c32 |   3456 |  3456 |    24 |  1.4e-7 |   7.2e-8 |     ok 
+ abcijk-ejac-ikeb |   c64 |   3456 |  3456 |    24 | 2.7e-16 |  1.3e-16 |     ok 
+ abcijk-ejbc-ikea |   f32 |   1728 |  6912 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ejbc-ikea |   f64 |   1728 |  6912 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ejbc-ikea |   c32 |   1728 |  6912 |    24 |  1.4e-7 |    0.0e0 |     ok 
+ abcijk-ejbc-ikea |   c64 |   1728 |  6912 |    24 | 2.7e-16 |    0.0e0 |     ok 
+ abcijk-ekab-ijec |   f32 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ekab-ijec |   f64 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ekab-ijec |   c32 |   3456 |  3456 |    24 |  1.4e-7 |   7.2e-8 |     ok 
+ abcijk-ekab-ijec |   c64 |   3456 |  3456 |    24 | 2.7e-16 |  1.3e-16 |     ok 
+ abcijk-ekac-ijeb |   f32 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ekac-ijeb |   f64 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ekac-ijeb |   c32 |   3456 |  3456 |    24 |  1.4e-7 |   7.2e-8 |     ok 
+ abcijk-ekac-ijeb |   c64 |   3456 |  3456 |    24 | 2.7e-16 |  1.3e-16 |     ok 
+ abcijk-ekbc-ijea |   f32 |   1728 |  6912 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ekbc-ijea |   f64 |   1728 |  6912 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ekbc-ijea |   c32 |   1728 |  6912 |    24 |  1.4e-7 |    0.0e0 |     ok 
+ abcijk-ekbc-ijea |   c64 |   1728 |  6912 |    24 | 2.7e-16 |    0.0e0 |     ok 
+       abc-bk-akc |   f32 |    168 | 26880 |   160 |   0.0e0 |    0.0e0 |     ok 
+       abc-bk-akc |   f64 |    168 | 26880 |   160 |   0.0e0 |    0.0e0 |     ok 
+       abc-bk-akc |   c32 |    168 | 26880 |   160 |  3.6e-7 |    0.0e0 |     ok 
+       abc-bk-akc |   c64 |    168 | 26880 |   160 | 6.5e-16 |    0.0e0 |     ok 
+
+all comparisons within tolerance
+
+
+########## ./target/release/tcbench verify --size 32 ##########
+
+host        : ccqlin038.flatironinstitute.org
+target      : x86_64 / linux
+cpu features: avx2 fma avx512f avx512dq 
+baselines   : tblis=true blas=true
+tblis       : abi 2.x, 1 thread(s)
+
+verifying 49 cases at 32 MiB nominal size
+
+             case | dtype |      m |     n |     k | vs ttgt | vs tblis | status 
+------------------+-------+--------+-------+-------+---------+----------+--------
+         ij-ik-kj |   f32 |   2064 |  2048 |  2064 |  4.2e-7 |    0.0e0 |     ok 
+         ij-ik-kj |   f64 |   2064 |  2048 |  2064 | 6.3e-16 |  1.1e-16 |     ok 
+         ij-ik-kj |   c32 |   2064 |  2048 |  2064 |  5.3e-7 |   4.6e-7 |     ok 
+         ij-ik-kj |   c64 |   2064 |  2048 |  2064 | 8.4e-16 |  7.4e-16 |     ok 
+       ij-ikl-ljk |   f32 |    168 |   160 | 26880 |  4.7e-7 |   5.2e-7 |     ok 
+       ij-ikl-ljk |   f64 |    168 |   160 | 26880 | 8.1e-16 |  8.9e-16 |     ok 
+       ij-ikl-ljk |   c32 |    168 |   160 | 26880 |  6.0e-7 |   6.4e-7 |     ok 
+       ij-ikl-ljk |   c64 |    168 |   160 | 26880 | 1.0e-15 |  1.1e-15 |     ok 
+       ij-kil-lkj |   f32 |    168 |   160 | 28224 |  4.8e-7 |    0.0e0 |     ok 
+       ij-kil-lkj |   f64 |    168 |   160 | 28224 | 8.2e-16 |  9.0e-17 |     ok 
+       ij-kil-lkj |   c32 |    168 |   160 | 28224 |  6.0e-7 |   5.5e-7 |     ok 
+       ij-kil-lkj |   c64 |    168 |   160 | 28224 | 1.0e-15 |  9.4e-16 |     ok 
+       ijk-ikl-lj |   f32 |  26880 |   160 |   168 |   0.0e0 |    0.0e0 |     ok 
+       ijk-ikl-lj |   f64 |  26880 |   160 |   168 |   0.0e0 |    0.0e0 |     ok 
+       ijk-ikl-lj |   c32 |  26880 |   160 |   168 |  3.7e-7 |    0.0e0 |     ok 
+       ijk-ikl-lj |   c64 |  26880 |   160 |   168 | 6.7e-16 |  4.2e-16 |     ok 
+       ijk-il-jlk |   f32 |    168 | 26880 |   160 |   0.0e0 |    0.0e0 |     ok 
+       ijk-il-jlk |   f64 |    168 | 26880 |   160 |   0.0e0 |    0.0e0 |     ok 
+       ijk-il-jlk |   c32 |    168 | 26880 |   160 |  3.6e-7 |    0.0e0 |     ok 
+       ijk-il-jlk |   c64 |    168 | 26880 |   160 | 6.5e-16 |    0.0e0 |     ok 
+       ijk-ilk-jl |   f32 |  26880 |   168 |   160 |   0.0e0 |    0.0e0 |     ok 
+       ijk-ilk-jl |   f64 |  26880 |   168 |   160 |   0.0e0 |    0.0e0 |     ok 
+       ijk-ilk-jl |   c32 |  26880 |   168 |   160 |  3.6e-7 |    0.0e0 |     ok 
+       ijk-ilk-jl |   c64 |  26880 |   168 |   160 | 6.5e-16 |    0.0e0 |     ok 
+       ijk-ilk-lj |   f32 |  26880 |   160 |   168 |   0.0e0 |    0.0e0 |     ok 
+       ijk-ilk-lj |   f64 |  26880 |   160 |   168 |   0.0e0 |    0.0e0 |     ok 
+       ijk-ilk-lj |   c32 |  26880 |   160 |   168 |  3.7e-7 |    0.0e0 |     ok 
+       ijk-ilk-lj |   c64 |  26880 |   160 |   168 | 6.7e-16 |  4.2e-16 |     ok 
+     ijk-ilmk-mjl |   f32 |   2112 |    44 |  2112 |  4.3e-7 |   4.7e-7 |     ok 
+     ijk-ilmk-mjl |   f64 |   2112 |    44 |  2112 | 6.4e-16 |  7.4e-16 |     ok 
+     ijk-ilmk-mjl |   c32 |   2112 |    44 |  2112 |  5.3e-7 |   5.8e-7 |     ok 
+     ijk-ilmk-mjl |   c64 |   2112 |    44 |  2112 | 8.3e-16 |  9.1e-16 |     ok 
+   ijkl-imjn-lnkm |   f32 |   2112 |  2112 |  1936 |  4.2e-7 |   6.4e-8 |     ok 
+   ijkl-imjn-lnkm |   f64 |   2112 |  2112 |  1936 | 6.5e-16 |    0.0e0 |     ok 
+   ijkl-imjn-lnkm |   c32 |   2112 |  2112 |  1936 |  5.4e-7 |   4.8e-7 |     ok 
+   ijkl-imjn-lnkm |   c64 |   2112 |  2112 |  1936 | 8.3e-16 |  7.1e-16 |     ok 
+   ijkl-imjn-nlmk |   f32 |   2112 |  1936 |  2112 |  4.3e-7 |   4.7e-7 |     ok 
+   ijkl-imjn-nlmk |   f64 |   2112 |  1936 |  2112 | 6.4e-16 |  7.5e-16 |     ok 
+   ijkl-imjn-nlmk |   c32 |   2112 |  1936 |  2112 |  5.3e-7 |   5.8e-7 |     ok 
+   ijkl-imjn-nlmk |   c64 |   2112 |  1936 |  2112 | 8.3e-16 |  9.1e-16 |     ok 
+   ijkl-imkn-jnlm |   f32 |   2112 |  2112 |  1936 |  4.2e-7 |   6.4e-8 |     ok 
+   ijkl-imkn-jnlm |   f64 |   2112 |  2112 |  1936 | 6.5e-16 |    0.0e0 |     ok 
+   ijkl-imkn-jnlm |   c32 |   2112 |  2112 |  1936 |  5.4e-7 |   4.8e-7 |     ok 
+   ijkl-imkn-jnlm |   c64 |   2112 |  2112 |  1936 | 8.3e-16 |  7.1e-16 |     ok 
+   ijkl-imkn-njml |   f32 |   2112 |  1936 |  2112 |  4.3e-7 |   4.7e-7 |     ok 
+   ijkl-imkn-njml |   f64 |   2112 |  1936 |  2112 | 6.4e-16 |  7.5e-16 |     ok 
+   ijkl-imkn-njml |   c32 |   2112 |  1936 |  2112 |  5.3e-7 |   5.8e-7 |     ok 
+   ijkl-imkn-njml |   c64 |   2112 |  1936 |  2112 | 8.3e-16 |  9.1e-16 |     ok 
+   ijkl-imln-jnkm |   f32 |   2112 |  2112 |  1936 |  4.2e-7 |   6.4e-8 |     ok 
+   ijkl-imln-jnkm |   f64 |   2112 |  2112 |  1936 | 6.5e-16 |    0.0e0 |     ok 
+   ijkl-imln-jnkm |   c32 |   2112 |  2112 |  1936 |  5.4e-7 |   4.8e-7 |     ok 
+   ijkl-imln-jnkm |   c64 |   2112 |  2112 |  1936 | 8.3e-16 |  7.1e-16 |     ok 
+   ijkl-imln-njmk |   f32 |   2112 |  1936 |  2112 |  4.3e-7 |   4.7e-7 |     ok 
+   ijkl-imln-njmk |   f64 |   2112 |  1936 |  2112 | 6.4e-16 |  7.5e-16 |     ok 
+   ijkl-imln-njmk |   c32 |   2112 |  1936 |  2112 |  5.3e-7 |   5.8e-7 |     ok 
+   ijkl-imln-njmk |   c64 |   2112 |  1936 |  2112 | 8.3e-16 |  9.1e-16 |     ok 
+   ijkl-imnj-nlkm |   f32 |   2112 |  1936 |  2112 |  4.3e-7 |   4.7e-7 |     ok 
+   ijkl-imnj-nlkm |   f64 |   2112 |  1936 |  2112 | 6.4e-16 |  7.5e-16 |     ok 
+   ijkl-imnj-nlkm |   c32 |   2112 |  1936 |  2112 |  5.3e-7 |   5.9e-7 |     ok 
+   ijkl-imnj-nlkm |   c64 |   2112 |  1936 |  2112 | 8.3e-16 |  9.1e-16 |     ok 
+   ijkl-imnk-njml |   f32 |   2112 |  1936 |  2112 |  4.3e-7 |   4.7e-7 |     ok 
+   ijkl-imnk-njml |   f64 |   2112 |  1936 |  2112 | 6.4e-16 |  7.5e-16 |     ok 
+   ijkl-imnk-njml |   c32 |   2112 |  1936 |  2112 |  5.3e-7 |   5.8e-7 |     ok 
+   ijkl-imnk-njml |   c64 |   2112 |  1936 |  2112 | 8.3e-16 |  9.1e-16 |     ok 
+   ijkl-minj-nlmk |   f32 |   2112 |  1936 |  2304 |  4.3e-7 |    0.0e0 |     ok 
+   ijkl-minj-nlmk |   f64 |   2112 |  1936 |  2304 | 6.9e-16 |    0.0e0 |     ok 
+   ijkl-minj-nlmk |   c32 |   2112 |  1936 |  2304 |  5.5e-7 |   4.8e-7 |     ok 
+   ijkl-minj-nlmk |   c64 |   2112 |  1936 |  2304 | 8.4e-16 |  7.4e-16 |     ok 
+   ijkl-mink-jnlm |   f32 |   2112 |  2112 |  2112 |  4.3e-7 |    0.0e0 |     ok 
+   ijkl-mink-jnlm |   f64 |   2112 |  2112 |  2112 | 6.4e-16 |  1.7e-16 |     ok 
+   ijkl-mink-jnlm |   c32 |   2112 |  2112 |  2112 |  5.3e-7 |   4.6e-7 |     ok 
+   ijkl-mink-jnlm |   c64 |   2112 |  2112 |  2112 | 8.3e-16 |  7.3e-16 |     ok 
+   ijkl-minl-njmk |   f32 |   2112 |  1936 |  2304 |  4.3e-7 |    0.0e0 |     ok 
+   ijkl-minl-njmk |   f64 |   2112 |  1936 |  2304 | 6.9e-16 |    0.0e0 |     ok 
+   ijkl-minl-njmk |   c32 |   2112 |  1936 |  2304 |  5.5e-7 |   4.8e-7 |     ok 
+   ijkl-minl-njmk |   c64 |   2112 |  1936 |  2304 | 8.4e-16 |  7.4e-16 |     ok 
+     aqrs-pa-pqrs |   f32 |     48 | 85184 |    48 |   0.0e0 |    0.0e0 |     ok 
+     aqrs-pa-pqrs |   f64 |     48 | 85184 |    48 |   0.0e0 |    0.0e0 |     ok 
+     aqrs-pa-pqrs |   c32 |     48 | 85184 |    48 |  2.0e-7 |    0.0e0 |     ok 
+     aqrs-pa-pqrs |   c64 |     48 | 85184 |    48 | 3.7e-16 |    0.0e0 |     ok 
+     abrs-qb-aqrs |   f32 |     44 | 92928 |    48 |   0.0e0 |    0.0e0 |     ok 
+     abrs-qb-aqrs |   f64 |     44 | 92928 |    48 |   0.0e0 |    0.0e0 |     ok 
+     abrs-qb-aqrs |   c32 |     44 | 92928 |    48 |  1.9e-7 |   8.6e-8 |     ok 
+     abrs-qb-aqrs |   c64 |     44 | 92928 |    48 | 3.7e-16 |  1.6e-16 |     ok 
+     abcs-rc-abrs |   f32 |     44 | 92928 |    48 |   0.0e0 |    0.0e0 |     ok 
+     abcs-rc-abrs |   f64 |     44 | 92928 |    48 |   0.0e0 |    0.0e0 |     ok 
+     abcs-rc-abrs |   c32 |     44 | 92928 |    48 |  1.9e-7 |   8.6e-8 |     ok 
+     abcs-rc-abrs |   c64 |     44 | 92928 |    48 | 3.7e-16 |  1.6e-16 |     ok 
+       abj-bka-kj |   f32 |  28224 |   160 |   168 |   0.0e0 |    0.0e0 |     ok 
+       abj-bka-kj |   f64 |  28224 |   160 |   168 |   0.0e0 |    0.0e0 |     ok 
+       abj-bka-kj |   c32 |  28224 |   160 |   168 |  3.7e-7 |    0.0e0 |     ok 
+       abj-bka-kj |   c64 |  28224 |   160 |   168 | 6.7e-16 |  4.2e-16 |     ok 
+       ajb-kba-jk |   f32 |  26880 |   168 |   168 |   0.0e0 |    0.0e0 |     ok 
+       ajb-kba-jk |   f64 |  26880 |   168 |   168 |   0.0e0 |    0.0e0 |     ok 
+       ajb-kba-jk |   c32 |  26880 |   168 |   168 |  3.7e-7 |    0.0e0 |     ok 
+       ajb-kba-jk |   c64 |  26880 |   168 |   168 | 6.7e-16 |  4.2e-16 |     ok 
+     abjc-cbka-kj |   f32 | 101376 |    44 |    48 |   0.0e0 |    0.0e0 |     ok 
+     abjc-cbka-kj |   f64 | 101376 |    44 |    48 |   0.0e0 |    0.0e0 |     ok 
+     abjc-cbka-kj |   c32 | 101376 |    44 |    48 |  2.0e-7 |    0.0e0 |     ok 
+     abjc-cbka-kj |   c64 | 101376 |    44 |    48 | 3.7e-16 |    0.0e0 |     ok 
+     ajbc-ckba-jk |   f32 | 101376 |    48 |    44 |   0.0e0 |    0.0e0 |     ok 
+     ajbc-ckba-jk |   f64 | 101376 |    48 |    44 |   0.0e0 |    0.0e0 |     ok 
+     ajbc-ckba-jk |   c32 | 101376 |    48 |    44 |  1.9e-7 |    0.0e0 |     ok 
+     ajbc-ckba-jk |   c64 | 101376 |    48 |    44 | 3.6e-16 |    0.0e0 |     ok 
+     abjc-kbac-jk |   f32 |  92928 |    48 |    48 |   0.0e0 |    0.0e0 |     ok 
+     abjc-kbac-jk |   f64 |  92928 |    48 |    48 |   0.0e0 |    0.0e0 |     ok 
+     abjc-kbac-jk |   c32 |  92928 |    48 |    48 |  2.0e-7 |    0.0e0 |     ok 
+     abjc-kbac-jk |   c64 |  92928 |    48 |    48 | 3.7e-16 |    0.0e0 |     ok 
+   abjcd-dkbac-jk |   f32 | 230400 |    24 |    20 |   0.0e0 |    0.0e0 |     ok 
+   abjcd-dkbac-jk |   f64 | 230400 |    24 |    20 |   0.0e0 |    0.0e0 |     ok 
+   abjcd-dkbac-jk |   c32 | 230400 |    24 |    20 |  1.3e-7 |    0.0e0 |     ok 
+   abjcd-dkbac-jk |   c64 | 230400 |    24 |    20 | 2.5e-16 |    0.0e0 |     ok 
+   adbjc-cbdka-kj |   f32 | 230400 |    20 |    24 |   0.0e0 |    0.0e0 |     ok 
+   adbjc-cbdka-kj |   f64 | 230400 |    20 |    24 |   0.0e0 |    0.0e0 |     ok 
+   adbjc-cbdka-kj |   c32 | 230400 |    20 |    24 |  1.4e-7 |    0.0e0 |     ok 
+   adbjc-cbdka-kj |   c64 | 230400 |    20 |    24 | 2.7e-16 |    0.0e0 |     ok 
+   ajbdc-ckbad-jk |   f32 | 230400 |    24 |    20 |   0.0e0 |    0.0e0 |     ok 
+   ajbdc-ckbad-jk |   f64 | 230400 |    24 |    20 |   0.0e0 |    0.0e0 |     ok 
+   ajbdc-ckbad-jk |   c32 | 230400 |    24 |    20 |  1.3e-7 |    0.0e0 |     ok 
+   ajbdc-ckbad-jk |   c64 | 230400 |    24 |    20 | 2.5e-16 |    0.0e0 |     ok 
+ abcijk-ijma-mkbc |   f32 |   6912 |  1728 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ijma-mkbc |   f64 |   6912 |  1728 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ijma-mkbc |   c32 |   6912 |  1728 |    24 |  1.4e-7 |    0.0e0 |     ok 
+ abcijk-ijma-mkbc |   c64 |   6912 |  1728 |    24 | 2.7e-16 |    0.0e0 |     ok 
+ abcijk-ijmb-mkac |   f32 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ijmb-mkac |   f64 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ijmb-mkac |   c32 |   3456 |  3456 |    24 |  1.4e-7 |   7.2e-8 |     ok 
+ abcijk-ijmb-mkac |   c64 |   3456 |  3456 |    24 | 2.7e-16 |  1.3e-16 |     ok 
+ abcijk-ijmc-mkab |   f32 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ijmc-mkab |   f64 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ijmc-mkab |   c32 |   3456 |  3456 |    24 |  1.4e-7 |   7.2e-8 |     ok 
+ abcijk-ijmc-mkab |   c64 |   3456 |  3456 |    24 | 2.7e-16 |  1.3e-16 |     ok 
+ abcijk-ikma-mjbc |   f32 |   6912 |  1728 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ikma-mjbc |   f64 |   6912 |  1728 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ikma-mjbc |   c32 |   6912 |  1728 |    24 |  1.4e-7 |    0.0e0 |     ok 
+ abcijk-ikma-mjbc |   c64 |   6912 |  1728 |    24 | 2.7e-16 |    0.0e0 |     ok 
+ abcijk-ikmb-mjac |   f32 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ikmb-mjac |   f64 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ikmb-mjac |   c32 |   3456 |  3456 |    24 |  1.4e-7 |   7.2e-8 |     ok 
+ abcijk-ikmb-mjac |   c64 |   3456 |  3456 |    24 | 2.7e-16 |  1.3e-16 |     ok 
+ abcijk-ikmc-mjab |   f32 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ikmc-mjab |   f64 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ikmc-mjab |   c32 |   3456 |  3456 |    24 |  1.4e-7 |   7.2e-8 |     ok 
+ abcijk-ikmc-mjab |   c64 |   3456 |  3456 |    24 | 2.7e-16 |  1.3e-16 |     ok 
+ abcijk-jkma-mibc |   f32 |   6912 |  1728 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-jkma-mibc |   f64 |   6912 |  1728 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-jkma-mibc |   c32 |   6912 |  1728 |    24 |  1.4e-7 |    0.0e0 |     ok 
+ abcijk-jkma-mibc |   c64 |   6912 |  1728 |    24 | 2.7e-16 |    0.0e0 |     ok 
+ abcijk-jkmb-miac |   f32 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-jkmb-miac |   f64 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-jkmb-miac |   c32 |   3456 |  3456 |    24 |  1.4e-7 |   7.2e-8 |     ok 
+ abcijk-jkmb-miac |   c64 |   3456 |  3456 |    24 | 2.7e-16 |  1.3e-16 |     ok 
+ abcijk-jkmc-miab |   f32 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-jkmc-miab |   f64 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-jkmc-miab |   c32 |   3456 |  3456 |    24 |  1.4e-7 |   7.2e-8 |     ok 
+ abcijk-jkmc-miab |   c64 |   3456 |  3456 |    24 | 2.7e-16 |  1.3e-16 |     ok 
+ abcijk-eiab-jkec |   f32 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-eiab-jkec |   f64 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-eiab-jkec |   c32 |   3456 |  3456 |    24 |  1.4e-7 |    0.0e0 |     ok 
+ abcijk-eiab-jkec |   c64 |   3456 |  3456 |    24 | 2.7e-16 |    0.0e0 |     ok 
+ abcijk-eiac-jkeb |   f32 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-eiac-jkeb |   f64 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-eiac-jkeb |   c32 |   3456 |  3456 |    24 |  1.4e-7 |    0.0e0 |     ok 
+ abcijk-eiac-jkeb |   c64 |   3456 |  3456 |    24 | 2.7e-16 |    0.0e0 |     ok 
+ abcijk-eibc-jkea |   f32 |   1728 |  6912 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-eibc-jkea |   f64 |   1728 |  6912 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-eibc-jkea |   c32 |   1728 |  6912 |    24 |  1.4e-7 |   7.2e-8 |     ok 
+ abcijk-eibc-jkea |   c64 |   1728 |  6912 |    24 | 2.7e-16 |  1.3e-16 |     ok 
+ abcijk-ejab-ikec |   f32 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ejab-ikec |   f64 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ejab-ikec |   c32 |   3456 |  3456 |    24 |  1.4e-7 |    0.0e0 |     ok 
+ abcijk-ejab-ikec |   c64 |   3456 |  3456 |    24 | 2.7e-16 |    0.0e0 |     ok 
+ abcijk-ejac-ikeb |   f32 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ejac-ikeb |   f64 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ejac-ikeb |   c32 |   3456 |  3456 |    24 |  1.4e-7 |    0.0e0 |     ok 
+ abcijk-ejac-ikeb |   c64 |   3456 |  3456 |    24 | 2.7e-16 |    0.0e0 |     ok 
+ abcijk-ejbc-ikea |   f32 |   1728 |  6912 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ejbc-ikea |   f64 |   1728 |  6912 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ejbc-ikea |   c32 |   1728 |  6912 |    24 |  1.4e-7 |   7.2e-8 |     ok 
+ abcijk-ejbc-ikea |   c64 |   1728 |  6912 |    24 | 2.7e-16 |  1.3e-16 |     ok 
+ abcijk-ekab-ijec |   f32 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ekab-ijec |   f64 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ekab-ijec |   c32 |   3456 |  3456 |    24 |  1.4e-7 |    0.0e0 |     ok 
+ abcijk-ekab-ijec |   c64 |   3456 |  3456 |    24 | 2.7e-16 |    0.0e0 |     ok 
+ abcijk-ekac-ijeb |   f32 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ekac-ijeb |   f64 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ekac-ijeb |   c32 |   3456 |  3456 |    24 |  1.4e-7 |    0.0e0 |     ok 
+ abcijk-ekac-ijeb |   c64 |   3456 |  3456 |    24 | 2.7e-16 |    0.0e0 |     ok 
+ abcijk-ekbc-ijea |   f32 |   1728 |  6912 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ekbc-ijea |   f64 |   1728 |  6912 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ekbc-ijea |   c32 |   1728 |  6912 |    24 |  1.4e-7 |   7.2e-8 |     ok 
+ abcijk-ekbc-ijea |   c64 |   1728 |  6912 |    24 | 2.7e-16 |  1.3e-16 |     ok 
+       abc-bk-akc |   f32 |    168 | 26880 |   160 |   0.0e0 |    0.0e0 |     ok 
+       abc-bk-akc |   f64 |    168 | 26880 |   160 |   0.0e0 |    0.0e0 |     ok 
+       abc-bk-akc |   c32 |    168 | 26880 |   160 |  3.6e-7 |   1.2e-7 |     ok 
+       abc-bk-akc |   c64 |    168 | 26880 |   160 | 6.5e-16 |  2.2e-16 |     ok 
+
+all comparisons within tolerance
+
+
+########## ./target/release/tcbench verify --size 32 ##########
+
+host        : ccqlin038.flatironinstitute.org
+target      : x86_64 / linux
+cpu features: avx2 fma avx512f avx512dq 
+baselines   : tblis=true blas=true
+tblis       : abi 2.x, 1 thread(s)
+
+verifying 49 cases at 32 MiB nominal size
+
+             case | dtype |      m |     n |     k | vs ttgt | vs tblis | status 
+------------------+-------+--------+-------+-------+---------+----------+--------
+         ij-ik-kj |   f32 |   2064 |  2048 |  2064 |  4.2e-7 |    0.0e0 |     ok 
+         ij-ik-kj |   f64 |   2064 |  2048 |  2064 | 6.3e-16 |  1.1e-16 |     ok 
+         ij-ik-kj |   c32 |   2064 |  2048 |  2064 |  5.2e-7 |   5.9e-7 |     ok 
+         ij-ik-kj |   c64 |   2064 |  2048 |  2064 | 8.2e-16 |  9.2e-16 |     ok 
+       ij-ikl-ljk |   f32 |    168 |   160 | 26880 |  4.7e-7 |   5.2e-7 |     ok 
+       ij-ikl-ljk |   f64 |    168 |   160 | 26880 | 8.1e-16 |  8.9e-16 |     ok 
+       ij-ikl-ljk |   c32 |    168 |   160 | 26880 |  5.9e-7 |   6.6e-7 |     ok 
+       ij-ikl-ljk |   c64 |    168 |   160 | 26880 | 1.0e-15 |  1.1e-15 |     ok 
+       ij-kil-lkj |   f32 |    168 |   160 | 28224 |  4.8e-7 |    0.0e0 |     ok 
+       ij-kil-lkj |   f64 |    168 |   160 | 28224 | 8.2e-16 |  9.0e-17 |     ok 
+       ij-kil-lkj |   c32 |    168 |   160 | 28224 |  5.9e-7 |   6.6e-7 |     ok 
+       ij-kil-lkj |   c64 |    168 |   160 | 28224 | 1.0e-15 |  1.1e-15 |     ok 
+       ijk-ikl-lj |   f32 |  26880 |   160 |   168 |   0.0e0 |    0.0e0 |     ok 
+       ijk-ikl-lj |   f64 |  26880 |   160 |   168 |   0.0e0 |    0.0e0 |     ok 
+       ijk-ikl-lj |   c32 |  26880 |   160 |   168 |  3.3e-7 |   4.5e-7 |     ok 
+       ijk-ikl-lj |   c64 |  26880 |   160 |   168 | 6.5e-16 |  7.7e-16 |     ok 
+       ijk-il-jlk |   f32 |    168 | 26880 |   160 |   0.0e0 |    0.0e0 |     ok 
+       ijk-il-jlk |   f64 |    168 | 26880 |   160 |   0.0e0 |    0.0e0 |     ok 
+       ijk-il-jlk |   c32 |    168 | 26880 |   160 |  3.2e-7 |   4.4e-7 |     ok 
+       ijk-il-jlk |   c64 |    168 | 26880 |   160 | 6.4e-16 |  8.2e-16 |     ok 
+       ijk-ilk-jl |   f32 |  26880 |   168 |   160 |   0.0e0 |    0.0e0 |     ok 
+       ijk-ilk-jl |   f64 |  26880 |   168 |   160 |   0.0e0 |    0.0e0 |     ok 
+       ijk-ilk-jl |   c32 |  26880 |   168 |   160 |  3.2e-7 |   4.4e-7 |     ok 
+       ijk-ilk-jl |   c64 |  26880 |   168 |   160 | 6.4e-16 |  8.2e-16 |     ok 
+       ijk-ilk-lj |   f32 |  26880 |   160 |   168 |   0.0e0 |    0.0e0 |     ok 
+       ijk-ilk-lj |   f64 |  26880 |   160 |   168 |   0.0e0 |    0.0e0 |     ok 
+       ijk-ilk-lj |   c32 |  26880 |   160 |   168 |  3.3e-7 |   4.5e-7 |     ok 
+       ijk-ilk-lj |   c64 |  26880 |   160 |   168 | 6.5e-16 |  7.7e-16 |     ok 
+     ijk-ilmk-mjl |   f32 |   2112 |    44 |  2112 |  4.3e-7 |   4.7e-7 |     ok 
+     ijk-ilmk-mjl |   f64 |   2112 |    44 |  2112 | 6.4e-16 |  7.4e-16 |     ok 
+     ijk-ilmk-mjl |   c32 |   2112 |    44 |  2112 |  5.1e-7 |   6.0e-7 |     ok 
+     ijk-ilmk-mjl |   c64 |   2112 |    44 |  2112 | 8.1e-16 |  9.3e-16 |     ok 
+   ijkl-imjn-lnkm |   f32 |   2112 |  2112 |  1936 |  4.2e-7 |   6.4e-8 |     ok 
+   ijkl-imjn-lnkm |   f64 |   2112 |  2112 |  1936 | 6.5e-16 |    0.0e0 |     ok 
+   ijkl-imjn-lnkm |   c32 |   2112 |  2112 |  1936 |  5.3e-7 |   6.0e-7 |     ok 
+   ijkl-imjn-lnkm |   c64 |   2112 |  2112 |  1936 | 8.1e-16 |  9.1e-16 |     ok 
+   ijkl-imjn-nlmk |   f32 |   2112 |  1936 |  2112 |  4.3e-7 |   4.7e-7 |     ok 
+   ijkl-imjn-nlmk |   f64 |   2112 |  1936 |  2112 | 6.4e-16 |  7.5e-16 |     ok 
+   ijkl-imjn-nlmk |   c32 |   2112 |  1936 |  2112 |  5.2e-7 |   6.0e-7 |     ok 
+   ijkl-imjn-nlmk |   c64 |   2112 |  1936 |  2112 | 8.1e-16 |  9.3e-16 |     ok 
+   ijkl-imkn-jnlm |   f32 |   2112 |  2112 |  1936 |  4.2e-7 |   6.4e-8 |     ok 
+   ijkl-imkn-jnlm |   f64 |   2112 |  2112 |  1936 | 6.5e-16 |    0.0e0 |     ok 
+   ijkl-imkn-jnlm |   c32 |   2112 |  2112 |  1936 |  5.3e-7 |   6.0e-7 |     ok 
+   ijkl-imkn-jnlm |   c64 |   2112 |  2112 |  1936 | 8.1e-16 |  9.1e-16 |     ok 
+   ijkl-imkn-njml |   f32 |   2112 |  1936 |  2112 |  4.3e-7 |   4.7e-7 |     ok 
+   ijkl-imkn-njml |   f64 |   2112 |  1936 |  2112 | 6.4e-16 |  7.5e-16 |     ok 
+   ijkl-imkn-njml |   c32 |   2112 |  1936 |  2112 |  5.2e-7 |   6.0e-7 |     ok 
+   ijkl-imkn-njml |   c64 |   2112 |  1936 |  2112 | 8.1e-16 |  9.3e-16 |     ok 
+   ijkl-imln-jnkm |   f32 |   2112 |  2112 |  1936 |  4.2e-7 |   6.4e-8 |     ok 
+   ijkl-imln-jnkm |   f64 |   2112 |  2112 |  1936 | 6.5e-16 |    0.0e0 |     ok 
+   ijkl-imln-jnkm |   c32 |   2112 |  2112 |  1936 |  5.3e-7 |   6.0e-7 |     ok 
+   ijkl-imln-jnkm |   c64 |   2112 |  2112 |  1936 | 8.1e-16 |  9.1e-16 |     ok 
+   ijkl-imln-njmk |   f32 |   2112 |  1936 |  2112 |  4.3e-7 |   4.7e-7 |     ok 
+   ijkl-imln-njmk |   f64 |   2112 |  1936 |  2112 | 6.4e-16 |  7.5e-16 |     ok 
+   ijkl-imln-njmk |   c32 |   2112 |  1936 |  2112 |  5.2e-7 |   6.0e-7 |     ok 
+   ijkl-imln-njmk |   c64 |   2112 |  1936 |  2112 | 8.1e-16 |  9.3e-16 |     ok 
+   ijkl-imnj-nlkm |   f32 |   2112 |  1936 |  2112 |  4.3e-7 |   4.7e-7 |     ok 
+   ijkl-imnj-nlkm |   f64 |   2112 |  1936 |  2112 | 6.4e-16 |  7.5e-16 |     ok 
+   ijkl-imnj-nlkm |   c32 |   2112 |  1936 |  2112 |  5.2e-7 |   6.0e-7 |     ok 
+   ijkl-imnj-nlkm |   c64 |   2112 |  1936 |  2112 | 8.1e-16 |  9.3e-16 |     ok 
+   ijkl-imnk-njml |   f32 |   2112 |  1936 |  2112 |  4.3e-7 |   4.7e-7 |     ok 
+   ijkl-imnk-njml |   f64 |   2112 |  1936 |  2112 | 6.4e-16 |  7.5e-16 |     ok 
+   ijkl-imnk-njml |   c32 |   2112 |  1936 |  2112 |  5.2e-7 |   6.0e-7 |     ok 
+   ijkl-imnk-njml |   c64 |   2112 |  1936 |  2112 | 8.1e-16 |  9.3e-16 |     ok 
+   ijkl-minj-nlmk |   f32 |   2112 |  1936 |  2304 |  4.3e-7 |    0.0e0 |     ok 
+   ijkl-minj-nlmk |   f64 |   2112 |  1936 |  2304 | 6.9e-16 |    0.0e0 |     ok 
+   ijkl-minj-nlmk |   c32 |   2112 |  1936 |  2304 |  5.3e-7 |   6.0e-7 |     ok 
+   ijkl-minj-nlmk |   c64 |   2112 |  1936 |  2304 | 8.2e-16 |  9.2e-16 |     ok 
+   ijkl-mink-jnlm |   f32 |   2112 |  2112 |  2112 |  4.3e-7 |    0.0e0 |     ok 
+   ijkl-mink-jnlm |   f64 |   2112 |  2112 |  2112 | 6.4e-16 |  1.7e-16 |     ok 
+   ijkl-mink-jnlm |   c32 |   2112 |  2112 |  2112 |  5.2e-7 |   5.9e-7 |     ok 
+   ijkl-mink-jnlm |   c64 |   2112 |  2112 |  2112 | 8.1e-16 |  9.2e-16 |     ok 
+   ijkl-minl-njmk |   f32 |   2112 |  1936 |  2304 |  4.3e-7 |    0.0e0 |     ok 
+   ijkl-minl-njmk |   f64 |   2112 |  1936 |  2304 | 6.9e-16 |    0.0e0 |     ok 
+   ijkl-minl-njmk |   c32 |   2112 |  1936 |  2304 |  5.3e-7 |   6.0e-7 |     ok 
+   ijkl-minl-njmk |   c64 |   2112 |  1936 |  2304 | 8.2e-16 |  9.2e-16 |     ok 
+     aqrs-pa-pqrs |   f32 |     48 | 85184 |    48 |   0.0e0 |    0.0e0 |     ok 
+     aqrs-pa-pqrs |   f64 |     48 | 85184 |    48 |   0.0e0 |    0.0e0 |     ok 
+     aqrs-pa-pqrs |   c32 |     48 | 85184 |    48 |  1.8e-7 |   2.4e-7 |     ok 
+     aqrs-pa-pqrs |   c64 |     48 | 85184 |    48 | 3.3e-16 |  4.5e-16 |     ok 
+     abrs-qb-aqrs |   f32 |     44 | 92928 |    48 |   0.0e0 |    0.0e0 |     ok 
+     abrs-qb-aqrs |   f64 |     44 | 92928 |    48 |   0.0e0 |    0.0e0 |     ok 
+     abrs-qb-aqrs |   c32 |     44 | 92928 |    48 |  1.9e-7 |   2.4e-7 |     ok 
+     abrs-qb-aqrs |   c64 |     44 | 92928 |    48 | 3.4e-16 |  4.5e-16 |     ok 
+     abcs-rc-abrs |   f32 |     44 | 92928 |    48 |   0.0e0 |    0.0e0 |     ok 
+     abcs-rc-abrs |   f64 |     44 | 92928 |    48 |   0.0e0 |    0.0e0 |     ok 
+     abcs-rc-abrs |   c32 |     44 | 92928 |    48 |  1.9e-7 |   2.4e-7 |     ok 
+     abcs-rc-abrs |   c64 |     44 | 92928 |    48 | 3.4e-16 |  4.5e-16 |     ok 
+       abj-bka-kj |   f32 |  28224 |   160 |   168 |   0.0e0 |    0.0e0 |     ok 
+       abj-bka-kj |   f64 |  28224 |   160 |   168 |   0.0e0 |    0.0e0 |     ok 
+       abj-bka-kj |   c32 |  28224 |   160 |   168 |  3.3e-7 |   4.5e-7 |     ok 
+       abj-bka-kj |   c64 |  28224 |   160 |   168 | 6.5e-16 |  7.7e-16 |     ok 
+       ajb-kba-jk |   f32 |  26880 |   168 |   168 |   0.0e0 |    0.0e0 |     ok 
+       ajb-kba-jk |   f64 |  26880 |   168 |   168 |   0.0e0 |    0.0e0 |     ok 
+       ajb-kba-jk |   c32 |  26880 |   168 |   168 |  3.3e-7 |   4.5e-7 |     ok 
+       ajb-kba-jk |   c64 |  26880 |   168 |   168 | 6.5e-16 |  7.7e-16 |     ok 
+     abjc-cbka-kj |   f32 | 101376 |    44 |    48 |   0.0e0 |    0.0e0 |     ok 
+     abjc-cbka-kj |   f64 | 101376 |    44 |    48 |   0.0e0 |    0.0e0 |     ok 
+     abjc-cbka-kj |   c32 | 101376 |    44 |    48 |  1.8e-7 |   2.4e-7 |     ok 
+     abjc-cbka-kj |   c64 | 101376 |    44 |    48 | 3.4e-16 |  4.6e-16 |     ok 
+     ajbc-ckba-jk |   f32 | 101376 |    48 |    44 |   0.0e0 |    0.0e0 |     ok 
+     ajbc-ckba-jk |   f64 | 101376 |    48 |    44 |   0.0e0 |    0.0e0 |     ok 
+     ajbc-ckba-jk |   c32 | 101376 |    48 |    44 |  1.7e-7 |   2.4e-7 |     ok 
+     ajbc-ckba-jk |   c64 | 101376 |    48 |    44 | 3.2e-16 |  4.4e-16 |     ok 
+     abjc-kbac-jk |   f32 |  92928 |    48 |    48 |   0.0e0 |    0.0e0 |     ok 
+     abjc-kbac-jk |   f64 |  92928 |    48 |    48 |   0.0e0 |    0.0e0 |     ok 
+     abjc-kbac-jk |   c32 |  92928 |    48 |    48 |  1.8e-7 |   2.5e-7 |     ok 
+     abjc-kbac-jk |   c64 |  92928 |    48 |    48 | 3.3e-16 |  4.5e-16 |     ok 
+   abjcd-dkbac-jk |   f32 | 230400 |    24 |    20 |   0.0e0 |    0.0e0 |     ok 
+   abjcd-dkbac-jk |   f64 | 230400 |    24 |    20 |   0.0e0 |    0.0e0 |     ok 
+   abjcd-dkbac-jk |   c32 | 230400 |    24 |    20 |  1.2e-7 |   1.6e-7 |     ok 
+   abjcd-dkbac-jk |   c64 | 230400 |    24 |    20 | 2.2e-16 |  3.0e-16 |     ok 
+   adbjc-cbdka-kj |   f32 | 230400 |    20 |    24 |   0.0e0 |    0.0e0 |     ok 
+   adbjc-cbdka-kj |   f64 | 230400 |    20 |    24 |   0.0e0 |    0.0e0 |     ok 
+   adbjc-cbdka-kj |   c32 | 230400 |    20 |    24 |  1.3e-7 |   1.7e-7 |     ok 
+   adbjc-cbdka-kj |   c64 | 230400 |    20 |    24 | 2.4e-16 |  3.3e-16 |     ok 
+   ajbdc-ckbad-jk |   f32 | 230400 |    24 |    20 |   0.0e0 |    0.0e0 |     ok 
+   ajbdc-ckbad-jk |   f64 | 230400 |    24 |    20 |   0.0e0 |    0.0e0 |     ok 
+   ajbdc-ckbad-jk |   c32 | 230400 |    24 |    20 |  1.2e-7 |   1.6e-7 |     ok 
+   ajbdc-ckbad-jk |   c64 | 230400 |    24 |    20 | 2.2e-16 |  3.0e-16 |     ok 
+ abcijk-ijma-mkbc |   f32 |   6912 |  1728 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ijma-mkbc |   f64 |   6912 |  1728 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ijma-mkbc |   c32 |   6912 |  1728 |    24 |  1.3e-7 |   1.8e-7 |     ok 
+ abcijk-ijma-mkbc |   c64 |   6912 |  1728 |    24 | 2.4e-16 |  3.3e-16 |     ok 
+ abcijk-ijmb-mkac |   f32 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ijmb-mkac |   f64 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ijmb-mkac |   c32 |   3456 |  3456 |    24 |  1.3e-7 |   1.8e-7 |     ok 
+ abcijk-ijmb-mkac |   c64 |   3456 |  3456 |    24 | 2.4e-16 |  3.3e-16 |     ok 
+ abcijk-ijmc-mkab |   f32 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ijmc-mkab |   f64 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ijmc-mkab |   c32 |   3456 |  3456 |    24 |  1.3e-7 |   1.8e-7 |     ok 
+ abcijk-ijmc-mkab |   c64 |   3456 |  3456 |    24 | 2.4e-16 |  3.3e-16 |     ok 
+ abcijk-ikma-mjbc |   f32 |   6912 |  1728 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ikma-mjbc |   f64 |   6912 |  1728 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ikma-mjbc |   c32 |   6912 |  1728 |    24 |  1.3e-7 |   1.8e-7 |     ok 
+ abcijk-ikma-mjbc |   c64 |   6912 |  1728 |    24 | 2.4e-16 |  3.3e-16 |     ok 
+ abcijk-ikmb-mjac |   f32 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ikmb-mjac |   f64 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ikmb-mjac |   c32 |   3456 |  3456 |    24 |  1.3e-7 |   1.8e-7 |     ok 
+ abcijk-ikmb-mjac |   c64 |   3456 |  3456 |    24 | 2.4e-16 |  3.3e-16 |     ok 
+ abcijk-ikmc-mjab |   f32 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ikmc-mjab |   f64 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ikmc-mjab |   c32 |   3456 |  3456 |    24 |  1.3e-7 |   1.8e-7 |     ok 
+ abcijk-ikmc-mjab |   c64 |   3456 |  3456 |    24 | 2.4e-16 |  3.3e-16 |     ok 
+ abcijk-jkma-mibc |   f32 |   6912 |  1728 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-jkma-mibc |   f64 |   6912 |  1728 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-jkma-mibc |   c32 |   6912 |  1728 |    24 |  1.3e-7 |   1.8e-7 |     ok 
+ abcijk-jkma-mibc |   c64 |   6912 |  1728 |    24 | 2.4e-16 |  3.3e-16 |     ok 
+ abcijk-jkmb-miac |   f32 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-jkmb-miac |   f64 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-jkmb-miac |   c32 |   3456 |  3456 |    24 |  1.3e-7 |   1.8e-7 |     ok 
+ abcijk-jkmb-miac |   c64 |   3456 |  3456 |    24 | 2.4e-16 |  3.3e-16 |     ok 
+ abcijk-jkmc-miab |   f32 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-jkmc-miab |   f64 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-jkmc-miab |   c32 |   3456 |  3456 |    24 |  1.3e-7 |   1.8e-7 |     ok 
+ abcijk-jkmc-miab |   c64 |   3456 |  3456 |    24 | 2.4e-16 |  3.3e-16 |     ok 
+ abcijk-eiab-jkec |   f32 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-eiab-jkec |   f64 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-eiab-jkec |   c32 |   3456 |  3456 |    24 |  1.3e-7 |   1.8e-7 |     ok 
+ abcijk-eiab-jkec |   c64 |   3456 |  3456 |    24 | 2.5e-16 |  3.3e-16 |     ok 
+ abcijk-eiac-jkeb |   f32 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-eiac-jkeb |   f64 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-eiac-jkeb |   c32 |   3456 |  3456 |    24 |  1.3e-7 |   1.8e-7 |     ok 
+ abcijk-eiac-jkeb |   c64 |   3456 |  3456 |    24 | 2.5e-16 |  3.3e-16 |     ok 
+ abcijk-eibc-jkea |   f32 |   1728 |  6912 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-eibc-jkea |   f64 |   1728 |  6912 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-eibc-jkea |   c32 |   1728 |  6912 |    24 |  1.3e-7 |   1.8e-7 |     ok 
+ abcijk-eibc-jkea |   c64 |   1728 |  6912 |    24 | 2.4e-16 |  3.3e-16 |     ok 
+ abcijk-ejab-ikec |   f32 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ejab-ikec |   f64 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ejab-ikec |   c32 |   3456 |  3456 |    24 |  1.3e-7 |   1.8e-7 |     ok 
+ abcijk-ejab-ikec |   c64 |   3456 |  3456 |    24 | 2.5e-16 |  3.3e-16 |     ok 
+ abcijk-ejac-ikeb |   f32 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ejac-ikeb |   f64 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ejac-ikeb |   c32 |   3456 |  3456 |    24 |  1.3e-7 |   1.8e-7 |     ok 
+ abcijk-ejac-ikeb |   c64 |   3456 |  3456 |    24 | 2.5e-16 |  3.3e-16 |     ok 
+ abcijk-ejbc-ikea |   f32 |   1728 |  6912 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ejbc-ikea |   f64 |   1728 |  6912 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ejbc-ikea |   c32 |   1728 |  6912 |    24 |  1.3e-7 |   1.8e-7 |     ok 
+ abcijk-ejbc-ikea |   c64 |   1728 |  6912 |    24 | 2.4e-16 |  3.3e-16 |     ok 
+ abcijk-ekab-ijec |   f32 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ekab-ijec |   f64 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ekab-ijec |   c32 |   3456 |  3456 |    24 |  1.3e-7 |   1.8e-7 |     ok 
+ abcijk-ekab-ijec |   c64 |   3456 |  3456 |    24 | 2.5e-16 |  3.3e-16 |     ok 
+ abcijk-ekac-ijeb |   f32 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ekac-ijeb |   f64 |   3456 |  3456 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ekac-ijeb |   c32 |   3456 |  3456 |    24 |  1.3e-7 |   1.8e-7 |     ok 
+ abcijk-ekac-ijeb |   c64 |   3456 |  3456 |    24 | 2.5e-16 |  3.3e-16 |     ok 
+ abcijk-ekbc-ijea |   f32 |   1728 |  6912 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ekbc-ijea |   f64 |   1728 |  6912 |    24 |   0.0e0 |    0.0e0 |     ok 
+ abcijk-ekbc-ijea |   c32 |   1728 |  6912 |    24 |  1.3e-7 |   1.8e-7 |     ok 
+ abcijk-ekbc-ijea |   c64 |   1728 |  6912 |    24 | 2.4e-16 |  3.3e-16 |     ok 
+       abc-bk-akc |   f32 |    168 | 26880 |   160 |   0.0e0 |    0.0e0 |     ok 
+       abc-bk-akc |   f64 |    168 | 26880 |   160 |   0.0e0 |    0.0e0 |     ok 
+       abc-bk-akc |   c32 |    168 | 26880 |   160 |  3.2e-7 |   4.4e-7 |     ok 
+       abc-bk-akc |   c64 |    168 | 26880 |   160 | 6.4e-16 |  8.2e-16 |     ok 
+
+all comparisons within tolerance
+
+
+########## ./target/release/tcbench premise --size 200 --reps 3 --engines planar,1m,3m,ttgt,tblis --dtype f64,c64 --csv bench-results/phase3-premise-f64c64.csv ##########
+
+host        : ccqlin038.flatironinstitute.org
+target      : x86_64 / linux
+cpu features: avx2 fma avx512f avx512dq 
+baselines   : tblis=true blas=true
+tblis       : abi 2.x, 1 thread(s)
+
+premise check: 12 cases at 200 MiB nominal tensor size, 3 reps, stress=none
+
+  abjcd-dkbac-jk : m=2359296 n=48 k=32 macs=3.624e9
+  ajbc-ckba-jk : m=373248 n=72 k=72 macs=1.935e9
+  abcijk-ikmb-mjac : m=6144 n=6144 k=24 macs=9.060e8
+  abrs-qb-aqrs : m=72 n=373248 k=72 macs=1.935e9
+  ij-ikl-ljk : m=312 n=296 k=92352 macs=8.529e9
+  ijkl-imjn-nlmk : m=5184 n=5184 k=5184 macs=1.393e11
+  ijkl-imkn-jnlm : m=5184 n=5184 k=5184 macs=1.393e11
+  ijkl-imnj-nlkm : m=5184 n=5184 k=5184 macs=1.393e11
+  abcijk-ikma-mjbc : m=9216 n=4096 k=24 macs=9.060e8
+  abcijk-eiab-jkec : m=6144 n=6144 k=24 macs=9.060e8
+  abcijk-ejac-ikeb : m=6144 n=6144 k=24 macs=9.060e8
+  abc-bk-akc : m=312 n=92352 k=296 macs=8.529e9
+
+=== tblis: complex vs real efficiency against the GEMM ceiling ===
+             case | regA | f64 GF/s | gemm f64 |   eff | c64 GF/s | gemm c64 |   eff | eff ratio 
+------------------+------+----------+----------+-------+----------+----------+-------+-----------
+   abjcd-dkbac-jk | 1.00 |      7.3 |     16.9 | 0.430 |     18.1 |     35.2 | 0.514 |     1.194 
+     ajbc-ckba-jk | 1.00 |     12.1 |     30.0 | 0.404 |     24.3 |     56.1 | 0.434 |     1.073 
+ abcijk-ikmb-mjac | 0.00 |      8.7 |     16.0 | 0.543 |     19.9 |     28.4 | 0.701 |     1.289 
+     abrs-qb-aqrs | 1.00 |     17.4 |     21.5 | 0.812 |     46.2 |     60.2 | 0.768 |     0.946 
+       ij-ikl-ljk | 1.00 |     43.2 |     67.2 | 0.643 |     67.1 |     86.2 | 0.778 |     1.209 
+   ijkl-imjn-nlmk | 1.00 |     72.9 |     98.0 | 0.744 |     75.0 |     95.8 | 0.782 |     1.052 
+   ijkl-imkn-jnlm | 1.00 |     79.3 |     98.9 | 0.802 |     85.3 |     98.7 | 0.864 |     1.077 
+   ijkl-imnj-nlkm | 1.00 |     76.1 |    101.1 | 0.752 |     75.0 |     97.0 | 0.773 |     1.028 
+ abcijk-ikma-mjbc | 1.00 |     23.9 |     16.4 | 1.457 |     36.8 |     33.9 | 1.084 |     0.744 
+ abcijk-eiab-jkec | 1.00 |     19.7 |     16.5 | 1.195 |     38.6 |     34.3 | 1.128 |     0.943 
+ abcijk-ejac-ikeb | 1.00 |      8.8 |     16.7 | 0.528 |     23.1 |     34.6 | 0.666 |     1.262 
+       abc-bk-akc | 1.00 |     59.9 |     58.8 | 1.018 |     71.5 |     80.2 | 0.891 |     0.876 
+             MEAN |      |          |          |       |          |          |       |     1.058 
+
+=== ttgt: complex vs real efficiency against the GEMM ceiling ===
+             case | regA | f64 GF/s | gemm f64 |   eff | c64 GF/s | gemm c64 |   eff | eff ratio 
+------------------+------+----------+----------+-------+----------+----------+-------+-----------
+   abjcd-dkbac-jk | 1.00 |      1.4 |     16.9 | 0.085 |      4.8 |     35.2 | 0.135 |     1.596 
+     ajbc-ckba-jk | 1.00 |      4.8 |     30.0 | 0.159 |     11.8 |     56.1 | 0.210 |     1.322 
+ abcijk-ikmb-mjac | 0.00 |      3.4 |     16.0 | 0.212 |      7.3 |     28.4 | 0.257 |     1.214 
+     abrs-qb-aqrs | 1.00 |      8.7 |     21.5 | 0.404 |     23.0 |     60.2 | 0.381 |     0.944 
+       ij-ikl-ljk | 1.00 |     44.3 |     67.2 | 0.659 |     63.2 |     86.2 | 0.732 |     1.111 
+   ijkl-imjn-nlmk | 1.00 |     83.5 |     98.0 | 0.853 |     92.0 |     95.8 | 0.960 |     1.126 
+   ijkl-imkn-jnlm | 1.00 |     85.8 |     98.9 | 0.867 |     92.2 |     98.7 | 0.934 |     1.077 
+   ijkl-imnj-nlkm | 1.00 |     86.3 |    101.1 | 0.853 |     88.2 |     97.0 | 0.910 |     1.066 
+ abcijk-ikma-mjbc | 1.00 |      4.0 |     16.4 | 0.244 |     10.3 |     33.9 | 0.303 |     1.240 
+ abcijk-eiab-jkec | 1.00 |      5.0 |     16.5 | 0.304 |     11.4 |     34.3 | 0.334 |     1.097 
+ abcijk-ejac-ikeb | 1.00 |      4.3 |     16.7 | 0.258 |     10.5 |     34.6 | 0.302 |     1.170 
+       abc-bk-akc | 1.00 |     28.2 |     58.8 | 0.479 |     46.3 |     80.2 | 0.578 |     1.206 
+             MEAN |      |          |          |       |          |          |       |     1.181 
+
+=== planar: complex vs real efficiency against the GEMM ceiling ===
+             case | regA | f64 GF/s | gemm f64 |   eff | c64 GF/s | gemm c64 |   eff | eff ratio 
+------------------+------+----------+----------+-------+----------+----------+-------+-----------
+   abjcd-dkbac-jk | 1.00 |      3.2 |     16.9 | 0.190 |     10.5 |     35.2 | 0.300 |     1.574 
+     ajbc-ckba-jk | 1.00 |      5.5 |     30.0 | 0.184 |     11.7 |     56.1 | 0.209 |     1.137 
+ abcijk-ikmb-mjac | 0.00 |     23.5 |     16.0 | 1.469 |     33.8 |     28.4 | 1.189 |     0.810 
+     abrs-qb-aqrs | 1.00 |     29.3 |     21.5 | 1.367 |     38.2 |     60.2 | 0.634 |     0.464 
+       ij-ikl-ljk | 1.00 |     36.6 |     67.2 | 0.545 |     53.0 |     86.2 | 0.615 |     1.128 
+   ijkl-imjn-nlmk | 1.00 |     68.3 |     98.0 | 0.697 |     77.6 |     95.8 | 0.810 |     1.162 
+   ijkl-imkn-jnlm | 1.00 |     67.7 |     98.9 | 0.685 |     77.7 |     98.7 | 0.787 |     1.149 
+   ijkl-imnj-nlkm | 1.00 |     70.2 |    101.1 | 0.695 |     80.9 |     97.0 | 0.835 |     1.201 
+ abcijk-ikma-mjbc | 1.00 |     32.0 |     16.4 | 1.950 |     38.8 |     33.9 | 1.143 |     0.586 
+ abcijk-eiab-jkec | 1.00 |     26.2 |     16.5 | 1.593 |     44.8 |     34.3 | 1.309 |     0.822 
+ abcijk-ejac-ikeb | 1.00 |     28.8 |     16.7 | 1.729 |     40.2 |     34.6 | 1.162 |     0.672 
+       abc-bk-akc | 1.00 |     41.6 |     58.8 | 0.707 |     56.7 |     80.2 | 0.707 |     1.000 
+             MEAN |      |          |          |       |          |          |       |     0.976 
+
+=== 1m: complex vs real efficiency against the GEMM ceiling ===
+             case | regA | f64 GF/s | gemm f64 |   eff | c64 GF/s | gemm c64 |   eff | eff ratio 
+------------------+------+----------+----------+-------+----------+----------+-------+-----------
+   abjcd-dkbac-jk | 1.00 |      3.2 |     16.9 | 0.190 |      9.6 |     35.2 | 0.272 |     1.429 
+     ajbc-ckba-jk | 1.00 |      5.5 |     30.0 | 0.184 |     12.2 |     56.1 | 0.218 |     1.185 
+ abcijk-ikmb-mjac | 0.00 |     23.5 |     16.0 | 1.469 |     35.5 |     28.4 | 1.250 |     0.851 
+     abrs-qb-aqrs | 1.00 |     29.3 |     21.5 | 1.367 |     39.4 |     60.2 | 0.655 |     0.479 
+       ij-ikl-ljk | 1.00 |     36.6 |     67.2 | 0.545 |     49.5 |     86.2 | 0.574 |     1.054 
+   ijkl-imjn-nlmk | 1.00 |     68.3 |     98.0 | 0.697 |     71.5 |     95.8 | 0.746 |     1.071 
+   ijkl-imkn-jnlm | 1.00 |     67.7 |     98.9 | 0.685 |     74.7 |     98.7 | 0.756 |     1.104 
+   ijkl-imnj-nlkm | 1.00 |     70.2 |    101.1 | 0.695 |     73.8 |     97.0 | 0.761 |     1.096 
+ abcijk-ikma-mjbc | 1.00 |     32.0 |     16.4 | 1.950 |     38.3 |     33.9 | 1.130 |     0.579 
+ abcijk-eiab-jkec | 1.00 |     26.2 |     16.5 | 1.593 |     37.1 |     34.3 | 1.082 |     0.679 
+ abcijk-ejac-ikeb | 1.00 |     28.8 |     16.7 | 1.729 |     41.2 |     34.6 | 1.191 |     0.689 
+       abc-bk-akc | 1.00 |     41.6 |     58.8 | 0.707 |     53.9 |     80.2 | 0.672 |     0.951 
+             MEAN |      |          |          |       |          |          |       |     0.931 
+
+=== 3m: complex vs real efficiency against the GEMM ceiling ===
+             case | regA | f64 GF/s | gemm f64 |   eff | c64 GF/s | gemm c64 |   eff | eff ratio 
+------------------+------+----------+----------+-------+----------+----------+-------+-----------
+   abjcd-dkbac-jk | 1.00 |      3.2 |     16.9 | 0.190 |     12.2 |     35.2 | 0.348 |     1.828 
+     ajbc-ckba-jk | 1.00 |      5.5 |     30.0 | 0.184 |     18.0 |     56.1 | 0.321 |     1.747 
+ abcijk-ikmb-mjac | 0.00 |     23.5 |     16.0 | 1.469 |     32.8 |     28.4 | 1.155 |     0.786 
+     abrs-qb-aqrs | 1.00 |     29.3 |     21.5 | 1.367 |     36.8 |     60.2 | 0.610 |     0.447 
+       ij-ikl-ljk | 1.00 |     36.6 |     67.2 | 0.545 |     47.7 |     86.2 | 0.553 |     1.015 
+   ijkl-imjn-nlmk | 1.00 |     68.3 |     98.0 | 0.697 |     69.6 |     95.8 | 0.727 |     1.043 
+   ijkl-imkn-jnlm | 1.00 |     67.7 |     98.9 | 0.685 |     70.3 |     98.7 | 0.712 |     1.040 
+   ijkl-imnj-nlkm | 1.00 |     70.2 |    101.1 | 0.695 |     71.2 |     97.0 | 0.734 |     1.056 
+ abcijk-ikma-mjbc | 1.00 |     32.0 |     16.4 | 1.950 |     34.9 |     33.9 | 1.030 |     0.528 
+ abcijk-eiab-jkec | 1.00 |     26.2 |     16.5 | 1.593 |     36.6 |     34.3 | 1.069 |     0.671 
+ abcijk-ejac-ikeb | 1.00 |     28.8 |     16.7 | 1.729 |     38.7 |     34.6 | 1.119 |     0.647 
+       abc-bk-akc | 1.00 |     41.6 |     58.8 | 0.707 |     53.2 |     80.2 | 0.663 |     0.938 
+             MEAN |      |          |          |       |          |          |       |     0.979 
+
+interpretation: 'eff' is contraction GF/s divided by same-shape GEMM GF/s.
+'eff ratio' is complex eff over real eff. Below 1.0 means the engine loses
+more to overheads on complex data than on real data -- the headroom this
+project targets. At or above 1.0 the complex-weakness thesis is refuted.
+
+wrote bench-results/phase3-premise-f64c64.csv
+
+
+########## ./target/release/tcbench premise --size 200 --reps 3 --engines planar,1m,3m,ttgt,tblis --dtype f32,c32 --csv bench-results/phase3-premise-f32c32.csv ##########
+
+host        : ccqlin038.flatironinstitute.org
+target      : x86_64 / linux
+cpu features: avx2 fma avx512f avx512dq 
+baselines   : tblis=true blas=true
+tblis       : abi 2.x, 1 thread(s)
+
+premise check: 12 cases at 200 MiB nominal tensor size, 3 reps, stress=none
+
+  abjcd-dkbac-jk : m=2359296 n=48 k=32 macs=3.624e9
+  ajbc-ckba-jk : m=373248 n=72 k=72 macs=1.935e9
+  abcijk-ikmb-mjac : m=6144 n=6144 k=24 macs=9.060e8
+  abrs-qb-aqrs : m=72 n=373248 k=72 macs=1.935e9
+  ij-ikl-ljk : m=312 n=296 k=92352 macs=8.529e9
+  ijkl-imjn-nlmk : m=5184 n=5184 k=5184 macs=1.393e11
+  ijkl-imkn-jnlm : m=5184 n=5184 k=5184 macs=1.393e11
+  ijkl-imnj-nlkm : m=5184 n=5184 k=5184 macs=1.393e11
+  abcijk-ikma-mjbc : m=9216 n=4096 k=24 macs=9.060e8
+  abcijk-eiab-jkec : m=6144 n=6144 k=24 macs=9.060e8
+  abcijk-ejac-ikeb : m=6144 n=6144 k=24 macs=9.060e8
+  abc-bk-akc : m=312 n=92352 k=296 macs=8.529e9
+
+=== tblis: complex vs real efficiency against the GEMM ceiling ===
+             case | regA | f32 GF/s | gemm f32 |   eff | c32 GF/s | gemm c32 |   eff | eff ratio 
+------------------+------+----------+----------+-------+----------+----------+-------+-----------
+   abjcd-dkbac-jk | 1.00 |     11.3 |     35.1 | 0.323 |     23.8 |     59.6 | 0.399 |     1.234 
+     ajbc-ckba-jk | 0.67 |     24.9 |     48.1 | 0.518 |     41.5 |     59.4 | 0.699 |     1.350 
+ abcijk-ikmb-mjac | 0.00 |     10.8 |     33.6 | 0.322 |     22.8 |     65.4 | 0.349 |     1.085 
+     abrs-qb-aqrs | 1.00 |     33.9 |     73.5 | 0.461 |     69.1 |    109.2 | 0.632 |     1.371 
+       ij-ikl-ljk | 1.00 |     63.3 |    131.3 | 0.482 |    122.9 |    164.2 | 0.749 |     1.552 
+   ijkl-imjn-nlmk | 0.67 |    144.9 |    188.3 | 0.769 |    156.8 |    213.3 | 0.735 |     0.955 
+   ijkl-imkn-jnlm | 0.67 |    155.2 |    200.8 | 0.773 |    169.3 |    214.6 | 0.789 |     1.021 
+   ijkl-imnj-nlkm | 0.67 |    152.6 |    203.5 | 0.750 |    164.6 |    215.1 | 0.766 |     1.021 
+ abcijk-ikma-mjbc | 0.00 |     38.4 |     33.8 | 1.136 |     71.5 |     68.0 | 1.051 |     0.925 
+ abcijk-eiab-jkec | 1.00 |     30.9 |     33.1 | 0.935 |     53.1 |     68.3 | 0.777 |     0.831 
+ abcijk-ejac-ikeb | 1.00 |     11.2 |     33.3 | 0.336 |     22.8 |     68.4 | 0.334 |     0.994 
+       abc-bk-akc | 1.00 |    100.8 |    146.7 | 0.687 |    141.2 |    167.2 | 0.845 |     1.230 
+             MEAN |      |          |          |       |          |          |       |     1.131 
+
+=== ttgt: complex vs real efficiency against the GEMM ceiling ===
+             case | regA | f32 GF/s | gemm f32 |   eff | c32 GF/s | gemm c32 |   eff | eff ratio 
+------------------+------+----------+----------+-------+----------+----------+-------+-----------
+   abjcd-dkbac-jk | 1.00 |      1.9 |     35.1 | 0.056 |      5.8 |     59.6 | 0.098 |     1.762 
+     ajbc-ckba-jk | 0.67 |     10.1 |     48.1 | 0.210 |     18.2 |     59.4 | 0.306 |     1.458 
+ abcijk-ikmb-mjac | 0.00 |      5.8 |     33.6 | 0.172 |     14.5 |     65.4 | 0.222 |     1.290 
+     abrs-qb-aqrs | 1.00 |     19.1 |     73.5 | 0.260 |     40.9 |    109.2 | 0.375 |     1.442 
+       ij-ikl-ljk | 1.00 |     79.4 |    131.3 | 0.605 |    122.8 |    164.2 | 0.748 |     1.237 
+   ijkl-imjn-nlmk | 0.67 |    169.8 |    188.3 | 0.902 |    194.3 |    213.3 | 0.911 |     1.011 
+   ijkl-imkn-jnlm | 0.67 |    168.3 |    200.8 | 0.838 |    197.0 |    214.6 | 0.918 |     1.095 
+   ijkl-imnj-nlkm | 0.67 |    173.4 |    203.5 | 0.852 |    197.9 |    215.1 | 0.920 |     1.080 
+ abcijk-ikma-mjbc | 0.00 |      6.2 |     33.8 | 0.182 |     17.1 |     68.0 | 0.251 |     1.378 
+ abcijk-eiab-jkec | 1.00 |      9.9 |     33.1 | 0.300 |     22.3 |     68.3 | 0.326 |     1.088 
+ abcijk-ejac-ikeb | 1.00 |      8.3 |     33.3 | 0.248 |     19.1 |     68.4 | 0.279 |     1.124 
+       abc-bk-akc | 1.00 |     52.2 |    146.7 | 0.356 |     97.3 |    167.2 | 0.582 |     1.635 
+             MEAN |      |          |          |       |          |          |       |     1.300 
+
+=== planar: complex vs real efficiency against the GEMM ceiling ===
+             case | regA | f32 GF/s | gemm f32 |   eff | c32 GF/s | gemm c32 |   eff | eff ratio 
+------------------+------+----------+----------+-------+----------+----------+-------+-----------
+   abjcd-dkbac-jk | 1.00 |      2.7 |     35.1 | 0.077 |      9.6 |     59.6 | 0.161 |     2.087 
+     ajbc-ckba-jk | 0.67 |     11.0 |     48.1 | 0.229 |     20.4 |     59.4 | 0.343 |     1.498 
+ abcijk-ikmb-mjac | 0.00 |     38.2 |     33.6 | 1.139 |     62.4 |     65.4 | 0.954 |     0.838 
+     abrs-qb-aqrs | 1.00 |     44.8 |     73.5 | 0.609 |     78.5 |    109.2 | 0.719 |     1.179 
+       ij-ikl-ljk | 1.00 |     66.5 |    131.3 | 0.507 |     94.6 |    164.2 | 0.576 |     1.137 
+   ijkl-imjn-nlmk | 0.67 |    143.5 |    188.3 | 0.762 |    157.3 |    213.3 | 0.738 |     0.968 
+   ijkl-imkn-jnlm | 0.67 |    156.9 |    200.8 | 0.781 |    164.2 |    214.6 | 0.765 |     0.979 
+   ijkl-imnj-nlkm | 0.67 |    150.9 |    203.5 | 0.741 |    163.2 |    215.1 | 0.759 |     1.024 
+ abcijk-ikma-mjbc | 0.00 |     52.9 |     33.8 | 1.563 |     80.6 |     68.0 | 1.184 |     0.758 
+ abcijk-eiab-jkec | 1.00 |     43.1 |     33.1 | 1.304 |     71.6 |     68.3 | 1.048 |     0.804 
+ abcijk-ejac-ikeb | 1.00 |     33.4 |     33.3 | 1.001 |     61.5 |     68.4 | 0.899 |     0.898 
+       abc-bk-akc | 1.00 |     72.1 |    146.7 | 0.492 |    140.3 |    167.2 | 0.839 |     1.707 
+             MEAN |      |          |          |       |          |          |       |     1.156 
+
+=== 1m: complex vs real efficiency against the GEMM ceiling ===
+             case | regA | f32 GF/s | gemm f32 |   eff | c32 GF/s | gemm c32 |   eff | eff ratio 
+------------------+------+----------+----------+-------+----------+----------+-------+-----------
+   abjcd-dkbac-jk | 1.00 |      2.7 |     35.1 | 0.077 |      8.9 |     59.6 | 0.149 |     1.932 
+     ajbc-ckba-jk | 0.67 |     11.0 |     48.1 | 0.229 |     18.6 |     59.4 | 0.313 |     1.369 
+ abcijk-ikmb-mjac | 0.00 |     38.2 |     33.6 | 1.139 |     63.9 |     65.4 | 0.976 |     0.857 
+     abrs-qb-aqrs | 1.00 |     44.8 |     73.5 | 0.609 |     74.2 |    109.2 | 0.679 |     1.115 
+       ij-ikl-ljk | 1.00 |     66.5 |    131.3 | 0.507 |    100.1 |    164.2 | 0.610 |     1.203 
+   ijkl-imjn-nlmk | 0.67 |    143.5 |    188.3 | 0.762 |    154.7 |    213.3 | 0.725 |     0.952 
+   ijkl-imkn-jnlm | 0.67 |    156.9 |    200.8 | 0.781 |    162.6 |    214.6 | 0.758 |     0.970 
+   ijkl-imnj-nlkm | 0.67 |    150.9 |    203.5 | 0.741 |    158.5 |    215.1 | 0.737 |     0.994 
+ abcijk-ikma-mjbc | 0.00 |     52.9 |     33.8 | 1.563 |     82.3 |     68.0 | 1.209 |     0.773 
+ abcijk-eiab-jkec | 1.00 |     43.1 |     33.1 | 1.304 |     74.9 |     68.3 | 1.096 |     0.841 
+ abcijk-ejac-ikeb | 1.00 |     33.4 |     33.3 | 1.001 |     69.1 |     68.4 | 1.010 |     1.009 
+       abc-bk-akc | 1.00 |     72.1 |    146.7 | 0.492 |    141.0 |    167.2 | 0.843 |     1.715 
+             MEAN |      |          |          |       |          |          |       |     1.144 
+
+=== 3m: complex vs real efficiency against the GEMM ceiling ===
+             case | regA | f32 GF/s | gemm f32 |   eff | c32 GF/s | gemm c32 |   eff | eff ratio 
+------------------+------+----------+----------+-------+----------+----------+-------+-----------
+   abjcd-dkbac-jk | 1.00 |      2.7 |     35.1 | 0.077 |     10.7 |     59.6 | 0.179 |     2.327 
+     ajbc-ckba-jk | 0.67 |     11.0 |     48.1 | 0.229 |     22.1 |     59.4 | 0.371 |     1.624 
+ abcijk-ikmb-mjac | 0.00 |     38.2 |     33.6 | 1.139 |     57.4 |     65.4 | 0.877 |     0.770 
+     abrs-qb-aqrs | 1.00 |     44.8 |     73.5 | 0.609 |     75.3 |    109.2 | 0.689 |     1.131 
+       ij-ikl-ljk | 1.00 |     66.5 |    131.3 | 0.507 |     92.5 |    164.2 | 0.563 |     1.112 
+   ijkl-imjn-nlmk | 0.67 |    143.5 |    188.3 | 0.762 |    146.6 |    213.3 | 0.687 |     0.902 
+   ijkl-imkn-jnlm | 0.67 |    156.9 |    200.8 | 0.781 |    149.7 |    214.6 | 0.698 |     0.893 
+   ijkl-imnj-nlkm | 0.67 |    150.9 |    203.5 | 0.741 |    152.2 |    215.1 | 0.708 |     0.955 
+ abcijk-ikma-mjbc | 0.00 |     52.9 |     33.8 | 1.563 |     68.1 |     68.0 | 1.001 |     0.640 
+ abcijk-eiab-jkec | 1.00 |     43.1 |     33.1 | 1.304 |     63.9 |     68.3 | 0.935 |     0.717 
+ abcijk-ejac-ikeb | 1.00 |     33.4 |     33.3 | 1.001 |     63.6 |     68.4 | 0.930 |     0.929 
+       abc-bk-akc | 1.00 |     72.1 |    146.7 | 0.492 |    131.8 |    167.2 | 0.788 |     1.603 
+             MEAN |      |          |          |       |          |          |       |     1.134 
+
+interpretation: 'eff' is contraction GF/s divided by same-shape GEMM GF/s.
+'eff ratio' is complex eff over real eff. Below 1.0 means the engine loses
+more to overheads on complex data than on real data -- the headroom this
+project targets. At or above 1.0 the complex-weakness thesis is refuted.
+
+wrote bench-results/phase3-premise-f32c32.csv
+
+
+########## ./target/release/tcbench sweep --size 64 --reps 3 --engines planar,1m,3m,ttgt,tblis --dtype f64,c64 --csv bench-results/phase3-sweep-f64c64.csv ##########
+
+host        : ccqlin038.flatironinstitute.org
+target      : x86_64 / linux
+cpu features: avx2 fma avx512f avx512dq 
+baselines   : tblis=true blas=true
+tblis       : abi 2.x, 1 thread(s)
+
+sweeping 49 cases at 64 MiB nominal tensor size, 3 reps, stress=none
+
+
+=== f64 ===
+             case |      m |      n |     k | regA | regB | planar GF/s | 1m GF/s | 3m GF/s | ttgt GF/s | tblis GF/s 
+------------------+--------+--------+-------+------+------+-------------+---------+---------+-----------+------------
+         ij-ik-kj |   2904 |   2896 |  2904 | 1.00 | 1.00 |        70.3 |    70.3 |    70.3 |      85.3 |       90.7 
+       ij-ikl-ljk |    216 |    204 | 44064 | 1.00 | 1.00 |        35.1 |    35.1 |    35.1 |      38.4 |       37.5 
+       ij-kil-lkj |    216 |    204 | 46656 | 1.00 | 1.00 |        39.2 |    39.2 |    39.2 |      36.4 |       29.1 
+       ijk-ikl-lj |  44064 |    204 |   216 | 1.00 | 1.00 |        55.4 |    55.4 |    55.4 |      29.1 |       52.2 
+       ijk-il-jlk |    216 |  44064 |   204 | 1.00 | 1.00 |        45.2 |    45.2 |    45.2 |      23.9 |       53.1 
+       ijk-ilk-jl |  44064 |    216 |   204 | 1.00 | 1.00 |        59.3 |    59.3 |    59.3 |      27.9 |       51.6 
+       ijk-ilk-lj |  44064 |    204 |   216 | 1.00 | 1.00 |        56.4 |    56.4 |    56.4 |      28.5 |       51.2 
+     ijk-ilmk-mjl |   3744 |     52 |  3744 | 1.00 | 1.00 |        41.3 |    41.3 |    41.3 |      23.1 |       19.8 
+   ijkl-imjn-lnkm |   3744 |   3744 |  2704 | 1.00 | 0.92 |        73.0 |    73.0 |    73.0 |      80.2 |       87.7 
+   ijkl-imjn-nlmk |   3744 |   2704 |  3744 | 1.00 | 0.92 |        73.9 |    73.9 |    73.9 |      86.4 |       85.7 
+   ijkl-imkn-jnlm |   3744 |   3744 |  2704 | 1.00 | 1.00 |        73.7 |    73.7 |    73.7 |      83.3 |       82.2 
+   ijkl-imkn-njml |   3744 |   2704 |  3744 | 1.00 | 0.92 |        72.1 |    72.1 |    72.1 |      86.0 |       80.0 
+   ijkl-imln-jnkm |   3744 |   3744 |  2704 | 1.00 | 1.00 |        74.0 |    74.0 |    74.0 |      83.4 |       84.7 
+   ijkl-imln-njmk |   3744 |   2704 |  3744 | 1.00 | 0.92 |        72.4 |    72.4 |    72.4 |      86.4 |       83.8 
+   ijkl-imnj-nlkm |   3744 |   2704 |  3744 | 1.00 | 0.92 |        72.9 |    72.9 |    72.9 |      85.8 |       85.0 
+   ijkl-imnk-njml |   3744 |   2704 |  3744 | 1.00 | 0.92 |        71.2 |    71.2 |    71.2 |      85.9 |       79.7 
+   ijkl-minj-nlmk |   3744 |   2704 |  5184 | 1.00 | 0.92 |        71.7 |    71.7 |    71.7 |      86.8 |       84.1 
+   ijkl-mink-jnlm |   3744 |   3744 |  3744 | 1.00 | 1.00 |        74.0 |    74.0 |    74.0 |      85.5 |       81.8 
+   ijkl-minl-njmk |   3744 |   2704 |  5184 | 1.00 | 0.92 |        71.0 |    71.0 |    71.0 |      86.8 |       82.3 
+     aqrs-pa-pqrs |     72 | 140608 |    72 | 1.00 | 1.00 |        31.2 |    31.2 |    31.2 |      11.1 |       23.1 
+     abrs-qb-aqrs |     52 | 194688 |    72 | 1.00 | 1.00 |        27.2 |    27.2 |    27.2 |       9.6 |       19.7 
+     abcs-rc-abrs |     52 | 194688 |    72 | 1.00 | 1.00 |        16.6 |    16.6 |    16.6 |       8.4 |       23.5 
+       abj-bka-kj |  46656 |    204 |   216 | 1.00 | 1.00 |        40.7 |    40.7 |    40.7 |      27.0 |       36.6 
+       ajb-kba-jk |  44064 |    216 |   216 | 1.00 | 1.00 |        60.3 |    60.3 |    60.3 |      22.1 |       55.0 
+     abjc-cbka-kj | 269568 |     52 |    72 | 1.00 | 1.00 |         8.2 |     8.2 |     8.2 |       8.3 |        8.4 
+     ajbc-ckba-jk | 269568 |     72 |    52 | 1.00 | 1.00 |        16.1 |    16.1 |    16.1 |       6.4 |       17.2 
+     abjc-kbac-jk | 194688 |     72 |    72 | 1.00 | 1.00 |        32.2 |    32.2 |    32.2 |       8.1 |       24.6 
+   abjcd-dkbac-jk | 331776 |     24 |    24 | 1.00 | 1.00 |         2.6 |     2.6 |     2.6 |       2.1 |        5.6 
+   adbjc-cbdka-kj | 331776 |     24 |    24 | 1.00 | 1.00 |         1.5 |     1.5 |     1.5 |       2.7 |        2.5 
+   ajbdc-ckbad-jk | 331776 |     24 |    24 | 1.00 | 1.00 |         2.7 |     2.7 |     2.7 |       2.0 |        7.8 
+ abcijk-ijma-mkbc |   9216 |   4096 |    24 | 1.00 | 1.00 |        31.9 |    31.9 |    31.9 |       4.0 |       24.0 
+ abcijk-ijmb-mkac |   6144 |   6144 |    24 | 0.00 | 1.00 |        25.2 |    25.2 |    25.2 |       3.4 |        7.5 
+ abcijk-ijmc-mkab |   6144 |   6144 |    24 | 0.00 | 1.00 |        13.8 |    13.8 |    13.8 |       2.4 |       21.0 
+ abcijk-ikma-mjbc |   9216 |   4096 |    24 | 1.00 | 1.00 |        33.0 |    33.0 |    33.0 |       4.0 |       24.0 
+ abcijk-ikmb-mjac |   6144 |   6144 |    24 | 0.00 | 1.00 |        24.8 |    24.8 |    24.8 |       3.4 |        9.0 
+ abcijk-ikmc-mjab |   6144 |   6144 |    24 | 0.00 | 1.00 |        13.9 |    13.9 |    13.9 |       2.4 |       14.2 
+ abcijk-jkma-mibc |   9216 |   4096 |    24 | 1.00 | 1.00 |        32.2 |    32.2 |    32.2 |       4.0 |       24.4 
+ abcijk-jkmb-miac |   6144 |   6144 |    24 | 0.00 | 1.00 |        24.9 |    24.9 |    24.9 |       3.4 |        7.3 
+ abcijk-jkmc-miab |   6144 |   6144 |    24 | 0.00 | 1.00 |        13.8 |    13.8 |    13.8 |       2.4 |       20.1 
+ abcijk-eiab-jkec |   6144 |   6144 |    24 | 1.00 | 1.00 |        26.8 |    26.8 |    26.8 |       5.0 |       20.1 
+ abcijk-eiac-jkeb |   6144 |   6144 |    24 | 1.00 | 1.00 |        28.9 |    28.9 |    28.9 |       4.4 |        7.3 
+ abcijk-eibc-jkea |   4096 |   9216 |    24 | 0.94 | 1.00 |        23.4 |    23.4 |    23.4 |       4.3 |       23.9 
+ abcijk-ejab-ikec |   6144 |   6144 |    24 | 1.00 | 1.00 |        26.7 |    26.7 |    26.7 |       5.1 |       14.0 
+ abcijk-ejac-ikeb |   6144 |   6144 |    24 | 1.00 | 1.00 |        29.3 |    29.3 |    29.3 |       4.4 |        8.9 
+ abcijk-ejbc-ikea |   4096 |   9216 |    24 | 0.94 | 1.00 |        24.0 |    24.0 |    24.0 |       4.3 |       24.4 
+ abcijk-ekab-ijec |   6144 |   6144 |    24 | 1.00 | 1.00 |        26.4 |    26.4 |    26.4 |       5.0 |       21.0 
+ abcijk-ekac-ijeb |   6144 |   6144 |    24 | 1.00 | 1.00 |        29.2 |    29.2 |    29.2 |       4.4 |        7.5 
+ abcijk-ekbc-ijea |   4096 |   9216 |    24 | 0.94 | 1.00 |        23.5 |    23.5 |    23.5 |       4.3 |       24.4 
+       abc-bk-akc |    216 |  44064 |   204 | 1.00 | 1.00 |        41.1 |    41.1 |    41.1 |      21.6 |       51.0 
+
+=== c64 ===
+             case |      m |      n |     k | regA | regB | planar GF/s | 1m GF/s | 3m GF/s | ttgt GF/s | tblis GF/s 
+------------------+--------+--------+-------+------+------+-------------+---------+---------+-----------+------------
+         ij-ik-kj |   2904 |   2896 |  2904 | 1.00 | 1.00 |        82.7 |    71.3 |    70.8 |      94.2 |       96.0 
+       ij-ikl-ljk |    216 |    204 | 44064 | 1.00 | 1.00 |        51.3 |    48.2 |    44.6 |      61.6 |       62.7 
+       ij-kil-lkj |    216 |    204 | 46656 | 1.00 | 1.00 |        57.1 |    54.4 |    49.7 |      59.4 |       56.6 
+       ijk-ikl-lj |  44064 |    204 |   216 | 1.00 | 1.00 |        75.0 |    66.7 |    65.9 |      49.5 |       70.1 
+       ijk-il-jlk |    216 |  44064 |   204 | 1.00 | 1.00 |        69.8 |    65.8 |    65.5 |      46.1 |       68.5 
+       ijk-ilk-jl |  44064 |    216 |   204 | 0.96 | 1.00 |        74.9 |    66.9 |    66.1 |      48.6 |       69.8 
+       ijk-ilk-lj |  44064 |    204 |   216 | 0.96 | 1.00 |        74.7 |    66.0 |    65.7 |      49.5 |       69.5 
+     ijk-ilmk-mjl |   3744 |     52 |  3744 | 0.89 | 1.00 |        55.3 |    47.2 |    45.7 |      44.0 |       40.1 
+   ijkl-imjn-lnkm |   3744 |   3744 |  2704 | 0.89 | 0.92 |        83.8 |    77.2 |    73.0 |      89.8 |       87.2 
+   ijkl-imjn-nlmk |   3744 |   2704 |  3744 | 0.89 | 0.92 |        84.4 |    79.4 |    73.9 |      95.5 |       85.6 
+   ijkl-imkn-jnlm |   3744 |   3744 |  2704 | 0.89 | 1.00 |        82.3 |    81.0 |    72.6 |      93.4 |       88.3 
+   ijkl-imkn-njml |   3744 |   2704 |  3744 | 0.89 | 0.92 |        81.6 |    77.9 |    72.2 |      94.4 |       85.1 
+   ijkl-imln-jnkm |   3744 |   3744 |  2704 | 0.89 | 1.00 |        81.7 |    79.8 |    72.2 |      93.6 |       93.7 
+   ijkl-imln-njmk |   3744 |   2704 |  3744 | 0.89 | 0.92 |        81.0 |    77.2 |    71.6 |      95.5 |       92.1 
+   ijkl-imnj-nlkm |   3744 |   2704 |  3744 | 0.89 | 0.92 |        83.4 |    78.3 |    73.5 |      93.2 |       85.1 
+   ijkl-imnk-njml |   3744 |   2704 |  3744 | 0.89 | 0.92 |        81.1 |    78.0 |    72.0 |      95.6 |       84.8 
+   ijkl-minj-nlmk |   3744 |   2704 |  5184 | 0.89 | 0.92 |        83.8 |    77.1 |    72.1 |      96.1 |       83.4 
+   ijkl-mink-jnlm |   3744 |   3744 |  3744 | 0.89 | 1.00 |        81.5 |    78.1 |    71.8 |      93.5 |       87.3 
+   ijkl-minl-njmk |   3744 |   2704 |  5184 | 0.89 | 0.92 |        80.5 |    76.6 |    70.9 |      94.7 |       91.1 
+     aqrs-pa-pqrs |     72 | 140608 |    72 | 1.00 | 1.00 |        47.0 |    50.3 |    45.9 |      24.2 |       48.5 
+     abrs-qb-aqrs |     52 | 194688 |    72 | 1.00 | 1.00 |        43.5 |    43.7 |    40.9 |      21.0 |       43.0 
+     abcs-rc-abrs |     52 | 194688 |    72 | 1.00 | 1.00 |        32.5 |    34.8 |    36.0 |      18.3 |       40.5 
+       abj-bka-kj |  46656 |    204 |   216 | 0.96 | 1.00 |        61.0 |    52.7 |    53.9 |      45.1 |       50.7 
+       ajb-kba-jk |  44064 |    216 |   216 | 0.96 | 1.00 |        79.7 |    77.0 |    74.2 |      38.2 |       75.7 
+     abjc-cbka-kj | 269568 |     52 |    72 | 0.89 | 1.00 |        13.7 |    11.5 |    15.0 |      14.1 |       16.5 
+     ajbc-ckba-jk | 269568 |     72 |    52 | 0.89 | 1.00 |        25.0 |    23.4 |    25.7 |      13.0 |       30.7 
+     abjc-kbac-jk | 194688 |     72 |    72 | 0.89 | 1.00 |        55.0 |    50.8 |    49.7 |      17.5 |       50.6 
+   abjcd-dkbac-jk | 331776 |     24 |    24 | 0.67 | 1.00 |         7.0 |     6.1 |     7.6 |       4.5 |       11.2 
+   adbjc-cbdka-kj | 331776 |     24 |    24 | 0.67 | 1.00 |         4.0 |     3.4 |     3.4 |       5.6 |        5.1 
+   ajbdc-ckbad-jk | 331776 |     24 |    24 | 0.67 | 1.00 |         7.0 |     6.0 |     7.6 |       4.4 |       15.9 
+ abcijk-ijma-mkbc |   9216 |   4096 |    24 | 0.67 | 0.99 |        40.5 |    41.0 |    36.9 |      10.4 |       37.9 
+ abcijk-ijmb-mkac |   6144 |   6144 |    24 | 1.00 | 1.00 |        36.2 |    38.9 |    37.9 |       8.3 |       22.7 
+ abcijk-ijmc-mkab |   6144 |   6144 |    24 | 1.00 | 1.00 |        17.8 |    20.3 |    24.4 |       3.9 |       39.8 
+ abcijk-ikma-mjbc |   9216 |   4096 |    24 | 0.67 | 0.99 |        40.5 |    40.4 |    37.3 |      10.5 |       38.9 
+ abcijk-ikmb-mjac |   6144 |   6144 |    24 | 1.00 | 1.00 |        36.6 |    39.2 |    37.7 |       8.3 |       24.0 
+ abcijk-ikmc-mjab |   6144 |   6144 |    24 | 1.00 | 1.00 |        17.8 |    20.3 |    24.2 |       3.9 |       30.5 
+ abcijk-jkma-mibc |   9216 |   4096 |    24 | 0.67 | 0.99 |        40.5 |    40.2 |    37.3 |      10.6 |       39.1 
+ abcijk-jkmb-miac |   6144 |   6144 |    24 | 1.00 | 1.00 |        36.4 |    38.9 |    37.8 |       8.6 |       20.8 
+ abcijk-jkmc-miab |   6144 |   6144 |    24 | 1.00 | 1.00 |        17.7 |    20.3 |    24.2 |       4.0 |       38.7 
+ abcijk-eiab-jkec |   6144 |   6144 |    24 | 1.00 | 0.75 |        46.6 |    41.3 |    40.6 |      11.6 |       39.1 
+ abcijk-eiac-jkeb |   6144 |   6144 |    24 | 1.00 | 0.75 |        41.4 |    41.9 |    39.1 |      10.6 |       20.8 
+ abcijk-eibc-jkea |   4096 |   9216 |    24 | 1.00 | 1.00 |        36.8 |    39.5 |    38.8 |      10.0 |       39.5 
+ abcijk-ejab-ikec |   6144 |   6144 |    24 | 1.00 | 0.75 |        45.7 |    41.8 |    40.4 |      11.6 |       30.5 
+ abcijk-ejac-ikeb |   6144 |   6144 |    24 | 1.00 | 0.75 |        42.0 |    42.6 |    39.2 |      10.6 |       23.9 
+ abcijk-ejbc-ikea |   4096 |   9216 |    24 | 1.00 | 1.00 |        36.8 |    39.4 |    38.7 |      10.0 |       38.2 
+ abcijk-ekab-ijec |   6144 |   6144 |    24 | 1.00 | 0.75 |        46.0 |    41.3 |    41.0 |      11.6 |       39.8 
+ abcijk-ekac-ijeb |   6144 |   6144 |    24 | 1.00 | 0.75 |        41.2 |    42.3 |    39.0 |      10.6 |       22.6 
+ abcijk-ekbc-ijea |   4096 |   9216 |    24 | 1.00 | 1.00 |        36.6 |    39.3 |    38.6 |       9.9 |       38.3 
+       abc-bk-akc |    216 |  44064 |   204 | 1.00 | 1.00 |        63.3 |    63.2 |    63.3 |      42.8 |       69.7 
+
+=== complex efficiency ratio (c64 GF/s over f64 GF/s; 1.0 = no penalty) ===
+             case | planar c64/f64 | 1m c64/f64 | 3m c64/f64 | ttgt c64/f64 | tblis c64/f64 
+------------------+----------------+------------+------------+--------------+---------------
+         ij-ik-kj |          1.176 |      1.014 |      1.007 |        1.104 |         1.059 
+       ij-ikl-ljk |          1.460 |      1.372 |      1.271 |        1.605 |         1.672 
+       ij-kil-lkj |          1.455 |      1.387 |      1.269 |        1.629 |         1.944 
+       ijk-ikl-lj |          1.355 |      1.204 |      1.190 |        1.703 |         1.344 
+       ijk-il-jlk |          1.545 |      1.456 |      1.450 |        1.932 |         1.288 
+       ijk-ilk-jl |          1.262 |      1.128 |      1.114 |        1.745 |         1.353 
+       ijk-ilk-lj |          1.324 |      1.169 |      1.164 |        1.740 |         1.358 
+     ijk-ilmk-mjl |          1.340 |      1.143 |      1.107 |        1.907 |         2.022 
+   ijkl-imjn-lnkm |          1.147 |      1.057 |      0.999 |        1.120 |         0.994 
+   ijkl-imjn-nlmk |          1.143 |      1.074 |      1.000 |        1.106 |         0.999 
+   ijkl-imkn-jnlm |          1.117 |      1.099 |      0.985 |        1.121 |         1.074 
+   ijkl-imkn-njml |          1.132 |      1.081 |      1.001 |        1.097 |         1.064 
+   ijkl-imln-jnkm |          1.104 |      1.078 |      0.976 |        1.123 |         1.107 
+   ijkl-imln-njmk |          1.118 |      1.066 |      0.988 |        1.105 |         1.100 
+   ijkl-imnj-nlkm |          1.144 |      1.074 |      1.008 |        1.087 |         1.002 
+   ijkl-imnk-njml |          1.140 |      1.096 |      1.012 |        1.113 |         1.063 
+   ijkl-minj-nlmk |          1.169 |      1.074 |      1.005 |        1.107 |         0.991 
+   ijkl-mink-jnlm |          1.101 |      1.055 |      0.970 |        1.093 |         1.068 
+   ijkl-minl-njmk |          1.134 |      1.078 |      0.997 |        1.091 |         1.107 
+     aqrs-pa-pqrs |          1.507 |      1.612 |      1.469 |        2.191 |         2.103 
+     abrs-qb-aqrs |          1.600 |      1.606 |      1.505 |        2.199 |         2.184 
+     abcs-rc-abrs |          1.958 |      2.094 |      2.167 |        2.180 |         1.722 
+       abj-bka-kj |          1.497 |      1.293 |      1.324 |        1.671 |         1.384 
+       ajb-kba-jk |          1.321 |      1.276 |      1.229 |        1.730 |         1.375 
+     abjc-cbka-kj |          1.672 |      1.405 |      1.839 |        1.705 |         1.962 
+     ajbc-ckba-jk |          1.551 |      1.452 |      1.596 |        2.028 |         1.790 
+     abjc-kbac-jk |          1.704 |      1.575 |      1.540 |        2.161 |         2.058 
+   abjcd-dkbac-jk |          2.696 |      2.359 |      2.965 |        2.085 |         2.011 
+   adbjc-cbdka-kj |          2.579 |      2.211 |      2.221 |        2.081 |         2.058 
+   ajbdc-ckbad-jk |          2.616 |      2.271 |      2.858 |        2.124 |         2.024 
+ abcijk-ijma-mkbc |          1.270 |      1.286 |      1.160 |        2.632 |         1.578 
+ abcijk-ijmb-mkac |          1.435 |      1.543 |      1.504 |        2.443 |         3.026 
+ abcijk-ijmc-mkab |          1.291 |      1.474 |      1.771 |        1.585 |         1.890 
+ abcijk-ikma-mjbc |          1.226 |      1.223 |      1.128 |        2.633 |         1.619 
+ abcijk-ikmb-mjac |          1.475 |      1.581 |      1.518 |        2.461 |         2.666 
+ abcijk-ikmc-mjab |          1.286 |      1.459 |      1.744 |        1.610 |         2.147 
+ abcijk-jkma-mibc |          1.258 |      1.248 |      1.160 |        2.654 |         1.602 
+ abcijk-jkmb-miac |          1.459 |      1.559 |      1.516 |        2.540 |         2.851 
+ abcijk-jkmc-miab |          1.287 |      1.474 |      1.758 |        1.649 |         1.924 
+ abcijk-eiab-jkec |          1.736 |      1.538 |      1.511 |        2.310 |         1.950 
+ abcijk-eiac-jkeb |          1.436 |      1.453 |      1.354 |        2.387 |         2.848 
+ abcijk-eibc-jkea |          1.571 |      1.687 |      1.658 |        2.311 |         1.649 
+ abcijk-ejab-ikec |          1.711 |      1.561 |      1.512 |        2.294 |         2.181 
+ abcijk-ejac-ikeb |          1.433 |      1.452 |      1.336 |        2.403 |         2.686 
+ abcijk-ejbc-ikea |          1.536 |      1.646 |      1.614 |        2.310 |         1.569 
+ abcijk-ekab-ijec |          1.743 |      1.564 |      1.553 |        2.296 |         1.897 
+ abcijk-ekac-ijeb |          1.415 |      1.452 |      1.337 |        2.401 |         3.026 
+ abcijk-ekbc-ijea |          1.553 |      1.668 |      1.641 |        2.298 |         1.573 
+       abc-bk-akc |          1.541 |      1.538 |      1.540 |        1.978 |         1.366 
+             MEAN |          1.464 |      1.414 |      1.419 |        1.855 |         1.721 
+
+wrote bench-results/phase3-sweep-f64c64.csv
+
+
+########## ./target/release/tcbench sweep --size 64 --reps 3 --engines planar,1m,3m,ttgt,tblis --dtype f32,c32 --csv bench-results/phase3-sweep-f32c32.csv ##########
+
+host        : ccqlin038.flatironinstitute.org
+target      : x86_64 / linux
+cpu features: avx2 fma avx512f avx512dq 
+baselines   : tblis=true blas=true
+tblis       : abi 2.x, 1 thread(s)
+
+sweeping 49 cases at 64 MiB nominal tensor size, 3 reps, stress=none
+
+
+=== f32 ===
+             case |      m |      n |     k | regA | regB | planar GF/s | 1m GF/s | 3m GF/s | ttgt GF/s | tblis GF/s 
+------------------+--------+--------+-------+------+------+-------------+---------+---------+-----------+------------
+         ij-ik-kj |   2904 |   2896 |  2904 | 1.00 | 1.00 |       157.7 |   157.7 |   157.7 |     163.4 |      167.9 
+       ij-ikl-ljk |    216 |    204 | 44064 | 1.00 | 1.00 |        60.1 |    60.1 |    60.1 |      69.3 |       56.7 
+       ij-kil-lkj |    216 |    204 | 46656 | 1.00 | 1.00 |        56.4 |    56.4 |    56.4 |      54.1 |       45.4 
+       ijk-ikl-lj |  44064 |    204 |   216 | 1.00 | 1.00 |       117.0 |   117.0 |   117.0 |      54.8 |       85.7 
+       ijk-il-jlk |    216 |  44064 |   204 | 1.00 | 1.00 |        94.0 |    94.0 |    94.0 |      51.4 |       83.2 
+       ijk-ilk-jl |  44064 |    216 |   204 | 0.89 | 1.00 |       120.0 |   120.0 |   120.0 |      51.1 |       83.1 
+       ijk-ilk-lj |  44064 |    204 |   216 | 0.89 | 1.00 |       111.9 |   111.9 |   111.9 |      52.4 |       80.8 
+     ijk-ilmk-mjl |   3744 |     52 |  3744 | 0.67 | 1.00 |        80.5 |    80.5 |    80.5 |      33.0 |       25.3 
+   ijkl-imjn-lnkm |   3744 |   3744 |  2704 | 0.67 | 0.92 |       146.9 |   146.9 |   146.9 |     153.2 |      156.6 
+   ijkl-imjn-nlmk |   3744 |   2704 |  3744 | 0.67 | 0.92 |       140.8 |   140.8 |   140.8 |     162.6 |      151.0 
+   ijkl-imkn-jnlm |   3744 |   3744 |  2704 | 0.67 | 1.00 |       141.9 |   141.9 |   141.9 |     159.2 |      149.8 
+   ijkl-imkn-njml |   3744 |   2704 |  3744 | 0.67 | 0.92 |       140.2 |   140.2 |   140.2 |     160.6 |      144.6 
+   ijkl-imln-jnkm |   3744 |   3744 |  2704 | 0.67 | 1.00 |       142.9 |   142.9 |   142.9 |     156.3 |      146.1 
+   ijkl-imln-njmk |   3744 |   2704 |  3744 | 0.67 | 0.92 |       152.3 |   152.3 |   152.3 |     161.9 |      150.9 
+   ijkl-imnj-nlkm |   3744 |   2704 |  3744 | 0.67 | 0.92 |       149.2 |   149.2 |   149.2 |     165.5 |      154.0 
+   ijkl-imnk-njml |   3744 |   2704 |  3744 | 0.67 | 0.92 |       145.9 |   145.9 |   145.9 |     161.4 |      144.6 
+   ijkl-minj-nlmk |   3744 |   2704 |  5184 | 0.67 | 0.92 |       144.0 |   144.0 |   144.0 |     166.3 |      147.8 
+   ijkl-mink-jnlm |   3744 |   3744 |  3744 | 0.67 | 1.00 |       149.9 |   149.9 |   149.9 |     164.2 |      143.7 
+   ijkl-minl-njmk |   3744 |   2704 |  5184 | 0.67 | 0.92 |       145.8 |   145.8 |   145.8 |     166.8 |      148.2 
+     aqrs-pa-pqrs |     72 | 140608 |    72 | 1.00 | 1.00 |        50.7 |    50.7 |    50.7 |      23.4 |       32.9 
+     abrs-qb-aqrs |     52 | 194688 |    72 | 1.00 | 1.00 |        39.5 |    39.5 |    39.5 |      18.5 |       29.5 
+     abcs-rc-abrs |     52 | 194688 |    72 | 1.00 | 1.00 |        27.0 |    27.0 |    27.0 |      16.5 |       31.8 
+       abj-bka-kj |  46656 |    204 |   216 | 0.89 | 1.00 |        63.2 |    63.2 |    63.2 |      50.7 |       56.7 
+       ajb-kba-jk |  44064 |    216 |   216 | 0.89 | 1.00 |       105.6 |   105.6 |   105.6 |      38.6 |       79.4 
+     abjc-cbka-kj | 269568 |     52 |    72 | 0.67 | 1.00 |        14.0 |    14.0 |    14.0 |      15.9 |       12.7 
+     ajbc-ckba-jk | 269568 |     72 |    52 | 0.67 | 1.00 |        23.6 |    23.6 |    23.6 |      11.9 |       29.2 
+     abjc-kbac-jk | 194688 |     72 |    72 | 0.67 | 1.00 |        53.2 |    53.2 |    53.2 |      13.4 |       36.4 
+   abjcd-dkbac-jk | 331776 |     24 |    24 | 0.00 | 1.00 |         6.2 |     6.2 |     6.2 |       5.4 |       11.1 
+   adbjc-cbdka-kj | 331776 |     24 |    24 | 0.00 | 1.00 |         4.6 |     4.6 |     4.6 |       5.8 |        4.3 
+   ajbdc-ckbad-jk | 331776 |     24 |    24 | 0.00 | 1.00 |         6.3 |     6.3 |     6.3 |       5.1 |       12.6 
+ abcijk-ijma-mkbc |   9216 |   4096 |    24 | 0.00 | 1.00 |        55.3 |    55.3 |    55.3 |       6.2 |       39.4 
+ abcijk-ijmb-mkac |   6144 |   6144 |    24 | 0.00 | 1.00 |        41.2 |    41.2 |    41.2 |       5.8 |        7.9 
+ abcijk-ijmc-mkab |   6144 |   6144 |    24 | 0.00 | 1.00 |        26.7 |    26.7 |    26.7 |       4.4 |       33.6 
+ abcijk-ikma-mjbc |   9216 |   4096 |    24 | 0.00 | 1.00 |        50.1 |    50.1 |    50.1 |       6.2 |       39.0 
+ abcijk-ikmb-mjac |   6144 |   6144 |    24 | 0.00 | 1.00 |        40.9 |    40.9 |    40.9 |       5.9 |       11.2 
+ abcijk-ikmc-mjab |   6144 |   6144 |    24 | 0.00 | 1.00 |        27.7 |    27.7 |    27.7 |       4.4 |       33.6 
+ abcijk-jkma-mibc |   9216 |   4096 |    24 | 0.00 | 1.00 |        53.0 |    53.0 |    53.0 |       6.2 |       38.3 
+ abcijk-jkmb-miac |   6144 |   6144 |    24 | 0.00 | 1.00 |        39.8 |    39.8 |    39.8 |       5.8 |        7.9 
+ abcijk-jkmc-miab |   6144 |   6144 |    24 | 0.00 | 1.00 |        26.6 |    26.6 |    26.6 |       4.4 |       31.3 
+ abcijk-eiab-jkec |   6144 |   6144 |    24 | 1.00 | 1.00 |        43.7 |    43.7 |    43.7 |      10.1 |       30.8 
+ abcijk-eiac-jkeb |   6144 |   6144 |    24 | 1.00 | 1.00 |        35.4 |    35.4 |    35.4 |       8.4 |        7.9 
+ abcijk-eibc-jkea |   4096 |   9216 |    24 | 0.88 | 1.00 |        37.3 |    37.3 |    37.3 |       8.5 |       38.3 
+ abcijk-ejab-ikec |   6144 |   6144 |    24 | 1.00 | 1.00 |        43.6 |    43.6 |    43.6 |      10.0 |       33.9 
+ abcijk-ejac-ikeb |   6144 |   6144 |    24 | 1.00 | 1.00 |        35.3 |    35.3 |    35.3 |       8.3 |       10.9 
+ abcijk-ejbc-ikea |   4096 |   9216 |    24 | 0.88 | 1.00 |        38.3 |    38.3 |    38.3 |       8.5 |       38.4 
+ abcijk-ekab-ijec |   6144 |   6144 |    24 | 1.00 | 1.00 |        43.6 |    43.6 |    43.6 |      10.0 |       33.8 
+ abcijk-ekac-ijeb |   6144 |   6144 |    24 | 1.00 | 1.00 |        34.3 |    34.3 |    34.3 |       8.4 |        8.0 
+ abcijk-ekbc-ijea |   4096 |   9216 |    24 | 0.88 | 1.00 |        38.3 |    38.3 |    38.3 |       8.6 |       39.5 
+       abc-bk-akc |    216 |  44064 |   204 | 1.00 | 1.00 |        77.8 |    77.8 |    77.8 |      40.5 |       83.1 
+
+=== c32 ===
+             case |      m |      n |     k | regA | regB | planar GF/s | 1m GF/s | 3m GF/s | ttgt GF/s | tblis GF/s 
+------------------+--------+--------+-------+------+------+-------------+---------+---------+-----------+------------
+         ij-ik-kj |   2904 |   2896 |  2904 | 1.00 | 1.00 |       167.5 |   159.5 |   150.5 |     195.3 |      179.8 
+       ij-ikl-ljk |    216 |    204 | 44064 | 1.00 | 1.00 |        97.0 |    93.1 |    88.2 |     113.7 |      112.2 
+       ij-kil-lkj |    216 |    204 | 46656 | 1.00 | 1.00 |       104.0 |    97.4 |    96.1 |     108.2 |       87.5 
+       ijk-ikl-lj |  44064 |    204 |   216 | 1.00 | 1.00 |       144.4 |   129.6 |   128.2 |      92.1 |      128.7 
+       ijk-il-jlk |    216 |  44064 |   204 | 1.00 | 1.00 |       130.9 |   135.3 |   126.4 |      85.6 |      136.6 
+       ijk-ilk-jl |  44064 |    216 |   204 | 0.89 | 1.00 |       151.0 |   146.7 |   128.8 |      92.1 |      129.2 
+       ijk-ilk-lj |  44064 |    204 |   216 | 0.89 | 1.00 |       147.2 |   142.1 |   128.7 |      93.9 |      126.0 
+     ijk-ilmk-mjl |   3744 |     52 |  3744 | 0.67 | 1.00 |       104.4 |    92.3 |    78.6 |      74.6 |       62.3 
+   ijkl-imjn-lnkm |   3744 |   3744 |  2704 | 0.67 | 0.92 |       158.6 |   152.5 |   147.8 |     189.7 |      170.5 
+   ijkl-imjn-nlmk |   3744 |   2704 |  3744 | 0.67 | 0.92 |       158.0 |   137.7 |   148.1 |     195.0 |      163.7 
+   ijkl-imkn-jnlm |   3744 |   3744 |  2704 | 0.67 | 1.00 |       155.7 |   136.9 |   142.1 |     192.4 |      166.7 
+   ijkl-imkn-njml |   3744 |   2704 |  3744 | 0.67 | 0.92 |       155.9 |   139.1 |   144.2 |     195.7 |      157.7 
+   ijkl-imln-jnkm |   3744 |   3744 |  2704 | 0.67 | 1.00 |       155.2 |   137.2 |   140.6 |     194.2 |      167.9 
+   ijkl-imln-njmk |   3744 |   2704 |  3744 | 0.67 | 0.92 |       162.7 |   157.8 |   147.9 |     196.2 |      167.5 
+   ijkl-imnj-nlkm |   3744 |   2704 |  3744 | 0.67 | 0.92 |       163.0 |   151.7 |   148.1 |     193.1 |      162.6 
+   ijkl-imnk-njml |   3744 |   2704 |  3744 | 0.67 | 0.92 |       160.8 |   156.3 |   148.3 |     195.9 |      158.1 
+   ijkl-minj-nlmk |   3744 |   2704 |  5184 | 0.67 | 0.92 |       161.0 |   150.2 |   147.9 |     195.9 |      158.1 
+   ijkl-mink-jnlm |   3744 |   3744 |  3744 | 0.67 | 1.00 |       163.5 |   157.3 |   149.2 |     197.2 |      168.4 
+   ijkl-minl-njmk |   3744 |   2704 |  5184 | 0.67 | 0.92 |       160.8 |   155.6 |   148.8 |     195.2 |      164.4 
+     aqrs-pa-pqrs |     72 | 140608 |    72 | 1.00 | 1.00 |        75.8 |    76.2 |    76.7 |      46.8 |       73.2 
+     abrs-qb-aqrs |     52 | 194688 |    72 | 1.00 | 1.00 |        80.6 |    79.0 |    69.2 |      38.7 |       60.1 
+     abcs-rc-abrs |     52 | 194688 |    72 | 1.00 | 1.00 |        60.1 |    58.9 |    57.2 |      33.5 |       69.0 
+       abj-bka-kj |  46656 |    204 |   216 | 0.89 | 1.00 |       113.5 |   106.9 |   105.4 |      88.7 |       87.2 
+       ajb-kba-jk |  44064 |    216 |   216 | 0.89 | 1.00 |       140.6 |   132.3 |   144.5 |      76.4 |      134.0 
+     abjc-cbka-kj | 269568 |     52 |    72 | 0.67 | 1.00 |        27.1 |    23.9 |    27.0 |      29.4 |       24.9 
+     ajbc-ckba-jk | 269568 |     72 |    52 | 0.67 | 1.00 |        47.4 |    46.7 |    45.9 |      24.5 |       54.9 
+     abjc-kbac-jk | 194688 |     72 |    72 | 0.67 | 1.00 |        89.8 |    80.9 |    72.5 |      31.4 |       73.0 
+   abjcd-dkbac-jk | 331776 |     24 |    24 | 0.00 | 1.00 |         8.9 |     8.2 |     8.5 |       8.9 |       19.5 
+   adbjc-cbdka-kj | 331776 |     24 |    24 | 0.00 | 1.00 |         7.9 |     7.6 |     6.2 |      11.3 |        5.5 
+   ajbdc-ckbad-jk | 331776 |     24 |    24 | 0.00 | 1.00 |         9.3 |     8.4 |     9.0 |       8.5 |       28.7 
+ abcijk-ijma-mkbc |   9216 |   4096 |    24 | 0.00 | 0.99 |        83.7 |    82.9 |    68.3 |      16.7 |       75.7 
+ abcijk-ijmb-mkac |   6144 |   6144 |    24 | 0.00 | 1.00 |        62.6 |    68.1 |    60.7 |      14.4 |       20.0 
+ abcijk-ijmc-mkab |   6144 |   6144 |    24 | 0.00 | 1.00 |        39.8 |    41.4 |    42.2 |      10.4 |       57.4 
+ abcijk-ikma-mjbc |   9216 |   4096 |    24 | 0.00 | 0.99 |        83.3 |    82.6 |    68.1 |      16.8 |       75.2 
+ abcijk-ikmb-mjac |   6144 |   6144 |    24 | 0.00 | 1.00 |        63.6 |    67.7 |    61.1 |      15.4 |       22.9 
+ abcijk-ikmc-mjab |   6144 |   6144 |    24 | 0.00 | 1.00 |        40.3 |    42.0 |    42.5 |      10.4 |       57.8 
+ abcijk-jkma-mibc |   9216 |   4096 |    24 | 0.00 | 0.99 |        81.3 |    82.1 |    67.7 |      17.5 |       74.5 
+ abcijk-jkmb-miac |   6144 |   6144 |    24 | 0.00 | 1.00 |        63.7 |    66.1 |    60.4 |      14.4 |       21.9 
+ abcijk-jkmc-miab |   6144 |   6144 |    24 | 0.00 | 1.00 |        40.1 |    41.9 |    42.0 |      10.4 |       52.7 
+ abcijk-eiab-jkec |   6144 |   6144 |    24 | 1.00 | 0.75 |        73.3 |    77.2 |    63.5 |      22.9 |       52.3 
+ abcijk-eiac-jkeb |   6144 |   6144 |    24 | 1.00 | 0.75 |        62.4 |    71.2 |    62.8 |      19.7 |       22.0 
+ abcijk-eibc-jkea |   4096 |   9216 |    24 | 1.00 | 1.00 |        62.4 |    64.7 |    57.8 |      19.5 |       74.3 
+ abcijk-ejab-ikec |   6144 |   6144 |    24 | 1.00 | 0.75 |        74.0 |    74.0 |    63.6 |      22.8 |       58.0 
+ abcijk-ejac-ikeb |   6144 |   6144 |    24 | 1.00 | 0.75 |        65.0 |    69.9 |    63.8 |      19.6 |       23.1 
+ abcijk-ejbc-ikea |   4096 |   9216 |    24 | 1.00 | 1.00 |        62.0 |    63.8 |    58.0 |      19.5 |       74.4 
+ abcijk-ekab-ijec |   6144 |   6144 |    24 | 1.00 | 0.75 |        73.8 |    76.1 |    64.2 |      23.0 |       57.6 
+ abcijk-ekac-ijeb |   6144 |   6144 |    24 | 1.00 | 0.75 |        64.4 |    71.9 |    65.0 |      19.7 |       20.1 
+ abcijk-ekbc-ijea |   4096 |   9216 |    24 | 1.00 | 1.00 |        63.1 |    64.0 |    58.6 |      19.6 |       75.4 
+       abc-bk-akc |    216 |  44064 |   204 | 1.00 | 1.00 |       125.6 |   134.3 |   117.6 |      79.8 |      131.1 
+
+=== complex efficiency ratio (c32 GF/s over f32 GF/s; 1.0 = no penalty) ===
+             case | planar c32/f32 | 1m c32/f32 | 3m c32/f32 | ttgt c32/f32 | tblis c32/f32 
+------------------+----------------+------------+------------+--------------+---------------
+         ij-ik-kj |          1.062 |      1.012 |      0.954 |        1.195 |         1.071 
+       ij-ikl-ljk |          1.616 |      1.550 |      1.469 |        1.640 |         1.980 
+       ij-kil-lkj |          1.845 |      1.728 |      1.706 |        2.000 |         1.926 
+       ijk-ikl-lj |          1.234 |      1.108 |      1.096 |        1.681 |         1.501 
+       ijk-il-jlk |          1.392 |      1.439 |      1.345 |        1.665 |         1.641 
+       ijk-ilk-jl |          1.259 |      1.222 |      1.074 |        1.803 |         1.555 
+       ijk-ilk-lj |          1.315 |      1.270 |      1.150 |        1.793 |         1.559 
+     ijk-ilmk-mjl |          1.296 |      1.147 |      0.976 |        2.259 |         2.459 
+   ijkl-imjn-lnkm |          1.079 |      1.038 |      1.006 |        1.238 |         1.089 
+   ijkl-imjn-nlmk |          1.122 |      0.978 |      1.052 |        1.199 |         1.084 
+   ijkl-imkn-jnlm |          1.097 |      0.965 |      1.001 |        1.208 |         1.113 
+   ijkl-imkn-njml |          1.112 |      0.992 |      1.028 |        1.218 |         1.091 
+   ijkl-imln-jnkm |          1.086 |      0.960 |      0.984 |        1.242 |         1.149 
+   ijkl-imln-njmk |          1.068 |      1.036 |      0.971 |        1.212 |         1.110 
+   ijkl-imnj-nlkm |          1.093 |      1.017 |      0.993 |        1.167 |         1.056 
+   ijkl-imnk-njml |          1.102 |      1.071 |      1.016 |        1.213 |         1.093 
+   ijkl-minj-nlmk |          1.118 |      1.043 |      1.027 |        1.178 |         1.070 
+   ijkl-mink-jnlm |          1.091 |      1.050 |      0.996 |        1.200 |         1.172 
+   ijkl-minl-njmk |          1.103 |      1.067 |      1.021 |        1.170 |         1.110 
+     aqrs-pa-pqrs |          1.495 |      1.502 |      1.513 |        1.996 |         2.223 
+     abrs-qb-aqrs |          2.042 |      2.003 |      1.753 |        2.091 |         2.036 
+     abcs-rc-abrs |          2.228 |      2.182 |      2.118 |        2.029 |         2.169 
+       abj-bka-kj |          1.794 |      1.690 |      1.666 |        1.750 |         1.539 
+       ajb-kba-jk |          1.332 |      1.252 |      1.368 |        1.979 |         1.689 
+     abjc-cbka-kj |          1.930 |      1.708 |      1.928 |        1.850 |         1.964 
+     ajbc-ckba-jk |          2.005 |      1.976 |      1.942 |        2.066 |         1.883 
+     abjc-kbac-jk |          1.686 |      1.520 |      1.361 |        2.351 |         2.002 
+   abjcd-dkbac-jk |          1.444 |      1.336 |      1.378 |        1.665 |         1.751 
+   adbjc-cbdka-kj |          1.731 |      1.665 |      1.368 |        1.955 |         1.275 
+   ajbdc-ckbad-jk |          1.471 |      1.318 |      1.422 |        1.673 |         2.275 
+ abcijk-ijma-mkbc |          1.516 |      1.501 |      1.236 |        2.685 |         1.924 
+ abcijk-ijmb-mkac |          1.521 |      1.654 |      1.475 |        2.497 |         2.522 
+ abcijk-ijmc-mkab |          1.492 |      1.550 |      1.582 |        2.349 |         1.709 
+ abcijk-ikma-mjbc |          1.664 |      1.648 |      1.359 |        2.702 |         1.928 
+ abcijk-ikmb-mjac |          1.554 |      1.654 |      1.492 |        2.626 |         2.044 
+ abcijk-ikmc-mjab |          1.456 |      1.518 |      1.535 |        2.359 |         1.723 
+ abcijk-jkma-mibc |          1.534 |      1.549 |      1.277 |        2.820 |         1.948 
+ abcijk-jkmb-miac |          1.601 |      1.663 |      1.518 |        2.471 |         2.766 
+ abcijk-jkmc-miab |          1.504 |      1.572 |      1.578 |        2.352 |         1.686 
+ abcijk-eiab-jkec |          1.675 |      1.765 |      1.453 |        2.263 |         1.701 
+ abcijk-eiac-jkeb |          1.763 |      2.009 |      1.773 |        2.355 |         2.771 
+ abcijk-eibc-jkea |          1.672 |      1.733 |      1.547 |        2.279 |         1.941 
+ abcijk-ejab-ikec |          1.697 |      1.695 |      1.458 |        2.284 |         1.713 
+ abcijk-ejac-ikeb |          1.838 |      1.978 |      1.804 |        2.356 |         2.112 
+ abcijk-ejbc-ikea |          1.619 |      1.664 |      1.514 |        2.303 |         1.935 
+ abcijk-ekab-ijec |          1.695 |      1.747 |      1.473 |        2.292 |         1.704 
+ abcijk-ekac-ijeb |          1.877 |      2.096 |      1.896 |        2.359 |         2.519 
+ abcijk-ekbc-ijea |          1.646 |      1.671 |      1.530 |        2.292 |         1.908 
+       abc-bk-akc |          1.614 |      1.726 |      1.511 |        1.971 |         1.578 
+             MEAN |          1.494 |      1.474 |      1.381 |        1.925 |         1.730 
+
+wrote bench-results/phase3-sweep-f32c32.csv
+
+
+########## ./target/release/tcbench sweep --size 64 --reps 3 --stress ragged --engines planar,1m,3m,tblis --dtype c64 --csv bench-results/phase3-sweep-ragged-c64.csv ##########
+
+host        : ccqlin038.flatironinstitute.org
+target      : x86_64 / linux
+cpu features: avx2 fma avx512f avx512dq 
+baselines   : tblis=true blas=true
+tblis       : abi 2.x, 1 thread(s)
+
+sweeping 49 cases at 64 MiB nominal tensor size, 3 reps, stress=ragged
+
+
+=== c64 ===
+             case |      m |      n |     k | regA | regB | planar GF/s | 1m GF/s | 3m GF/s | tblis GF/s 
+------------------+--------+--------+-------+------+------+-------------+---------+---------+------------
+         ij-ik-kj |   2903 |   2895 |  2903 | 1.00 | 1.00 |        81.7 |    74.5 |    71.7 |       94.9 
+       ij-ikl-ljk |    215 |    203 | 43645 | 1.00 | 1.00 |        52.0 |    48.8 |    44.7 |       61.0 
+       ij-kil-lkj |    215 |    203 | 46225 | 1.00 | 1.00 |        56.4 |    53.1 |    49.7 |       53.7 
+       ijk-ikl-lj |  43645 |    203 |   215 | 1.00 | 1.00 |        72.8 |    64.5 |    65.4 |       69.2 
+       ijk-il-jlk |    215 |  43645 |   203 | 1.00 | 0.98 |        67.6 |    65.6 |    63.9 |       68.1 
+       ijk-ilk-jl |  43645 |    215 |   203 | 0.93 | 1.00 |        74.3 |    65.7 |    66.1 |       69.0 
+       ijk-ilk-lj |  43645 |    203 |   215 | 0.93 | 1.00 |        74.0 |    65.4 |    65.6 |       69.5 
+     ijk-ilmk-mjl |   3621 |     51 |  3621 | 0.79 | 1.00 |        53.5 |    45.3 |    43.9 |       37.6 
+   ijkl-imjn-lnkm |   3621 |   3621 |  2601 | 0.79 | 0.94 |        81.7 |    70.9 |    72.0 |       87.1 
+   ijkl-imjn-nlmk |   3621 |   2601 |  3621 | 0.79 | 0.94 |        81.4 |    70.3 |    70.9 |       84.0 
+   ijkl-imkn-jnlm |   3621 |   3621 |  2601 | 0.79 | 0.93 |        79.4 |    69.6 |    71.4 |       81.9 
+   ijkl-imkn-njml |   3621 |   2601 |  3621 | 0.79 | 0.94 |        80.3 |    72.2 |    70.1 |       78.8 
+   ijkl-imln-jnkm |   3621 |   3621 |  2601 | 0.79 | 0.93 |        80.1 |    69.7 |    71.3 |       87.5 
+   ijkl-imln-njmk |   3621 |   2601 |  3621 | 0.79 | 0.94 |        78.8 |    68.7 |    69.5 |       86.9 
+   ijkl-imnj-nlkm |   3621 |   2601 |  3621 | 0.79 | 0.94 |        82.3 |    70.3 |    71.4 |       84.7 
+   ijkl-imnk-njml |   3621 |   2601 |  3621 | 0.79 | 0.94 |        79.2 |    68.2 |    69.6 |       78.7 
+   ijkl-minj-nlmk |   3621 |   2601 |  5041 | 0.79 | 0.94 |        82.0 |    70.2 |    71.3 |       82.7 
+   ijkl-mink-jnlm |   3621 |   3621 |  3621 | 0.79 | 0.93 |        79.5 |    69.3 |    71.4 |       81.1 
+   ijkl-minl-njmk |   3621 |   2601 |  5041 | 0.79 | 0.94 |        78.8 |    68.3 |    69.0 |       85.3 
+     aqrs-pa-pqrs |     71 | 132651 |    71 | 1.00 | 1.00 |        45.2 |    48.9 |    45.0 |       46.4 
+     abrs-qb-aqrs |     51 | 184671 |    71 | 1.00 | 0.93 |        41.2 |    42.4 |    41.1 |       42.7 
+     abcs-rc-abrs |     51 | 184671 |    71 | 1.00 | 1.00 |        27.5 |    31.6 |    33.1 |       41.3 
+       abj-bka-kj |  46225 |    203 |   215 | 0.93 | 1.00 |        63.7 |    53.0 |    54.2 |       48.9 
+       ajb-kba-jk |  43645 |    215 |   215 | 0.93 | 1.00 |        81.2 |    75.2 |    72.6 |       74.1 
+     abjc-cbka-kj | 257091 |     51 |    71 | 0.79 | 1.00 |        24.7 |    19.5 |    20.6 |       17.8 
+     ajbc-ckba-jk | 257091 |     71 |    51 | 0.79 | 1.00 |        34.2 |    30.2 |    30.7 |       27.9 
+     abjc-kbac-jk | 184671 |     71 |    71 | 0.79 | 1.00 |        51.5 |    44.2 |    47.3 |       46.2 
+   abjcd-dkbac-jk | 279841 |     23 |    23 | 0.35 | 1.00 |        13.7 |    12.4 |    12.4 |        9.3 
+   adbjc-cbdka-kj | 279841 |     23 |    23 | 0.35 | 1.00 |        11.9 |     9.9 |    10.1 |        7.8 
+   ajbdc-ckbad-jk | 279841 |     23 |    23 | 0.35 | 1.00 |        13.5 |    12.5 |    12.7 |       15.8 
+ abcijk-ijma-mkbc |   7935 |   3375 |    23 | 0.35 | 0.99 |        40.6 |    40.1 |    37.6 |       31.0 
+ abcijk-ijmb-mkac |   5175 |   5175 |    23 | 0.00 | 0.99 |        32.6 |    37.0 |    36.8 |       19.5 
+ abcijk-ijmc-mkab |   5175 |   5175 |    23 | 0.00 | 0.99 |        19.5 |    28.5 |    31.6 |       45.7 
+ abcijk-ikma-mjbc |   7935 |   3375 |    23 | 0.35 | 0.99 |        39.8 |    39.6 |    36.8 |       30.4 
+ abcijk-ikmb-mjac |   5175 |   5175 |    23 | 0.00 | 0.99 |        32.7 |    37.0 |    37.1 |       19.0 
+ abcijk-ikmc-mjab |   5175 |   5175 |    23 | 0.00 | 0.99 |        20.4 |    28.6 |    31.4 |       38.4 
+ abcijk-jkma-mibc |   7935 |   3375 |    23 | 0.35 | 0.99 |        40.7 |    40.2 |    37.9 |       31.3 
+ abcijk-jkmb-miac |   5175 |   5175 |    23 | 0.00 | 0.99 |        32.8 |    36.9 |    37.2 |       19.4 
+ abcijk-jkmc-miab |   5175 |   5175 |    23 | 0.00 | 0.99 |        20.8 |    28.7 |    31.5 |       44.9 
+ abcijk-eiab-jkec |   5175 |   5175 |    23 | 0.96 | 0.80 |        43.2 |    41.6 |    42.4 |       45.5 
+ abcijk-eiac-jkeb |   5175 |   5175 |    23 | 0.96 | 0.80 |        38.3 |    40.6 |    38.4 |       19.3 
+ abcijk-eibc-jkea |   3375 |   7935 |    23 | 0.93 | 0.78 |        33.7 |    36.8 |    36.8 |       31.2 
+ abcijk-ejab-ikec |   5175 |   5175 |    23 | 0.96 | 0.80 |        42.6 |    42.8 |    41.3 |       38.7 
+ abcijk-ejac-ikeb |   5175 |   5175 |    23 | 0.96 | 0.80 |        38.9 |    40.7 |    37.9 |       19.0 
+ abcijk-ejbc-ikea |   3375 |   7935 |    23 | 0.93 | 0.78 |        33.2 |    37.3 |    37.0 |       31.1 
+ abcijk-ekab-ijec |   5175 |   5175 |    23 | 0.96 | 0.80 |        43.0 |    41.3 |    41.4 |       45.5 
+ abcijk-ekac-ijeb |   5175 |   5175 |    23 | 0.96 | 0.80 |        37.9 |    41.0 |    38.2 |       19.5 
+ abcijk-ekbc-ijea |   3375 |   7935 |    23 | 0.93 | 0.78 |        34.0 |    36.7 |    37.3 |       31.0 
+       abc-bk-akc |    215 |  43645 |   203 | 1.00 | 0.98 |        60.2 |    63.3 |    62.2 |       69.9 
+
+wrote bench-results/phase3-sweep-ragged-c64.csv
+
+
+########## ./target/release/tcbench premise --size 200 --reps 3 --engines planar,tblis --dtype f64,c64 --csv bench-results/phase3-premise-tblis130-f64c64.csv ##########
+
+host        : ccqlin038.flatironinstitute.org
+target      : x86_64 / linux
+cpu features: avx2 fma avx512f avx512dq 
+baselines   : tblis=true blas=true
+tblis       : abi 1.3, 1 thread(s)
+
+premise check: 12 cases at 200 MiB nominal tensor size, 3 reps, stress=none
+
+  abjcd-dkbac-jk : m=2359296 n=48 k=32 macs=3.624e9
+  ajbc-ckba-jk : m=373248 n=72 k=72 macs=1.935e9
+  abcijk-ikmb-mjac : m=6144 n=6144 k=24 macs=9.060e8
+  abrs-qb-aqrs : m=72 n=373248 k=72 macs=1.935e9
+  ij-ikl-ljk : m=312 n=296 k=92352 macs=8.529e9
+  ijkl-imjn-nlmk : m=5184 n=5184 k=5184 macs=1.393e11
+  ijkl-imkn-jnlm : m=5184 n=5184 k=5184 macs=1.393e11
+  ijkl-imnj-nlkm : m=5184 n=5184 k=5184 macs=1.393e11
+  abcijk-ikma-mjbc : m=9216 n=4096 k=24 macs=9.060e8
+  abcijk-eiab-jkec : m=6144 n=6144 k=24 macs=9.060e8
+  abcijk-ejac-ikeb : m=6144 n=6144 k=24 macs=9.060e8
+  abc-bk-akc : m=312 n=92352 k=296 macs=8.529e9
+
+=== tblis: complex vs real efficiency against the GEMM ceiling ===
+             case | regA | f64 GF/s | gemm f64 |   eff | c64 GF/s | gemm c64 |   eff | eff ratio 
+------------------+------+----------+----------+-------+----------+----------+-------+-----------
+   abjcd-dkbac-jk | 1.00 |      5.6 |     18.2 | 0.308 |      5.7 |     36.2 | 0.156 |     0.507 
+     ajbc-ckba-jk | 1.00 |     21.3 |     32.8 | 0.649 |      7.4 |     58.8 | 0.127 |     0.195 
+ abcijk-ikmb-mjac | 0.00 |     12.5 |     16.5 | 0.752 |      4.3 |     35.3 | 0.121 |     0.161 
+     abrs-qb-aqrs | 1.00 |     29.2 |     28.8 | 1.014 |      8.1 |     61.3 | 0.131 |     0.130 
+       ij-ikl-ljk | 1.00 |     42.2 |     68.9 | 0.612 |      9.1 |     90.7 | 0.101 |     0.165 
+   ijkl-imjn-nlmk | 1.00 |     46.3 |    103.8 | 0.446 |      9.2 |    102.5 | 0.090 |     0.202 
+   ijkl-imkn-jnlm | 1.00 |     47.4 |    104.1 | 0.456 |      9.3 |    101.8 | 0.091 |     0.199 
+   ijkl-imnj-nlkm | 1.00 |     47.2 |    103.6 | 0.456 |      9.3 |    102.5 | 0.091 |     0.199 
+ abcijk-ikma-mjbc | 1.00 |     18.0 |     17.2 | 1.045 |      7.2 |     36.3 | 0.200 |     0.191 
+ abcijk-eiab-jkec | 1.00 |      5.9 |     16.7 | 0.354 |      7.2 |     36.3 | 0.198 |     0.558 
+ abcijk-ejac-ikeb | 1.00 |     12.6 |     16.6 | 0.755 |      4.3 |     36.3 | 0.119 |     0.158 
+       abc-bk-akc | 1.00 |     39.3 |     60.1 | 0.654 |      9.0 |     84.7 | 0.107 |     0.163 
+             MEAN |      |          |          |       |          |          |       |     0.236 
+
+=== planar: complex vs real efficiency against the GEMM ceiling ===
+             case | regA | f64 GF/s | gemm f64 |   eff | c64 GF/s | gemm c64 |   eff | eff ratio 
+------------------+------+----------+----------+-------+----------+----------+-------+-----------
+   abjcd-dkbac-jk | 1.00 |      3.4 |     18.2 | 0.187 |     11.1 |     36.2 | 0.306 |     1.640 
+     ajbc-ckba-jk | 1.00 |      8.7 |     32.8 | 0.265 |     16.7 |     58.8 | 0.284 |     1.073 
+ abcijk-ikmb-mjac | 0.00 |     24.4 |     16.5 | 1.473 |     36.6 |     35.3 | 1.037 |     0.704 
+     abrs-qb-aqrs | 1.00 |     34.1 |     28.8 | 1.185 |     49.4 |     61.3 | 0.806 |     0.680 
+       ij-ikl-ljk | 1.00 |     36.7 |     68.9 | 0.532 |     53.6 |     90.7 | 0.591 |     1.110 
+   ijkl-imjn-nlmk | 1.00 |     72.4 |    103.8 | 0.697 |     83.0 |    102.5 | 0.810 |     1.162 
+   ijkl-imkn-jnlm | 1.00 |     72.8 |    104.1 | 0.700 |     80.4 |    101.8 | 0.790 |     1.128 
+   ijkl-imnj-nlkm | 1.00 |     72.5 |    103.6 | 0.700 |     83.0 |    102.5 | 0.809 |     1.156 
+ abcijk-ikma-mjbc | 1.00 |     33.1 |     17.2 | 1.921 |     41.9 |     36.3 | 1.156 |     0.602 
+ abcijk-eiab-jkec | 1.00 |     26.6 |     16.7 | 1.592 |     46.4 |     36.3 | 1.279 |     0.803 
+ abcijk-ejac-ikeb | 1.00 |     29.3 |     16.6 | 1.763 |     42.7 |     36.3 | 1.179 |     0.669 
+       abc-bk-akc | 1.00 |     43.1 |     60.1 | 0.717 |     60.0 |     84.7 | 0.708 |     0.987 
+             MEAN |      |          |          |       |          |          |       |     0.976 
+
+interpretation: 'eff' is contraction GF/s divided by same-shape GEMM GF/s.
+'eff ratio' is complex eff over real eff. Below 1.0 means the engine loses
+more to overheads on complex data than on real data -- the headroom this
+project targets. At or above 1.0 the complex-weakness thesis is refuted.
+
+wrote bench-results/phase3-premise-tblis130-f64c64.csv

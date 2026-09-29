@@ -1,0 +1,66 @@
+{
+  "initial": {
+    "copy_contiguous": {
+      "map_Ir": 722523.0,
+      "copy_Ir": 925117.0,
+      "reduction_percent": -28.0397994250702
+    },
+    "copy_transpose": {
+      "map_Ir": 6454177.0,
+      "copy_Ir": 3783198.0,
+      "reduction_percent": 41.3837271583968
+    },
+    "copy_lm": {
+      "map_Ir": 1199862.0,
+      "copy_Ir": 572548.0,
+      "reduction_percent": 52.28217911726516
+    },
+    "copy_small": {
+      "map_Ir": 4972.0,
+      "copy_Ir": 4823.666666666667,
+      "reduction_percent": 2.983373558594793
+    },
+    "copy_negative": {
+      "map_Ir": 28812.0,
+      "copy_Ir": 11815.0,
+      "reduction_percent": 58.992780785783694
+    },
+    "copy_rank6": {
+      "map_Ir": 319959.0,
+      "copy_Ir": 74790.0,
+      "reduction_percent": 76.62513009479339
+    }
+  },
+  "final": {
+    "copy_contiguous": {
+      "map_Ir": 722523.0,
+      "copy_Ir": 723246.0,
+      "reduction_percent": -0.10006601865961695
+    },
+    "copy_transpose": {
+      "map_Ir": 6454177.0,
+      "copy_Ir": 3783376.0,
+      "reduction_percent": 41.38096925448435
+    },
+    "copy_lm": {
+      "map_Ir": 1199862.0,
+      "copy_Ir": 572749.0,
+      "reduction_percent": 52.26542719079361
+    },
+    "copy_small": {
+      "map_Ir": 4972.0,
+      "copy_Ir": 4984.666666666667,
+      "reduction_percent": -0.2547599892732677
+    },
+    "copy_negative": {
+      "map_Ir": 28812.0,
+      "copy_Ir": 11963.0,
+      "reduction_percent": 58.47910592808552
+    },
+    "copy_rank6": {
+      "map_Ir": 319959.0,
+      "copy_Ir": 75095.0,
+      "reduction_percent": 76.52980538131449
+    }
+  }
+}

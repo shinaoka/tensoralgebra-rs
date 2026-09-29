@@ -1,0 +1,71 @@
+{
+  "revisions": {
+    "baseline": "ec585b8a4bf0af96863a6136f0b1f8e9c1aeadba",
+    "optimized": "17e05ffb168d0f826529ea2c3aceeb4ec851448b",
+    "benchmark": "8ee3945ae90a1be77354c19011e99c648b7a5dcc"
+  },
+  "samples": 3,
+  "kernel_threads": 1,
+  "cpu_affinity": "16",
+  "l3_domain": "16-23",
+  "events": "Ir",
+  "native_timing": false,
+  "results": [
+    {
+      "case": "mul_2048",
+      "baseline_total_ir": 103813383,
+      "baseline_ir_per_call": 34604461.0,
+      "optimized_total_ir": 15733029,
+      "optimized_ir_per_call": 5244343.0,
+      "ir_reduction_percent": 84.84489326390606
+    },
+    {
+      "case": "mul_odd",
+      "baseline_total_ir": 26007417,
+      "baseline_ir_per_call": 8669139.0,
+      "optimized_total_ir": 3944331,
+      "optimized_ir_per_call": 1314777.0,
+      "ir_reduction_percent": 84.83382259760745
+    },
+    {
+      "case": "mul_strided",
+      "baseline_total_ir": 19667775,
+      "baseline_ir_per_call": 6555925.0,
+      "optimized_total_ir": 19667775,
+      "optimized_ir_per_call": 6555925.0,
+      "ir_reduction_percent": 0.0
+    },
+    {
+      "case": "axpby_1m",
+      "baseline_total_ir": 11796915,
+      "baseline_ir_per_call": 3932305.0,
+      "optimized_total_ir": 11796915,
+      "optimized_ir_per_call": 3932305.0,
+      "ir_reduction_percent": 0.0
+    },
+    {
+      "case": "tril_1024",
+      "baseline_total_ir": 7763568,
+      "baseline_ir_per_call": 2587856.0,
+      "optimized_total_ir": 5117706,
+      "optimized_ir_per_call": 1705902.0,
+      "ir_reduction_percent": 34.08048979541366
+    },
+    {
+      "case": "triu_rect",
+      "baseline_total_ir": 6983289,
+      "baseline_ir_per_call": 2327763.0,
+      "optimized_total_ir": 5867757,
+      "optimized_ir_per_call": 1955919.0,
+      "ir_reduction_percent": 15.97430666266282
+    },
+    {
+      "case": "diag_rank2",
+      "baseline_total_ir": 4102443,
+      "baseline_ir_per_call": 1367481.0,
+      "optimized_total_ir": 4102527,
+      "optimized_ir_per_call": 1367509.0,
+      "ir_reduction_percent": -0.002047560441420515
+    }
+  ]
+}

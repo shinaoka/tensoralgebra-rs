@@ -1,0 +1,168 @@
+host            : worker6194
+cpu             : Intel(R) Xeon(R) Platinum 8362 CPU @ 2.80GHz
+slurm           : job 6762432 on worker6194
+cpus allowed    : 64 of 64 online (0-63)
+physical cores  : 64   SMT width 1  (SMT off: no sibling to contend with)
+sockets         : 0:32c  1:32c
+numa nodes      : 0:32c  1:32c
+L1              : 48K 12-way, shared by 1 logical cpus
+L2              : 1280K 20-way, shared by 1 logical cpus
+L3              : 49152K 12-way, shared by 32 logical cpus
+L3 domains      : 2, 32 cpus each (49152K per domain)
+
+placement       : 1 concurrent arms of 2 domains, one core per domain, rest of each domain idle
+                  cpus 0
+                  per numa node: 0:1
+
+wrote bench-results/worker6194-icelake/phase4g/topology.json
+cpus 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31 (32 cores); sizes: 1 16 64 MiB; thread counts: 1 2 4 8 16 32
+arms: base pool
+warm-up arm (discarded): t32 at 64 MiB
+  17:13:39 wu-discard done
+===== arm base 
+  17:14:07 sm-s1-t1-f64c64 done
+  17:14:21 sm-s1-t2-f64c64 done
+  17:14:29 sm-s1-t4-f64c64 done
+  17:14:35 sm-s1-t8-f64c64 done
+  17:14:39 sm-s1-t16-f64c64 done
+  17:14:46 sm-s1-t32-f64c64 done
+  17:17:00 sm-s16-t1-f64c64 done
+  17:18:11 sm-s16-t2-f64c64 done
+  17:18:50 sm-s16-t4-f64c64 done
+  17:19:14 sm-s16-t8-f64c64 done
+  17:19:31 sm-s16-t16-f64c64 done
+  17:19:47 sm-s16-t32-f64c64 done
+  17:33:20 sm-s64-t1-f64c64 done
+  17:40:21 sm-s64-t2-f64c64 done
+  17:44:05 sm-s64-t4-f64c64 done
+  17:46:14 sm-s64-t8-f64c64 done
+  17:47:36 sm-s64-t16-f64c64 done
+  17:48:46 sm-s64-t32-f64c64 done
+done base f64c64
+  17:49:01 sm-s1-t1-f32c32 done
+  17:49:09 sm-s1-t2-f32c32 done
+  17:49:14 sm-s1-t4-f32c32 done
+  17:49:18 sm-s1-t8-f32c32 done
+  17:49:21 sm-s1-t16-f32c32 done
+  17:49:27 sm-s1-t32-f32c32 done
+  17:50:30 sm-s16-t1-f32c32 done
+  17:51:04 sm-s16-t2-f32c32 done
+  17:51:24 sm-s16-t4-f32c32 done
+  17:51:36 sm-s16-t8-f32c32 done
+  17:51:45 sm-s16-t16-f32c32 done
+  17:51:54 sm-s16-t32-f32c32 done
+  17:58:22 sm-s64-t1-f32c32 done
+  18:01:45 sm-s64-t2-f32c32 done
+  18:03:37 sm-s64-t4-f32c32 done
+  18:04:41 sm-s64-t8-f32c32 done
+  18:05:24 sm-s64-t16-f32c32 done
+  18:06:01 sm-s64-t32-f32c32 done
+done base f32c32
+===== arm pool (TENSORCONTRACT_POOL=on)
+  18:06:29 sm-pool-s1-t1-f64c64 done
+  18:06:43 sm-pool-s1-t2-f64c64 done
+  18:06:53 sm-pool-s1-t4-f64c64 done
+  18:07:02 sm-pool-s1-t8-f64c64 done
+  18:07:13 sm-pool-s1-t16-f64c64 done
+  18:07:26 sm-pool-s1-t32-f64c64 done
+  18:09:39 sm-pool-s16-t1-f64c64 done
+  18:10:51 sm-pool-s16-t2-f64c64 done
+  18:11:31 sm-pool-s16-t4-f64c64 done
+  18:11:57 sm-pool-s16-t8-f64c64 done
+  18:12:17 sm-pool-s16-t16-f64c64 done
+  18:12:37 sm-pool-s16-t32-f64c64 done
+  18:26:09 sm-pool-s64-t1-f64c64 done
+  18:33:11 sm-pool-s64-t2-f64c64 done
+  18:36:56 sm-pool-s64-t4-f64c64 done
+  18:39:07 sm-pool-s64-t8-f64c64 done
+  18:40:33 sm-pool-s64-t16-f64c64 done
+  18:41:46 sm-pool-s64-t32-f64c64 done
+done pool f64c64
+  18:42:02 sm-pool-s1-t1-f32c32 done
+  18:42:10 sm-pool-s1-t2-f32c32 done
+  18:42:17 sm-pool-s1-t4-f32c32 done
+  18:42:24 sm-pool-s1-t8-f32c32 done
+  18:42:32 sm-pool-s1-t16-f32c32 done
+  18:42:43 sm-pool-s1-t32-f32c32 done
+  18:43:46 sm-pool-s16-t1-f32c32 done
+  18:44:21 sm-pool-s16-t2-f32c32 done
+  18:44:41 sm-pool-s16-t4-f32c32 done
+  18:44:55 sm-pool-s16-t8-f32c32 done
+  18:45:06 sm-pool-s16-t16-f32c32 done
+  18:45:17 sm-pool-s16-t32-f32c32 done
+  18:51:43 sm-pool-s64-t1-f32c32 done
+  18:55:07 sm-pool-s64-t2-f32c32 done
+  18:56:59 sm-pool-s64-t4-f32c32 done
+  18:58:06 sm-pool-s64-t8-f32c32 done
+  18:58:52 sm-pool-s64-t16-f32c32 done
+  18:59:32 sm-pool-s64-t32-f32c32 done
+done pool f32c32
+
+==========================================================================
+speedup against t1 AT THE SAME SIZE. The crossover is the answer.
+==========================================================================
+
+--- base  f64c64
+    MiB  dtype      t2      t4      t8     t16     t32  serial ms
+      1    f64    1.76    3.01    4.16    3.94    2.39       2.11
+      1    c64    1.90    3.46    5.96    7.76    5.08       6.89
+     16    f64    1.92    3.60    6.29    9.70    7.73      15.49
+     16    c64    1.94    3.74    6.88   11.26   11.59      51.08
+     64    f64    1.91    3.57    6.14    9.62   10.55      47.27
+     64    c64    1.96    3.65    6.82   11.53   14.36     169.92
+
+--- base  f32c32
+    MiB  dtype      t2      t4      t8     t16     t32  serial ms
+      1    f32    1.76    2.77    3.50    3.33    1.72       1.32
+      1    c32    1.84    3.28    5.20    5.96    3.64       3.41
+     16    f32    1.94    3.65    6.47    9.10    5.91      10.01
+     16    c32    1.93    3.65    6.73   11.30   10.22      27.05
+     64    f32    1.93    3.59    6.78   10.68   10.39      34.74
+     64    c32    1.91    3.61    6.83   11.48   13.47      90.65
+
+--- pool  f64c64
+    MiB  dtype      t2      t4      t8     t16     t32  serial ms
+      1    f64    1.85    3.02    2.46    1.80    1.26       2.10
+      1    c64    1.92    3.20    3.99    3.67    2.73       6.67
+     16    f64    1.91    3.15    4.65    4.90    4.54      15.48
+     16    c64    1.93    3.52    5.59    7.79    8.01      51.02
+     64    f64    1.89    3.33    5.35    7.61    8.46      47.72
+     64    c64    1.95    3.56    6.31    9.66   11.56     170.32
+
+--- pool  f32c32
+    MiB  dtype      t2      t4      t8     t16     t32  serial ms
+      1    f32    1.91    2.33    1.82    1.40    0.93       1.32
+      1    c32    1.89    3.04    2.84    2.40    1.74       3.41
+     16    f32    1.92    3.20    4.36    4.68    4.22      10.00
+     16    c32    1.92    3.27    5.20    6.69    6.65      27.00
+     64    f32    1.93    3.37    5.53    7.29    7.63      33.45
+     64    c32    1.91    3.47    6.09    8.94   10.52      90.40
+
+A column that falls below 1.00 is a size at which threading COSTS.
+Compare with bench-results/*/phase4f, which is the same corpus at 64 MiB.
+
+==========================================================================
+treatment / base, same size and width. >1.00 means the switch helped.
+==========================================================================
+
+--- pool / base  f64c64
+    MiB  dtype      t1      t2      t4      t8     t16     t32
+      1    f64   1.002   1.057   1.008   0.592   0.458   0.528
+      1    c64   1.007   1.017   0.931   0.674   0.477   0.541
+     16    f64   1.004   0.998   0.879   0.743   0.508   0.589
+     16    c64   1.000   0.996   0.939   0.811   0.692   0.691
+     64    f64   1.001   0.993   0.933   0.873   0.792   0.803
+     64    c64   1.000   0.994   0.975   0.924   0.838   0.805
+
+--- pool / base  f32c32
+    MiB  dtype      t1      t2      t4      t8     t16     t32
+      1    f32   0.998   1.080   0.840   0.519   0.421   0.543
+      1    c32   1.001   1.029   0.929   0.547   0.403   0.479
+     16    f32   0.996   0.982   0.875   0.671   0.512   0.712
+     16    c32   1.002   0.995   0.897   0.775   0.593   0.651
+     64    f32   1.002   1.005   0.941   0.818   0.684   0.736
+     64    c32   1.001   0.999   0.962   0.894   0.780   0.782
+
+The t1 column is the control: no switch here can touch it, so anything
+other than ~1.00 there is session drift and every other column is off by
+the same amount. Deflate by it before quoting.

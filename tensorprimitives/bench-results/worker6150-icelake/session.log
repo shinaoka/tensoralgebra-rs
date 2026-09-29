@@ -1,0 +1,71 @@
+[2026-08-04T14:45:21-04:00] prep: build, describe, predict. This is the only stage that compiles.
+[2026-08-04T14:45:21-04:00] building (release)
+    Finished `release` profile [optimized + debuginfo] target(s) in 0.85s
+   Compiling tensorcontract v0.1.0 (/mnt/home/ldevos/Projects/tensorcontract-rs/main/crates/tensorcontract)
+    Finished `release` profile [optimized + debuginfo] target(s) in 4.23s
+[2026-08-04T14:45:26-04:00] machine description (the engine's own probes, not sinfo)
+host        : worker6150
+target      : x86_64 / linux
+cpu features: avx2 fma avx512f avx512dq 
+caches      : L1=48KiB/12-way/1sh L2=1280KiB/20-way/1sh L3=49152KiB/12-way/32sh (via sysfs), blocking=legacy
+l3 domains  : t1=1 t4=1 t8=1 t16=1 t32=1 t64=2 t128=4
+baselines   : tblis=false blas=false
+[2026-08-04T14:45:26-04:00] slurm job 6753209
+JobId=6753209 JobName=tp-phase4
+   RunTime=00:00:07 TimeLimit=12:00:00 TimeMin=N/A
+   ReqNodeList=(null) ExcNodeList=(null)
+   NodeList=worker6150
+   NumNodes=1 NumCPUs=64 NumTasks=1 CPUs/Task=1 ReqB:S:C:T=0:0:*:*
+   OverSubscribe=NO Contiguous=0 Licenses=(null) Network=(null)
+[2026-08-04T14:45:26-04:00] structural features for this ISA (free: touches no data)
+[2026-08-04T14:45:26-04:00] what the analytical model predicts here:
+cache descriptors (sysfs):
+  L1d       48 KiB  12-way      64 sets   64 B lines  shared by  1 logical CPU(s)
+  L2      1280 KiB  20-way    1024 sets   64 B lines  shared by  1 logical CPU(s)
+  L3     49152 KiB  12-way   65536 sets   64 B lines  shared by 32 logical CPU(s)
+  1 logical CPU(s) per core, so the L2 belongs to 1 core(s) and the L3 to 32
+  blocking in force: legacy
+
+threads = 1
+dtype  method   MR  NR |     mc   kc      nc   A KiB   B KiB |     mc   kc      nc   A KiB   B KiB
+f64    -        24   8 |    264  256    1536     528    3072 |    888  170   30840    1179   40959
+f32    -        48   8 |    384  384    2048     576    3072 |   1536  192   54616    1152   40962
+c64    planar   16   6 |    128  256     768     512    3072 |    576  128   20484    1152   40968
+c64    1m       12   8 |     72  256     768     576    3072 |    444   85   30840    1179   40959
+c64    3m        8  10 |     88  256     520     528    3120 |    584   85   20560    1163   40959
+c32    planar   32   6 |    192  384    1026     576    3078 |   1024  144   36408    1152   40959
+c32    1m       32   6 |     96  384    1026     576    3078 |    928   80   65538    1160   40961
+c32    3m       16  10 |    128  384     690     576    3105 |    768  128   27310    1152   40965
+
+threads = 8
+dtype  method   MR  NR |     mc   kc      nc   A KiB   B KiB |     mc   kc      nc   A KiB   B KiB
+f64    -        24   8 |    264  256    1536     528    3072 |    888  170   24672    1179   32767
+f32    -        48   8 |    384  384    2048     576    3072 |   1536  192   43696    1152   32772
+c64    planar   16   6 |    128  256     768     512    3072 |    576  128   16386    1152   32772
+c64    1m       12   8 |     72  256     768     576    3072 |    444   85   24672    1179   32767
+c64    3m        8  10 |     88  256     520     528    3120 |    584   85   16450    1163   32771
+c32    planar   32   6 |    192  384    1026     576    3078 |   1024  144   29130    1152   32771
+c32    1m       32   6 |     96  384    1026     576    3078 |    928   80   52428    1160   32767
+c32    3m       16  10 |    128  384     690     576    3105 |    768  128   21850    1152   32775
+
+left block: legacy (hardcoded)   right block: analytical model
+[2026-08-04T14:45:26-04:00] predicted parallel width up to 64 cores
+=== summary: how the rule's reach changes with P
+    P  no fill from M  rule 2-D   idle  int-div  genuine  need K
+    1               0         0      0        0        0       0
+    2               0         0      0        0        0       0
+    4               4         4      0        0        0       0
+    8              16        12      4        0        4       0
+   16              26        22     12        4        8       0
+   32              32        30     16        4       12       0
+   64              33        32     18       12        6       0
+  128              72        68     49       46        3       0
+
+`need K` is the column that would justify per-thread accumulators and a
+reduction (A21). It is 0 at every P above, which extends A21's refutation
+from the 8 threads it was argued at to a whole 128-core node.
+[2026-08-04T14:45:26-04:00] prep done. Nothing measured yet.
+[2026-08-04T14:45:26-04:00] outdir: bench-results/worker6150-icelake
+[2026-08-04T14:45:27-04:00] threads: scaling curve plus the two partition arms
+[2026-08-04T15:56:01-04:00] threads done
+[2026-08-04T15:56:01-04:00] outdir: bench-results/worker6150-icelake

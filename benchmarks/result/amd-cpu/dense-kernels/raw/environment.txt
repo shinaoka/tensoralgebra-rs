@@ -1,0 +1,61 @@
+2026年  9月 17日 木曜日 01:54:43 UTC
+rustc 1.97.1 (8bab26f4f 2026-07-14)
+binary: rustc
+commit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452
+commit-date: 2026-07-14
+host: x86_64-unknown-linux-gnu
+release: 1.97.1
+LLVM version: 22.1.6
+Linux primerose 6.8.0-101-generic #101-Ubuntu SMP PREEMPT_DYNAMIC Mon Feb  9 10:15:05 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux
+アーキテクチャ:                      x86_64
+CPU 操作モード:                      32-bit, 64-bit
+アドレスサイズ:                      48 bits physical, 48 bits virtual
+バイト順序:                          Little Endian
+CPU:                                 64
+オンラインになっている CPU のリスト: 0-63
+ベンダー ID:                         AuthenticAMD
+モデル名:                            AMD EPYC 7713P 64-Core Processor
+CPU ファミリー:                      25
+モデル:                              1
+コアあたりのスレッド数:              1
+ソケットあたりのコア数:              64
+ソケット数:                          1
+ステッピング:                        1
+周波数ブースト:                      使用する
+CPU スケーリング MHz:                49%
+CPU 最大 MHz:                        3720.7029
+CPU 最小 MHz:                        1500.0000
+BogoMIPS:                            3999.93
+フラグ:                              fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good nopl nonstop_tsc cpuid extd_apicid aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 pcid sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpb cat_l3 cdp_l3 hw_pstate ssbd mba ibrs ibpb stibp vmmcall fsgsbase bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a rdseed adx smap clflushopt clwb sha_ni xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local user_shstk clzero irperf xsaveerptr rdpru wbnoinvd amd_ppin brs arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold v_vmsave_vmload vgif v_spec_ctrl umip pku ospke vaes vpclmulqdq rdpid overflow_recov succor smca fsrm debug_swap ibpb_exit_to_user
+仮想化:                              AMD-V
+L1d キャッシュ:                      2 MiB (64 インスタンス)
+L1i キャッシュ:                      2 MiB (64 インスタンス)
+L2 キャッシュ:                       32 MiB (64 インスタンス)
+L3 キャッシュ:                       256 MiB (8 インスタンス)
+NUMA ノード数:                       1
+NUMA ノード 0 CPU:                   0-63
+脆弱性 Gather data sampling:         Not affected
+脆弱性 Indirect target selection:    Not affected
+脆弱性 Itlb multihit:                Not affected
+脆弱性 L1tf:                         Not affected
+脆弱性 Mds:                          Not affected
+脆弱性 Meltdown:                     Not affected
+脆弱性 Mmio stale data:              Not affected
+脆弱性 Reg file data sampling:       Not affected
+脆弱性 Retbleed:                     Not affected
+脆弱性 Spec rstack overflow:         Mitigation; Safe RET
+脆弱性 Spec store bypass:            Mitigation; Speculative Store Bypass disabled via prctl
+脆弱性 Spectre v1:                   Mitigation; usercopy/swapgs barriers and __user pointer sanitization
+脆弱性 Spectre v2:                   Mitigation; Retpolines; IBPB conditional; IBRS_FW; STIBP disabled; RSB filling; PBRSB-eIBRS Not affected; BHI Not affected
+脆弱性 Srbds:                        Not affected
+脆弱性 Tsa:                          Vulnerable: Clear CPU buffers attempted, no microcode
+脆弱性 Tsx async abort:              Not affected
+脆弱性 Vmscape:                      Mitigation; IBPB before exit to userspace
+RUSTFLAGS=
+CARGO_PROFILE_RELEASE_DEBUG=
+82faa74c78590ff6b62f36342881a26381355d80769ac4139ee110e57c914b1b sha256:228bf2e4baf4ef4117a65bb8a5a2d58247ce0c0985aec8a8fb53b7a58193893f
+valgrind-3.22.0
+0a7def35b24ae4f5c0974c980c43d491eb4a2f117b62d0dcc534210f7172584f  /tmp/dense-kernel-evidence/baseline
+b6406bbd7d2b427e8e2ab34fac915cbc33e941abdaecea28036ce70bbcc11014  /tmp/dense-kernel-evidence/optimized
+270d323377051a927d00d173a3bb59108f60ed6dca5b76f66e931336deef522e  benchmarks/strided_benchmarks/dense_kernels/dense_kernels.rs
+e093be6ad3844152a52ccb1df7b38cfb34a3e2bdec8246c56cb1ff74ace75c13  Cargo.lock

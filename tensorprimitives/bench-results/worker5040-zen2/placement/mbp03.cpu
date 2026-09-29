@@ -1,0 +1,7 @@
+# arm mbp03 on cpu48, L3 domain 12 = cpus 48-51, numa 3
+# window 73.0s; env (none)
+cpu48 busy 100.0% <- measurement thread
+cpu49 busy 0.0%
+cpu50 busy 0.0%
+cpu51 busy 0.0%
+# domain co-tenancy: none above 5%
