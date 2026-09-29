@@ -17,7 +17,7 @@ These are questions, not settled design decisions. [The research map](research-m
 
 The central boundary is a **packed GEMM tile kernel** shared by matrix GEMM and direct tensor contraction. Matrix GEMM owns its ordinary matrix packing and blocked driver. Tensor contraction owns index planning, tensor packing, and irregular output scatter. Matrix factorizations use matrix operations and their own numerical algorithms. Batched APIs compose per-matrix algorithms with explicit scheduling and reusable scratch.
 
-This is a provisional map, not a request to create every crate now. Prototypes can start in this workspace. If the interfaces stabilize, `matrixalgebra-rs` can be the lower-level backend repository and `tensoralgebra-rs` the higher-level repository under tensor4all. Dependencies must point from tensoralgebra to matrixalgebra, with no repository cycle. Neither a new backend repository nor a transfer of this one has been performed.
+This is a provisional map, not a request to create every crate now. Prototypes can start in this workspace. If the interfaces stabilize, `matrixalgebra-rs` can be the matrix backend repository and `tensoralgebra-rs` the tensor operation repository under tensor4all. Shared views, execution contracts, and generic strided kernels must sit below both operation families, in the lower workspace or an independent foundation workspace. Repository placement follows the dependency graph, not a provisional crate-name prefix, and must not introduce a cycle. Neither a new backend repository nor a transfer of this one has been performed.
 
 | Proposed crate | Responsibility |
 | --- | --- |
@@ -26,13 +26,13 @@ This is a provisional map, not a request to create every crate now. Prototypes c
 | `matrixalgebra-kernel` | Packed A/B panel format, scalar fallback, ISA dispatch, and GEMM microkernels computing bounded result tiles. No public full-matrix GEMM or tensor labels. |
 | `matrixalgebra` | Matrix GEMM driver, matrix packers, blocking, and necessary BLAS-like operations such as GEMV, TRSM, and SYRK/HERK. |
 | `matrixalgebra-linalg` | LU, Cholesky, QR, SVD, factor objects, solves, errors, workspace plans, and batched entry points. |
-| `tensoralgebra-strided` | Map/reduce/broadcast, fused elementwise work, and explicit copy/permutation, redesigned from `strided-rs`. |
+| `tensoralgebra-strided` | Shared lower-level map/reduce/broadcast, fused elementwise work, and explicit copy/permutation, redesigned from `strided-rs`. Kernels operate on borrowed views; owned-array helpers are separate from kernel execution. |
 | `tensoralgebra-contract` | Binary `tensordot`/`dot_general`: plans, tensor panel packing, bounded scatter metadata, output tile updates. |
 | `tensoralgebra-einsum` | N-ary index syntax and contraction-order planning, calling the binary engine. |
 
 These are *responsibilities* before they are package names. Keep related modules in one crate until a separate consumer and stable interface justify a split. Batched scheduling is shared execution machinery; `batched_gemm` and batched factorizations remain beside their scalar operations. Thin `ndarray`/`mdarray` adapters and an optional facade sit above the core. Tenferro continues to own AD, traced execution, device transfer, and GPU backends.
 
-`algebra-view` and `algebra-exec` provide the shared contracts. `matrixalgebra-kernel` contains no scheduler; `matrixalgebra` uses the kernel and shared contracts; `matrixalgebra-linalg` uses matrix operations. `tensoralgebra-contract` uses the shared contracts, the tile kernel, and matrix GEMM for compatible fast paths; `tensoralgebra-einsum` uses the binary contraction engine. `tensoralgebra-strided` uses the shared contracts. No matrix crate depends on a tensor crate.
+`algebra-view` and `algebra-exec` provide the shared contracts. `tensoralgebra-strided` builds reusable kernels on those contracts and never depends on contraction or factorization algorithms. `matrixalgebra-kernel` contains no scheduler; `matrixalgebra` uses the tile kernel and shared contracts. `matrixalgebra-linalg` uses matrix operations and reuses generic strided copy/scale where appropriate; numerically specialized reductions and panel algorithms remain its responsibility. `tensoralgebra-contract` uses shared strided copy/permutation for selected materialization paths, the tile kernel for direct contraction, and matrix GEMM for compatible fast paths. `tensoralgebra-einsum` reaches these kernels through the binary contraction engine. Frontends may also call shared strided operations directly. Every dependency on the strided layer uses the caller's execution and scratch context.
 
 ### Why tensor contraction uses the GEMM kernel, not only `gemm()`
 
@@ -41,6 +41,8 @@ These are *responsibilities* before they are package names. Keep related modules
 A binary contraction plan validates free-left, reduction, free-right, and shared batch indices, output shape and aliasing, then chooses a measured path: (1) collapse compatible strides to a matrix view and call GEMM without copying; (2) pack bounded tensor panels directly into the shared kernel format and scatter irregular output tiles; or (3) explicitly materialize operands when extra bytes are worth the GEMM speed. The public semantics should be `C = alpha * contract(A, B) + beta * C`, with a checked caller-output form and defined zero-size behavior. Planning may fold contiguous dimensions and reorder logical traversal without changing user-visible index order. Full-tensor materialization must be reported as a selected strategy.
 
 The first kernel-contract prototype can use a scalar tile kernel. `gemm`, gemmkit, and BLIS are candidates or baselines; whether any exposes a usable low-level panel/microkernel seam must be checked. Their public GEMM calls alone cannot implement the direct TBLIS-style path.
+
+Full copy/permutation is implemented by the shared strided layer. Kernel-specific panel packing and output scatter stay with the contraction driver, which knows the packed format, index plan, and tile update semantics. A direct path therefore need not call a standalone permutation kernel, and specialized packers need not be expressed through a generic elementwise API.
 
 ### Matrix decompositions
 
@@ -56,6 +58,8 @@ The first kernel-contract prototype can use a scalar tile kernel. `gemm`, gemmki
 Start with `f32`/`f64`, then complex arithmetic with explicit conjugation behavior. Require reconstruction/solve residuals, QR orthogonality, rank-deficient and non-positive-definite inputs, extreme scales, and convergence status before timing. SVD is a separate numerical workstream, not a straightforward GEMM extension.
 
 ### Batched execution
+
+`matrixalgebra-linalg` contains both per-matrix factorization algorithms and batched LU, Cholesky, QR, and SVD APIs. The batch layer owns batch descriptors, output/status arrays, scratch planning, and the choice of batch versus inner-matrix parallelism. It uses `algebra-exec` to execute that schedule and reuses per-matrix routines as its first implementation. This is a module boundary within the linalg crate, not a separate batch-only numerical library. `matrixalgebra` similarly owns batched GEMM. Specialized small-matrix or interleaved batch kernels can later replace the per-item implementation under the same batch contract; they require their own correctness and performance evidence. Batched SVD follows the staged solver plan described above.
 
 The first API targets equally shaped strided matrices; grouped heterogeneous shapes can follow. A prepared batch plan can reuse validated descriptors and one scratch region per worker. Schedule **one serial matrix operation per independent task** on the caller's executor initially. For a small batch of large matrices, measure inner-matrix threading instead. One thread budget controls both levels so nested parallelism does not oversubscribe. A single FFI batch call amortizes call and executor-entry costs.
 

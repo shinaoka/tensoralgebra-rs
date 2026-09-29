@@ -11,39 +11,59 @@ crates when experiments establish useful boundaries.
 
 **Arrows mean “depends on.”** This diagram shows the computation layers;
 shared view and execution contracts are listed just below it.
-Blue nodes belong to `tensoralgebra-rs`; green and gold nodes would belong to
-the future `matrixalgebra-rs` backend.
+Colors indicate responsibilities: blue for tensor operations, green for matrix
+operations, gray for shared strided kernels, and gold for GEMM tile kernels.
+Repository boundaries remain provisional.
 
 ```mermaid
 flowchart TB
     E["tensoralgebra-einsum<br/>Index notation<br/>Contraction order"]
     C["tensoralgebra-contract<br/>Binary contraction<br/>Tensor pack and scatter"]
     S["tensoralgebra-strided<br/>Owned arrays, map, reduce<br/>Copy and permutation"]
+    B["matrixalgebra-linalg<br/>Batched LU / Cholesky / QR / SVD<br/>Batch plans and per-item status"]
     L["matrixalgebra-linalg<br/>LU, Cholesky, QR, SVD<br/>Factors and solves"]
-    M["matrixalgebra<br/>GEMM driver and matrix pack<br/>TRSM, SYRK / HERK"]
+    M["matrixalgebra<br/>GEMM and batched GEMM<br/>Matrix pack, TRSM, SYRK / HERK"]
     K["matrixalgebra-kernel<br/>Packed GEMM tile kernels<br/>ISA dispatch"]
     E --> C
+    B -->|"Reuse per-matrix algorithms"| L
     L --> M
+    L -->|"Generic copy and scale"| S
     M --> K
+    C -->|"Copy and permutation"| S
     C -->|"Matrix fast path"| M
     C -->|"Direct tensor path"| K
     classDef tensorLayer fill:#e8f2ff,stroke:#2563a6,color:#132f50
     classDef matrixLayer fill:#e7f5ec,stroke:#28784c,color:#173d27
     classDef kernelLayer fill:#fff1cf,stroke:#a36b12,color:#503507
-    class E,C,S tensorLayer
-    class L,M matrixLayer
+    classDef sharedLayer fill:#edf0f4,stroke:#536477,color:#233244
+    class E,C tensorLayer
+    class S sharedLayer
+    class B,L,M matrixLayer
     class K kernelLayer
 ```
+
+The two linalg nodes are responsibilities within **one crate**: batch APIs own
+batch plans, workspace sizing and per-item status; per-matrix routines own the
+numerical algorithms. Both use `algebra-exec` for explicit execution and scratch.
 
 | Shared foundation | Responsibility |
 | --- | --- |
 | `algebra-view` | Checked borrowed views, strides, scalar and conjugation contracts. Shared by matrix and tensor layers. |
 | `algebra-exec` | Explicit executor, thread budget, scratch planning and lifetime. Used by operation drivers; the tile kernel has no scheduler. |
 
-These foundations belong in the lower-level workspace to avoid a dependency
-cycle. Matrix crates never depend on tensor crates. Tenferro remains a consumer
-that owns AD, traced execution, device transfer and GPU backends. Language and
-array-library adapters sit above these layers.
+`tensoralgebra-strided` is a reusable lower-level kernel layer. Contraction uses
+its copy/permutation operations when a plan selects materialization; einsum
+uses them through contraction. Linalg can reuse generic copy and scale operations,
+and frontends can call elementwise, broadcast and reduction kernels directly.
+Strided kernels depend on views and execution contracts, never on contraction
+or factorization algorithms. Their kernels accept borrowed views; owned-array
+helpers do not require backend operations to allocate.
+
+In a future repository split, shared strided kernels, views and execution must
+sit below both matrix and tensor operations, in the lower workspace or an
+independent foundation workspace. The provisional `tensoralgebra-` prefix does
+not imply an upper-layer dependency. Tenferro continues to own AD, traced
+execution, device transfer and GPU backends. Adapters sit above the shared stack.
 
 ## The shared GEMM kernel
 
@@ -68,6 +88,9 @@ and [TBLIS](https://arxiv.org/html/1607.00291v4) separation of packing and tile
 computation. A contraction plan selects a compatible matrix-view fast path,
 direct tensor packing, or explicitly reported materialization. Provider choice
 and access to a usable low-level kernel interface remain experiments.
+Direct panel packing stays with the contraction driver; a full copy or
+permutation uses the shared strided layer. Specialized packing should not be
+forced through a generic elementwise API.
 
 ## Factorizations and batches
 
@@ -89,7 +112,7 @@ provider or serial implementation. See [algorithm details and LAPACK sources](do
 ```mermaid
 flowchart TB
     H["Rust or C / Julia / Python caller"]
-    P["One batch entry<br/>Reusable plan + explicit execution context"]
+    P["Batched GEMM or batched linalg API<br/>One entry with a reusable batch plan"]
     X["algebra-exec<br/>Caller-controlled pool, thread budget and scratch"]
     W1["Task 1<br/>Serial GEMM or factorization<br/>Exclusive scratch"]
     W2["Task 2<br/>Serial GEMM or factorization<br/>Exclusive scratch"]
@@ -110,7 +133,10 @@ instead. Both levels share one thread budget. A barrier-driven inner contraction
 needs a suitable synchronization contract; arbitrary pool submission is insufficient.
 
 Batched GEMM stays beside GEMM; batched decompositions stay beside their scalar
-operations. C callers need an explicit handle or callback contract for execution
+operations in `matrixalgebra-linalg`. Reusing a serial routine per item is the
+first implementation; specialized small-matrix or interleaved batch algorithms
+can replace it behind the same batch contract after validation and measurement.
+C callers need an explicit handle or callback contract for execution
 and scratch. [Execution rationale and primary sources](docs/architecture.md#batched-execution).
 
 ## Where does strided-rs go?
