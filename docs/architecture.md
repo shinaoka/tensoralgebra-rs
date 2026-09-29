@@ -27,13 +27,12 @@ The full statement and rationale are in [design principles](design-principles.md
 
 | Crate | Responsibility | Depends on |
 | --- | --- | --- |
-| `tprims-exec` | Execution context: serial, a Rayon pool borrowed from the host (or created by a C host), host scheduling callbacks with guaranteed width; thread budget for nested parallelism; scratch-size queries and reusable per-worker scratch. | none in the stack |
-| `strided-traits`, `strided-view` (existing) | Checked borrowed strided views, scalar and conjugation contracts, rank-2 views of the same storage. | none |
-| `strided-perm`, `strided-kernel` (existing) | Copy and permutation (HPTT-inspired); map, reduce, broadcast and fused elementwise kernels. Execution and scratch become explicit through `tprims-exec`. | `strided-view`, `tprims-exec` |
-| `tprims-gemm-kernel` | Packed A/B panel format, scalar fallback, ISA dispatch, microkernels computing bounded result tiles, initially ported from tensorprimitives-rs `tensorcontract`. No scheduler, no full-matrix GEMM, no tensor labels. | `strided-view` |
-| `tprims-blas` | GEMM and batched GEMM with two implementations to compare (faer plus a loop over items; TBLIS-style packing on `tprims-gemm-kernel`), TRSM, then SYRK/HERK and further BLAS-like operations as needed (GEMV is not excluded by the name). | faer, `tprims-gemm-kernel`, `tprims-exec` |
-| `tprims-linalg` | Dense linear algebra: factorizations, direct solves, least squares, symmetric/Hermitian eigendecomposition, factor objects, errors, workspace plans; `batched` module. Initially faer per item. | faer, `tprims-blas`, `strided-kernel`, `tprims-exec` |
-| `tprims-contract` | Binary contraction with free, contracted and batch indices (`dot_general` semantics): one plan API over two strategies, permute plus batched GEMM and TBLIS-style direct packing with bounded scatter. Thin permute / add / trace wrappers and matricized factorization wrappers. | `tprims-gemm-kernel`, `tprims-blas`, `tprims-linalg`, `strided-perm`, `strided-kernel`, `tprims-exec` |
+| `tprims-exec` | Execution context: serial, a Rayon pool borrowed from the host (or owned, for a C host), width chosen from work, kernel-level entry, SPMD `broadcast`; `strided::run_with_exec` bridges strided-rs kernels (feature `strided`). Planned: host scheduling callbacks, scratch queries. | rayon; strided-basic (optional) |
+| `strided-traits`, `strided-view`, `strided-perm`, `strided-basic` (external, strided-rs) | Checked borrowed strided views, scalar and conjugation contracts; copy, permutation and elementwise kernels. | none in tprims |
+| `tensorcontract` (imported, tensorprimitives-rs) | TBLIS-style packed panels, ISA-dispatched microkernels, the direct contraction driver with an `Spmd` seam. Planned: split its packing and microkernels into `tprims-gemm-kernel`. | none in tprims |
+| `tprims-blas` | GEMM and batched GEMM with two implementations (faer plus a loop over items; TBLIS-style through `tensorcontract`), TRSM; later SYRK/HERK and further BLAS-like operations. | faer, `tensorcontract`, `strided-view`, `tprims-exec` |
+| `tprims-linalg` | Dense linear algebra: factorizations, direct solves, least squares, symmetric/Hermitian and nonsymmetric eigendecomposition, factor objects, errors; `batched` module. faer per item. | faer, `tprims-blas`, `strided-view`, `tprims-exec`; `tensorcontract` only for the scalar trait that `tprims_blas::Scalar` extends |
+| `tprims-contract` | Binary contraction with free, contracted and batch indices (`dot_general` semantics): one plan API over two strategies, permute plus batched GEMM and TBLIS-style direct packing with bounded scatter. Thin permute / add wrappers. Needs matrix GEMM only; it does not depend on `tprims-linalg`. | `tprims-blas`, `tensorcontract`, `strided-basic`, `strided-view`, `tprims-exec` |
 
 The name `contract` was chosen over `tensordot` because NumPy, PyTorch and JAX `tensordot` has no batch indices; the operation here does, as in cuTENSOR's `cutensorContract`.
 
@@ -48,12 +47,13 @@ The name `contract` was chosen over `tensordot` because NumPy, PyTorch and JAX `
 | `tprims-contract-capi` | Contraction plans and execution | `tprims/contract.h` |
 | `tprims-bundle` | No API. `cdylib` + `staticlib` with one feature per part; installs the selected headers, a generated umbrella `tprims/tprims.h`, and a pkg-config file | |
 
-`tprims-gemm-kernel` has no C ABI: its packed format is an internal contract between drivers.
+The planned `tprims-gemm-kernel` would have no C ABI: its packed format is an internal contract between drivers.
 
 ### Dependency rules
 
 - `tprims-exec` and `tprims-core` are the bottom of the tprims graph; their only stack dependency is strided-rs (`tprims-exec` optionally, for `strided::run_with_exec`; `tprims-core` for `strided-view`). strided-rs depends on nothing in tprims.
-- `tprims-gemm-kernel` depends only on `strided-view` / `strided-traits`. It takes no execution context.
+- The microkernel layer (`tensorcontract` today, `tprims-gemm-kernel` when split) takes no tprims execution context of its own; drivers pass parallelism through its `Spmd` seam.
+- `tprims-contract` and `tprims-linalg` are siblings over `tprims-blas`; neither depends on the other.
 - `tprims-blas`, `tprims-linalg` and `tprims-contract` take an explicit `tprims-exec` context for every expensive operation.
 - A C ABI crate depends on its Rust part and `tprims-core` only. It contains no algorithm.
 - No cycle between crates. See the decision log for the repository placement of `tprims-exec` and `tprims-core`.
@@ -63,7 +63,7 @@ The name `contract` was chosen over `tensordot` because NumPy, PyTorch and JAX `
 - **N-ary einsum.** Index notation and contraction-order planning stay above the stack (the published `strided-opteinsum` releases, or the consumer) and call `tprims-contract` for each binary step. The stack exposes no index-string API.
 - **Iterative (Krylov) solvers.** CG, GMRES, Lanczos and Davidson need a linear-operator callback, convergence control and preconditioning, a contract distinct from dense linear algebra. Many consumers already carry their own. Deferred; a later `tprims-krylov` would depend on `tprims-blas` without changing this layout.
 - **AD, traced execution, device transfer, GPU backends**, and adapters for `ndarray` / `mdarray`. These sit above the stack.
-- **Tensor-level numerical algorithms.** `tprims-contract` does not implement pivoting, convergence, or scaling. A tensor SVD is a matricized call into `tprims-linalg`.
+- **Tensor-level numerical algorithms.** `tprims-contract` does not implement pivoting, convergence, or scaling. A tensor SVD is the caller reshaping a view to a matrix and calling `tprims-linalg`; no contraction crate is involved.
 
 ## One shared library
 
@@ -269,7 +269,7 @@ Return a per-item status and define the contents of failed outputs. Batched GEMM
 | Component | Role here |
 | --- | --- |
 | `strided-traits`, `strided-view` | Reused unchanged as the shared view contract. |
-| `strided-perm`, `strided-basic`, `strided-kernel` | Used for copies, permutations and elementwise work. `tprims_exec::strided::run_with_exec` bridges an `Exec` to strided's `ExecContext`. An explicit `tprims-exec` context inside strided itself would be a change proposed to strided-rs. |
+| `strided-perm`, `strided-basic` | Used for copies, permutations and elementwise work. `tprims_exec::strided::run_with_exec` bridges an `Exec` to strided's `ExecContext`. An explicit `tprims-exec` context inside strided itself would be a change proposed to strided-rs. |
 | `strided-capi` (planned in [strided-rs #234](https://github.com/tensor4all/strided-rs/issues/234)) | Would become an `rlib` over `tprims-core` types (DLPack operands, `tprims_exec`) joining `tprims-bundle`. |
 
 ## Implementation order
