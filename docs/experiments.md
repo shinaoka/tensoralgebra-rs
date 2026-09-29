@@ -19,7 +19,7 @@ These rules follow the [tensorprimitives-rs measurement discussion](https://gith
 
 Implement minimal `f64` work that can be called through (a) direct Rust, (b) an explicit caller-owned Rayon pool, and (c) a C ABI from a real C program. Measure an empty call, a small GEMM-like operation, and a batch with fixed total arithmetic but varying item count. Include direct serial execution, one pool entry per item, and one entry per batch. Keep pool construction outside the timed operation unless reporting construction cost separately. Check that the host thread identity and thread-local behavior match the API contract.
 
-The roughly 8–14 µs session entry in [tenferro #1945](https://github.com/tensor4all/tenferro-rs/issues/1945) is a motivating observation, **not** a predicted result here. Its sub-1 µs fixed-cost target is a design target to test, not an achieved property.
+The roughly 8 to 14 µs session entry in [tenferro #1945](https://github.com/tensor4all/tenferro-rs/issues/1945) is a motivating observation, **not** a predicted result here. Its sub-1 µs fixed-cost target is a design target to test, not an achieved property.
 
 **Decision gate:** A viable API makes pool ownership, thread budget, session lifetime, and C error behavior explicit. It must show its measured fixed cost and avoid nested oversubscription.
 
