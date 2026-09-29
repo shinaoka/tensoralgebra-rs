@@ -8,7 +8,7 @@
 /// Only the interleaved block of smaller-stride axes that precede the last
 /// non-separated axis is checked exactly, by enumerating its offsets once
 /// with incremental traversal. The answer is exact whenever that block holds
-/// at most [`EXACT_BLOCK_BUDGET`] logical elements, independent of the total
+/// at most `EXACT_BLOCK_BUDGET` logical elements, independent of the total
 /// destination size (issues #255 and #256). Larger interleaved blocks, and
 /// metadata whose spans cannot be represented, are conservatively rejected.
 ///

@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all -- --check
+
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - run: cargo clippy -j 16 --workspace --all-targets -- -D warnings
+      - run: cargo clippy -j 16 --workspace --all-targets --features strided-basic/parallel,strided-kernel/parallel,strided-perm/parallel,tprims-bench/parallel -- -D warnings
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test -j 16 --profile ci --workspace --no-fail-fast
+      - run: cargo test -j 16 --profile ci -p strided-basic -p strided-kernel -p strided-perm --features parallel --no-fail-fast
+      # tensorcontract's micro-kernels are written for the release profile
+      # (thin LTO, one codegen unit); upstream CI tests both.
+      - run: cargo test -j 16 -p tensorcontract --release
+      - run: cargo run -j 16 --release -p tensorprimitives-bench -- info
+
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.89.0"
+      - run: cargo build -j 16 --workspace --all-targets
+
+  doc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo doc -j 16 --workspace --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings
