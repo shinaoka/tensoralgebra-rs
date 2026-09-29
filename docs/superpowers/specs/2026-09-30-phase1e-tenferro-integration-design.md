@@ -92,8 +92,8 @@ run unchanged with no kernels installed.
 dependency on tprims-rs at a pinned commit. Implements `CpuGemmProvider`,
 `CpuGeneralContractionProvider` and `CpuLinalgKernels` with tprims, returning
 `Unsupported` for everything outside the op table. Added to the `extensions`
-CI profile. Merging it to `main` is optional; it is merged only once green,
-and it can stay on a branch without blocking T1/T2.
+CI profile. It is merged to `main` once green (maintainer decision,
+2026-09-30).
 
 ### Execution mapping
 
@@ -170,7 +170,8 @@ candidate = `--features tprims`, compared with the existing ABBA paired
 timing (`scripts/run_paired_timing.sh`) at 1T and 4T (plus 8T and 16T for
 scaling, reported, not gated). An op family is routed to tprims when its
 geometric-mean ratio is ≤ 1 within the A/A noise and no case regresses beyond
-twice the noise; otherwise it stays `Unsupported`. Results go to
+twice the noise (thresholds approved by the maintainer, 2026-09-30);
+otherwise it stays `Unsupported`. Results go to
 `result/amd-cpu/cpu/` with both commits.
 
 ## Deliverables and order
@@ -197,9 +198,6 @@ uninit GEMM in tprims.
 
 ## Open points for review
 
-1. `ext/tenferro-cpu-tprims` merged to tenferro `main` once green, or kept on
-   a branch while measuring?
-2. Acceptance thresholds in P3 (geomean within noise, no case beyond twice the
-   noise): acceptable, or a fixed percentage?
-3. Thread counts for P2: 1T and 4T as decided; add 8T (one full CCD) as
-   reported-only?
+1. Thread counts for P2 and P3: 8T (one full CCD, the largest configuration
+   sharing one L3) is wanted; whether it gates the decision alongside 1T and
+   4T or is reported only is under discussion.
