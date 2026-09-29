@@ -20,7 +20,7 @@ The package is a member of the root workspace, so binaries land in the
 repository's `target/`:
 
 ```bash
-cargo build -j 16 --release -p tprims-bench --bins
+cargo build --release -p tprims-bench --bins   # jobs from CARGO_BUILD_JOBS
 cpus=$(python3 scripts/idle_cpus.py pick 4)          # idle CPUs of one L3 domain
 scripts/pinned.sh "${cpus%%,*}" -- ../target/release/blas --threads 1
 scripts/pinned.sh "$cpus"       -- ../target/release/blas --threads 4

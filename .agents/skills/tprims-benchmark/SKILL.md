@@ -12,9 +12,12 @@ Protocol`, `CPU Threading Contract`); read those sections first.
 1. **Quiet host.** Never run two benchmarks at once, and do not build or test
    while measuring. Look for other users' load:
    `ps -eo pid,user,psr,%cpu,comm --sort=-%cpu | head`.
-2. **Build once, release profile, explicit jobs:**
-   `cargo build -j 16 --release -p tprims-bench --bins`
-   (the C benchmark builds itself in `benchmarks/c/run.sh`).
+2. **Build once, release profile.** The build job count depends on the host:
+   set `CARGO_BUILD_JOBS` for it (for example 16 on the shared 64-core EPYC)
+   instead of hardcoding `-j`; cargo and the runners read it.
+   `cargo build --release -p tprims-bench --bins`
+   (the C benchmark builds itself in `benchmarks/c/run.sh`). Build
+   parallelism does not change the measured thread count.
 3. **Choose idle cores in one L3 domain:**
    `python3 benchmarks/scripts/idle_cpus.py pick N` prints N idle CPUs of one
    L3 domain (one hardware thread per core), for example `8,9,10,11`. Pick for
@@ -45,5 +48,6 @@ Protocol`, `CPU Threading Contract`); read those sections first.
    (`scripts/run_paired_timing.sh`) as the command and its idle-host guard
    left enabled. tenferro-benchmark's devcontainer suites do not pin by
    default; these runs do, and say so in the result.
-9. **macOS:** `idle_cpus.py` and `pinned.sh` report that pinning is
-   unavailable and run unpinned; state that in the result.
+9. **CPU affinity exists only on Linux.** On other hosts (macOS, Windows)
+   `idle_cpus.py` exits 3 and `pinned.sh` runs the command unpinned with a
+   note; state in the result that pinning was unavailable.

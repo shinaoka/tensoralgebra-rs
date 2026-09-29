@@ -8,7 +8,7 @@ large-batch regression case (n <= 8, batch 1024). f64 and c64. The timed
 boundary is one public call including the input copy into factor storage.
 
 ```bash
-cargo build -j 16 --release -p tprims-bench --bin linalg
+cargo build --release -p tprims-bench --bin linalg
 benchmarks/benchmarks/tprims/linalg/run.sh 19 19-22 /tmp/linalg   # 1T cores, 4T cores, output
 ```
 

@@ -38,11 +38,12 @@ This is a research repository, not a production tensor-algebra library. Read `RE
 
 ## Build
 
-- Every cargo invocation uses `-j 16`.
+- The build job count depends on the host: set `CARGO_BUILD_JOBS` (16 on the
+  shared 64-core EPYC workstation); scripts and CI do not hardcode `-j`.
 - Local gate before a PR: `cargo fmt --all -- --check`,
-  `cargo clippy -j 16 --workspace --all-targets -- -D warnings`,
-  `cargo test -j 16 --workspace`, `cargo test -j 16 -p tprims-exec` (without
+  `cargo clippy --workspace --all-targets -- -D warnings`,
+  `cargo test --workspace`, `cargo test -p tprims-exec` (without
   the `strided` feature the workspace unifies on), and
-  `cargo test -j 16 -p tensorcontract --release`. Build `cargo build -j 16 -p tprims-bundle`
+  `cargo test -p tensorcontract --release`. Build `cargo build -p tprims-bundle`
   before the workspace tests (the C ABI test links the built `libtprims.so`). CI uses stable clippy,
   which may be newer than a local toolchain.

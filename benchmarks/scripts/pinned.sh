@@ -7,15 +7,15 @@
 #
 #   pinned.sh CPUS -- COMMAND [ARGS...]
 #
-# Exits 75 when no valid run was obtained. On a host without /proc/stat
-# (macOS) the command runs unpinned and a note goes to stderr.
+# Exits 75 when no valid run was obtained. CPU affinity is Linux-only: on
+# other hosts the command runs unpinned and a note goes to stderr.
 set -euo pipefail
 cpus=$1; shift
 [[ ${1:-} == -- ]] && shift
 here=$(cd "$(dirname "$0")" && pwd)
 check() { python3 "$here/idle_cpus.py" check "$cpus" --seconds "${PINNED_IDLE_SECONDS:-3}" 2>/dev/null; }
-if [[ ! -r /proc/stat ]]; then
-    echo "pinned.sh: CPU pinning unavailable on this host; running unpinned" >&2
+if [[ $(uname -s) != Linux ]] || [[ ! -r /proc/stat ]] || ! command -v taskset >/dev/null; then
+    echo "pinned.sh: CPU pinning unavailable on this host (Linux only); running unpinned" >&2
     exec "$@"
 fi
 tmp=$(mktemp); trap 'rm -f "$tmp"' EXIT

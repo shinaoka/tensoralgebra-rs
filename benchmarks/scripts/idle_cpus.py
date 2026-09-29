@@ -11,7 +11,7 @@ Linux with the standard library only.
     idle_cpus.py check CPUS [--seconds S] [--max-busy F]
 
 `pick` exits 2 when no L3 domain has N idle CPUs; `check` exits 1 when a CPU
-is busy. Both exit 3 where `/proc/stat` is unavailable (macOS): record that
+is busy. Both exit 3 off Linux (CPU affinity is Linux-only): record that
 pinning was unavailable instead.
 """
 from __future__ import annotations
@@ -105,8 +105,8 @@ def main(argv: list[str] | None = None, root: Path = Path("/"), sleep=time.sleep
         p.add_argument("--seconds", type=float, default=DEFAULT_SECONDS)
         p.add_argument("--max-busy", type=float, default=DEFAULT_MAX_BUSY)
     a = ap.parse_args(argv)
-    if not (root / "proc/stat").exists():
-        print("idle_cpus: /proc/stat unavailable; CPU pinning is unavailable on this host", file=sys.stderr)
+    if not (root / "proc/stat").exists() or (root == Path("/") and not sys.platform.startswith("linux")):
+        print("idle_cpus: not Linux; CPU pinning is unavailable on this host", file=sys.stderr)
         return 3
     frac = busy_fractions(root, a.seconds, sleep)
     if a.cmd == "pick":

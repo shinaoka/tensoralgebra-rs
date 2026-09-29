@@ -255,11 +255,13 @@ Audit hints:
   running multi-threaded once produced a 7x wrong one-thread row in
   tenferro-rs.
 - Build parallelism and measured thread count are different settings.
-  Compile with an explicit job count (`cargo bench -j 16`); the measured
+  Compile with a job count chosen for the host (`CARGO_BUILD_JOBS`); the measured
   binary itself runs with a pinned thread count.
 - Pin the measured process with `taskset` to cores within one L3 domain and
   check they are idle immediately before and after each measurement (a
-  `/proc/stat` busy fraction over a few seconds is enough). Never run two
+  `/proc/stat` busy fraction over a few seconds is enough;
+  `benchmarks/scripts/pinned.sh` does both). CPU affinity is Linux-only;
+  elsewhere, record that the run was unpinned. Never run two
   benchmarks at once. Prefer short per-case runs over long target-wide runs.
 - Read the shape of a slowdown before claiming a cause. A constant absolute
   delta across sizes is a per-call or per-entry cost; a uniform multiplicative

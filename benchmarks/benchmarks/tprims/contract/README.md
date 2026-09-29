@@ -16,7 +16,7 @@ execution (`execute`, alpha = 1, beta = 0) are timed separately.
 | `large_ijk_jkl` | 256 x 64 x 64 | 64 x 64 x 256 | `ijk,jkl->il` |
 
 ```bash
-cargo build -j 16 --release -p tprims-bench --bin contract
+cargo build --release -p tprims-bench --bin contract
 benchmarks/benchmarks/tprims/contract/run.sh 57 57-60 /tmp/contract   # 1T cores, 4T cores, output
 ```
 

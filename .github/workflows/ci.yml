@@ -34,7 +34,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-      - run: cargo clippy -j 16 --workspace --all-targets -- -D warnings
+      - run: cargo clippy --workspace --all-targets -- -D warnings
 
   test:
     runs-on: ubuntu-latest
@@ -43,18 +43,18 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       # The C ABI test links a C program to libtprims.so, which `cargo test`
       # does not build (it only builds the rlib the harness needs).
-      - run: cargo build -j 16 --profile ci -p tprims-bundle
-      - run: cargo test -j 16 --profile ci --workspace --no-fail-fast
+      - run: cargo build --profile ci -p tprims-bundle
+      - run: cargo test --profile ci --workspace --no-fail-fast
       # tprims-exec alone, without the `strided` adapter the workspace unifies on.
-      - run: cargo test -j 16 --profile ci -p tprims-exec --no-fail-fast
+      - run: cargo test --profile ci -p tprims-exec --no-fail-fast
       # tensorcontract's micro-kernels are written for the release profile
       # (thin LTO, one codegen unit); upstream CI tests both.
-      - run: cargo test -j 16 -p tensorcontract --release
-      - run: cargo run -j 16 --release -p tensorprimitives-bench -- info
+      - run: cargo test -p tensorcontract --release
+      - run: cargo run --release -p tensorprimitives-bench -- info
       # Upstream tensorprimitives checks: the out-of-root readme still packages,
       # and the `std` feature seam still builds without it.
-      - run: cargo package -j 16 -p tensorcontract --list --allow-dirty
-      - run: cargo build -j 16 -p tensorcontract --no-default-features
+      - run: cargo package -p tensorcontract --list --allow-dirty
+      - run: cargo build -p tensorcontract --no-default-features
 
   capi:
     runs-on: ubuntu-latest
@@ -63,10 +63,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       # The C test (tests/c_abi.rs) compiles and runs a C program against the
       # built libtprims.so; a blas-only bundle must not export contract symbols.
-      - run: cargo build -j 16 -p tprims-bundle
-      - run: cargo test -j 16 -p tprims-bundle
+      - run: cargo build -p tprims-bundle
+      - run: cargo test -p tprims-bundle
       - run: |
-          cargo build -j 16 -p tprims-bundle --no-default-features --features blas
+          cargo build -p tprims-bundle --no-default-features --features blas
           nm -D --defined-only target/debug/libtprims.so | grep -q ' tprims_blas_gemm$'
           ! nm -D --defined-only target/debug/libtprims.so | grep -q ' tprims_contract_'
 
@@ -77,13 +77,13 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.89.0"
-      - run: cargo build -j 16 --workspace --all-targets
+      - run: cargo build --workspace --all-targets
 
   doc:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo doc -j 16 --workspace --no-deps
+      - run: cargo doc --workspace --no-deps
         env:
           RUSTDOCFLAGS: -D warnings

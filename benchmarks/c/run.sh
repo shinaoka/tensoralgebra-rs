@@ -4,8 +4,8 @@
 set -euo pipefail
 cpus1=$1; cpus4=$2; out=$3
 root=$(cd "$(dirname "$0")/../.." && pwd)
-cargo build -j 16 --release -p tprims-bundle --manifest-path "$root/Cargo.toml" >&2
-cargo build -j 16 --release -p tprims-bench --bin capi_rust --manifest-path "$root/Cargo.toml" >&2
+cargo build --release -p tprims-bundle --manifest-path "$root/Cargo.toml" >&2
+cargo build --release -p tprims-bench --bin capi_rust --manifest-path "$root/Cargo.toml" >&2
 lib=$root/target/release
 pin=$root/benchmarks/scripts/pinned.sh
 mkdir -p "$out"
