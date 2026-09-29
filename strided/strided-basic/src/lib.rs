@@ -80,6 +80,8 @@ mod threading;
 pub use copy_plan::CopyPlan;
 pub use dense_update::{axpby_accum, embed_diagonal_into_uninit, triangular_mask_into_uninit};
 pub use erased::{ErasedConcatenatePlan, ErasedCopyPlan, ErasedReducePlan, ReduceOp};
+#[cfg(feature = "tprims-exec")]
+pub use exec_context::run_with_exec;
 pub use exec_context::ExecContext;
 pub use execution_policy::{with_execution_policy, ExecutionPolicy};
 pub use map_view::{

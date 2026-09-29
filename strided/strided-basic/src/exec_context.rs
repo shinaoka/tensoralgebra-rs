@@ -107,6 +107,44 @@ impl Default for ExecContext {
     }
 }
 
+/// Run a strided operation of `len` logical elements on a tprims execution
+/// context (tprims addition, feature `tprims-exec`).
+///
+/// At or below the parallel threshold (`MINTHREADLENGTH`) `op` runs serially
+/// on the caller with [`ExecContext::serial`] and the pool is never entered.
+/// Above it, the pool is entered once and `op` receives a context bounded by
+/// the budget, so strided fanout stays inside the borrowed pool.
+///
+/// # Examples
+///
+/// ```
+/// use strided_basic::run_with_exec;
+/// let n = run_with_exec(&tprims_exec::Exec::serial(), 10, |ctx| {
+///     assert!(ctx.is_serial());
+///     1
+/// });
+/// assert_eq!(n, 1);
+/// ```
+#[cfg(feature = "tprims-exec")]
+pub fn run_with_exec<R: Send>(
+    exec: &tprims_exec::Exec<'_>,
+    len: usize,
+    op: impl FnOnce(ExecContext) -> R + Send,
+) -> R {
+    let k = if len > crate::threading::MINTHREADLENGTH {
+        exec.budget()
+    } else {
+        1
+    };
+    exec.install(k, |par| {
+        let ctx = match par {
+            tprims_exec::Par::Seq => ExecContext::serial(),
+            tprims_exec::Par::Threads(n) => ExecContext::max_threads(n.get()).unwrap_or_default(),
+        };
+        ctx.run(|| op(ctx))
+    })
+}
+
 #[cfg(test)]
 #[path = "exec_context/tests/tests.rs"]
 mod tests;

@@ -1186,6 +1186,7 @@ dependencies = [
  "smallvec",
  "strided-perm",
  "strided-view",
+ "tprims-exec",
 ]
 
 [[package]]
