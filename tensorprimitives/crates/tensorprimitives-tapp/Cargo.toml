@@ -1,0 +1,29 @@
+[package]
+name = "tensorprimitives-tapp"
+description = "TAPP (Tensor Algebra Processing Primitives) C-ABI front end for the tensorprimitives engines"
+keywords = ["tensor", "contraction", "tapp", "ffi", "abi"]
+categories = ["mathematics", "science", "external-ffi-bindings"]
+readme = "README.md"
+documentation = "https://docs.rs/tensorprimitives-tapp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+
+[lib]
+name = "tensorprimitives_tapp"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[dependencies]
+tensorcontract.workspace = true
+num-complex.workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+# The same single target the engine documents, so the two crates' pages agree.
+# Nothing here is `cfg`-gated by architecture, and the engine's ISA modules are
+# `#[doc(hidden)]`, so this affects neither crate's rendered surface.
+targets = ["x86_64-unknown-linux-gnu"]

@@ -1,0 +1,54 @@
+=== where each arm ran (38 arms)
+arm                   cpu  dom  sock  numa    secs  overlap
+bl-base-f32c32          4    0     0     0     408        0
+bl-base-f64c64          4    0     0     0     821        0
+bl-base2-f32c32         4    0     0     0     399        0
+bl-base2-f64c64         4    0     0     0     811        0
+bl-basem-f32c32         4    0     0     0     399        0
+bl-basem-f64c64         4    0     0     0     816        0
+bl-ck256-f32c32         4    0     0     0     423        0
+bl-ck256-f64c64         4    0     0     0     816        0
+bl-ck512-f32c32         4    0     0     0     392        0
+bl-ck512-f64c64         4    0     0     0     816        0
+bl-kc1024-f32c32        4    0     0     0     538        0
+bl-kc1024-f64c64        4    0     0     0    1058        0
+bl-kc128-f32c32         4    0     0     0     520        0
+bl-kc128-f64c64         4    0     0     0     926        0
+bl-kc256-f32c32         4    0     0     0     425        0
+bl-kc256-f64c64         4    0     0     0     831        0
+bl-kc384-f32c32         4    0     0     0     411        0
+bl-kc384-f64c64         4    0     0     0     858        0
+bl-kc512-f32c32         4    0     0     0     403        0
+bl-kc512-f64c64         4    0     0     0     945        0
+bl-kc64-f32c32          4    0     0     0     693        0
+bl-kc64-f64c64          4    0     0     0    1144        0
+bl-kc768-f32c32         4    0     0     0     483        0
+bl-kc768-f64c64         4    0     0     0    1044        0
+bl-mc200-f32c32         4    0     0     0     500        0
+bl-mc200-f64c64         4    0     0     0     962        0
+bl-mc25-f32c32          4    0     0     0     417        0
+bl-mc25-f64c64          4    0     0     0     876        0
+bl-mc400-f32c32         4    0     0     0     594        0
+bl-mc400-f64c64         4    0     0     0    1089        0
+bl-mc50-f32c32          4    0     0     0     403        0
+bl-mc50-f64c64          4    0     0     0     838        0
+bl-model-f32c32         4    0     0     0     737        0
+bl-model-f64c64         4    0     0     0    1196        0
+bl-nc25-f32c32          4    0     0     0     436        0
+bl-nc25-f64c64          4    0     0     0     888        0
+bl-nc400-f32c32         4    0     0     0     396        0
+bl-nc400-f64c64         4    0     0     0     800        0
+
+=== the base repeats: the only noise floor that applies to this grid
+  f64c64, against bl-base:
+    basem    1.0139  (n=294)
+    base2    1.0139  (n=294)
+  f32c32, against bl-base:
+    basem    1.0089  (n=294)
+    base2    1.0093  (n=294)
+
+=== arm-vs-base comparisons that cross a socket boundary
+  same socket as base: 36
+  crossing:            0
+
+arms per socket: 0:38

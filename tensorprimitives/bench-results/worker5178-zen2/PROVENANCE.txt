@@ -1,0 +1,35 @@
+Load imbalance from block-scatter irregularity: refuted, and cleanly.
+
+  machine : worker5178 (Rusty, `gen` partition, `rome`)
+            AMD EPYC Zen2, 2 x 64 cores, SMT off, avx2 + fma, no AVX-512
+            16 MiB L3 per 4 cores
+  date    : 2026-08-04, started 21:28:27
+  slurm   : job 6755009, --constraint=rome --exclusive, 128 CPUs allocated
+  script  : RAGGED=1 STAGES=threads sbatch scripts/rusty-phase4.sbatch
+  stages  : prep rc=0, threads rc=0 (163 min), grid skipped
+  host    : session.log, slurm-job.txt, topology.json
+
+The `rg-*` arms in phase4f/ are the ragged ones: `--stress ragged` subtracts 1
+from every extent, destroying TCCG's multiple-of-24 property. The perturbation is
+characterised rather than assumed --
+
+  unperturbed  11.7% of case-dtype-methods have reg_a < 1.0, at 0.667/0.889/0.963
+  ragged       87.2%, at 0.348 ... 0.901, aperiodic
+
+-- and 11.7% is lower than part 14's 42.9% because this is an AVX2 node, where
+MR = 8 for f64 does divide 24. The contrast is therefore cleaner, not weaker.
+Quote the ISA with either figure.
+
+Scaling, each mode against its OWN t1, moves 0.976 to 1.124 across six
+dtype x width points. Seven and a half times as many heterogeneous cases, at
+aperiodic fractions down to 35% of blocks irregular, and parallel efficiency does
+not move -- if anything ragged scales slightly better. So the cost-weighted and
+dynamic-partitioning ladder in part 14 is not worth building (D47).
+
+Two limits on that conclusion, both real and both in D47: it says nothing about
+block-sparse with wildly varying block sizes, and it was measured where the
+machine is bandwidth-bound (occupancy 32-39% at 64 threads).
+
+Not comparable to anything measured on ccqlin038.
+
+Read with: docs/notebook/ -> Threading -> "Part 16" and "Part 14", and D47, A41.

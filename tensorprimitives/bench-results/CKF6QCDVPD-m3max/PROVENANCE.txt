@@ -1,0 +1,231 @@
+The portable path on Apple Silicon, and the first non-x86 measurement here.
+
+  machine : CKF6QCDVPD (a laptop, not a cluster node), Apple M3 Max (T6031)
+            aarch64-apple-darwin, macOS 25.5, 12 P-cores (2 clusters of 6)
+            + 4 E-cores, no SMT
+            P-core: 128 KiB L1d private, 16 MiB L2 shared by 6 cores,
+            NO L3 that Darwin names (a ~48 MiB SLC exists, unexported),
+            128-byte lines, 16 KiB pages, 4.05 GHz turbo on AC power
+  date    : 2026-08-06
+  script  : scripts/macos-session.sh prep|bench, size 64, reps 3
+  engine  : kernel::scalar at MR x NR = 4 x 4 real / 2 x 4 complex.
+            The arms in THIS directory predate the NEON kernel, so they are
+            portable-path measurements and TENSORCONTRACT_KERNEL was a no-op
+            when they were taken. A NEON kernel exists as of the same day; see
+            kernel-shapes*.txt here and the neon-ab/ subdirectory.
+  full    : DECISIONS.md parts 20, 21; neon-ab/ is part 22
+
+WHAT THIS DATA IS GOOD FOR
+
+  The cost of the portable path, the three complex methods compared under an
+  identical kernel, the corpus's structural features at MR = 4, and correctness
+  on a new architecture. That is all.
+
+WHAT IT CANNOT SUPPORT, AND THIS IS NOT BOILERPLATE
+
+  * **These are not pinned single-core measurements.** Every other number in
+    this repository is. Darwin has no CPU affinity API and
+    `thread_policy_set(THREAD_AFFINITY_POLICY)` is a no-op on Apple Silicon, so
+    there is no `taskset` equivalent and none can be written. Add a laptop's
+    DVFS and thermal envelope, and 12 P-cores beside 4 E-cores the scheduler may
+    migrate between. Compensations applied: AC power (the turbo needs it), a
+    quiesced machine, thermal level recorded at both ends of the session,
+    everything pinned single-threaded, and three identical arms instead of one.
+    None of them is a substitute. The one thing better here than on a cluster
+    node: no SMT, so the sibling-shares-L1d hazard does not exist.
+  * **No number here may be compared with a number from another machine.**
+    Different architecture as well as a different hierarchy.
+  * **Nothing here is evidence about Apple Silicon as hardware.** It is evidence
+    about the portable path on Apple Silicon. The two differ by 1.840, measured
+    (neon-ab/), which A58 had predicted at ~2x.
+
+THE ACCELERATE FILE IS NOT A ROOFLINE. DO NOT MERGE IT WITH THE OPENBLAS ONE.
+
+  premise-openblas-f64c64.csv     <- the roofline. OpenBLAS 0.3.34, NEON
+  premise-accelerate-f64c64.csv   <- OFF-ISA. Apple AMX. A ceiling nothing
+                                     NEON can reach, this engine included
+
+  The measurement proves it rather than assuming it. Accelerate's TTGT reaches a
+  geomean 79.2 GF/s in f64 and 99.4 in c64 and PEAKS AT 334.8, against a P-core
+  NEON f64 FMA peak of 64.8 GF/s. 5.2x the peak is not NEON. OpenBLAS on the
+  same shapes reads 30.7 and 35.0. So A3's "same-shape vendor GEMM as the
+  achievable ceiling" is a different quantity against the two, and a ratio
+  against Accelerate is not an efficiency number in the sense used everywhere
+  else in this repository.
+
+  A free control fell out of running premise twice: the engine columns cannot be
+  touched by a BLAS swap, and they moved <=0.5% (f64 19.84 -> 19.74 GF/s,
+  c64 24.20 -> 24.01). Rule 4, and the only floor figure this file had at the
+  time the session was interrupted.
+
+HEADLINE NUMBERS — AND EACH ONE COMES WITH ITS SIZE
+
+  A46 exists because a one-shot small-size run produced a 1.68x that vanished at
+  the published size. So: the numbers to quote are the premise ones, at 64 MiB.
+
+  premise-openblas-f64c64.csv, 12 shapes, 64 MiB, reps 3, 1 thread, geomean GF/s:
+
+                              f64                  c64
+    engine (scalar)          19.84       planar 24.20 / 1m 23.32 / 3m 29.74
+    OpenBLAS TTGT (NEON)     30.68                    35.02
+    engine / OpenBLAS         0.65            0.69 planar, 0.85 3m
+
+  In f64 all three methods read 19.84 EXACTLY, because they select the same real
+  kernel. That is a control on the harness, not a coincidence.
+
+  Best-shape efficiency, which is what identifies the mechanism:
+
+    engine   26.07 of 32.4 GF/s  = 80.5%   <- ceiling HALVED by the missing FMA
+    OpenBLAS 56.44 of 64.8 GF/s  = 87.1%   <- the full NEON FMA ceiling
+
+  Two independently measured efficiencies agreeing under one frequency
+  assumption (4.05 GHz P-core turbo, AC power). That agreement is the evidence,
+  more than either number alone. Do NOT apply the 32.4 ceiling to the complex
+  columns: c64 3m reads 36.94, i.e. 114% of it, because useful flops for 3m
+  exceed the products it issues. That is 3m working, not an error.
+
+  The gap is ONE INSTRUCTION FORM, not a missing kernel: LLVM vectorises
+  real_ukr to NEON unasked, but will not contract `acc += a * b` into `fmla`
+  because that is two roundings and IEEE forbids it. See A58.
+
+  PROVISIONAL, AND LABELLED: a separate probe -- one case (ij-ik-kj), --size 8,
+  reps 1 -- read engine 25.9, OpenBLAS-TTGT 54.5, TBLIS 2.0-dev 55.8 in f64,
+  i.e. 0.46x of TBLIS. It is one case at one size.
+
+  SUPERSEDED THE SAME DAY -- DO NOT QUOTE 0.46. neon-ab/ supplies the 64 MiB
+  TBLIS number: over 12 premise shapes the scalar path is 0.54 of TBLIS 2.0-dev
+  and the NEON path is 1.00. Direction right, magnitude 17% off.
+
+  Complex methods, premise geomean over 12 cases, c64, 64 MiB:
+
+    3m      29.74 GF/s      <- leads planar by 1.229
+    planar  24.20
+    1m      23.32
+
+  A THIRD ordering, after Cascade Lake's and Ice Lake's. It is a fact about the
+  crippled kernel, not about the machine: with no FMA the kernel is
+  instruction-throughput-bound, so 3m's 25% saving in products is a saving in
+  the binding resource, and the bytes-per-useful-flop accounting that decides it
+  on x86 is not what binds. IT WAS EXPECTED TO MOVE once a NEON FMA kernel
+  existed, and it did -- but only from 1.226 to 1.135, and 3m still wins
+  (neon-ab/, part 22). See A59. In f64 all three methods read 19.84 exactly, because they select the
+  same real kernel — a control on the harness, not a coincidence.
+
+STRUCTURAL
+
+  orient.csv: reg_a = 1.000 and reg_b = 1.000 on 784 of 784 rows. The corpus
+  really is fully regular here, because MR = 4 divides the 24 that TCCG rounds
+  every stride-1 extent up to. CLAUDE.md's 42.9%-below-1.0 is an x86
+  register-block artefact needing MR in {16, 32, 48}. So `--stress ragged` is
+  the ONLY source of irregularity on this machine, and any gather-path or
+  write-back claim taken here without it is a claim about the regular case.
+
+  `tcbench shapes` emitted a header and no rows when this file was first
+  written, because `row_blocks` returned `&[]` off x86. THAT IS NO LONGER TRUE:
+  the NEON menus give it rows, and `TENSORCONTRACT_ROWBLOCK` works here. What it
+  says with the measured menus is in the calibration section below.
+
+CALIBRATION — kernel-shapes*.txt, THREE ARMS, 2026-08-06
+
+  kernel-shapes.txt         arm 1
+  kernel-shapes-repeat.txt  arm 2
+  kernel-shapes-arm3.txt    arm 3
+
+  `cargo run --release -p tensorcontract --example kernel_shapes`, ~8 min each,
+  no baselines, machine otherwise quiet, AC power. Scored with
+  `scripts/kernel-shapes-compare.py`, which is what turns three arms into a
+  floor and a margin. This is the measurement A34 requires before a register
+  block may be called anything but provisional, and it replaces the
+  budget-derived NEON menus that shipped a few hours earlier the same day.
+
+  Scored at the DEEPEST kc column only -- kc=256 for f64, kc=384 for f32 -- and
+  that is not a preference, it is what `Blocking::derive` actually gives those
+  element sizes. The kc=16 column is a different regime the engine never enters.
+
+  SESSION FLOOR (this session, 1 thread, kernel-only, hot packed panels):
+
+    f64 / c64   median 0.73%, p90 1.89%   over 38 stable shapes
+    f32 / c32   median 1.24%, p90 3.64%   over 41 stable shapes
+
+  Leads are scored against the p90. The f32 floor is twice the f64 one, which is
+  itself a finding: the same shapes run at twice the throughput at L = 4 and are
+  correspondingly more exposed to this laptop's clock.
+
+  UNSTABLE SHAPES -- excluded from the floor and not shippable at any mean. An
+  arm-to-arm disagreement this large is not a noisy measurement of one number,
+  it is a shape doing two different things:
+
+    1m   3x10   37.8 / 54.9 / 54.8   spread 45.2%   (over register budget)
+    3m    8x2   63.1 / 73.3 / 72.7   spread 16.2%
+    3m    6x3   70.7 / 62.6 / 70.9   spread 13.3%
+
+  WHAT SHIPPED, and what the margin was:
+
+    f64 real     16x3   58.3 GF/s   +4.9% over 4x8    2.6x floor   MEASURED
+    f64 planar    4x6   56.2        +0.2%             a tie
+    f64 1m        2x8   55.9        +1.1%             a tie
+    f64 3m        2x8   79.3        +7.6% over 4x3    4.0x floor   MEASURED
+    f32 real      8x8  111.5        +0.5%             a tie, six ways
+    f32 planar    8x6  112.1        +0.1%             a tie
+    f32 1m        8x6  111.2        +1.4%             a tie
+    f32 3m        4x8  159.1        +7.1% over 8x3    2.0x floor   borderline
+
+  Six of the eight are TIES, and saying so is the point of running three arms.
+  Where a method tied, the budget-derived incumbent was kept.
+
+  THE BUDGET WAS A GOOD FILTER AND A BAD CHOOSER. It correctly eliminated every
+  shape that collapses, and then named the wrong winner in three of eight
+  columns. f64 real is the sharp case: the budget proposed 6x8 -- BLIS's own
+  armv8a_asm_6x8, which looked like corroboration -- and the machine prefers
+  16x3, a shape the budget calls OVER its 32-register limit, by 4.9%.
+
+  THE ONE INTERACTION THE SWEEP CANNOT SEE. `kernel_shapes` measures a kernel on
+  hot packed panels; it knows nothing about write-back. `tcbench shapes` with the
+  new menus says MR = 16 costs write-back regularity on 12 of 49 f64 cases -- the
+  whole abcijk family, wb 1.00 -> 0.67 -- because 16 does not divide the 24 that
+  TCCG rounds stride-1 extents up to, while 4, 6, 8 and 12 do. It is shipped as
+  the default anyway, because the guarded row-block rule ALREADY demotes those 12
+  to 4x8: all of them have k = 24, and the rule's first guard is k <= 32. That
+  rule was derived on Cascade Lake AVX-512 for MR in {16, 32, 48} and transfers
+  here unmodified -- one of the few things in this project that has transferred.
+  0 of 392 case-dtype-methods are left with no regular shape on their menu.
+
+SESSION STATUS — INCOMPLETE ON PURPOSE, AND A MISSING FILE MEANS CUT OFF
+
+  The session was STOPPED before the corpus sweeps finished. What is here is
+  complete and trustworthy:
+
+    info, orient  (784 rows)
+    verify x3     all 49 cases x 4 dtypes within tolerance, in planar, 1m and
+                  3m, against OpenBLAS-TTGT, Accelerate-TTGT and TBLIS
+    premise x2    one per BLAS, 12 shapes, 64 MiB, reps 3
+
+  What is NOT here, and was never written:
+
+    warm/A/A2/A3-f64c64.csv, A-f32c32.csv   the 49-case corpus arms
+    ragged-c64.csv                          the only irregularity source here
+    tblis-f64c64.csv                        the only 64 MiB TBLIS number
+    floor-A2.txt, floor-A3.txt              THIS SESSION HAS NO FLOOR
+
+  Why it was stopped: one corpus arm costs ~50 min here (four engines, the
+  scalar one slow), so five arms plus ragged plus TBLIS is ~5 h, and the session
+  could not be carried across a handoff.
+
+    scripts/macos-session.sh prep  bench-results/CKF6QCDVPD-m3max   # SEE BELOW
+    scripts/macos-session.sh bench bench-results/CKF6QCDVPD-m3max 64 3
+
+  bin/ IS NOW STALE AND `prep` MUST BE RE-RUN. Those three binaries were built
+  at 09:29 on 2026-08-06, before the NEON kernel existed; `strings` finds no
+  `neon-real` in any of them. Re-running `bench` against them would measure the
+  portable path and silently label it as the current engine. This is exactly the
+  hazard D51 is about, arriving from the other direction -- not a build racing a
+  running job, but a stale build outliving the source it was made from.
+
+  DO NOT COMPILE WHILE `bench` RUNS: the arms invoke the binaries in bin/.
+
+  THE CONSEQUENCE FOR EVERY NUMBER ABOVE: there is no in-session floor, so
+  nothing here has an error bar derived the way this project requires. The one
+  substitute available is the premise control -- the engine columns cannot be
+  moved by a BLAS swap and they moved <=0.5% -- which bounds drift between two
+  adjacent arms and says nothing about per-case readability. Treat every ratio
+  above as provisional until the corpus arms and their floor exist.

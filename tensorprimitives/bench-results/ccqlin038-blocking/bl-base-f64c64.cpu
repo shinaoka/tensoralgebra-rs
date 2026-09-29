@@ -1,0 +1,19 @@
+# arm bl-base-f64c64 on cpu4, L3 domain 0 = cpus 0-7,16-23, numa 0
+# window 821.4s; env (none)
+cpu0 busy 2.3%
+cpu1 busy 2.0%
+cpu2 busy 1.8%
+cpu3 busy 1.7%
+cpu4 busy 100.0% <- measurement thread
+cpu5 busy 1.9%
+cpu6 busy 1.7%
+cpu7 busy 1.7%
+cpu16 busy 1.6%
+cpu17 busy 1.8%
+cpu18 busy 1.8%
+cpu19 busy 1.6%
+cpu20 busy 1.0%
+cpu21 busy 1.7%
+cpu22 busy 1.6%
+cpu23 busy 1.7%
+# domain co-tenancy: none above 5%

@@ -1,0 +1,39 @@
+host        : worker5086
+target      : x86_64 / linux
+cpu features: avx2 fma 
+caches      : L1=32KiB/8-way/1sh L2=512KiB/8-way/1sh L3=16384KiB/16-way/4sh (via sysfs), blocking=legacy
+l3 domains  : t1=1 t4=1 t8=2 t16=4 t32=8 t64=16 t128=32
+baselines   : tblis=false blas=false
+
+row-block menus over 49 cases, stress=none
+
+`wb` is the fraction of output row blocks that avoid the write-back's gather
+path at that MR; `regA` is the row operand's block-scatter regularity. `>` marks
+the shape TENSORCONTRACT_ROWBLOCK=auto would pick, `*` the kernel default.
+
+case                   type method       m       n       k  shapes
+ajbdc-ckbad-jk          f32   real  331776      24      24  *16x6 wb=0.67 regA=0.67    >24x4 wb=1.00 regA=1.00     8x8 wb=1.00 regA=1.00   
+abcijk-ijma-mkbc        f32   real    9216    4096      24  *16x6 wb=0.67 regA=0.67    >24x4 wb=1.00 regA=1.00     8x8 wb=1.00 regA=1.00   
+abcijk-ijmb-mkac        f32   real    6144    6144      24  *16x6 wb=0.67 regA=1.00    >24x4 wb=1.00 regA=1.00     8x8 wb=1.00 regA=1.00   
+abcijk-ikma-mjbc        f32   real    9216    4096      24  *16x6 wb=0.67 regA=0.67    >24x4 wb=1.00 regA=1.00     8x8 wb=1.00 regA=1.00   
+abcijk-ikmb-mjac        f32   real    6144    6144      24  *16x6 wb=0.67 regA=1.00    >24x4 wb=1.00 regA=1.00     8x8 wb=1.00 regA=1.00   
+abcijk-jkma-mibc        f32   real    9216    4096      24  *16x6 wb=0.67 regA=0.67    >24x4 wb=1.00 regA=1.00     8x8 wb=1.00 regA=1.00   
+abcijk-jkmb-miac        f32   real    6144    6144      24  *16x6 wb=0.67 regA=1.00    >24x4 wb=1.00 regA=1.00     8x8 wb=1.00 regA=1.00   
+abcijk-eiac-jkeb        f32   real    6144    6144      24  *16x6 wb=0.67 regA=1.00    >24x4 wb=1.00 regA=1.00     8x8 wb=1.00 regA=1.00   
+abcijk-eibc-jkea        f32   real    4096    9216      24  *16x6 wb=0.67 regA=0.67    >24x4 wb=1.00 regA=1.00     8x8 wb=1.00 regA=1.00   
+abcijk-ejac-ikeb        f32   real    6144    6144      24  *16x6 wb=0.67 regA=1.00    >24x4 wb=1.00 regA=1.00     8x8 wb=1.00 regA=1.00   
+abcijk-ejbc-ikea        f32   real    4096    9216      24  *16x6 wb=0.67 regA=0.67    >24x4 wb=1.00 regA=1.00     8x8 wb=1.00 regA=1.00   
+abcijk-ekac-ijeb        f32   real    6144    6144      24  *16x6 wb=0.67 regA=1.00    >24x4 wb=1.00 regA=1.00     8x8 wb=1.00 regA=1.00   
+abcijk-ekbc-ijea        f32   real    4096    9216      24  *16x6 wb=0.67 regA=0.67    >24x4 wb=1.00 regA=1.00     8x8 wb=1.00 regA=1.00   
+
+13 of 392 case-dtype-methods would change shape.
+0 of those move a majority-gather output onto the regular path outright.
+0 have no shape on their menu that clears the gather path at all.
+
+by dtype:
+  f32   13 / 49  would change shape
+  f64    0 / 49  would change shape
+  c32    0 / 147 would change shape
+  c64    0 / 147 would change shape
+
+wrote bench-results/worker5086-zen2/shapes.csv

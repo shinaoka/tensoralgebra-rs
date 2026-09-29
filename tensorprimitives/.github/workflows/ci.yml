@@ -1,0 +1,449 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  # The default path, on the profile users get. Two runs, because the profiles
+  # check different things: the debug build has overflow checks and
+  # `debug_assertions` on, which is a real gate for an engine whose hot loops are
+  # stride and scatter-index arithmetic, and the release build is the one with
+  # `lto = "thin"` and `codegen-units = 1` that the micro-kernels are written for.
+  #
+  # Note what instruction set this is. GitHub's x86 runners have AVX2 and FMA but
+  # not AVX-512, so the automatic dispatch lands on the **AVX2** kernels — the
+  # ones whose register blocks are still provisional and unmeasured. That makes
+  # this job the only routine check they get, so `tcbench info` records the
+  # features and the cache probe in the log: a failure here has to be
+  # attributable to a kernel rather than to an unknown runner.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test --workspace
+      - run: cargo test --workspace --release
+      - run: cargo run --release -p tensorprimitives-bench -- info
+
+  # MSRV, pinned to exactly `[workspace.package] rust-version`: **1.89**, where
+  # the AVX-512 intrinsics and `is_x86_feature_detected!` stabilised (D20).
+  #
+  # This job exists because the claim had already drifted twice over: the pin
+  # used to say 1.75, below the declared floor, so it could never have passed;
+  # and `kernel::cache` briefly called `core::arch::__cpuid_count` outside an
+  # `unsafe` block, which only became a safe function in 1.94 and pushed the real
+  # floor five releases up. Measured, not assumed — 1.89 through 1.93 all failed
+  # with E0133. The fix was the `unsafe` block, not the higher floor.
+  #
+  # Compiling is the whole of an MSRV claim, so this builds every target and
+  # leaves running them to the stable jobs.
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.89.0"
+      - run: cargo build --workspace --all-targets
+
+  # Portability, not performance. macOS runners are aarch64, where the crate has
+  # no vectorised kernel at all — there is no NEON path — so this is the portable
+  # `kernel::scalar` fallback on a non-x86 architecture, and a check that nothing
+  # outside `kernel::x86` quietly assumes x86.
+  #
+  # The targets are named explicitly rather than with `--all-targets` for one
+  # reason: `examples/kernel_shapes` is x86-only by construction. It imports
+  # `kernel::x86` and calls `is_x86_feature_detected!`, neither of which exists
+  # here, so it cannot compile off x86 and `cargo test` (which builds examples)
+  # cannot be used unqualified. Doc tests are a separate step because `--doc`
+  # cannot be combined with a target filter.
+  portable:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test --workspace --release --lib --bins --tests
+      - run: cargo test --workspace --release --doc
+
+  # Every target a BinaryBuilder-style binary distribution will attempt, checked
+  # for compilation. `cargo check` rather than `cargo build`, deliberately: a
+  # linker for each of these is a cross toolchain this job has no business
+  # installing, and the link step is covered where it belongs — by the
+  # BinaryBuilder recipe in Yggdrasil, which brings its own.
+  #
+  # `-p tensorprimitives-tapp` pulls in the engine as a dependency and excludes
+  # the bench harness, whose build script requires TBLIS_ROOT.
+  #
+  # Two results worth writing down, because both were open questions:
+  #
+  #   - **32-bit x86 compiles.** `kernel::x86` is gated on `any(target_arch =
+  #     "x86", target_arch = "x86_64")`, so the AVX-512 intrinsics *are*
+  #     instantiated on `i686`, and the expectation was that some of them would
+  #     not exist there. They all do. The cfg stays as it is.
+  #   - **musl needs `-crt-static`, and says so as a warning.** With the target
+  #     default (`crt-static` on) cargo emits "dropping unsupported crate type
+  #     `cdylib`" and exits 0, so a musl build succeeds while producing no shared
+  #     library at all. That is silent enough to ship, so it is pinned here and
+  #     the recipe sets the same flag.
+  cross:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - i686-unknown-linux-gnu
+          - aarch64-unknown-linux-gnu
+          - armv7-unknown-linux-gnueabihf
+          - powerpc64le-unknown-linux-gnu
+          - riscv64gc-unknown-linux-gnu
+          - x86_64-pc-windows-gnu
+          - x86_64-apple-darwin
+          - aarch64-apple-darwin
+          - x86_64-unknown-freebsd
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - run: cargo check --locked -p tensorprimitives-tapp --target ${{ matrix.target }}
+
+  # musl separately, because it needs a RUSTFLAG the others must not have, and
+  # because the thing being checked is that the cdylib survives at all.
+  cross-musl:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [x86_64-unknown-linux-musl, aarch64-unknown-linux-musl]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - run: cargo check --locked -p tensorprimitives-tapp --target ${{ matrix.target }}
+        env:
+          # Repeats the workflow-level `-D warnings`: setting RUSTFLAGS here
+          # replaces it rather than adding to it.
+          RUSTFLAGS: -D warnings -C target-feature=-crt-static
+      # And the negative control: without the flag, cargo drops the cdylib. If
+      # this ever stops warning, the flag can go -- and until then, a green musl
+      # build with no library in it is exactly the failure this guards.
+      - name: without -crt-static the cdylib is dropped
+        run: |
+          cargo check --locked -p tensorprimitives-tapp --target ${{ matrix.target }} \
+            --message-format short 2>&1 | tee /tmp/musl.log
+          grep -q "dropping unsupported crate type .cdylib." /tmp/musl.log
+
+  # Every runtime switch that selects a different code path, over the same test
+  # suite. One release build serves all of them — the switches are read from the
+  # environment, not compiled in — so this is nearly free, and each arm is a path
+  # that otherwise nothing in CI would enter.
+  #
+  # There is no `TENSORCONTRACT_KERNEL=avx512` arm on purpose. A pinned ISA the
+  # CPU does not have falls back to scalar by design, and these runners have no
+  # AVX-512, so such an arm would re-test the scalar path and prove nothing about
+  # the AVX-512 kernels. Those are covered by measurement on the reference
+  # machine, not here.
+  switches:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      # The portable kernels, checked against the same assertions the vectorised
+      # ones pass.
+      - run: cargo test --workspace --release
+        env:
+          TENSORCONTRACT_KERNEL: scalar
+      # AVX2 pinned rather than merely selected. On an AVX2-only runner this is
+      # the same code the `test` job runs; it is written down so the AVX2 kernels
+      # stay covered by name if the runner fleet ever gains AVX-512 and the
+      # automatic dispatch moves off them.
+      - run: cargo test --workspace --release
+        env:
+          TENSORCONTRACT_KERNEL: avx2
+      # The threaded driver, which is off by default and which nothing else here
+      # enters. Results are bitwise identical to serial at every thread count and
+      # every partition — no reduction is parallelised — so the existing
+      # assertions are an exact check on the partitioning, not a tolerance test.
+      - run: cargo test --workspace --release
+        env:
+          TENSORCONTRACT_THREADS: 4
+      # The 2-D partition specifically. `Plan::partition` only reaches for it when
+      # the row axis cannot fill the threads, which most corpus shapes can, so it
+      # has to be pinned to be exercised.
+      - run: cargo test --workspace --release
+        env:
+          TENSORCONTRACT_THREADS: 4
+          TENSORCONTRACT_PARTITION: 2x2
+      # The analytical cache-blocking model instead of the hardcoded constants.
+      # Also off by default and otherwise unexercised, and it is the one arm whose
+      # blocking is derived from the *runner's* cache descriptors rather than from
+      # the reference machine's, so it exercises the CPUID/sysfs probe too.
+      - run: cargo test --workspace --release
+        env:
+          TENSORCONTRACT_BLOCKMODEL: model
+      # The thread pool. Off by default and topology-conditional -- it is worth
+      # up to 11.6x on Zen2 and up to 2.5x *slower* on Ice Lake -- so it is not
+      # a default candidate, but it is the most concurrency-heavy code in the
+      # crate: a hand-rolled parked-thread pool with a Condvar broadcast, two
+      # `unsafe impl Send`/`Sync`, and the crate's only `transmute`. Nothing
+      # else in CI enters it. `THREADS` is load-bearing here, not decoration:
+      # the pool is consulted only on the threaded path, so a bare `POOL=on`
+      # arm would test nothing.
+      - run: cargo test --workspace --release
+        env:
+          TENSORCONTRACT_THREADS: 4
+          TENSORCONTRACT_POOL: "on"
+      # The two pinned orientation arms and the superseded Phase 4.1 rule. These
+      # went unnoticed for a long time precisely because nothing here ran them:
+      # `=swap` failed eight unit tests and `=none` four, on a clean tree, because
+      # the assertions went through the override-dispatching entry point and a
+      # pinned arm turned them into tautologies or contradictions. Cheap to run
+      # and the only thing that stops it recurring.
+      - run: cargo test --workspace --release
+        env:
+          TENSORCONTRACT_ORIENT: swap
+      - run: cargo test --workspace --release
+        env:
+          TENSORCONTRACT_ORIENT: none
+      - run: cargo test --workspace --release
+        env:
+          TENSORCONTRACT_ORIENT: legacy
+
+  # Feature combinations of the published crate. Nothing else checks either end
+  # of the range.
+  #
+  # `--no-default-features` drops `std`, which is what every environment-variable
+  # read is gated on; the point is that each of those readers still has a
+  # compiling non-`std` fallback. It is *not* a `no_std` check — the crate has no
+  # `#![no_std]` and still uses `Vec` freely — so do not read it as one.
+  # `--all-features` is what docs.rs builds, per the `[package.metadata.docs.rs]`
+  # sections, so it needs to keep working for the documentation to appear at all.
+  features:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build -p tensorcontract --no-default-features
+      - run: cargo build -p tensorcontract --all-features
+
+  # The C consumer, which is the only job where a C compiler ever sees
+  # `include/tapp.h`.
+  #
+  # `tests/abi_layout.rs` already re-declares the whole interface and drives a
+  # contraction through it, so a renamed or dropped symbol is caught — but it
+  # does that *from Rust*. Nothing checked that the shipped header agrees with
+  # the library it describes, which is the one artifact a C or C++ project
+  # actually compiles against. A header with a wrong prototype, a stale
+  # enumerator or a mis-declared struct would have sailed through every existing
+  # job. This closes that: `examples/c-consumer` includes the header, links the
+  # built library and checks *numerical* results, so a wrong stride convention
+  # or a complex-layout mismatch fails here rather than downstream.
+  #
+  # All three supported ways of getting the library are exercised, because they
+  # fail differently. The prebuilt path is what a site that builds the Rust half
+  # separately does, and needs no network. The corrosion path is what a CMake
+  # project would actually write, and depends on corrosion resolving and on
+  # cargo being driven correctly from CMake — a break there is invisible to the
+  # prebuilt path. The installed-prefix path is what a JLL or a system package
+  # presents, and it is the only one in which the header is found somewhere other
+  # than the source tree, so it is the only one that would notice an install that
+  # forgot to copy it.
+  #
+  # Linux only, deliberately. macOS would additionally cover `.dylib` naming and
+  # install-name handling and is the obvious next addition; it is left out
+  # rather than added blind, since it could not be verified before committing.
+  c-consumer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      # Prebuilt: cargo first, then CMake links what is already there. rustc
+      # emits no DT_SONAME for a cdylib, so without this flag what CI links is
+      # not what a site install ships. The Yggdrasil recipe does *not* set it --
+      # BinaryBuilder's audit patchelfs the same value in (D40) -- so this job
+      # is the only place the link-time route is exercised.
+      - run: cargo build --release -p tensorprimitives-tapp
+        env:
+          RUSTFLAGS: -D warnings -C link-arg=-Wl,-soname,libtensorprimitives_tapp.so
+      - name: Prebuilt library
+        run: |
+          cmake -S examples/c-consumer -B build/prebuilt \
+                -DCMAKE_BUILD_TYPE=Release -DTAPP_USE_CORROSION=OFF
+          cmake --build build/prebuilt
+          ctest --test-dir build/prebuilt --output-on-failure
+      # Corrosion: CMake drives cargo itself.
+      - name: Corrosion
+        run: |
+          cmake -S examples/c-consumer -B build/corrosion \
+                -DCMAKE_BUILD_TYPE=Release -DTAPP_USE_CORROSION=ON
+          cmake --build build/corrosion
+          ctest --test-dir build/corrosion --output-on-failure
+      # An installed prefix, produced by the same script the BinaryBuilder recipe
+      # calls, consumed through the pkg-config file it writes.
+      - name: Installed prefix
+        run: |
+          crates/tensorprimitives-tapp/install.sh --prefix="${PWD}/build/pfx"
+          cmake -S examples/c-consumer -B build/installed \
+                -DCMAKE_BUILD_TYPE=Release -DTAPP_PREFIX="${PWD}/build/pfx"
+          cmake --build build/installed
+          ctest --test-dir build/installed --output-on-failure
+      # Two properties of the shipped binary that nothing in the Rust test suite
+      # can see, and that a binary distribution depends on.
+      - name: Shared-library properties
+        run: |
+          lib=target/release/libtensorprimitives_tapp.so
+          # A cdylib gets no DT_SONAME from rustc. Without one, every consumer
+          # records a bare filename and the library cannot be versioned at all.
+          readelf -d "$lib" | grep -q 'SONAME.*libtensorprimitives_tapp\.so'
+          # 22 TAPP symbols plus TAPP_implementation_{name,version}.
+          test "$(nm -D --defined-only "$lib" | grep -c ' T TAPP_')" -eq 24
+          # BinaryBuilder's `check_isa` audit *fails* a build whose minimum
+          # instruction set exceeds the platform's -- and this cdylib contains
+          # AVX-512 kernel bodies in a binary built for generic x86-64. It passes
+          # only because `analyze_instruction_set` abandons the analysis when it
+          # finds a `cpuid`, on the grounds that the library may be dispatching at
+          # run time, which is exactly what this one does. That escape hatch is
+          # load-bearing and is not a contract anyone promised us, so assert it:
+          # if `kernel::cache`'s `__cpuid_count` and `std_detect`'s `__cpuid` both
+          # ever left the cdylib, the failure would otherwise arrive months later
+          # as "Minimum instruction set detected ... is avx512" in someone else's
+          # CI. See D40.
+          test "$(objdump -d "$lib" | grep -c cpuid)" -gt 0
+
+  # The vendored, network-free build, which is how an air-gapped HPC site would
+  # take this.
+  #
+  # It is a job rather than a paragraph in the README because the claim it backs
+  # is about the *dependency tree*, and that claim needs stating precisely:
+  #
+  #   - What a library build compiles is `num-complex` and `num-traits`. Two
+  #     crates, no build script of the engine's own.
+  #   - What `cargo vendor` writes here is ~17 directories, because it vendors
+  #     the whole workspace including **dev**-dependencies: `rand`/`rand_chacha`
+  #     and their tree (`getrandom`, `libc`, `zerocopy`, `syn`, ...) are needed
+  #     by the test suite, not by anything a consumer links.
+  #
+  # Both numbers are worth having. A site that only wants the library can vendor
+  # from the published crate and get three directories; a site that wants to run
+  # the tests offline needs the seventeen. Neither is "a few hundred", which is
+  # the property that makes this practical — and it is easy to lose by accident
+  # to one convenient dependency, which nothing else here would notice.
+  #
+  # The test step is what keeps the dev-dependency half honest: drop it and this
+  # job would pass while an offline `cargo test` still failed.
+  offline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Vendor and build with the network unused
+        run: |
+          mkdir -p .cargo
+          cargo vendor vendor >> .cargo/config.toml
+          echo "vendored crates:"; ls -1 vendor
+          cargo build --offline --release -p tensorprimitives-tapp
+          cargo test --offline --release -p tensorcontract --lib
+
+  # What `cargo publish` would upload, without publishing it: the file list, the
+  # generated manifests, the README and licence texts that live above the crate
+  # directories, and a verify build of each unpacked tarball.
+  #
+  # `--workspace` rather than `-p`, and this is not cosmetic: `tensorprimitives-tapp`
+  # depends on `tensorcontract` by path *and* version, so packaging it alone fails
+  # with "no matching package named `tensorcontract` found" until that version is
+  # on crates.io. A workspace run resolves the sibling through a temporary local
+  # registry instead. Nothing here needs a crates.io token.
+  # Packaging, i.e. that what would be uploaded builds from its own tarball.
+  #
+  # Only the engine can be gated this way, and that is a fact about cargo rather
+  # than a shortcut. `tensorprimitives-tapp` depends on the engine by path *and*
+  # version, so packaging it requires rewriting that into a registry dependency
+  # and resolving it — which cannot succeed until the engine exists on crates.io.
+  # Before the first release `cargo package -p tensorprimitives-tapp` therefore
+  # fails at "failed to prepare local package for uploading", and
+  # `cargo package --workspace` is unreliable in the same situation: its temporary
+  # registry does satisfy the dependency, but the verify build has been observed
+  # compiling the dependent crate against a stale extraction whenever the
+  # dependent uses an engine API added since the last packaging run — which is
+  # exactly the case this job would need to catch.
+  #
+  # So: gate the engine properly, and let the ordering constraint stand as the
+  # publish procedure. Publish `tensorcontract` first, wait for the index, then
+  # `tensorprimitives-tapp` — at which point this job can package both.
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo package -p tensorcontract
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets
+
+  # Documentation, in the three configurations that matter. The first is what
+  # docs.rs will build for the published crates — the two publishable packages,
+  # all features, one target — so a docs.rs failure shows up here first. The
+  # second keeps the unpublished harness's doc comments covered as well.
+  #
+  # The third is the one that was missing, and its absence cost something: with
+  # only the first two arms, a doc comment linking to a `std`-gated item passes
+  # both while breaking `--no-default-features` entirely. `batch` is
+  # `#[cfg(feature = "std")]`, the crate header linked into it, and
+  # `cargo doc --no-default-features` was failing for an unknown number of
+  # commits before anyone built that configuration by hand. Cheap to run, and
+  # nothing else covers it — the `features` job builds without `std` but never
+  # documents.
+  #
+  # `--workspace --all-features` cannot be used for the docs.rs arm: it would
+  # enable `tensorprimitives-bench`'s `tblis` feature, whose build script panics
+  # without `TBLIS_ROOT`.
+  docs:
+    runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: -D warnings
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo doc -p tensorcontract -p tensorprimitives-tapp --no-deps --all-features
+      - run: cargo doc --workspace --no-deps
+      - run: cargo doc -p tensorcontract --no-deps --no-default-features
+      # Every relative markdown link resolves. The documentation is a graph of
+      # about thirty files across docs/, docs/notebook/, bench-results/ and the
+      # root, and the citation chain from a claim to its raw data is the
+      # project's actual product -- a dead link in it is a defect, not a typo.
+      # Nothing else catches this: rustdoc sees intra-doc links only, and the
+      # PROVENANCE.txt "read with" lines are prose.
+      - name: relative markdown links resolve
+        run: |
+          python3 - <<'PY'
+          import re, pathlib, sys
+          bad = []
+          for md in pathlib.Path('.').rglob('*.md'):
+              if 'target' in md.parts:
+                  continue
+              for m in re.finditer(r'\[[^\]]*\]\(([^)#\s]+)(?:#[^)]*)?\)',
+                                   md.read_text(errors='replace')):
+                  link = m.group(1)
+                  if link.startswith(('http', 'mailto:')):
+                      continue
+                  if not (md.parent / link).exists():
+                      bad.append(f'{md} -> {link}')
+          if bad:
+              print('broken relative links:', *bad, sep='\n  ')
+              sys.exit(1)
+          print('all relative markdown links resolve')
+          PY

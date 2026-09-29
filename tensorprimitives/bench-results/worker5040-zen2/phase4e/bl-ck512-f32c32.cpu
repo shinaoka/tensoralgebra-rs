@@ -1,0 +1,7 @@
+# arm bl-ck512-f32c32 on cpu68, L3 domain 17 = cpus 68-71, numa 4
+# window 658.9s; env TENSORCONTRACT_KC_COUPLE=512
+cpu68 busy 100.0% <- measurement thread
+cpu69 busy 0.0%
+cpu70 busy 0.0%
+cpu71 busy 0.0%
+# domain co-tenancy: none above 5%

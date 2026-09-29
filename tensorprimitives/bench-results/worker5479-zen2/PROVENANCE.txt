@@ -1,0 +1,45 @@
+The domain-aware partition gate's confirmation run, Zen2 arm.
+
+  machine : worker5479 (Rusty, `gen` partition, `rome`)
+            AMD EPYC Zen2, 2 x 64 cores, SMT off, avx2 + fma, no AVX-512
+            16 MiB L3 per 4 cores, so 64 threads span 16 L3 domains
+  date    : 2026-08-04, started 14:36:34
+  slurm   : job 6753208, --constraint=rome --exclusive, 128 CPUs allocated
+  script  : PARTITION_SWEEP=1 STAGES=threads sbatch scripts/rusty-phase4.sbatch
+  stages  : prep rc=0 (0 min), threads rc=0 (141 min), grid skipped
+  host    : session.log, slurm-job.txt, topology.json, phase4f/*.cpu
+
+Paired with ../worker6150-icelake/, which ran the identical arms on a
+one-L3-per-socket machine in the same submission. Read the two together: the
+whole point of the design is that the gate must be a no-op there and large here.
+
+What it measured, against a prediction committed *before* this node existed
+(scripts/partition-score-rule.py scored against ../worker5137-zen2/):
+
+  case-dtype-methods moved  predicted 144 of 392   measured 144 of 392
+  geomean on those          predicted 1.423        measured 1.449, 1.433 corrected
+  whole corpus              predicted 1.138        measured 1.146, 1.133 corrected
+
+The correction is check 2, and it is why the headline is quotable: the 248
+case-dtype-methods the gate *cannot* touch read 1.0116, a uniform drift between
+the rule arm and the dom arm an hour later (A32, not contamination). Every number
+above is deflated by it.
+
+Also here, and not derivable elsewhere: the spread arms. Sixteen threads
+throughout, same node, same cases, only the packing different -- packed into 4
+domains reads 1.189-1.293 and spread over 16 reads 1.487-3.045. That separates
+domain count from thread count *within one machine*, which every prior separation
+did across machines (A36's residual gap).
+
+Two by-products worth not re-deriving: a cross-domain traffic term in the cost
+model cannot be calibrated (A38, four variants refuted) and per-case ratios at 64
+threads are unreadable -- p10 0.885 / p90 1.107 with tails to 0.80-1.55 on
+repeats of an identical partition (A39). Only per-family geomeans are quotable at
+this width.
+
+failed-6753261-sigill/ is a separate job from the same afternoon and has its own
+PROVENANCE.txt: the skx-only TBLIS 2.0 install SIGILLing on this node (A45).
+
+Not comparable to anything measured on ccqlin038.
+
+Read with: docs/notebook/ -> Threading -> "Part 12", and D41, D42, D44, A38, A39, A40.

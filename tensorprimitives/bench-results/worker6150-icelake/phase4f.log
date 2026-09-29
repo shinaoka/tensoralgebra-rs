@@ -1,0 +1,432 @@
+host            : worker6150
+slurm           : job 6753209 on worker6150
+cpus allowed    : 64 of 64 online (0-63)
+physical cores  : 64   SMT width 1  (SMT off: no sibling to contend with)
+sockets         : 0:32c  1:32c
+numa nodes      : 0:32c  1:32c
+L1              : 48K 12-way, shared by 1 logical cpus
+L2              : 1280K 20-way, shared by 1 logical cpus
+L3              : 49152K 12-way, shared by 32 logical cpus
+L3 domains      : 2, 32 cpus each (49152K per domain)
+
+placement       : 1 concurrent arms of 2 domains, one core per domain, rest of each domain idle
+                  cpus 0
+                  per numa node: 0:1
+
+wrote bench-results/worker6150-icelake/phase4f/topology.json
+cpuset 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31: 32 logical CPUs on 32 physical cores
+threads will run on cpus 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31 (32 cores); thread counts: 1 2 4 8 16 32
+partition arms at 32 threads
+warm-up arm (discarded, A31): t32
+  14:46:36 wu-t32-discard done: in-cpuset  n=32 busy min 54% mean 55% max 57%|rest of allocation n=32 busy mean 0.1% max 0.4%|exclusivity ok: nothing else in the allocation above 5%|
+  15:00:09 th-t1-f64c64 done: in-cpuset  n=1 busy min 100% mean 100% max 100%|rest of allocation n=63 busy mean 0.1% max 0.5%|exclusivity ok: nothing else in the allocation above 5%|
+  15:07:10 th-t2-f64c64 done: in-cpuset  n=2 busy min 96% mean 97% max 98%|rest of allocation n=62 busy mean 0.1% max 0.4%|exclusivity ok: nothing else in the allocation above 5%|
+  15:10:55 th-t4-f64c64 done: in-cpuset  n=4 busy min 90% mean 91% max 92%|rest of allocation n=60 busy mean 0.1% max 0.6%|exclusivity ok: nothing else in the allocation above 5%|
+  15:13:04 th-t8-f64c64 done: in-cpuset  n=8 busy min 80% mean 81% max 83%|rest of allocation n=56 busy mean 0.1% max 0.6%|exclusivity ok: nothing else in the allocation above 5%|
+  15:14:27 th-t16-f64c64 done: in-cpuset  n=16 busy min 67% mean 68% max 70%|rest of allocation n=48 busy mean 0.1% max 0.4%|exclusivity ok: nothing else in the allocation above 5%|
+  15:15:37 th-t32-f64c64 done: in-cpuset  n=32 busy min 54% mean 55% max 58%|rest of allocation n=32 busy mean 0.1% max 0.7%|exclusivity ok: nothing else in the allocation above 5%|
+  15:16:48 th-t32-pm-f64c64 done: in-cpuset  n=32 busy min 53% mean 54% max 57%|rest of allocation n=32 busy mean 0.1% max 0.7%|exclusivity ok: nothing else in the allocation above 5%|
+  15:18:26 th-t32-pn-f64c64 done: in-cpuset  n=32 busy min 63% mean 65% max 69%|rest of allocation n=32 busy mean 0.1% max 1.5%|exclusivity ok: nothing else in the allocation above 5%|
+  15:19:36 th-t32-dom-f64c64 done: in-cpuset  n=32 busy min 54% mean 55% max 58%|rest of allocation n=32 busy mean 0.1% max 1.1%|exclusivity ok: nothing else in the allocation above 5%|
+  15:33:15 th-t1b-f64c64 done: in-cpuset  n=1 busy min 100% mean 100% max 100%|rest of allocation n=63 busy mean 0.1% max 0.4%|exclusivity ok: nothing else in the allocation above 5%|
+done f64c64
+  15:39:43 th-t1-f32c32 done: in-cpuset  n=1 busy min 100% mean 100% max 100%|rest of allocation n=63 busy mean 0.1% max 0.7%|exclusivity ok: nothing else in the allocation above 5%|
+  15:43:07 th-t2-f32c32 done: in-cpuset  n=2 busy min 95% mean 96% max 97%|rest of allocation n=62 busy mean 0.1% max 0.7%|exclusivity ok: nothing else in the allocation above 5%|
+  15:44:58 th-t4-f32c32 done: in-cpuset  n=4 busy min 87% mean 88% max 89%|rest of allocation n=60 busy mean 0.1% max 0.7%|exclusivity ok: nothing else in the allocation above 5%|
+  15:46:03 th-t8-f32c32 done: in-cpuset  n=8 busy min 76% mean 78% max 80%|rest of allocation n=56 busy mean 0.1% max 0.9%|exclusivity ok: nothing else in the allocation above 5%|
+  15:46:46 th-t16-f32c32 done: in-cpuset  n=16 busy min 61% mean 63% max 65%|rest of allocation n=48 busy mean 0.1% max 0.7%|exclusivity ok: nothing else in the allocation above 5%|
+  15:47:24 th-t32-f32c32 done: in-cpuset  n=32 busy min 48% mean 49% max 52%|rest of allocation n=32 busy mean 0.1% max 0.9%|exclusivity ok: nothing else in the allocation above 5%|
+  15:48:03 th-t32-pm-f32c32 done: in-cpuset  n=32 busy min 47% mean 48% max 49%|rest of allocation n=32 busy mean 0.2% max 0.7%|exclusivity ok: nothing else in the allocation above 5%|
+  15:48:56 th-t32-pn-f32c32 done: in-cpuset  n=32 busy min 58% mean 61% max 65%|rest of allocation n=32 busy mean 0.1% max 0.7%|exclusivity ok: nothing else in the allocation above 5%|
+  15:49:33 th-t32-dom-f32c32 done: in-cpuset  n=32 busy min 48% mean 49% max 51%|rest of allocation n=32 busy mean 0.1% max 0.8%|exclusivity ok: nothing else in the allocation above 5%|
+  15:56:01 th-t1b-f32c32 done: in-cpuset  n=1 busy min 100% mean 100% max 100%|rest of allocation n=63 busy mean 0.1% max 0.7%|exclusivity ok: nothing else in the allocation above 5%|
+done f32c32
+
+this node's noise floor (t1 vs its bracketing repeat):
+== f64c64 t1 vs t1b
+dtype  engine  or   n  geomean     min     max
+  c64      1m  AB  37    0.993   0.976   1.004
+  c64      1m  BA  12    1.000   0.999   1.002
+  c64      3m  AB  37    0.997   0.992   1.001
+  c64      3m  BA  12    1.000   0.999   1.001
+  c64  planar  AB  37    0.999   0.989   1.002
+  c64  planar  BA  12    1.000   0.999   1.002
+  f64      1m  AB  37    0.997   0.982   1.013
+  f64      1m  BA  12    0.999   0.992   1.002
+  f64      3m  AB  37    0.997   0.982   1.013
+  f64      3m  BA  12    0.999   0.992   1.002
+  f64  planar  AB  37    0.997   0.982   1.013
+  f64  planar  BA  12    0.999   0.992   1.002
+
+--- outside the +/-6% per-case noise floor (0 of 294) ---
+
+--- overall, all cases (what a user sees) ---
+  c64      1m  0.994
+  c64      3m  0.998
+  c64  planar  0.999
+== f32c32 t1 vs t1b
+dtype  engine  or   n  geomean     min     max
+  c32      1m  AB  37    0.996   0.896   1.008
+  c32      1m  BA  12    1.000   0.997   1.001
+  c32      3m  AB  37    0.997   0.926   1.005
+  c32      3m  BA  12    0.999   0.995   1.001
+  c32  planar  AB  37    0.997   0.933   1.009
+  c32  planar  BA  12    0.999   0.995   1.001
+  f32      1m  AB  37    0.998   0.957   1.013
+  f32      1m  BA  12    0.997   0.989   1.012
+  f32      3m  AB  37    0.998   0.957   1.013
+  f32      3m  BA  12    0.997   0.989   1.012
+  f32  planar  AB  37    0.998   0.957   1.013
+  f32  planar  BA  12    0.997   0.989   1.012
+
+--- outside the +/-6% per-case noise floor (3 of 294) ---
+  0.896      abjcd-dkbac-jk  c32      1m  AB     25.4 ->    22.7
+  0.926      abjcd-dkbac-jk  c32      3m  AB     24.3 ->    22.5
+  0.933      abjcd-dkbac-jk  c32  planar  AB     30.8 ->    28.7
+  0.896      abjcd-dkbac-jk  c32      1m  AB     25.4 ->    22.7
+  0.926      abjcd-dkbac-jk  c32      3m  AB     24.3 ->    22.5
+
+scaling, each arm against the 1-thread arm:
+== f64c64 t2
+dtype  engine  or   n  geomean     min     max
+  c64      1m  AB  37    1.956   1.723   2.023
+  c64      1m  BA  12    1.969   1.915   2.014
+  c64      3m  AB  37    1.957   1.680   2.015
+  c64      3m  BA  12    1.989   1.964   2.009
+  c64  planar  AB  37    1.944   1.374   2.013
+  c64  planar  BA  12    1.968   1.930   2.001
+  f64      1m  AB  37    1.903   1.529   2.017
+  f64      1m  BA  12    1.925   1.833   2.000
+  f64      3m  AB  37    1.903   1.529   2.017
+  f64      3m  BA  12    1.925   1.833   2.000
+  f64  planar  AB  37    1.903   1.529   2.017
+  f64  planar  BA  12    1.925   1.833   2.000
+
+--- outside the +/-6% per-case noise floor (294 of 294) ---
+  1.374        aqrs-pa-pqrs  c64  planar  AB     55.8 ->    76.7
+  1.529        aqrs-pa-pqrs  f64      1m  AB     36.8 ->    56.3
+  1.529        aqrs-pa-pqrs  f64      3m  AB     36.8 ->    56.3
+  1.529        aqrs-pa-pqrs  f64  planar  AB     36.8 ->    56.3
+  1.671      abjcd-dkbac-jk  f64      1m  AB      9.3 ->    15.6
+== f64c64 t4
+dtype  engine  or   n  geomean     min     max
+  c64      1m  AB  37    3.564   1.290   4.023
+  c64      1m  BA  12    3.776   3.545   4.005
+  c64      3m  AB  37    3.725   2.598   4.022
+  c64      3m  BA  12    3.882   3.727   4.006
+  c64  planar  AB  37    3.578   1.218   3.996
+  c64  planar  BA  12    3.797   3.633   3.958
+  f64      1m  AB  37    3.573   2.821   4.009
+  f64      1m  BA  12    3.522   3.314   3.925
+  f64      3m  AB  37    3.573   2.821   4.009
+  f64      3m  BA  12    3.522   3.314   3.925
+  f64  planar  AB  37    3.573   2.821   4.009
+  f64  planar  BA  12    3.522   3.314   3.925
+
+--- outside the +/-6% per-case noise floor (294 of 294) ---
+  1.218        aqrs-pa-pqrs  c64  planar  AB     55.8 ->    68.0
+  1.290        aqrs-pa-pqrs  c64      1m  AB     56.3 ->    72.6
+  2.164          ij-ikl-ljk  c64  planar  AB     62.3 ->   134.7
+  2.312          ij-kil-lkj  c64  planar  AB     64.6 ->   149.4
+  2.353          ij-kil-lkj  c64      1m  AB     54.8 ->   128.9
+== f64c64 t8
+dtype  engine  or   n  geomean     min     max
+  c64      1m  AB  37    6.642   2.499   7.929
+  c64      1m  BA  12    7.024   6.503   7.835
+  c64      3m  AB  37    6.825   3.091   7.961
+  c64      3m  BA  12    7.448   7.221   7.916
+  c64  planar  AB  37    6.694   2.531   7.859
+  c64  planar  BA  12    7.003   6.592   7.739
+  f64      1m  AB  37    6.222   4.460   7.684
+  f64      1m  BA  12    5.852   5.389   7.513
+  f64      3m  AB  37    6.222   4.460   7.684
+  f64      3m  BA  12    5.852   5.389   7.513
+  f64  planar  AB  37    6.222   4.460   7.684
+  f64  planar  BA  12    5.852   5.389   7.513
+
+--- outside the +/-6% per-case noise floor (294 of 294) ---
+  2.499          ij-kil-lkj  c64      1m  AB     54.8 ->   136.9
+  2.531          ij-kil-lkj  c64  planar  AB     64.6 ->   163.5
+  2.705          ij-ikl-ljk  c64      1m  AB     53.0 ->   143.3
+  2.844          ij-ikl-ljk  c64  planar  AB     62.3 ->   177.0
+  3.091          ij-kil-lkj  c64      3m  AB     46.0 ->   142.2
+== f64c64 t16
+dtype  engine  or   n  geomean     min     max
+  c64      1m  AB  37   10.968   2.755  15.041
+  c64      1m  BA  12   11.254   9.652  14.780
+  c64      3m  AB  37   12.075   3.132  15.412
+  c64      3m  BA  12   12.843  11.902  15.282
+  c64  planar  AB  37   11.744   8.647  14.533
+  c64  planar  BA  12   10.720   9.656  14.344
+  f64      1m  AB  37   10.122   6.935  13.810
+  f64      1m  BA  12    8.199   7.022  12.947
+  f64      3m  AB  37   10.122   6.935  13.810
+  f64      3m  BA  12    8.199   7.022  12.947
+  f64  planar  AB  37   10.122   6.935  13.810
+  f64  planar  BA  12    8.199   7.022  12.947
+
+--- outside the +/-6% per-case noise floor (294 of 294) ---
+  2.755          ij-ikl-ljk  c64      1m  AB     53.0 ->   146.0
+  2.996          ij-kil-lkj  c64      1m  AB     54.8 ->   164.1
+  3.132          ij-kil-lkj  c64      3m  AB     46.0 ->   144.0
+  4.661          ijk-il-jlk  c64      1m  AB     68.7 ->   320.1
+  5.867          ijk-il-jlk  c64      3m  AB     54.4 ->   319.2
+== f64c64 t32
+dtype  engine  or   n  geomean     min     max
+  c64      1m  AB  37   15.067   9.483  20.651
+  c64      1m  BA  12   11.955   9.469  17.619
+  c64      3m  AB  37   15.400   4.011  22.563
+  c64      3m  BA  12   14.885  12.803  22.181
+  c64  planar  AB  37   13.833  10.001  19.017
+  c64  planar  BA  12   11.591   9.499  17.116
+  f64      1m  AB  37   11.274   7.299  17.551
+  f64      1m  BA  12    8.559   5.861  15.941
+  f64      3m  AB  37   11.274   7.299  17.551
+  f64      3m  BA  12    8.559   5.861  15.941
+  f64  planar  AB  37   11.274   7.299  17.551
+  f64  planar  BA  12    8.559   5.861  15.941
+
+--- outside the +/-6% per-case noise floor (294 of 294) ---
+  4.011          ij-ikl-ljk  c64      3m  AB     44.5 ->   178.5
+  5.861        abcs-rc-abrs  f64      1m  BA     50.7 ->   297.1
+  5.861        abcs-rc-abrs  f64      3m  BA     50.7 ->   297.1
+  5.861        abcs-rc-abrs  f64  planar  BA     50.7 ->   297.1
+  7.299      ajbdc-ckbad-jk  f64      1m  AB      9.1 ->    66.3
+== f32c32 t2
+dtype  engine  or   n  geomean     min     max
+  c32      1m  AB  37    1.859   1.253   2.048
+  c32      1m  BA  12    1.953   1.904   2.000
+  c32      3m  AB  37    1.925   1.346   2.042
+  c32      3m  BA  12    1.980   1.942   2.001
+  c32  planar  AB  37    1.890   1.259   2.055
+  c32  planar  BA  12    1.967   1.928   1.997
+  f32      1m  AB  37    1.920   1.375   2.166
+  f32      1m  BA  12    1.956   1.908   2.014
+  f32      3m  AB  37    1.920   1.375   2.166
+  f32      3m  BA  12    1.956   1.908   2.014
+  f32  planar  AB  37    1.920   1.375   2.166
+  f32  planar  BA  12    1.956   1.908   2.014
+
+--- outside the +/-6% per-case noise floor (294 of 294) ---
+  1.253        aqrs-pa-pqrs  c32      1m  AB     95.0 ->   119.1
+  1.259        aqrs-pa-pqrs  c32  planar  AB     97.3 ->   122.6
+  1.346        aqrs-pa-pqrs  c32      3m  AB     79.1 ->   106.5
+  1.375          ij-kil-lkj  f32      1m  AB     76.5 ->   105.2
+  1.375          ij-kil-lkj  f32      3m  AB     76.5 ->   105.2
+== f32c32 t4
+dtype  engine  or   n  geomean     min     max
+  c32      1m  AB  37    3.520   1.983   3.990
+  c32      1m  BA  12    3.781   3.593   3.948
+  c32      3m  AB  37    3.591   2.370   4.071
+  c32      3m  BA  12    3.881   3.769   3.985
+  c32  planar  AB  37    3.584   2.084   4.109
+  c32  planar  BA  12    3.837   3.709   3.950
+  f32      1m  AB  37    3.609   2.404   4.904
+  f32      1m  BA  12    3.747   3.520   3.940
+  f32      3m  AB  37    3.609   2.404   4.904
+  f32      3m  BA  12    3.747   3.520   3.940
+  f32  planar  AB  37    3.609   2.404   4.904
+  f32  planar  BA  12    3.747   3.520   3.940
+
+--- outside the +/-6% per-case noise floor (294 of 294) ---
+  1.983          ij-ikl-ljk  c32      1m  AB    116.7 ->   231.5
+  2.084          ij-ikl-ljk  c32  planar  AB    122.6 ->   255.5
+  2.238          ij-kil-lkj  c32      1m  AB    112.6 ->   252.1
+  2.370          ij-kil-lkj  c32      3m  AB     85.5 ->   202.7
+  2.404          ij-ikl-ljk  f32      1m  AB     83.3 ->   200.2
+== f32c32 t8
+dtype  engine  or   n  geomean     min     max
+  c32      1m  AB  37    6.633   4.279   7.811
+  c32      1m  BA  12    6.855   6.390   7.719
+  c32      3m  AB  37    6.619   2.825   7.892
+  c32      3m  BA  12    7.325   6.893   7.846
+  c32  planar  AB  37    6.831   4.878   7.859
+  c32  planar  BA  12    7.148   6.365   7.653
+  f32      1m  AB  37    6.731   4.777   7.775
+  f32      1m  BA  12    6.782   5.826   7.396
+  f32      3m  AB  37    6.731   4.777   7.775
+  f32      3m  BA  12    6.782   5.826   7.396
+  f32  planar  AB  37    6.731   4.777   7.775
+  f32  planar  BA  12    6.782   5.826   7.396
+
+--- outside the +/-6% per-case noise floor (294 of 294) ---
+  2.825          ij-kil-lkj  c32      3m  AB     85.5 ->   241.6
+  3.054          ij-ikl-ljk  c32      3m  AB     85.9 ->   262.2
+  4.279        ajbc-ckba-jk  c32      1m  AB     63.9 ->   273.6
+  4.296          ijk-il-jlk  c32      3m  AB    109.6 ->   471.0
+  4.395        abjc-cbka-kj  c32      1m  AB     43.7 ->   192.2
+== f32c32 t16
+dtype  engine  or   n  geomean     min     max
+  c32      1m  AB  37   10.975   7.640  14.566
+  c32      1m  BA  12   10.653   9.378  13.890
+  c32      3m  AB  37   11.912   5.501  15.095
+  c32      3m  BA  12   12.459  10.640  15.008
+  c32  planar  AB  37   11.413   7.926  14.283
+  c32  planar  BA  12   11.334   8.712  14.246
+  f32      1m  AB  37   10.855   7.705  13.194
+  f32      1m  BA  12   10.414   7.708  12.771
+  f32      3m  AB  37   10.855   7.705  13.194
+  f32      3m  BA  12   10.414   7.708  12.771
+  f32  planar  AB  37   10.855   7.705  13.194
+  f32  planar  BA  12   10.414   7.708  12.771
+
+--- outside the +/-6% per-case noise floor (294 of 294) ---
+  5.501          ij-ikl-ljk  c32      3m  AB     85.9 ->   472.3
+  7.640        ajbc-ckba-jk  c32      1m  AB     63.9 ->   488.5
+  7.705    abcijk-eiab-jkec  f32      1m  AB     75.1 ->   578.3
+  7.705    abcijk-eiab-jkec  f32      3m  AB     75.1 ->   578.3
+  7.705    abcijk-eiab-jkec  f32  planar  AB     75.1 ->   578.3
+== f32c32 t32
+dtype  engine  or   n  geomean     min     max
+  c32      1m  AB  37   13.013   9.316  17.224
+  c32      1m  BA  12   11.307   9.550  16.807
+  c32      3m  AB  37   15.002   8.673  21.802
+  c32      3m  BA  12   13.621  10.921  20.661
+  c32  planar  AB  37   13.426   8.063  17.009
+  c32  planar  BA  12   12.207   9.631  14.599
+  f32      1m  AB  37   10.564   6.218  15.485
+  f32      1m  BA  12    8.934   5.922  16.628
+  f32      3m  AB  37   10.564   6.218  15.485
+  f32      3m  BA  12    8.934   5.922  16.628
+  f32  planar  AB  37   10.564   6.218  15.485
+  f32  planar  BA  12    8.934   5.922  16.628
+
+--- outside the +/-6% per-case noise floor (294 of 294) ---
+  5.922        abrs-qb-aqrs  f32      1m  BA     80.7 ->   477.9
+  5.922        abrs-qb-aqrs  f32      3m  BA     80.7 ->   477.9
+  5.922        abrs-qb-aqrs  f32  planar  BA     80.7 ->   477.9
+  6.218        ijk-ilmk-mjl  f32      1m  AB     98.8 ->   614.7
+  6.218        ijk-ilmk-mjl  f32      3m  AB     98.8 ->   614.7
+
+partition arms, each against the rule at the same thread count:
+== f64c64 t32 partition=pm
+dtype  engine  or   n  geomean     min     max
+  c64      1m  AB  37    0.918   0.287   1.136
+  c64      1m  BA  12    1.048   0.877   1.404
+  c64      3m  AB  37    0.973   0.344   2.253
+  c64      3m  BA  12    0.989   0.948   1.048
+  c64  planar  AB  37    0.946   0.352   1.168
+  c64  planar  BA  12    1.005   0.932   1.083
+  f64      1m  AB  37    0.921   0.157   1.446
+  f64      1m  BA  12    0.998   0.843   1.260
+  f64      3m  AB  37    0.921   0.157   1.446
+  f64      3m  BA  12    0.998   0.843   1.260
+  f64  planar  AB  37    0.921   0.157   1.446
+  f64  planar  BA  12    0.998   0.843   1.260
+
+--- outside the +/-6% per-case noise floor (101 of 294) ---
+  0.157        aqrs-pa-pqrs  f64      1m  AB    470.9 ->    73.8
+  0.157        aqrs-pa-pqrs  f64      3m  AB    470.9 ->    73.8
+  0.157        aqrs-pa-pqrs  f64  planar  AB    470.9 ->    73.8
+  0.287        aqrs-pa-pqrs  c64      1m  AB    759.0 ->   218.1
+  0.344        aqrs-pa-pqrs  c64      3m  AB    581.0 ->   199.9
+== f64c64 t32 partition=pn
+dtype  engine  or   n  geomean     min     max
+  c64      1m  AB  37    0.506   0.064   1.194
+  c64      1m  BA  12    0.691   0.163   1.177
+  c64      3m  AB  37    0.511   0.074   2.280
+  c64      3m  BA  12    0.607   0.161   0.944
+  c64  planar  AB  37    0.547   0.099   1.187
+  c64  planar  BA  12    0.692   0.207   1.179
+  f64      1m  AB  37    0.631   0.149   1.175
+  f64      1m  BA  12    0.726   0.195   1.195
+  f64      3m  AB  37    0.631   0.149   1.175
+  f64      3m  BA  12    0.726   0.195   1.195
+  f64  planar  AB  37    0.631   0.149   1.175
+  f64  planar  BA  12    0.726   0.195   1.195
+
+--- outside the +/-6% per-case noise floor (222 of 294) ---
+  0.064      ajbdc-ckbad-jk  c64      1m  AB    203.8 ->    13.0
+  0.073      abjcd-dkbac-jk  c64      1m  AB    181.6 ->    13.2
+  0.074      abjcd-dkbac-jk  c64      3m  AB    199.3 ->    14.8
+  0.080      ajbdc-ckbad-jk  c64      3m  AB    185.4 ->    14.8
+  0.099      abjcd-dkbac-jk  c64  planar  AB    190.6 ->    18.9
+== f64c64 t32 partition=dom
+dtype  engine  or   n  geomean     min     max
+  c64      1m  AB  37    1.000   0.795   1.120
+  c64      1m  BA  12    1.023   0.937   1.384
+  c64      3m  AB  37    1.015   0.461   2.243
+  c64      3m  BA  12    0.984   0.853   1.072
+  c64  planar  AB  37    1.016   0.848   1.426
+  c64  planar  BA  12    0.968   0.728   1.084
+  f64      1m  AB  37    0.975   0.690   1.331
+  f64      1m  BA  12    1.024   0.884   1.201
+  f64      3m  AB  37    0.975   0.690   1.331
+  f64      3m  BA  12    1.024   0.884   1.201
+  f64  planar  AB  37    0.975   0.690   1.331
+  f64  planar  BA  12    1.024   0.884   1.201
+
+--- outside the +/-6% per-case noise floor (97 of 294) ---
+  0.461          ij-kil-lkj  c64      3m  AB    421.2 ->   194.1
+  0.690          ijk-ilk-lj  f64      1m  AB    850.8 ->   586.8
+  0.690          ijk-ilk-lj  f64      3m  AB    850.8 ->   586.8
+  0.690          ijk-ilk-lj  f64  planar  AB    850.8 ->   586.8
+  0.721        abjc-kbac-jk  f64      1m  AB    545.4 ->   393.3
+== f32c32 t32 partition=pm
+dtype  engine  or   n  geomean     min     max
+  c32      1m  AB  37    0.907   0.209   1.287
+  c32      1m  BA  12    1.004   0.849   1.106
+  c32      3m  AB  37    0.928   0.404   1.095
+  c32      3m  BA  12    1.009   0.817   1.341
+  c32  planar  AB  37    0.906   0.225   1.240
+  c32  planar  BA  12    0.971   0.700   1.129
+  f32      1m  AB  37    0.906   0.190   1.740
+  f32      1m  BA  12    1.017   0.805   1.284
+  f32      3m  AB  37    0.906   0.190   1.740
+  f32      3m  BA  12    1.017   0.805   1.284
+  f32  planar  AB  37    0.906   0.190   1.740
+  f32  planar  BA  12    1.017   0.805   1.284
+
+--- outside the +/-6% per-case noise floor (138 of 294) ---
+  0.190        aqrs-pa-pqrs  f32      1m  AB    571.2 ->   108.4
+  0.190        aqrs-pa-pqrs  f32      3m  AB    571.2 ->   108.4
+  0.190        aqrs-pa-pqrs  f32  planar  AB    571.2 ->   108.4
+  0.209        aqrs-pa-pqrs  c32      1m  AB   1112.1 ->   232.8
+  0.225        aqrs-pa-pqrs  c32  planar  AB   1075.1 ->   242.2
+== f32c32 t32 partition=pn
+dtype  engine  or   n  geomean     min     max
+  c32      1m  AB  37    0.514   0.083   1.140
+  c32      1m  BA  12    0.682   0.170   1.126
+  c32      3m  AB  37    0.453   0.099   1.235
+  c32      3m  BA  12    0.569   0.169   0.979
+  c32  planar  AB  37    0.555   0.118   1.096
+  c32  planar  BA  12    0.639   0.161   1.006
+  f32      1m  AB  37    0.611   0.117   1.170
+  f32      1m  BA  12    0.755   0.271   1.222
+  f32      3m  AB  37    0.611   0.117   1.170
+  f32      3m  BA  12    0.755   0.271   1.222
+  f32  planar  AB  37    0.611   0.117   1.170
+  f32  planar  BA  12    0.755   0.271   1.222
+
+--- outside the +/-6% per-case noise floor (241 of 294) ---
+  0.083      abjcd-dkbac-jk  c32      1m  AB    296.0 ->    24.7
+  0.099      ajbdc-ckbad-jk  c32      3m  AB    271.2 ->    26.8
+  0.100      abjcd-dkbac-jk  c32      3m  AB    264.7 ->    26.5
+  0.101      ajbdc-ckbad-jk  c32      1m  AB    251.7 ->    25.3
+  0.117      ajbdc-ckbad-jk  f32      1m  AB    149.0 ->    17.4
+== f32c32 t32 partition=dom
+dtype  engine  or   n  geomean     min     max
+  c32      1m  AB  37    1.000   0.757   1.296
+  c32      1m  BA  12    1.005   0.692   1.181
+  c32      3m  AB  37    0.996   0.826   1.264
+  c32      3m  BA  12    1.009   0.901   1.254
+  c32  planar  AB  37    1.006   0.746   1.272
+  c32  planar  BA  12    0.981   0.755   1.264
+  f32      1m  AB  37    1.007   0.542   1.353
+  f32      1m  BA  12    1.010   0.871   1.152
+  f32      3m  AB  37    1.007   0.542   1.353
+  f32      3m  BA  12    1.010   0.871   1.152
+  f32  planar  AB  37    1.007   0.542   1.353
+  f32  planar  BA  12    1.010   0.871   1.152
+
+--- outside the +/-6% per-case noise floor (129 of 294) ---
+  0.542          ijk-ilk-lj  f32      1m  AB   1792.8 ->   971.1
+  0.542          ijk-ilk-lj  f32      3m  AB   1792.8 ->   971.1
+  0.542          ijk-ilk-lj  f32  planar  AB   1792.8 ->   971.1
+  0.692        abcs-rc-abrs  c32      1m  BA   1433.9 ->   992.2
+  0.746        abjc-kbac-jk  c32  planar  AB   1526.3 ->  1138.1
+
+predicted from the committed grid (L3 domains spanned at t32: 1):
+th-t32: P = 32 threads over 1 L3 domain(s), 392 case-dtype-methods measured
+identical-partition repeats: n=362 geomean 1.008 p10 0.917 median 1.001 p90 1.098   <- per-case precision, read it first
+the gate changes nothing here: it is bit-identical to the shipped rule

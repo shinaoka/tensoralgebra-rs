@@ -1,0 +1,21 @@
+Produced by scripts/ab-tblis.sh on worker6156.cm.cluster.
+  finished  : 2026-08-04T20:38:20-04:00
+  slurm job : 6754877
+  commit    : bb774aa
+  A (skx)   : /mnt/home/ldevos/Projects/tensorcontract-rs/cleanup/../baselines/tblis-2.0-install
+  B (x86_64): /mnt/home/ldevos/Projects/tensorcontract-rs/cleanup/../baselines/tblis-2.0-x86_64-install
+  size 64 MiB, 3 reps, cpu0, arms sequential
+
+Both libraries are TBLIS 2.0-dev at the same commit (555320c). They
+differ only in BLIS_CONFIG_FAMILY: auto (which resolved to skx-only on
+the Cascade Lake build host) against x86_64 (multi-config). See
+libraries.txt for each one's symbol count and context list.
+
+HOW TO READ IT. treatment.txt has two engine columns per dtype:
+  * planar -- the CONTROL. No TBLIS library can change it. Whatever it
+    reads is this session's environment, and the tblis column has to be
+    judged against it, not against 1.000.
+  * tblis  -- the treatment.
+floor.txt is A' against A, the same library twice, minutes apart.
+
+Nothing here is comparable to a number measured on another machine.

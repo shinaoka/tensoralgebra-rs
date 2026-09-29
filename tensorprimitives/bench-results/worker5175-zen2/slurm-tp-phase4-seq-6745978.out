@@ -1,0 +1,55 @@
+job 6745978 on worker5175, started 2026-08-03T17:41:18-04:00
+JobId=6745978 JobName=tp-phase4-seq
+   RunTime=00:00:01 TimeLimit=06:00:00 TimeMin=N/A
+   ReqNodeList=(null) ExcNodeList=(null)
+   NodeList=worker5175
+   NumNodes=1 NumCPUs=128 NumTasks=1 CPUs/Task=1 ReqB:S:C:T=0:0:*:*
+   OverSubscribe=NO Contiguous=0 Licenses=(null) Network=(null)
+    Finished `release` profile [optimized + debuginfo] target(s) in 0.43s
+host            : worker5175
+slurm           : job 6745978 on worker5175
+cpus allowed    : 128 of 128 online (0-127)
+physical cores  : 128   SMT width 1  (SMT off: no sibling to contend with)
+sockets         : 0:64c  1:64c
+numa nodes      : 0:16c  1:16c  2:16c  3:16c  4:16c  5:16c  6:16c  7:16c
+L1              : 32K 8-way, shared by 1 logical cpus
+L2              : 512K 8-way, shared by 1 logical cpus
+L3              : 16384K 16-way, shared by 4 logical cpus
+L3 domains      : 32, 4 cpus each (16384K per domain)
+
+placement       : 24 concurrent arms of 32 domains, one core per domain, rest of each domain idle
+                  cpus 0,4,8,16,20,24,32,36,40,48,52,56,64,68,72,80,84,88,96,100,104,112,116,120
+                  per numa node: 0:3  1:3  2:3  3:3  4:3  5:3  6:3  7:3
+
+wrote bench-results/worker5040-zen2/phase4e-seq/topology.json
+pinned to cpu0
+########## warm-up (discarded, see A31)  2026-08-03T17:41:19-04:00 ##########
+
+2 arms in 33.2 min wall (sum of arm times 33.2 min)
+observed overlap per arm: min 0, max 0
+grid complete; score rules with scripts/blocking-score-rules.py
+########## traffic-sensitive arms, sequential  2026-08-03T18:14:32-04:00 ##########
+SCOPED GRID: only arms [base nc25 nc400 model base2] -- this is not the full grid
+host worker5175  128 physical cores, SMT width 1, 32 L3 domains
+10 arms, 1 concurrent, cpus 0
+  18:36:39 bl-base-f64c64   cpu0    dom0    1327.0s  rc=0  self 100%  co-tenants: none
+  19:00:28 bl-nc25-f64c64   cpu0    dom0    1428.5s  rc=0  self 100%  co-tenants: none
+  19:22:46 bl-nc400-f64c64  cpu0    dom0    1337.8s  rc=0  self 100%  co-tenants: none
+  19:46:21 bl-model-f64c64  cpu0    dom0    1415.1s  rc=0  self 100%  co-tenants: none
+  20:08:25 bl-base2-f64c64  cpu0    dom0    1324.0s  rc=0  self 100%  co-tenants: none
+  20:19:31 bl-base-f32c32   cpu0    dom0     666.6s  rc=0  self 100%  co-tenants: none
+  20:31:27 bl-nc25-f32c32   cpu0    dom0     715.9s  rc=0  self 100%  co-tenants: none
+  20:42:37 bl-nc400-f32c32  cpu0    dom0     670.4s  rc=0  self 100%  co-tenants: none
+  20:54:54 bl-model-f32c32  cpu0    dom0     736.5s  rc=0  self 100%  co-tenants: none
+  21:06:02 bl-base2-f32c32  cpu0    dom0     668.0s  rc=0  self 100%  co-tenants: none
+
+10 arms in 171.5 min wall (sum of arm times 171.5 min)
+observed overlap per arm: min 0, max 0
+grid complete; score rules with scripts/blocking-score-rules.py
+
+finished 2026-08-03T21:06:02-04:00 after 204 min
+outdir bench-results/worker5040-zen2/phase4e-seq
+
+These are single-core arms. Compare them against each other, and against the
+placed grid only through the base arms -- the placed nc/model arms are
+confounded by bandwidth contention (part 10), which is why this run exists.

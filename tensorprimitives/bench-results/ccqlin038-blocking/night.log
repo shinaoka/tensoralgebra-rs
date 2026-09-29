@@ -1,0 +1,68 @@
+[2026-08-03T21:47:59-04:00] reference-machine blocking grid; cpu4; out bench-results/ccqlin038-blocking
+host        : ccqlin038.flatironinstitute.org
+target      : x86_64 / linux
+cpu features: avx2 fma avx512f avx512dq 
+caches      : L1=32KiB/8-way/2sh L2=1024KiB/16-way/2sh L3=25344KiB/11-way/16sh (via sysfs), blocking=legacy
+baselines   : tblis=false blas=false
+[2026-08-03T21:47:59-04:00] warm-up arm, discarded
+SCOPED GRID: only arms [base] -- this is not the full grid
+host ccqlin038.flatironinstitute.org  16 physical cores, SMT width 2, 2 L3 domains
+2 arms, 1 concurrent, cpus 4
+NOTE: SMT is on. Leaders are primary siblings and their siblings are left idle, but nothing prevents the OS from using them.
+  22:02:27 bl-base-f64c64   cpu4    dom0     867.2s  rc=0  self 100%  co-tenants: cpu0=51%, cpu1=5%, cpu3=15%, cpu5=6%, cpu7=5%, cpu16=6%, cpu19=8%
+  22:09:15 bl-base-f32c32   cpu4    dom0     408.7s  rc=0  self 100%  co-tenants: none
+
+2 arms in 21.3 min wall (sum of arm times 21.3 min)
+observed overlap per arm: min 0, max 0
+grid complete; score rules with scripts/blocking-score-rules.py
+[2026-08-03T22:09:15-04:00] warm-up done; the package is now at the clock the rest of the run will see
+[2026-08-03T22:09:15-04:00] grid: 19 arms x 2 dtype pairs = 38 jobs
+SCOPED GRID: only arms [base kc64 kc128 kc256 kc384 kc512 kc768 kc1024 basem ck256 ck512 mc25 mc50 mc200 mc400 nc25 nc400 model base2] -- this is not the full grid
+host ccqlin038.flatironinstitute.org  16 physical cores, SMT width 2, 2 L3 domains
+38 arms, 1 concurrent, cpus 4
+NOTE: SMT is on. Leaders are primary siblings and their siblings are left idle, but nothing prevents the OS from using them.
+  22:22:57 bl-base-f64c64   cpu4    dom0     821.4s  rc=0  self 100%  co-tenants: none
+  22:42:00 bl-kc64-f64c64   cpu4    dom0    1143.5s  rc=0  self 100%  co-tenants: none
+  22:57:27 bl-kc128-f64c64  cpu4    dom0     926.3s  rc=0  self 100%  co-tenants: none
+  23:11:18 bl-kc256-f64c64  cpu4    dom0     831.3s  rc=0  self 100%  co-tenants: none
+  23:25:37 bl-kc384-f64c64  cpu4    dom0     858.5s  rc=0  self 100%  co-tenants: none
+  23:41:21 bl-kc512-f64c64  cpu4    dom0     944.8s  rc=0  self 100%  co-tenants: none
+  23:58:45 bl-kc768-f64c64  cpu4    dom0    1043.9s  rc=0  self 100%  co-tenants: none
+  00:16:24 bl-kc1024-f64c64 cpu4    dom0    1058.2s  rc=0  self 100%  co-tenants: none
+  00:29:59 bl-basem-f64c64  cpu4    dom0     815.7s  rc=0  self 100%  co-tenants: none
+  00:43:35 bl-ck256-f64c64  cpu4    dom0     815.9s  rc=0  self 100%  co-tenants: none
+  00:57:11 bl-ck512-f64c64  cpu4    dom0     816.0s  rc=0  self 100%  co-tenants: none
+  01:11:47 bl-mc25-f64c64   cpu4    dom0     876.1s  rc=0  self 100%  co-tenants: none
+  01:25:45 bl-mc50-f64c64   cpu4    dom0     838.0s  rc=0  self 100%  co-tenants: none
+  01:41:47 bl-mc200-f64c64  cpu4    dom0     961.6s  rc=0  self 100%  co-tenants: none
+  01:59:56 bl-mc400-f64c64  cpu4    dom0    1089.0s  rc=0  self 100%  co-tenants: none
+  02:14:44 bl-nc25-f64c64   cpu4    dom0     887.8s  rc=0  self 100%  co-tenants: none
+  02:28:04 bl-nc400-f64c64  cpu4    dom0     800.1s  rc=0  self 100%  co-tenants: none
+  02:48:00 bl-model-f64c64  cpu4    dom0    1196.2s  rc=0  self 100%  co-tenants: none
+  03:01:31 bl-base2-f64c64  cpu4    dom0     810.9s  rc=0  self 100%  co-tenants: none
+  03:08:19 bl-base-f32c32   cpu4    dom0     408.4s  rc=0  self 100%  co-tenants: none
+  03:19:53 bl-kc64-f32c32   cpu4    dom0     693.4s  rc=0  self 100%  co-tenants: none
+  03:28:32 bl-kc128-f32c32  cpu4    dom0     519.6s  rc=0  self 100%  co-tenants: none
+  03:35:37 bl-kc256-f32c32  cpu4    dom0     424.9s  rc=0  self 100%  co-tenants: none
+  03:42:28 bl-kc384-f32c32  cpu4    dom0     410.6s  rc=0  self 100%  co-tenants: none
+  03:49:12 bl-kc512-f32c32  cpu4    dom0     403.5s  rc=0  self 100%  co-tenants: none
+  03:57:15 bl-kc768-f32c32  cpu4    dom0     483.3s  rc=0  self 100%  co-tenants: none
+  04:06:13 bl-kc1024-f32c32 cpu4    dom0     538.0s  rc=0  self 100%  co-tenants: none
+  04:12:51 bl-basem-f32c32  cpu4    dom0     398.6s  rc=0  self 100%  co-tenants: none
+  04:19:54 bl-ck256-f32c32  cpu4    dom0     423.0s  rc=0  self 100%  co-tenants: none
+  04:26:26 bl-ck512-f32c32  cpu4    dom0     391.8s  rc=0  self 100%  co-tenants: none
+  04:33:23 bl-mc25-f32c32   cpu4    dom0     417.0s  rc=0  self 100%  co-tenants: none
+  04:40:06 bl-mc50-f32c32   cpu4    dom0     403.1s  rc=0  self 100%  co-tenants: none
+  04:48:27 bl-mc200-f32c32  cpu4    dom0     500.2s  rc=0  self 100%  co-tenants: none
+  04:58:21 bl-mc400-f32c32  cpu4    dom0     594.0s  rc=0  self 100%  co-tenants: none
+  05:05:36 bl-nc25-f32c32   cpu4    dom0     435.8s  rc=0  self 100%  co-tenants: none
+  05:12:13 bl-nc400-f32c32  cpu4    dom0     396.3s  rc=0  self 100%  co-tenants: none
+  05:24:30 bl-model-f32c32  cpu4    dom0     736.9s  rc=0  self 100%  co-tenants: none
+  05:31:08 bl-base2-f32c32  cpu4    dom0     398.8s  rc=0  self 100%  co-tenants: none
+
+38 arms in 441.9 min wall (sum of arm times 441.9 min)
+observed overlap per arm: min 0, max 0
+grid complete; score rules with scripts/blocking-score-rules.py
+[2026-08-04T05:31:08-04:00] grid complete
+[2026-08-04T05:31:08-04:00] scoring (per-case floor is re-derived below; do not import ccqlin038's 0.06 blindly)
+[2026-08-04T05:31:09-04:00] done. Read bench-results/ccqlin038-blocking/score.txt; the noise section gives this machine's own floor.

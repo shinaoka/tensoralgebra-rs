@@ -1,0 +1,7 @@
+in-cpuset  n=4 busy min 67% mean 70% max 71%
+rest of allocation n=124 busy mean 0.0% max 0.6%
+exclusivity ok: nothing else in the allocation above 5%
+cpu0 busy 70.7%
+cpu1 busy 70.2%
+cpu2 busy 66.7%
+cpu3 busy 70.6%

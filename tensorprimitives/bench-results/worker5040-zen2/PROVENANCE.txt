@@ -1,0 +1,43 @@
+The first cluster session: AVX2 register blocks, thread scaling, and the grid.
+
+  machine : worker5040 (Rusty, `gen` partition, `rome`)
+            AMD EPYC Zen2, 2 x 64 cores, SMT off
+            avx2 + fma, NO AVX-512 -- this node runs the AVX2 kernels
+            32 KiB L1d 8-way private, 512 KiB L2 8-way private,
+            16 MiB L3 16-way per 4 cores = 32 L3 domains
+  date    : 2026-08-03T15:10:15 -> 18:09:28 (179 min)
+  slurm   : job 6745376, --constraint=rome --exclusive
+  script  : sbatch scripts/rusty-phase4.sbatch -> scripts/node-session.sh
+  host    : session.log, slurm-job.txt, topology.json (per subdirectory)
+
+Subdirectories, one per stage:
+
+  phase4e/     the 40-arm MC/KC/NC grid          (scripts/phase4e-blocking.sh)
+  phase4f/     thread scaling and partition arms (scripts/phase4f-threads.sh)
+  placement/   p00..p23 and the mb* variants     (scripts/validate-placement.sh)
+
+plus session-level `kernel-shapes.txt`, `shapes.csv`, `orient.txt`,
+`blocking-model.txt`, `thread-width-prediction.txt` and `stage-status.txt`.
+
+Why it matters, in one line each:
+
+  * All eight AVX2 register blocks were confirmed as the measured winners, so
+    D26's guesses stopped being guesses with no code change. `kernel-shapes.txt`
+    is that measurement. The margins over the runner-up are 0.8-1.6%; the
+    margins over the *rejected* shapes are 20-35%, so the choice was never
+    between close alternatives.
+  * Thread scaling: 8 scales, 16-32 saturates, 64 declines with cores idle
+    two-thirds of the time. The 2-D partition is vindicated at 1.6-3.4x, but
+    `Plan::partition`'s `panels >= p` early return costs up to 4.3x on 18 of 49
+    cases here -- and that cost is *absent* on Ice Lake (A36), so the branch is
+    right where threads share one L3 and wrong where they span many.
+  * The concurrent one-arm-per-L3-domain placement was validated here (+0.3% on
+    the corpus) and rejected on the memory-bound half (-3.2%, up to -10%), which
+    is A27 and is why the traffic-sensitive arms were re-run sequentially in
+    ../worker5175-zen2/.
+
+Not comparable to anything measured on ccqlin038: different machine, different
+cache hierarchy, and AVX2 rather than AVX-512. Every ratio here is
+within-session against a floor re-derived here.
+
+Read with: docs/notebook/ parts 8, 8b, 9, 10 and 11.

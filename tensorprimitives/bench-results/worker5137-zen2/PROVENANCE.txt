@@ -1,0 +1,29 @@
+A third Zen2 node: confirming that the partition effect follows L3 domains.
+
+  machine : worker5137 (Rusty, `gen` partition, `rome`)
+            AMD EPYC Zen2, 2 x 64 cores, SMT off, avx2 + fma, no AVX-512
+            16 MiB L3 per 4 cores, so thread count fixes the domain count
+  date    : 2026-08-04T08:49:41 -> 10:26:29 (97 min)
+  slurm   : job 6751550, --constraint=rome --exclusive
+  script  : sbatch scripts/rusty-phase4.sbatch with STAGES limited to threads
+  host    : session.log, slurm-job.txt, phase4f/topology.json
+
+Only `phase4f/` was run -- `stage-status.txt` records prep and threads and
+nothing else. There is no `kernel-shapes.txt` here because the shapes stage did
+not run; ../worker5040-zen2/ has that measurement for this machine class.
+
+Why it matters: this is the confirmation, not a replication for its own sake.
+`PARTITION_SWEEP` prices the partition axis against thread count on the
+`abcijk` family, and the effect tracks **how many L3 domains the thread set
+spans**, not the thread count: 4 threads in 1 domain reads 1.031, 16 threads in
+4 domains 1.173, 64 threads in 16 domains 2.004. Replicated in all four dtypes,
+with f32 reaching 2.38x. That is what makes A36 a mechanism rather than a
+correlation between two machines.
+
+It also reproduced two things independently: worker5040's scaling curve (t64:
+f64 5.54 against 5.37, c64 7.69 against 7.65) and A31's cold-start artefact, its
+own t1/t1b floor coming back at 0.954-0.973 on a third node.
+
+Not comparable to anything measured on ccqlin038.
+
+Read with: docs/notebook/ "Phase 4 report, part 8b" and A36.

@@ -1,0 +1,19 @@
+# arm A-f32c32 on cpu4, L3 domain 0 = cpus 0-7,16-23, numa 0
+# window 406.9s; env (none)
+cpu0 busy 11.0%
+cpu1 busy 19.7%
+cpu2 busy 11.9%
+cpu3 busy 6.3%
+cpu4 busy 100.0% <- measurement thread
+cpu5 busy 10.9%
+cpu6 busy 4.2%
+cpu7 busy 27.6%
+cpu16 busy 62.8%
+cpu17 busy 8.7%
+cpu18 busy 5.0%
+cpu19 busy 4.1%
+cpu20 busy 2.5%
+cpu21 busy 12.2%
+cpu22 busy 3.0%
+cpu23 busy 20.1%
+# domain co-tenancy: cpu0=11.0%, cpu1=19.7%, cpu2=11.9%, cpu3=6.3%, cpu5=10.9%, cpu7=27.6%, cpu16=62.8%, cpu17=8.7%, cpu21=12.2%, cpu23=20.1%

@@ -1,0 +1,1669 @@
+session   : 2026-08-06T09:29:37-04:00
+host      : CKF6QCDVPD / m3max
+power     : Now drawing from 'AC Power'
+thermal   : Note: No thermal warning level has been recorded Note: No performance warning level has been recorded Note: No CPU power status has been recorded 
+no pinning: Darwin has no CPU affinity API; see this script's header
+
+
+########## bench-results/CKF6QCDVPD-m3max/bin/tcbench-openblas info ##########
+
+host        : CKF6QCDVPD
+target      : aarch64 / macos
+cpu features: neon fp16 bf16 
+caches      : L1=128KiB/8-way/1sh L2=16384KiB/8-way/6sh (via sysctl), blocking=legacy
+l3 domains  : t1=1 t4=4 t8=8 t16=16 t32=32
+baselines   : tblis=false blas=openblas
+
+
+########## bench-results/CKF6QCDVPD-m3max/bin/tcbench-openblas orient --size 64 --csv bench-results/CKF6QCDVPD-m3max/orient.csv ##########
+
+host        : CKF6QCDVPD
+target      : aarch64 / macos
+cpu features: neon fp16 bf16 
+caches      : L1=128KiB/8-way/1sh L2=16384KiB/8-way/6sh (via sysctl), blocking=legacy
+l3 domains  : t1=1 t4=4 t8=8 t16=16 t32=32
+baselines   : tblis=false blas=openblas
+
+orientation features for 49 cases, 784 arm-rows, stress=none
+
+case                   type  method arm        m        n  row_run  col_run  rstr    wb  regA  regB
+ij-ik-kj                f32    real  AB     2904     2896     2904     2896     1  1.00  1.00  1.00  <- rule
+ij-ik-kj                f32    real  BA     2896     2904     2896     2904  2904  1.00  1.00  1.00
+ij-ik-kj                f64    real  AB     2904     2896     2904     2896     1  1.00  1.00  1.00  <- rule
+ij-ik-kj                f64    real  BA     2896     2904     2896     2904  2904  1.00  1.00  1.00
+ij-ik-kj                c32  planar  AB     2904     2896     2904     2896     1  1.00  1.00  1.00  <- rule
+ij-ik-kj                c32  planar  BA     2896     2904     2896     2904  2904  1.00  1.00  1.00
+ij-ik-kj                c32      1m  AB     2904     2896     2904     2896     1  1.00  1.00  1.00  <- rule
+ij-ik-kj                c32      1m  BA     2896     2904     2896     2904  2904  1.00  1.00  1.00
+ij-ik-kj                c32      3m  AB     2904     2896     2904     2896     1  1.00  1.00  1.00  <- rule
+ij-ik-kj                c32      3m  BA     2896     2904     2896     2904  2904  1.00  1.00  1.00
+ij-ik-kj                c64  planar  AB     2904     2896     2904     2896     1  1.00  1.00  1.00  <- rule
+ij-ik-kj                c64  planar  BA     2896     2904     2896     2904  2904  1.00  1.00  1.00
+ij-ik-kj                c64      1m  AB     2904     2896     2904     2896     1  1.00  1.00  1.00  <- rule
+ij-ik-kj                c64      1m  BA     2896     2904     2896     2904  2904  1.00  1.00  1.00
+ij-ik-kj                c64      3m  AB     2904     2896     2904     2896     1  1.00  1.00  1.00  <- rule
+ij-ik-kj                c64      3m  BA     2896     2904     2896     2904  2904  1.00  1.00  1.00
+ij-ikl-ljk              f32    real  AB      216      204      216      204     1  1.00  1.00  1.00  <- rule
+ij-ikl-ljk              f32    real  BA      204      216      204      216   216  1.00  1.00  1.00
+ij-ikl-ljk              f64    real  AB      216      204      216      204     1  1.00  1.00  1.00  <- rule
+ij-ikl-ljk              f64    real  BA      204      216      204      216   216  1.00  1.00  1.00
+ij-ikl-ljk              c32  planar  AB      216      204      216      204     1  1.00  1.00  1.00  <- rule
+ij-ikl-ljk              c32  planar  BA      204      216      204      216   216  1.00  1.00  1.00
+ij-ikl-ljk              c32      1m  AB      216      204      216      204     1  1.00  1.00  1.00  <- rule
+ij-ikl-ljk              c32      1m  BA      204      216      204      216   216  1.00  1.00  1.00
+ij-ikl-ljk              c32      3m  AB      216      204      216      204     1  1.00  1.00  1.00  <- rule
+ij-ikl-ljk              c32      3m  BA      204      216      204      216   216  1.00  1.00  1.00
+ij-ikl-ljk              c64  planar  AB      216      204      216      204     1  1.00  1.00  1.00  <- rule
+ij-ikl-ljk              c64  planar  BA      204      216      204      216   216  1.00  1.00  1.00
+ij-ikl-ljk              c64      1m  AB      216      204      216      204     1  1.00  1.00  1.00  <- rule
+ij-ikl-ljk              c64      1m  BA      204      216      204      216   216  1.00  1.00  1.00
+ij-ikl-ljk              c64      3m  AB      216      204      216      204     1  1.00  1.00  1.00  <- rule
+ij-ikl-ljk              c64      3m  BA      204      216      204      216   216  1.00  1.00  1.00
+ij-kil-lkj              f32    real  AB      216      204      216      204     1  1.00  1.00  1.00  <- rule
+ij-kil-lkj              f32    real  BA      204      216      204      216   216  1.00  1.00  1.00
+ij-kil-lkj              f64    real  AB      216      204      216      204     1  1.00  1.00  1.00  <- rule
+ij-kil-lkj              f64    real  BA      204      216      204      216   216  1.00  1.00  1.00
+ij-kil-lkj              c32  planar  AB      216      204      216      204     1  1.00  1.00  1.00  <- rule
+ij-kil-lkj              c32  planar  BA      204      216      204      216   216  1.00  1.00  1.00
+ij-kil-lkj              c32      1m  AB      216      204      216      204     1  1.00  1.00  1.00  <- rule
+ij-kil-lkj              c32      1m  BA      204      216      204      216   216  1.00  1.00  1.00
+ij-kil-lkj              c32      3m  AB      216      204      216      204     1  1.00  1.00  1.00  <- rule
+ij-kil-lkj              c32      3m  BA      204      216      204      216   216  1.00  1.00  1.00
+ij-kil-lkj              c64  planar  AB      216      204      216      204     1  1.00  1.00  1.00  <- rule
+ij-kil-lkj              c64  planar  BA      204      216      204      216   216  1.00  1.00  1.00
+ij-kil-lkj              c64      1m  AB      216      204      216      204     1  1.00  1.00  1.00  <- rule
+ij-kil-lkj              c64      1m  BA      204      216      204      216   216  1.00  1.00  1.00
+ij-kil-lkj              c64      3m  AB      216      204      216      204     1  1.00  1.00  1.00  <- rule
+ij-kil-lkj              c64      3m  BA      204      216      204      216   216  1.00  1.00  1.00
+ijk-ikl-lj              f32    real  AB    44064      204      216      204     1  1.00  1.00  1.00  <- rule
+ijk-ikl-lj              f32    real  BA      204    44064      204      216   216  1.00  1.00  1.00
+ijk-ikl-lj              f64    real  AB    44064      204      216      204     1  1.00  1.00  1.00  <- rule
+ijk-ikl-lj              f64    real  BA      204    44064      204      216   216  1.00  1.00  1.00
+ijk-ikl-lj              c32  planar  AB    44064      204      216      204     1  1.00  1.00  1.00  <- rule
+ijk-ikl-lj              c32  planar  BA      204    44064      204      216   216  1.00  1.00  1.00
+ijk-ikl-lj              c32      1m  AB    44064      204      216      204     1  1.00  1.00  1.00  <- rule
+ijk-ikl-lj              c32      1m  BA      204    44064      204      216   216  1.00  1.00  1.00
+ijk-ikl-lj              c32      3m  AB    44064      204      216      204     1  1.00  1.00  1.00  <- rule
+ijk-ikl-lj              c32      3m  BA      204    44064      204      216   216  1.00  1.00  1.00
+ijk-ikl-lj              c64  planar  AB    44064      204      216      204     1  1.00  1.00  1.00  <- rule
+ijk-ikl-lj              c64  planar  BA      204    44064      204      216   216  1.00  1.00  1.00
+ijk-ikl-lj              c64      1m  AB    44064      204      216      204     1  1.00  1.00  1.00  <- rule
+ijk-ikl-lj              c64      1m  BA      204    44064      204      216   216  1.00  1.00  1.00
+ijk-ikl-lj              c64      3m  AB    44064      204      216      204     1  1.00  1.00  1.00  <- rule
+ijk-ikl-lj              c64      3m  BA      204    44064      204      216   216  1.00  1.00  1.00
+ijk-il-jlk              f32    real  AB      216    44064      216    44064     1  1.00  1.00  1.00  <- rule
+ijk-il-jlk              f32    real  BA    44064      216    44064      216   216  1.00  1.00  1.00
+ijk-il-jlk              f64    real  AB      216    44064      216    44064     1  1.00  1.00  1.00  <- rule
+ijk-il-jlk              f64    real  BA    44064      216    44064      216   216  1.00  1.00  1.00
+ijk-il-jlk              c32  planar  AB      216    44064      216    44064     1  1.00  1.00  1.00  <- rule
+ijk-il-jlk              c32  planar  BA    44064      216    44064      216   216  1.00  1.00  1.00
+ijk-il-jlk              c32      1m  AB      216    44064      216    44064     1  1.00  1.00  1.00  <- rule
+ijk-il-jlk              c32      1m  BA    44064      216    44064      216   216  1.00  1.00  1.00
+ijk-il-jlk              c32      3m  AB      216    44064      216    44064     1  1.00  1.00  1.00  <- rule
+ijk-il-jlk              c32      3m  BA    44064      216    44064      216   216  1.00  1.00  1.00
+ijk-il-jlk              c64  planar  AB      216    44064      216    44064     1  1.00  1.00  1.00  <- rule
+ijk-il-jlk              c64  planar  BA    44064      216    44064      216   216  1.00  1.00  1.00
+ijk-il-jlk              c64      1m  AB      216    44064      216    44064     1  1.00  1.00  1.00  <- rule
+ijk-il-jlk              c64      1m  BA    44064      216    44064      216   216  1.00  1.00  1.00
+ijk-il-jlk              c64      3m  AB      216    44064      216    44064     1  1.00  1.00  1.00  <- rule
+ijk-il-jlk              c64      3m  BA    44064      216    44064      216   216  1.00  1.00  1.00
+ijk-ilk-jl              f32    real  AB    44064      216      216      216     1  1.00  1.00  1.00  <- rule
+ijk-ilk-jl              f32    real  BA      216    44064      216      216   216  1.00  1.00  1.00
+ijk-ilk-jl              f64    real  AB    44064      216      216      216     1  1.00  1.00  1.00  <- rule
+ijk-ilk-jl              f64    real  BA      216    44064      216      216   216  1.00  1.00  1.00
+ijk-ilk-jl              c32  planar  AB    44064      216      216      216     1  1.00  1.00  1.00  <- rule
+ijk-ilk-jl              c32  planar  BA      216    44064      216      216   216  1.00  1.00  1.00
+ijk-ilk-jl              c32      1m  AB    44064      216      216      216     1  1.00  1.00  1.00  <- rule
+ijk-ilk-jl              c32      1m  BA      216    44064      216      216   216  1.00  1.00  1.00
+ijk-ilk-jl              c32      3m  AB    44064      216      216      216     1  1.00  1.00  1.00  <- rule
+ijk-ilk-jl              c32      3m  BA      216    44064      216      216   216  1.00  1.00  1.00
+ijk-ilk-jl              c64  planar  AB    44064      216      216      216     1  1.00  1.00  1.00  <- rule
+ijk-ilk-jl              c64  planar  BA      216    44064      216      216   216  1.00  1.00  1.00
+ijk-ilk-jl              c64      1m  AB    44064      216      216      216     1  1.00  1.00  1.00  <- rule
+ijk-ilk-jl              c64      1m  BA      216    44064      216      216   216  1.00  1.00  1.00
+ijk-ilk-jl              c64      3m  AB    44064      216      216      216     1  1.00  1.00  1.00  <- rule
+ijk-ilk-jl              c64      3m  BA      216    44064      216      216   216  1.00  1.00  1.00
+ijk-ilk-lj              f32    real  AB    44064      204      216      204     1  1.00  1.00  1.00  <- rule
+ijk-ilk-lj              f32    real  BA      204    44064      204      216   216  1.00  1.00  1.00
+ijk-ilk-lj              f64    real  AB    44064      204      216      204     1  1.00  1.00  1.00  <- rule
+ijk-ilk-lj              f64    real  BA      204    44064      204      216   216  1.00  1.00  1.00
+ijk-ilk-lj              c32  planar  AB    44064      204      216      204     1  1.00  1.00  1.00  <- rule
+ijk-ilk-lj              c32  planar  BA      204    44064      204      216   216  1.00  1.00  1.00
+ijk-ilk-lj              c32      1m  AB    44064      204      216      204     1  1.00  1.00  1.00  <- rule
+ijk-ilk-lj              c32      1m  BA      204    44064      204      216   216  1.00  1.00  1.00
+ijk-ilk-lj              c32      3m  AB    44064      204      216      204     1  1.00  1.00  1.00  <- rule
+ijk-ilk-lj              c32      3m  BA      204    44064      204      216   216  1.00  1.00  1.00
+ijk-ilk-lj              c64  planar  AB    44064      204      216      204     1  1.00  1.00  1.00  <- rule
+ijk-ilk-lj              c64  planar  BA      204    44064      204      216   216  1.00  1.00  1.00
+ijk-ilk-lj              c64      1m  AB    44064      204      216      204     1  1.00  1.00  1.00  <- rule
+ijk-ilk-lj              c64      1m  BA      204    44064      204      216   216  1.00  1.00  1.00
+ijk-ilk-lj              c64      3m  AB    44064      204      216      204     1  1.00  1.00  1.00  <- rule
+ijk-ilk-lj              c64      3m  BA      204    44064      204      216   216  1.00  1.00  1.00
+ijk-ilmk-mjl            f32    real  AB     3744       52       72       52     1  1.00  1.00  1.00  <- rule
+ijk-ilmk-mjl            f32    real  BA       52     3744       52       72    72  1.00  1.00  1.00
+ijk-ilmk-mjl            f64    real  AB     3744       52       72       52     1  1.00  1.00  1.00  <- rule
+ijk-ilmk-mjl            f64    real  BA       52     3744       52       72    72  1.00  1.00  1.00
+ijk-ilmk-mjl            c32  planar  AB     3744       52       72       52     1  1.00  1.00  1.00  <- rule
+ijk-ilmk-mjl            c32  planar  BA       52     3744       52       72    72  1.00  1.00  1.00
+ijk-ilmk-mjl            c32      1m  AB     3744       52       72       52     1  1.00  1.00  1.00  <- rule
+ijk-ilmk-mjl            c32      1m  BA       52     3744       52       72    72  1.00  1.00  1.00
+ijk-ilmk-mjl            c32      3m  AB     3744       52       72       52     1  1.00  1.00  1.00  <- rule
+ijk-ilmk-mjl            c32      3m  BA       52     3744       52       72    72  1.00  1.00  1.00
+ijk-ilmk-mjl            c64  planar  AB     3744       52       72       52     1  1.00  1.00  1.00  <- rule
+ijk-ilmk-mjl            c64  planar  BA       52     3744       52       72    72  1.00  1.00  1.00
+ijk-ilmk-mjl            c64      1m  AB     3744       52       72       52     1  1.00  1.00  1.00  <- rule
+ijk-ilmk-mjl            c64      1m  BA       52     3744       52       72    72  1.00  1.00  1.00
+ijk-ilmk-mjl            c64      3m  AB     3744       52       72       52     1  1.00  1.00  1.00  <- rule
+ijk-ilmk-mjl            c64      3m  BA       52     3744       52       72    72  1.00  1.00  1.00
+ijkl-imjn-lnkm          f32    real  AB     3744     3744     3744     3744     1  1.00  1.00  1.00  <- rule
+ijkl-imjn-lnkm          f32    real  BA     3744     3744     3744     3744  3744  1.00  1.00  1.00
+ijkl-imjn-lnkm          f64    real  AB     3744     3744     3744     3744     1  1.00  1.00  1.00  <- rule
+ijkl-imjn-lnkm          f64    real  BA     3744     3744     3744     3744  3744  1.00  1.00  1.00
+ijkl-imjn-lnkm          c32  planar  AB     3744     3744     3744     3744     1  1.00  1.00  1.00  <- rule
+ijkl-imjn-lnkm          c32  planar  BA     3744     3744     3744     3744  3744  1.00  1.00  1.00
+ijkl-imjn-lnkm          c32      1m  AB     3744     3744     3744     3744     1  1.00  1.00  1.00  <- rule
+ijkl-imjn-lnkm          c32      1m  BA     3744     3744     3744     3744  3744  1.00  1.00  1.00
+ijkl-imjn-lnkm          c32      3m  AB     3744     3744     3744     3744     1  1.00  1.00  1.00  <- rule
+ijkl-imjn-lnkm          c32      3m  BA     3744     3744     3744     3744  3744  1.00  1.00  1.00
+ijkl-imjn-lnkm          c64  planar  AB     3744     3744     3744     3744     1  1.00  1.00  1.00  <- rule
+ijkl-imjn-lnkm          c64  planar  BA     3744     3744     3744     3744  3744  1.00  1.00  1.00
+ijkl-imjn-lnkm          c64      1m  AB     3744     3744     3744     3744     1  1.00  1.00  1.00  <- rule
+ijkl-imjn-lnkm          c64      1m  BA     3744     3744     3744     3744  3744  1.00  1.00  1.00
+ijkl-imjn-lnkm          c64      3m  AB     3744     3744     3744     3744     1  1.00  1.00  1.00  <- rule
+ijkl-imjn-lnkm          c64      3m  BA     3744     3744     3744     3744  3744  1.00  1.00  1.00
+ijkl-imjn-nlmk          f32    real  AB     3744     2704     3744     2704     1  1.00  1.00  1.00  <- rule
+ijkl-imjn-nlmk          f32    real  BA     2704     3744     2704     3744  3744  1.00  1.00  1.00
+ijkl-imjn-nlmk          f64    real  AB     3744     2704     3744     2704     1  1.00  1.00  1.00  <- rule
+ijkl-imjn-nlmk          f64    real  BA     2704     3744     2704     3744  3744  1.00  1.00  1.00
+ijkl-imjn-nlmk          c32  planar  AB     3744     2704     3744     2704     1  1.00  1.00  1.00  <- rule
+ijkl-imjn-nlmk          c32  planar  BA     2704     3744     2704     3744  3744  1.00  1.00  1.00
+ijkl-imjn-nlmk          c32      1m  AB     3744     2704     3744     2704     1  1.00  1.00  1.00  <- rule
+ijkl-imjn-nlmk          c32      1m  BA     2704     3744     2704     3744  3744  1.00  1.00  1.00
+ijkl-imjn-nlmk          c32      3m  AB     3744     2704     3744     2704     1  1.00  1.00  1.00  <- rule
+ijkl-imjn-nlmk          c32      3m  BA     2704     3744     2704     3744  3744  1.00  1.00  1.00
+ijkl-imjn-nlmk          c64  planar  AB     3744     2704     3744     2704     1  1.00  1.00  1.00  <- rule
+ijkl-imjn-nlmk          c64  planar  BA     2704     3744     2704     3744  3744  1.00  1.00  1.00
+ijkl-imjn-nlmk          c64      1m  AB     3744     2704     3744     2704     1  1.00  1.00  1.00  <- rule
+ijkl-imjn-nlmk          c64      1m  BA     2704     3744     2704     3744  3744  1.00  1.00  1.00
+ijkl-imjn-nlmk          c64      3m  AB     3744     2704     3744     2704     1  1.00  1.00  1.00  <- rule
+ijkl-imjn-nlmk          c64      3m  BA     2704     3744     2704     3744  3744  1.00  1.00  1.00
+ijkl-imkn-jnlm          f32    real  AB     3744     3744       72       72     1  1.00  1.00  1.00  <- rule
+ijkl-imkn-jnlm          f32    real  BA     3744     3744       72       72    72  1.00  1.00  1.00
+ijkl-imkn-jnlm          f64    real  AB     3744     3744       72       72     1  1.00  1.00  1.00  <- rule
+ijkl-imkn-jnlm          f64    real  BA     3744     3744       72       72    72  1.00  1.00  1.00
+ijkl-imkn-jnlm          c32  planar  AB     3744     3744       72       72     1  1.00  1.00  1.00  <- rule
+ijkl-imkn-jnlm          c32  planar  BA     3744     3744       72       72    72  1.00  1.00  1.00
+ijkl-imkn-jnlm          c32      1m  AB     3744     3744       72       72     1  1.00  1.00  1.00  <- rule
+ijkl-imkn-jnlm          c32      1m  BA     3744     3744       72       72    72  1.00  1.00  1.00
+ijkl-imkn-jnlm          c32      3m  AB     3744     3744       72       72     1  1.00  1.00  1.00  <- rule
+ijkl-imkn-jnlm          c32      3m  BA     3744     3744       72       72    72  1.00  1.00  1.00
+ijkl-imkn-jnlm          c64  planar  AB     3744     3744       72       72     1  1.00  1.00  1.00  <- rule
+ijkl-imkn-jnlm          c64  planar  BA     3744     3744       72       72    72  1.00  1.00  1.00
+ijkl-imkn-jnlm          c64      1m  AB     3744     3744       72       72     1  1.00  1.00  1.00  <- rule
+ijkl-imkn-jnlm          c64      1m  BA     3744     3744       72       72    72  1.00  1.00  1.00
+ijkl-imkn-jnlm          c64      3m  AB     3744     3744       72       72     1  1.00  1.00  1.00  <- rule
+ijkl-imkn-jnlm          c64      3m  BA     3744     3744       72       72    72  1.00  1.00  1.00
+ijkl-imkn-njml          f32    real  AB     3744     2704       72       52     1  1.00  1.00  1.00  <- rule
+ijkl-imkn-njml          f32    real  BA     2704     3744       52       72    72  1.00  1.00  1.00
+ijkl-imkn-njml          f64    real  AB     3744     2704       72       52     1  1.00  1.00  1.00  <- rule
+ijkl-imkn-njml          f64    real  BA     2704     3744       52       72    72  1.00  1.00  1.00
+ijkl-imkn-njml          c32  planar  AB     3744     2704       72       52     1  1.00  1.00  1.00  <- rule
+ijkl-imkn-njml          c32  planar  BA     2704     3744       52       72    72  1.00  1.00  1.00
+ijkl-imkn-njml          c32      1m  AB     3744     2704       72       52     1  1.00  1.00  1.00  <- rule
+ijkl-imkn-njml          c32      1m  BA     2704     3744       52       72    72  1.00  1.00  1.00
+ijkl-imkn-njml          c32      3m  AB     3744     2704       72       52     1  1.00  1.00  1.00  <- rule
+ijkl-imkn-njml          c32      3m  BA     2704     3744       52       72    72  1.00  1.00  1.00
+ijkl-imkn-njml          c64  planar  AB     3744     2704       72       52     1  1.00  1.00  1.00  <- rule
+ijkl-imkn-njml          c64  planar  BA     2704     3744       52       72    72  1.00  1.00  1.00
+ijkl-imkn-njml          c64      1m  AB     3744     2704       72       52     1  1.00  1.00  1.00  <- rule
+ijkl-imkn-njml          c64      1m  BA     2704     3744       52       72    72  1.00  1.00  1.00
+ijkl-imkn-njml          c64      3m  AB     3744     2704       72       52     1  1.00  1.00  1.00  <- rule
+ijkl-imkn-njml          c64      3m  BA     2704     3744       52       72    72  1.00  1.00  1.00
+ijkl-imln-jnkm          f32    real  AB     3744     3744       72     3744     1  1.00  1.00  1.00  <- rule
+ijkl-imln-jnkm          f32    real  BA     3744     3744     3744       72    72  1.00  1.00  1.00
+ijkl-imln-jnkm          f64    real  AB     3744     3744       72     3744     1  1.00  1.00  1.00  <- rule
+ijkl-imln-jnkm          f64    real  BA     3744     3744     3744       72    72  1.00  1.00  1.00
+ijkl-imln-jnkm          c32  planar  AB     3744     3744       72     3744     1  1.00  1.00  1.00  <- rule
+ijkl-imln-jnkm          c32  planar  BA     3744     3744     3744       72    72  1.00  1.00  1.00
+ijkl-imln-jnkm          c32      1m  AB     3744     3744       72     3744     1  1.00  1.00  1.00  <- rule
+ijkl-imln-jnkm          c32      1m  BA     3744     3744     3744       72    72  1.00  1.00  1.00
+ijkl-imln-jnkm          c32      3m  AB     3744     3744       72     3744     1  1.00  1.00  1.00  <- rule
+ijkl-imln-jnkm          c32      3m  BA     3744     3744     3744       72    72  1.00  1.00  1.00
+ijkl-imln-jnkm          c64  planar  AB     3744     3744       72     3744     1  1.00  1.00  1.00  <- rule
+ijkl-imln-jnkm          c64  planar  BA     3744     3744     3744       72    72  1.00  1.00  1.00
+ijkl-imln-jnkm          c64      1m  AB     3744     3744       72     3744     1  1.00  1.00  1.00  <- rule
+ijkl-imln-jnkm          c64      1m  BA     3744     3744     3744       72    72  1.00  1.00  1.00
+ijkl-imln-jnkm          c64      3m  AB     3744     3744       72     3744     1  1.00  1.00  1.00  <- rule
+ijkl-imln-jnkm          c64      3m  BA     3744     3744     3744       72    72  1.00  1.00  1.00
+ijkl-imln-njmk          f32    real  AB     3744     2704       72     2704     1  1.00  1.00  1.00  <- rule
+ijkl-imln-njmk          f32    real  BA     2704     3744     2704       72    72  1.00  1.00  1.00
+ijkl-imln-njmk          f64    real  AB     3744     2704       72     2704     1  1.00  1.00  1.00  <- rule
+ijkl-imln-njmk          f64    real  BA     2704     3744     2704       72    72  1.00  1.00  1.00
+ijkl-imln-njmk          c32  planar  AB     3744     2704       72     2704     1  1.00  1.00  1.00  <- rule
+ijkl-imln-njmk          c32  planar  BA     2704     3744     2704       72    72  1.00  1.00  1.00
+ijkl-imln-njmk          c32      1m  AB     3744     2704       72     2704     1  1.00  1.00  1.00  <- rule
+ijkl-imln-njmk          c32      1m  BA     2704     3744     2704       72    72  1.00  1.00  1.00
+ijkl-imln-njmk          c32      3m  AB     3744     2704       72     2704     1  1.00  1.00  1.00  <- rule
+ijkl-imln-njmk          c32      3m  BA     2704     3744     2704       72    72  1.00  1.00  1.00
+ijkl-imln-njmk          c64  planar  AB     3744     2704       72     2704     1  1.00  1.00  1.00  <- rule
+ijkl-imln-njmk          c64  planar  BA     2704     3744     2704       72    72  1.00  1.00  1.00
+ijkl-imln-njmk          c64      1m  AB     3744     2704       72     2704     1  1.00  1.00  1.00  <- rule
+ijkl-imln-njmk          c64      1m  BA     2704     3744     2704       72    72  1.00  1.00  1.00
+ijkl-imln-njmk          c64      3m  AB     3744     2704       72     2704     1  1.00  1.00  1.00  <- rule
+ijkl-imln-njmk          c64      3m  BA     2704     3744     2704       72    72  1.00  1.00  1.00
+ijkl-imnj-nlkm          f32    real  AB     3744     2704     3744     2704     1  1.00  1.00  1.00  <- rule
+ijkl-imnj-nlkm          f32    real  BA     2704     3744     2704     3744  3744  1.00  1.00  1.00
+ijkl-imnj-nlkm          f64    real  AB     3744     2704     3744     2704     1  1.00  1.00  1.00  <- rule
+ijkl-imnj-nlkm          f64    real  BA     2704     3744     2704     3744  3744  1.00  1.00  1.00
+ijkl-imnj-nlkm          c32  planar  AB     3744     2704     3744     2704     1  1.00  1.00  1.00  <- rule
+ijkl-imnj-nlkm          c32  planar  BA     2704     3744     2704     3744  3744  1.00  1.00  1.00
+ijkl-imnj-nlkm          c32      1m  AB     3744     2704     3744     2704     1  1.00  1.00  1.00  <- rule
+ijkl-imnj-nlkm          c32      1m  BA     2704     3744     2704     3744  3744  1.00  1.00  1.00
+ijkl-imnj-nlkm          c32      3m  AB     3744     2704     3744     2704     1  1.00  1.00  1.00  <- rule
+ijkl-imnj-nlkm          c32      3m  BA     2704     3744     2704     3744  3744  1.00  1.00  1.00
+ijkl-imnj-nlkm          c64  planar  AB     3744     2704     3744     2704     1  1.00  1.00  1.00  <- rule
+ijkl-imnj-nlkm          c64  planar  BA     2704     3744     2704     3744  3744  1.00  1.00  1.00
+ijkl-imnj-nlkm          c64      1m  AB     3744     2704     3744     2704     1  1.00  1.00  1.00  <- rule
+ijkl-imnj-nlkm          c64      1m  BA     2704     3744     2704     3744  3744  1.00  1.00  1.00
+ijkl-imnj-nlkm          c64      3m  AB     3744     2704     3744     2704     1  1.00  1.00  1.00  <- rule
+ijkl-imnj-nlkm          c64      3m  BA     2704     3744     2704     3744  3744  1.00  1.00  1.00
+ijkl-imnk-njml          f32    real  AB     3744     2704       72       52     1  1.00  1.00  1.00  <- rule
+ijkl-imnk-njml          f32    real  BA     2704     3744       52       72    72  1.00  1.00  1.00
+ijkl-imnk-njml          f64    real  AB     3744     2704       72       52     1  1.00  1.00  1.00  <- rule
+ijkl-imnk-njml          f64    real  BA     2704     3744       52       72    72  1.00  1.00  1.00
+ijkl-imnk-njml          c32  planar  AB     3744     2704       72       52     1  1.00  1.00  1.00  <- rule
+ijkl-imnk-njml          c32  planar  BA     2704     3744       52       72    72  1.00  1.00  1.00
+ijkl-imnk-njml          c32      1m  AB     3744     2704       72       52     1  1.00  1.00  1.00  <- rule
+ijkl-imnk-njml          c32      1m  BA     2704     3744       52       72    72  1.00  1.00  1.00
+ijkl-imnk-njml          c32      3m  AB     3744     2704       72       52     1  1.00  1.00  1.00  <- rule
+ijkl-imnk-njml          c32      3m  BA     2704     3744       52       72    72  1.00  1.00  1.00
+ijkl-imnk-njml          c64  planar  AB     3744     2704       72       52     1  1.00  1.00  1.00  <- rule
+ijkl-imnk-njml          c64  planar  BA     2704     3744       52       72    72  1.00  1.00  1.00
+ijkl-imnk-njml          c64      1m  AB     3744     2704       72       52     1  1.00  1.00  1.00  <- rule
+ijkl-imnk-njml          c64      1m  BA     2704     3744       52       72    72  1.00  1.00  1.00
+ijkl-imnk-njml          c64      3m  AB     3744     2704       72       52     1  1.00  1.00  1.00  <- rule
+ijkl-imnk-njml          c64      3m  BA     2704     3744       52       72    72  1.00  1.00  1.00
+ijkl-minj-nlmk          f32    real  AB     3744     2704     3744     2704     1  1.00  1.00  1.00  <- rule
+ijkl-minj-nlmk          f32    real  BA     2704     3744     2704     3744  3744  1.00  1.00  1.00
+ijkl-minj-nlmk          f64    real  AB     3744     2704     3744     2704     1  1.00  1.00  1.00  <- rule
+ijkl-minj-nlmk          f64    real  BA     2704     3744     2704     3744  3744  1.00  1.00  1.00
+ijkl-minj-nlmk          c32  planar  AB     3744     2704     3744     2704     1  1.00  1.00  1.00  <- rule
+ijkl-minj-nlmk          c32  planar  BA     2704     3744     2704     3744  3744  1.00  1.00  1.00
+ijkl-minj-nlmk          c32      1m  AB     3744     2704     3744     2704     1  1.00  1.00  1.00  <- rule
+ijkl-minj-nlmk          c32      1m  BA     2704     3744     2704     3744  3744  1.00  1.00  1.00
+ijkl-minj-nlmk          c32      3m  AB     3744     2704     3744     2704     1  1.00  1.00  1.00  <- rule
+ijkl-minj-nlmk          c32      3m  BA     2704     3744     2704     3744  3744  1.00  1.00  1.00
+ijkl-minj-nlmk          c64  planar  AB     3744     2704     3744     2704     1  1.00  1.00  1.00  <- rule
+ijkl-minj-nlmk          c64  planar  BA     2704     3744     2704     3744  3744  1.00  1.00  1.00
+ijkl-minj-nlmk          c64      1m  AB     3744     2704     3744     2704     1  1.00  1.00  1.00  <- rule
+ijkl-minj-nlmk          c64      1m  BA     2704     3744     2704     3744  3744  1.00  1.00  1.00
+ijkl-minj-nlmk          c64      3m  AB     3744     2704     3744     2704     1  1.00  1.00  1.00  <- rule
+ijkl-minj-nlmk          c64      3m  BA     2704     3744     2704     3744  3744  1.00  1.00  1.00
+ijkl-mink-jnlm          f32    real  AB     3744     3744       72       72     1  1.00  1.00  1.00  <- rule
+ijkl-mink-jnlm          f32    real  BA     3744     3744       72       72    72  1.00  1.00  1.00
+ijkl-mink-jnlm          f64    real  AB     3744     3744       72       72     1  1.00  1.00  1.00  <- rule
+ijkl-mink-jnlm          f64    real  BA     3744     3744       72       72    72  1.00  1.00  1.00
+ijkl-mink-jnlm          c32  planar  AB     3744     3744       72       72     1  1.00  1.00  1.00  <- rule
+ijkl-mink-jnlm          c32  planar  BA     3744     3744       72       72    72  1.00  1.00  1.00
+ijkl-mink-jnlm          c32      1m  AB     3744     3744       72       72     1  1.00  1.00  1.00  <- rule
+ijkl-mink-jnlm          c32      1m  BA     3744     3744       72       72    72  1.00  1.00  1.00
+ijkl-mink-jnlm          c32      3m  AB     3744     3744       72       72     1  1.00  1.00  1.00  <- rule
+ijkl-mink-jnlm          c32      3m  BA     3744     3744       72       72    72  1.00  1.00  1.00
+ijkl-mink-jnlm          c64  planar  AB     3744     3744       72       72     1  1.00  1.00  1.00  <- rule
+ijkl-mink-jnlm          c64  planar  BA     3744     3744       72       72    72  1.00  1.00  1.00
+ijkl-mink-jnlm          c64      1m  AB     3744     3744       72       72     1  1.00  1.00  1.00  <- rule
+ijkl-mink-jnlm          c64      1m  BA     3744     3744       72       72    72  1.00  1.00  1.00
+ijkl-mink-jnlm          c64      3m  AB     3744     3744       72       72     1  1.00  1.00  1.00  <- rule
+ijkl-mink-jnlm          c64      3m  BA     3744     3744       72       72    72  1.00  1.00  1.00
+ijkl-minl-njmk          f32    real  AB     3744     2704       72     2704     1  1.00  1.00  1.00  <- rule
+ijkl-minl-njmk          f32    real  BA     2704     3744     2704       72    72  1.00  1.00  1.00
+ijkl-minl-njmk          f64    real  AB     3744     2704       72     2704     1  1.00  1.00  1.00  <- rule
+ijkl-minl-njmk          f64    real  BA     2704     3744     2704       72    72  1.00  1.00  1.00
+ijkl-minl-njmk          c32  planar  AB     3744     2704       72     2704     1  1.00  1.00  1.00  <- rule
+ijkl-minl-njmk          c32  planar  BA     2704     3744     2704       72    72  1.00  1.00  1.00
+ijkl-minl-njmk          c32      1m  AB     3744     2704       72     2704     1  1.00  1.00  1.00  <- rule
+ijkl-minl-njmk          c32      1m  BA     2704     3744     2704       72    72  1.00  1.00  1.00
+ijkl-minl-njmk          c32      3m  AB     3744     2704       72     2704     1  1.00  1.00  1.00  <- rule
+ijkl-minl-njmk          c32      3m  BA     2704     3744     2704       72    72  1.00  1.00  1.00
+ijkl-minl-njmk          c64  planar  AB     3744     2704       72     2704     1  1.00  1.00  1.00  <- rule
+ijkl-minl-njmk          c64  planar  BA     2704     3744     2704       72    72  1.00  1.00  1.00
+ijkl-minl-njmk          c64      1m  AB     3744     2704       72     2704     1  1.00  1.00  1.00  <- rule
+ijkl-minl-njmk          c64      1m  BA     2704     3744     2704       72    72  1.00  1.00  1.00
+ijkl-minl-njmk          c64      3m  AB     3744     2704       72     2704     1  1.00  1.00  1.00  <- rule
+ijkl-minl-njmk          c64      3m  BA     2704     3744     2704       72    72  1.00  1.00  1.00
+aqrs-pa-pqrs            f32    real  AB       72   140608       72   140608     1  1.00  1.00  1.00  <- rule
+aqrs-pa-pqrs            f32    real  BA   140608       72   140608       72    72  1.00  1.00  1.00
+aqrs-pa-pqrs            f64    real  AB       72   140608       72   140608     1  1.00  1.00  1.00  <- rule
+aqrs-pa-pqrs            f64    real  BA   140608       72   140608       72    72  1.00  1.00  1.00
+aqrs-pa-pqrs            c32  planar  AB       72   140608       72   140608     1  1.00  1.00  1.00  <- rule
+aqrs-pa-pqrs            c32  planar  BA   140608       72   140608       72    72  1.00  1.00  1.00
+aqrs-pa-pqrs            c32      1m  AB       72   140608       72   140608     1  1.00  1.00  1.00  <- rule
+aqrs-pa-pqrs            c32      1m  BA   140608       72   140608       72    72  1.00  1.00  1.00
+aqrs-pa-pqrs            c32      3m  AB       72   140608       72   140608     1  1.00  1.00  1.00  <- rule
+aqrs-pa-pqrs            c32      3m  BA   140608       72   140608       72    72  1.00  1.00  1.00
+aqrs-pa-pqrs            c64  planar  AB       72   140608       72   140608     1  1.00  1.00  1.00  <- rule
+aqrs-pa-pqrs            c64  planar  BA   140608       72   140608       72    72  1.00  1.00  1.00
+aqrs-pa-pqrs            c64      1m  AB       72   140608       72   140608     1  1.00  1.00  1.00  <- rule
+aqrs-pa-pqrs            c64      1m  BA   140608       72   140608       72    72  1.00  1.00  1.00
+aqrs-pa-pqrs            c64      3m  AB       72   140608       72   140608     1  1.00  1.00  1.00  <- rule
+aqrs-pa-pqrs            c64      3m  BA   140608       72   140608       72    72  1.00  1.00  1.00
+abrs-qb-aqrs            f32    real  AB       52   194688       52       72    72  1.00  1.00  1.00
+abrs-qb-aqrs            f32    real  BA   194688       52       72       52     1  1.00  1.00  1.00  <- rule
+abrs-qb-aqrs            f64    real  AB       52   194688       52       72    72  1.00  1.00  1.00
+abrs-qb-aqrs            f64    real  BA   194688       52       72       52     1  1.00  1.00  1.00  <- rule
+abrs-qb-aqrs            c32  planar  AB       52   194688       52       72    72  1.00  1.00  1.00
+abrs-qb-aqrs            c32  planar  BA   194688       52       72       52     1  1.00  1.00  1.00  <- rule
+abrs-qb-aqrs            c32      1m  AB       52   194688       52       72    72  1.00  1.00  1.00
+abrs-qb-aqrs            c32      1m  BA   194688       52       72       52     1  1.00  1.00  1.00  <- rule
+abrs-qb-aqrs            c32      3m  AB       52   194688       52       72    72  1.00  1.00  1.00
+abrs-qb-aqrs            c32      3m  BA   194688       52       72       52     1  1.00  1.00  1.00  <- rule
+abrs-qb-aqrs            c64  planar  AB       52   194688       52       72    72  1.00  1.00  1.00
+abrs-qb-aqrs            c64  planar  BA   194688       52       72       52     1  1.00  1.00  1.00  <- rule
+abrs-qb-aqrs            c64      1m  AB       52   194688       52       72    72  1.00  1.00  1.00
+abrs-qb-aqrs            c64      1m  BA   194688       52       72       52     1  1.00  1.00  1.00  <- rule
+abrs-qb-aqrs            c64      3m  AB       52   194688       52       72    72  1.00  1.00  1.00
+abrs-qb-aqrs            c64      3m  BA   194688       52       72       52     1  1.00  1.00  1.00  <- rule
+abcs-rc-abrs            f32    real  AB       52   194688       52     3744  3744  1.00  1.00  1.00
+abcs-rc-abrs            f32    real  BA   194688       52     3744       52     1  1.00  1.00  1.00  <- rule
+abcs-rc-abrs            f64    real  AB       52   194688       52     3744  3744  1.00  1.00  1.00
+abcs-rc-abrs            f64    real  BA   194688       52     3744       52     1  1.00  1.00  1.00  <- rule
+abcs-rc-abrs            c32  planar  AB       52   194688       52     3744  3744  1.00  1.00  1.00
+abcs-rc-abrs            c32  planar  BA   194688       52     3744       52     1  1.00  1.00  1.00  <- rule
+abcs-rc-abrs            c32      1m  AB       52   194688       52     3744  3744  1.00  1.00  1.00
+abcs-rc-abrs            c32      1m  BA   194688       52     3744       52     1  1.00  1.00  1.00  <- rule
+abcs-rc-abrs            c32      3m  AB       52   194688       52     3744  3744  1.00  1.00  1.00
+abcs-rc-abrs            c32      3m  BA   194688       52     3744       52     1  1.00  1.00  1.00  <- rule
+abcs-rc-abrs            c64  planar  AB       52   194688       52     3744  3744  1.00  1.00  1.00
+abcs-rc-abrs            c64  planar  BA   194688       52     3744       52     1  1.00  1.00  1.00  <- rule
+abcs-rc-abrs            c64      1m  AB       52   194688       52     3744  3744  1.00  1.00  1.00
+abcs-rc-abrs            c64      1m  BA   194688       52     3744       52     1  1.00  1.00  1.00  <- rule
+abcs-rc-abrs            c64      3m  AB       52   194688       52     3744  3744  1.00  1.00  1.00
+abcs-rc-abrs            c64      3m  BA   194688       52     3744       52     1  1.00  1.00  1.00  <- rule
+abj-bka-kj              f32    real  AB    46656      204    46656      204     1  1.00  1.00  1.00  <- rule
+abj-bka-kj              f32    real  BA      204    46656      204    46656 46656  1.00  1.00  1.00
+abj-bka-kj              f64    real  AB    46656      204    46656      204     1  1.00  1.00  1.00  <- rule
+abj-bka-kj              f64    real  BA      204    46656      204    46656 46656  1.00  1.00  1.00
+abj-bka-kj              c32  planar  AB    46656      204    46656      204     1  1.00  1.00  1.00  <- rule
+abj-bka-kj              c32  planar  BA      204    46656      204    46656 46656  1.00  1.00  1.00
+abj-bka-kj              c32      1m  AB    46656      204    46656      204     1  1.00  1.00  1.00  <- rule
+abj-bka-kj              c32      1m  BA      204    46656      204    46656 46656  1.00  1.00  1.00
+abj-bka-kj              c32      3m  AB    46656      204    46656      204     1  1.00  1.00  1.00  <- rule
+abj-bka-kj              c32      3m  BA      204    46656      204    46656 46656  1.00  1.00  1.00
+abj-bka-kj              c64  planar  AB    46656      204    46656      204     1  1.00  1.00  1.00  <- rule
+abj-bka-kj              c64  planar  BA      204    46656      204    46656 46656  1.00  1.00  1.00
+abj-bka-kj              c64      1m  AB    46656      204    46656      204     1  1.00  1.00  1.00  <- rule
+abj-bka-kj              c64      1m  BA      204    46656      204    46656 46656  1.00  1.00  1.00
+abj-bka-kj              c64      3m  AB    46656      204    46656      204     1  1.00  1.00  1.00  <- rule
+abj-bka-kj              c64      3m  BA      204    46656      204    46656 46656  1.00  1.00  1.00
+ajb-kba-jk              f32    real  AB    44064      216      216      216     1  1.00  1.00  1.00  <- rule
+ajb-kba-jk              f32    real  BA      216    44064      216      216   216  1.00  1.00  1.00
+ajb-kba-jk              f64    real  AB    44064      216      216      216     1  1.00  1.00  1.00  <- rule
+ajb-kba-jk              f64    real  BA      216    44064      216      216   216  1.00  1.00  1.00
+ajb-kba-jk              c32  planar  AB    44064      216      216      216     1  1.00  1.00  1.00  <- rule
+ajb-kba-jk              c32  planar  BA      216    44064      216      216   216  1.00  1.00  1.00
+ajb-kba-jk              c32      1m  AB    44064      216      216      216     1  1.00  1.00  1.00  <- rule
+ajb-kba-jk              c32      1m  BA      216    44064      216      216   216  1.00  1.00  1.00
+ajb-kba-jk              c32      3m  AB    44064      216      216      216     1  1.00  1.00  1.00  <- rule
+ajb-kba-jk              c32      3m  BA      216    44064      216      216   216  1.00  1.00  1.00
+ajb-kba-jk              c64  planar  AB    44064      216      216      216     1  1.00  1.00  1.00  <- rule
+ajb-kba-jk              c64  planar  BA      216    44064      216      216   216  1.00  1.00  1.00
+ajb-kba-jk              c64      1m  AB    44064      216      216      216     1  1.00  1.00  1.00  <- rule
+ajb-kba-jk              c64      1m  BA      216    44064      216      216   216  1.00  1.00  1.00
+ajb-kba-jk              c64      3m  AB    44064      216      216      216     1  1.00  1.00  1.00  <- rule
+ajb-kba-jk              c64      3m  BA      216    44064      216      216   216  1.00  1.00  1.00
+abjc-cbka-kj            f32    real  AB   269568       52     3744       52     1  1.00  1.00  1.00  <- rule
+abjc-cbka-kj            f32    real  BA       52   269568       52     3744  3744  1.00  1.00  1.00
+abjc-cbka-kj            f64    real  AB   269568       52     3744       52     1  1.00  1.00  1.00  <- rule
+abjc-cbka-kj            f64    real  BA       52   269568       52     3744  3744  1.00  1.00  1.00
+abjc-cbka-kj            c32  planar  AB   269568       52     3744       52     1  1.00  1.00  1.00  <- rule
+abjc-cbka-kj            c32  planar  BA       52   269568       52     3744  3744  1.00  1.00  1.00
+abjc-cbka-kj            c32      1m  AB   269568       52     3744       52     1  1.00  1.00  1.00  <- rule
+abjc-cbka-kj            c32      1m  BA       52   269568       52     3744  3744  1.00  1.00  1.00
+abjc-cbka-kj            c32      3m  AB   269568       52     3744       52     1  1.00  1.00  1.00  <- rule
+abjc-cbka-kj            c32      3m  BA       52   269568       52     3744  3744  1.00  1.00  1.00
+abjc-cbka-kj            c64  planar  AB   269568       52     3744       52     1  1.00  1.00  1.00  <- rule
+abjc-cbka-kj            c64  planar  BA       52   269568       52     3744  3744  1.00  1.00  1.00
+abjc-cbka-kj            c64      1m  AB   269568       52     3744       52     1  1.00  1.00  1.00  <- rule
+abjc-cbka-kj            c64      1m  BA       52   269568       52     3744  3744  1.00  1.00  1.00
+abjc-cbka-kj            c64      3m  AB   269568       52     3744       52     1  1.00  1.00  1.00  <- rule
+abjc-cbka-kj            c64      3m  BA       52   269568       52     3744  3744  1.00  1.00  1.00
+ajbc-ckba-jk            f32    real  AB   269568       72       72       72     1  1.00  1.00  1.00  <- rule
+ajbc-ckba-jk            f32    real  BA       72   269568       72       72    72  1.00  1.00  1.00
+ajbc-ckba-jk            f64    real  AB   269568       72       72       72     1  1.00  1.00  1.00  <- rule
+ajbc-ckba-jk            f64    real  BA       72   269568       72       72    72  1.00  1.00  1.00
+ajbc-ckba-jk            c32  planar  AB   269568       72       72       72     1  1.00  1.00  1.00  <- rule
+ajbc-ckba-jk            c32  planar  BA       72   269568       72       72    72  1.00  1.00  1.00
+ajbc-ckba-jk            c32      1m  AB   269568       72       72       72     1  1.00  1.00  1.00  <- rule
+ajbc-ckba-jk            c32      1m  BA       72   269568       72       72    72  1.00  1.00  1.00
+ajbc-ckba-jk            c32      3m  AB   269568       72       72       72     1  1.00  1.00  1.00  <- rule
+ajbc-ckba-jk            c32      3m  BA       72   269568       72       72    72  1.00  1.00  1.00
+ajbc-ckba-jk            c64  planar  AB   269568       72       72       72     1  1.00  1.00  1.00  <- rule
+ajbc-ckba-jk            c64  planar  BA       72   269568       72       72    72  1.00  1.00  1.00
+ajbc-ckba-jk            c64      1m  AB   269568       72       72       72     1  1.00  1.00  1.00  <- rule
+ajbc-ckba-jk            c64      1m  BA       72   269568       72       72    72  1.00  1.00  1.00
+ajbc-ckba-jk            c64      3m  AB   269568       72       72       72     1  1.00  1.00  1.00  <- rule
+ajbc-ckba-jk            c64      3m  BA       72   269568       72       72    72  1.00  1.00  1.00
+abjc-kbac-jk            f32    real  AB   194688       72     3744       72     1  1.00  1.00  1.00  <- rule
+abjc-kbac-jk            f32    real  BA       72   194688       72     3744  3744  1.00  1.00  1.00
+abjc-kbac-jk            f64    real  AB   194688       72     3744       72     1  1.00  1.00  1.00  <- rule
+abjc-kbac-jk            f64    real  BA       72   194688       72     3744  3744  1.00  1.00  1.00
+abjc-kbac-jk            c32  planar  AB   194688       72     3744       72     1  1.00  1.00  1.00  <- rule
+abjc-kbac-jk            c32  planar  BA       72   194688       72     3744  3744  1.00  1.00  1.00
+abjc-kbac-jk            c32      1m  AB   194688       72     3744       72     1  1.00  1.00  1.00  <- rule
+abjc-kbac-jk            c32      1m  BA       72   194688       72     3744  3744  1.00  1.00  1.00
+abjc-kbac-jk            c32      3m  AB   194688       72     3744       72     1  1.00  1.00  1.00  <- rule
+abjc-kbac-jk            c32      3m  BA       72   194688       72     3744  3744  1.00  1.00  1.00
+abjc-kbac-jk            c64  planar  AB   194688       72     3744       72     1  1.00  1.00  1.00  <- rule
+abjc-kbac-jk            c64  planar  BA       72   194688       72     3744  3744  1.00  1.00  1.00
+abjc-kbac-jk            c64      1m  AB   194688       72     3744       72     1  1.00  1.00  1.00  <- rule
+abjc-kbac-jk            c64      1m  BA       72   194688       72     3744  3744  1.00  1.00  1.00
+abjc-kbac-jk            c64      3m  AB   194688       72     3744       72     1  1.00  1.00  1.00  <- rule
+abjc-kbac-jk            c64      3m  BA       72   194688       72     3744  3744  1.00  1.00  1.00
+abjcd-dkbac-jk          f32    real  AB   331776       24      576       24     1  1.00  1.00  1.00  <- rule
+abjcd-dkbac-jk          f32    real  BA       24   331776       24      576   576  1.00  1.00  1.00
+abjcd-dkbac-jk          f64    real  AB   331776       24      576       24     1  1.00  1.00  1.00  <- rule
+abjcd-dkbac-jk          f64    real  BA       24   331776       24      576   576  1.00  1.00  1.00
+abjcd-dkbac-jk          c32  planar  AB   331776       24      576       24     1  1.00  1.00  1.00  <- rule
+abjcd-dkbac-jk          c32  planar  BA       24   331776       24      576   576  1.00  1.00  1.00
+abjcd-dkbac-jk          c32      1m  AB   331776       24      576       24     1  1.00  1.00  1.00  <- rule
+abjcd-dkbac-jk          c32      1m  BA       24   331776       24      576   576  1.00  1.00  1.00
+abjcd-dkbac-jk          c32      3m  AB   331776       24      576       24     1  1.00  1.00  1.00  <- rule
+abjcd-dkbac-jk          c32      3m  BA       24   331776       24      576   576  1.00  1.00  1.00
+abjcd-dkbac-jk          c64  planar  AB   331776       24      576       24     1  1.00  1.00  1.00  <- rule
+abjcd-dkbac-jk          c64  planar  BA       24   331776       24      576   576  1.00  1.00  1.00
+abjcd-dkbac-jk          c64      1m  AB   331776       24      576       24     1  1.00  1.00  1.00  <- rule
+abjcd-dkbac-jk          c64      1m  BA       24   331776       24      576   576  1.00  1.00  1.00
+abjcd-dkbac-jk          c64      3m  AB   331776       24      576       24     1  1.00  1.00  1.00  <- rule
+abjcd-dkbac-jk          c64      3m  BA       24   331776       24      576   576  1.00  1.00  1.00
+adbjc-cbdka-kj          f32    real  AB   331776       24    13824       24     1  1.00  1.00  1.00  <- rule
+adbjc-cbdka-kj          f32    real  BA       24   331776       24    13824 13824  1.00  1.00  1.00
+adbjc-cbdka-kj          f64    real  AB   331776       24    13824       24     1  1.00  1.00  1.00  <- rule
+adbjc-cbdka-kj          f64    real  BA       24   331776       24    13824 13824  1.00  1.00  1.00
+adbjc-cbdka-kj          c32  planar  AB   331776       24    13824       24     1  1.00  1.00  1.00  <- rule
+adbjc-cbdka-kj          c32  planar  BA       24   331776       24    13824 13824  1.00  1.00  1.00
+adbjc-cbdka-kj          c32      1m  AB   331776       24    13824       24     1  1.00  1.00  1.00  <- rule
+adbjc-cbdka-kj          c32      1m  BA       24   331776       24    13824 13824  1.00  1.00  1.00
+adbjc-cbdka-kj          c32      3m  AB   331776       24    13824       24     1  1.00  1.00  1.00  <- rule
+adbjc-cbdka-kj          c32      3m  BA       24   331776       24    13824 13824  1.00  1.00  1.00
+adbjc-cbdka-kj          c64  planar  AB   331776       24    13824       24     1  1.00  1.00  1.00  <- rule
+adbjc-cbdka-kj          c64  planar  BA       24   331776       24    13824 13824  1.00  1.00  1.00
+adbjc-cbdka-kj          c64      1m  AB   331776       24    13824       24     1  1.00  1.00  1.00  <- rule
+adbjc-cbdka-kj          c64      1m  BA       24   331776       24    13824 13824  1.00  1.00  1.00
+adbjc-cbdka-kj          c64      3m  AB   331776       24    13824       24     1  1.00  1.00  1.00  <- rule
+adbjc-cbdka-kj          c64      3m  BA       24   331776       24    13824 13824  1.00  1.00  1.00
+ajbdc-ckbad-jk          f32    real  AB   331776       24       24       24     1  1.00  1.00  1.00  <- rule
+ajbdc-ckbad-jk          f32    real  BA       24   331776       24       24    24  1.00  1.00  1.00
+ajbdc-ckbad-jk          f64    real  AB   331776       24       24       24     1  1.00  1.00  1.00  <- rule
+ajbdc-ckbad-jk          f64    real  BA       24   331776       24       24    24  1.00  1.00  1.00
+ajbdc-ckbad-jk          c32  planar  AB   331776       24       24       24     1  1.00  1.00  1.00  <- rule
+ajbdc-ckbad-jk          c32  planar  BA       24   331776       24       24    24  1.00  1.00  1.00
+ajbdc-ckbad-jk          c32      1m  AB   331776       24       24       24     1  1.00  1.00  1.00  <- rule
+ajbdc-ckbad-jk          c32      1m  BA       24   331776       24       24    24  1.00  1.00  1.00
+ajbdc-ckbad-jk          c32      3m  AB   331776       24       24       24     1  1.00  1.00  1.00  <- rule
+ajbdc-ckbad-jk          c32      3m  BA       24   331776       24       24    24  1.00  1.00  1.00
+ajbdc-ckbad-jk          c64  planar  AB   331776       24       24       24     1  1.00  1.00  1.00  <- rule
+ajbdc-ckbad-jk          c64  planar  BA       24   331776       24       24    24  1.00  1.00  1.00
+ajbdc-ckbad-jk          c64      1m  AB   331776       24       24       24     1  1.00  1.00  1.00  <- rule
+ajbdc-ckbad-jk          c64      1m  BA       24   331776       24       24    24  1.00  1.00  1.00
+ajbdc-ckbad-jk          c64      3m  AB   331776       24       24       24     1  1.00  1.00  1.00  <- rule
+ajbdc-ckbad-jk          c64      3m  BA       24   331776       24       24    24  1.00  1.00  1.00
+abcijk-ijma-mkbc        f32    real  AB     9216     4096       24      256     1  1.00  1.00  1.00  <- rule
+abcijk-ijma-mkbc        f32    real  BA     4096     9216      256       24    24  1.00  1.00  1.00
+abcijk-ijma-mkbc        f64    real  AB     9216     4096       24      256     1  1.00  1.00  1.00  <- rule
+abcijk-ijma-mkbc        f64    real  BA     4096     9216      256       24    24  1.00  1.00  1.00
+abcijk-ijma-mkbc        c32  planar  AB     9216     4096       24      256     1  1.00  1.00  1.00  <- rule
+abcijk-ijma-mkbc        c32  planar  BA     4096     9216      256       24    24  1.00  1.00  1.00
+abcijk-ijma-mkbc        c32      1m  AB     9216     4096       24      256     1  1.00  1.00  1.00  <- rule
+abcijk-ijma-mkbc        c32      1m  BA     4096     9216      256       24    24  1.00  1.00  1.00
+abcijk-ijma-mkbc        c32      3m  AB     9216     4096       24      256     1  1.00  1.00  1.00  <- rule
+abcijk-ijma-mkbc        c32      3m  BA     4096     9216      256       24    24  1.00  1.00  1.00
+abcijk-ijma-mkbc        c64  planar  AB     9216     4096       24      256     1  1.00  1.00  1.00  <- rule
+abcijk-ijma-mkbc        c64  planar  BA     4096     9216      256       24    24  1.00  1.00  1.00
+abcijk-ijma-mkbc        c64      1m  AB     9216     4096       24      256     1  1.00  1.00  1.00  <- rule
+abcijk-ijma-mkbc        c64      1m  BA     4096     9216      256       24    24  1.00  1.00  1.00
+abcijk-ijma-mkbc        c64      3m  AB     9216     4096       24      256     1  1.00  1.00  1.00  <- rule
+abcijk-ijma-mkbc        c64      3m  BA     4096     9216      256       24    24  1.00  1.00  1.00
+abcijk-ijmb-mkac        f32    real  AB     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-ijmb-mkac        f32    real  BA     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-ijmb-mkac        f64    real  AB     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-ijmb-mkac        f64    real  BA     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-ijmb-mkac        c32  planar  AB     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-ijmb-mkac        c32  planar  BA     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-ijmb-mkac        c32      1m  AB     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-ijmb-mkac        c32      1m  BA     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-ijmb-mkac        c32      3m  AB     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-ijmb-mkac        c32      3m  BA     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-ijmb-mkac        c64  planar  AB     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-ijmb-mkac        c64  planar  BA     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-ijmb-mkac        c64      1m  AB     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-ijmb-mkac        c64      1m  BA     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-ijmb-mkac        c64      3m  AB     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-ijmb-mkac        c64      3m  BA     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-ijmc-mkab        f32    real  AB     6144     6144     6144      384   384  1.00  1.00  1.00
+abcijk-ijmc-mkab        f32    real  BA     6144     6144      384     6144     1  1.00  1.00  1.00  <- rule
+abcijk-ijmc-mkab        f64    real  AB     6144     6144     6144      384   384  1.00  1.00  1.00
+abcijk-ijmc-mkab        f64    real  BA     6144     6144      384     6144     1  1.00  1.00  1.00  <- rule
+abcijk-ijmc-mkab        c32  planar  AB     6144     6144     6144      384   384  1.00  1.00  1.00
+abcijk-ijmc-mkab        c32  planar  BA     6144     6144      384     6144     1  1.00  1.00  1.00  <- rule
+abcijk-ijmc-mkab        c32      1m  AB     6144     6144     6144      384   384  1.00  1.00  1.00
+abcijk-ijmc-mkab        c32      1m  BA     6144     6144      384     6144     1  1.00  1.00  1.00  <- rule
+abcijk-ijmc-mkab        c32      3m  AB     6144     6144     6144      384   384  1.00  1.00  1.00
+abcijk-ijmc-mkab        c32      3m  BA     6144     6144      384     6144     1  1.00  1.00  1.00  <- rule
+abcijk-ijmc-mkab        c64  planar  AB     6144     6144     6144      384   384  1.00  1.00  1.00
+abcijk-ijmc-mkab        c64  planar  BA     6144     6144      384     6144     1  1.00  1.00  1.00  <- rule
+abcijk-ijmc-mkab        c64      1m  AB     6144     6144     6144      384   384  1.00  1.00  1.00
+abcijk-ijmc-mkab        c64      1m  BA     6144     6144      384     6144     1  1.00  1.00  1.00  <- rule
+abcijk-ijmc-mkab        c64      3m  AB     6144     6144     6144      384   384  1.00  1.00  1.00
+abcijk-ijmc-mkab        c64      3m  BA     6144     6144      384     6144     1  1.00  1.00  1.00  <- rule
+abcijk-ikma-mjbc        f32    real  AB     9216     4096       24      256     1  1.00  1.00  1.00  <- rule
+abcijk-ikma-mjbc        f32    real  BA     4096     9216      256       24    24  1.00  1.00  1.00
+abcijk-ikma-mjbc        f64    real  AB     9216     4096       24      256     1  1.00  1.00  1.00  <- rule
+abcijk-ikma-mjbc        f64    real  BA     4096     9216      256       24    24  1.00  1.00  1.00
+abcijk-ikma-mjbc        c32  planar  AB     9216     4096       24      256     1  1.00  1.00  1.00  <- rule
+abcijk-ikma-mjbc        c32  planar  BA     4096     9216      256       24    24  1.00  1.00  1.00
+abcijk-ikma-mjbc        c32      1m  AB     9216     4096       24      256     1  1.00  1.00  1.00  <- rule
+abcijk-ikma-mjbc        c32      1m  BA     4096     9216      256       24    24  1.00  1.00  1.00
+abcijk-ikma-mjbc        c32      3m  AB     9216     4096       24      256     1  1.00  1.00  1.00  <- rule
+abcijk-ikma-mjbc        c32      3m  BA     4096     9216      256       24    24  1.00  1.00  1.00
+abcijk-ikma-mjbc        c64  planar  AB     9216     4096       24      256     1  1.00  1.00  1.00  <- rule
+abcijk-ikma-mjbc        c64  planar  BA     4096     9216      256       24    24  1.00  1.00  1.00
+abcijk-ikma-mjbc        c64      1m  AB     9216     4096       24      256     1  1.00  1.00  1.00  <- rule
+abcijk-ikma-mjbc        c64      1m  BA     4096     9216      256       24    24  1.00  1.00  1.00
+abcijk-ikma-mjbc        c64      3m  AB     9216     4096       24      256     1  1.00  1.00  1.00  <- rule
+abcijk-ikma-mjbc        c64      3m  BA     4096     9216      256       24    24  1.00  1.00  1.00
+abcijk-ikmb-mjac        f32    real  AB     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-ikmb-mjac        f32    real  BA     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-ikmb-mjac        f64    real  AB     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-ikmb-mjac        f64    real  BA     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-ikmb-mjac        c32  planar  AB     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-ikmb-mjac        c32  planar  BA     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-ikmb-mjac        c32      1m  AB     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-ikmb-mjac        c32      1m  BA     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-ikmb-mjac        c32      3m  AB     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-ikmb-mjac        c32      3m  BA     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-ikmb-mjac        c64  planar  AB     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-ikmb-mjac        c64  planar  BA     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-ikmb-mjac        c64      1m  AB     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-ikmb-mjac        c64      1m  BA     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-ikmb-mjac        c64      3m  AB     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-ikmb-mjac        c64      3m  BA     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-ikmc-mjab        f32    real  AB     6144     6144      384      384   384  1.00  1.00  1.00
+abcijk-ikmc-mjab        f32    real  BA     6144     6144      384      384     1  1.00  1.00  1.00  <- rule
+abcijk-ikmc-mjab        f64    real  AB     6144     6144      384      384   384  1.00  1.00  1.00
+abcijk-ikmc-mjab        f64    real  BA     6144     6144      384      384     1  1.00  1.00  1.00  <- rule
+abcijk-ikmc-mjab        c32  planar  AB     6144     6144      384      384   384  1.00  1.00  1.00
+abcijk-ikmc-mjab        c32  planar  BA     6144     6144      384      384     1  1.00  1.00  1.00  <- rule
+abcijk-ikmc-mjab        c32      1m  AB     6144     6144      384      384   384  1.00  1.00  1.00
+abcijk-ikmc-mjab        c32      1m  BA     6144     6144      384      384     1  1.00  1.00  1.00  <- rule
+abcijk-ikmc-mjab        c32      3m  AB     6144     6144      384      384   384  1.00  1.00  1.00
+abcijk-ikmc-mjab        c32      3m  BA     6144     6144      384      384     1  1.00  1.00  1.00  <- rule
+abcijk-ikmc-mjab        c64  planar  AB     6144     6144      384      384   384  1.00  1.00  1.00
+abcijk-ikmc-mjab        c64  planar  BA     6144     6144      384      384     1  1.00  1.00  1.00  <- rule
+abcijk-ikmc-mjab        c64      1m  AB     6144     6144      384      384   384  1.00  1.00  1.00
+abcijk-ikmc-mjab        c64      1m  BA     6144     6144      384      384     1  1.00  1.00  1.00  <- rule
+abcijk-ikmc-mjab        c64      3m  AB     6144     6144      384      384   384  1.00  1.00  1.00
+abcijk-ikmc-mjab        c64      3m  BA     6144     6144      384      384     1  1.00  1.00  1.00  <- rule
+abcijk-jkma-mibc        f32    real  AB     9216     4096       24     4096     1  1.00  1.00  1.00  <- rule
+abcijk-jkma-mibc        f32    real  BA     4096     9216     4096       24    24  1.00  1.00  1.00
+abcijk-jkma-mibc        f64    real  AB     9216     4096       24     4096     1  1.00  1.00  1.00  <- rule
+abcijk-jkma-mibc        f64    real  BA     4096     9216     4096       24    24  1.00  1.00  1.00
+abcijk-jkma-mibc        c32  planar  AB     9216     4096       24     4096     1  1.00  1.00  1.00  <- rule
+abcijk-jkma-mibc        c32  planar  BA     4096     9216     4096       24    24  1.00  1.00  1.00
+abcijk-jkma-mibc        c32      1m  AB     9216     4096       24     4096     1  1.00  1.00  1.00  <- rule
+abcijk-jkma-mibc        c32      1m  BA     4096     9216     4096       24    24  1.00  1.00  1.00
+abcijk-jkma-mibc        c32      3m  AB     9216     4096       24     4096     1  1.00  1.00  1.00  <- rule
+abcijk-jkma-mibc        c32      3m  BA     4096     9216     4096       24    24  1.00  1.00  1.00
+abcijk-jkma-mibc        c64  planar  AB     9216     4096       24     4096     1  1.00  1.00  1.00  <- rule
+abcijk-jkma-mibc        c64  planar  BA     4096     9216     4096       24    24  1.00  1.00  1.00
+abcijk-jkma-mibc        c64      1m  AB     9216     4096       24     4096     1  1.00  1.00  1.00  <- rule
+abcijk-jkma-mibc        c64      1m  BA     4096     9216     4096       24    24  1.00  1.00  1.00
+abcijk-jkma-mibc        c64      3m  AB     9216     4096       24     4096     1  1.00  1.00  1.00  <- rule
+abcijk-jkma-mibc        c64      3m  BA     4096     9216     4096       24    24  1.00  1.00  1.00
+abcijk-jkmb-miac        f32    real  AB     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-jkmb-miac        f32    real  BA     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-jkmb-miac        f64    real  AB     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-jkmb-miac        f64    real  BA     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-jkmb-miac        c32  planar  AB     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-jkmb-miac        c32  planar  BA     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-jkmb-miac        c32      1m  AB     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-jkmb-miac        c32      1m  BA     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-jkmb-miac        c32      3m  AB     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-jkmb-miac        c32      3m  BA     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-jkmb-miac        c64  planar  AB     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-jkmb-miac        c64  planar  BA     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-jkmb-miac        c64      1m  AB     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-jkmb-miac        c64      1m  BA     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-jkmb-miac        c64      3m  AB     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-jkmb-miac        c64      3m  BA     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-jkmc-miab        f32    real  AB     6144     6144       16      384   384  1.00  1.00  1.00
+abcijk-jkmc-miab        f32    real  BA     6144     6144      384       16     1  1.00  1.00  1.00  <- rule
+abcijk-jkmc-miab        f64    real  AB     6144     6144       16      384   384  1.00  1.00  1.00
+abcijk-jkmc-miab        f64    real  BA     6144     6144      384       16     1  1.00  1.00  1.00  <- rule
+abcijk-jkmc-miab        c32  planar  AB     6144     6144       16      384   384  1.00  1.00  1.00
+abcijk-jkmc-miab        c32  planar  BA     6144     6144      384       16     1  1.00  1.00  1.00  <- rule
+abcijk-jkmc-miab        c32      1m  AB     6144     6144       16      384   384  1.00  1.00  1.00
+abcijk-jkmc-miab        c32      1m  BA     6144     6144      384       16     1  1.00  1.00  1.00  <- rule
+abcijk-jkmc-miab        c32      3m  AB     6144     6144       16      384   384  1.00  1.00  1.00
+abcijk-jkmc-miab        c32      3m  BA     6144     6144      384       16     1  1.00  1.00  1.00  <- rule
+abcijk-jkmc-miab        c64  planar  AB     6144     6144       16      384   384  1.00  1.00  1.00
+abcijk-jkmc-miab        c64  planar  BA     6144     6144      384       16     1  1.00  1.00  1.00  <- rule
+abcijk-jkmc-miab        c64      1m  AB     6144     6144       16      384   384  1.00  1.00  1.00
+abcijk-jkmc-miab        c64      1m  BA     6144     6144      384       16     1  1.00  1.00  1.00  <- rule
+abcijk-jkmc-miab        c64      3m  AB     6144     6144       16      384   384  1.00  1.00  1.00
+abcijk-jkmc-miab        c64      3m  BA     6144     6144      384       16     1  1.00  1.00  1.00  <- rule
+abcijk-eiab-jkec        f32    real  AB     6144     6144      384       16     1  1.00  1.00  1.00  <- rule
+abcijk-eiab-jkec        f32    real  BA     6144     6144       16      384   384  1.00  1.00  1.00
+abcijk-eiab-jkec        f64    real  AB     6144     6144      384       16     1  1.00  1.00  1.00  <- rule
+abcijk-eiab-jkec        f64    real  BA     6144     6144       16      384   384  1.00  1.00  1.00
+abcijk-eiab-jkec        c32  planar  AB     6144     6144      384       16     1  1.00  1.00  1.00  <- rule
+abcijk-eiab-jkec        c32  planar  BA     6144     6144       16      384   384  1.00  1.00  1.00
+abcijk-eiab-jkec        c32      1m  AB     6144     6144      384       16     1  1.00  1.00  1.00  <- rule
+abcijk-eiab-jkec        c32      1m  BA     6144     6144       16      384   384  1.00  1.00  1.00
+abcijk-eiab-jkec        c32      3m  AB     6144     6144      384       16     1  1.00  1.00  1.00  <- rule
+abcijk-eiab-jkec        c32      3m  BA     6144     6144       16      384   384  1.00  1.00  1.00
+abcijk-eiab-jkec        c64  planar  AB     6144     6144      384       16     1  1.00  1.00  1.00  <- rule
+abcijk-eiab-jkec        c64  planar  BA     6144     6144       16      384   384  1.00  1.00  1.00
+abcijk-eiab-jkec        c64      1m  AB     6144     6144      384       16     1  1.00  1.00  1.00  <- rule
+abcijk-eiab-jkec        c64      1m  BA     6144     6144       16      384   384  1.00  1.00  1.00
+abcijk-eiab-jkec        c64      3m  AB     6144     6144      384       16     1  1.00  1.00  1.00  <- rule
+abcijk-eiab-jkec        c64      3m  BA     6144     6144       16      384   384  1.00  1.00  1.00
+abcijk-eiac-jkeb        f32    real  AB     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-eiac-jkeb        f32    real  BA     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-eiac-jkeb        f64    real  AB     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-eiac-jkeb        f64    real  BA     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-eiac-jkeb        c32  planar  AB     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-eiac-jkeb        c32  planar  BA     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-eiac-jkeb        c32      1m  AB     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-eiac-jkeb        c32      1m  BA     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-eiac-jkeb        c32      3m  AB     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-eiac-jkeb        c32      3m  BA     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-eiac-jkeb        c64  planar  AB     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-eiac-jkeb        c64  planar  BA     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-eiac-jkeb        c64      1m  AB     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-eiac-jkeb        c64      1m  BA     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-eiac-jkeb        c64      3m  AB     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-eiac-jkeb        c64      3m  BA     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-eibc-jkea        f32    real  AB     4096     9216     4096       24    24  1.00  1.00  1.00
+abcijk-eibc-jkea        f32    real  BA     9216     4096       24     4096     1  1.00  1.00  1.00  <- rule
+abcijk-eibc-jkea        f64    real  AB     4096     9216     4096       24    24  1.00  1.00  1.00
+abcijk-eibc-jkea        f64    real  BA     9216     4096       24     4096     1  1.00  1.00  1.00  <- rule
+abcijk-eibc-jkea        c32  planar  AB     4096     9216     4096       24    24  1.00  1.00  1.00
+abcijk-eibc-jkea        c32  planar  BA     9216     4096       24     4096     1  1.00  1.00  1.00  <- rule
+abcijk-eibc-jkea        c32      1m  AB     4096     9216     4096       24    24  1.00  1.00  1.00
+abcijk-eibc-jkea        c32      1m  BA     9216     4096       24     4096     1  1.00  1.00  1.00  <- rule
+abcijk-eibc-jkea        c32      3m  AB     4096     9216     4096       24    24  1.00  1.00  1.00
+abcijk-eibc-jkea        c32      3m  BA     9216     4096       24     4096     1  1.00  1.00  1.00  <- rule
+abcijk-eibc-jkea        c64  planar  AB     4096     9216     4096       24    24  1.00  1.00  1.00
+abcijk-eibc-jkea        c64  planar  BA     9216     4096       24     4096     1  1.00  1.00  1.00  <- rule
+abcijk-eibc-jkea        c64      1m  AB     4096     9216     4096       24    24  1.00  1.00  1.00
+abcijk-eibc-jkea        c64      1m  BA     9216     4096       24     4096     1  1.00  1.00  1.00  <- rule
+abcijk-eibc-jkea        c64      3m  AB     4096     9216     4096       24    24  1.00  1.00  1.00
+abcijk-eibc-jkea        c64      3m  BA     9216     4096       24     4096     1  1.00  1.00  1.00  <- rule
+abcijk-ejab-ikec        f32    real  AB     6144     6144      384      384     1  1.00  1.00  1.00  <- rule
+abcijk-ejab-ikec        f32    real  BA     6144     6144      384      384   384  1.00  1.00  1.00
+abcijk-ejab-ikec        f64    real  AB     6144     6144      384      384     1  1.00  1.00  1.00  <- rule
+abcijk-ejab-ikec        f64    real  BA     6144     6144      384      384   384  1.00  1.00  1.00
+abcijk-ejab-ikec        c32  planar  AB     6144     6144      384      384     1  1.00  1.00  1.00  <- rule
+abcijk-ejab-ikec        c32  planar  BA     6144     6144      384      384   384  1.00  1.00  1.00
+abcijk-ejab-ikec        c32      1m  AB     6144     6144      384      384     1  1.00  1.00  1.00  <- rule
+abcijk-ejab-ikec        c32      1m  BA     6144     6144      384      384   384  1.00  1.00  1.00
+abcijk-ejab-ikec        c32      3m  AB     6144     6144      384      384     1  1.00  1.00  1.00  <- rule
+abcijk-ejab-ikec        c32      3m  BA     6144     6144      384      384   384  1.00  1.00  1.00
+abcijk-ejab-ikec        c64  planar  AB     6144     6144      384      384     1  1.00  1.00  1.00  <- rule
+abcijk-ejab-ikec        c64  planar  BA     6144     6144      384      384   384  1.00  1.00  1.00
+abcijk-ejab-ikec        c64      1m  AB     6144     6144      384      384     1  1.00  1.00  1.00  <- rule
+abcijk-ejab-ikec        c64      1m  BA     6144     6144      384      384   384  1.00  1.00  1.00
+abcijk-ejab-ikec        c64      3m  AB     6144     6144      384      384     1  1.00  1.00  1.00  <- rule
+abcijk-ejab-ikec        c64      3m  BA     6144     6144      384      384   384  1.00  1.00  1.00
+abcijk-ejac-ikeb        f32    real  AB     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-ejac-ikeb        f32    real  BA     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-ejac-ikeb        f64    real  AB     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-ejac-ikeb        f64    real  BA     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-ejac-ikeb        c32  planar  AB     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-ejac-ikeb        c32  planar  BA     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-ejac-ikeb        c32      1m  AB     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-ejac-ikeb        c32      1m  BA     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-ejac-ikeb        c32      3m  AB     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-ejac-ikeb        c32      3m  BA     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-ejac-ikeb        c64  planar  AB     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-ejac-ikeb        c64  planar  BA     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-ejac-ikeb        c64      1m  AB     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-ejac-ikeb        c64      1m  BA     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-ejac-ikeb        c64      3m  AB     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-ejac-ikeb        c64      3m  BA     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-ejbc-ikea        f32    real  AB     4096     9216      256       24    24  1.00  1.00  1.00
+abcijk-ejbc-ikea        f32    real  BA     9216     4096       24      256     1  1.00  1.00  1.00  <- rule
+abcijk-ejbc-ikea        f64    real  AB     4096     9216      256       24    24  1.00  1.00  1.00
+abcijk-ejbc-ikea        f64    real  BA     9216     4096       24      256     1  1.00  1.00  1.00  <- rule
+abcijk-ejbc-ikea        c32  planar  AB     4096     9216      256       24    24  1.00  1.00  1.00
+abcijk-ejbc-ikea        c32  planar  BA     9216     4096       24      256     1  1.00  1.00  1.00  <- rule
+abcijk-ejbc-ikea        c32      1m  AB     4096     9216      256       24    24  1.00  1.00  1.00
+abcijk-ejbc-ikea        c32      1m  BA     9216     4096       24      256     1  1.00  1.00  1.00  <- rule
+abcijk-ejbc-ikea        c32      3m  AB     4096     9216      256       24    24  1.00  1.00  1.00
+abcijk-ejbc-ikea        c32      3m  BA     9216     4096       24      256     1  1.00  1.00  1.00  <- rule
+abcijk-ejbc-ikea        c64  planar  AB     4096     9216      256       24    24  1.00  1.00  1.00
+abcijk-ejbc-ikea        c64  planar  BA     9216     4096       24      256     1  1.00  1.00  1.00  <- rule
+abcijk-ejbc-ikea        c64      1m  AB     4096     9216      256       24    24  1.00  1.00  1.00
+abcijk-ejbc-ikea        c64      1m  BA     9216     4096       24      256     1  1.00  1.00  1.00  <- rule
+abcijk-ejbc-ikea        c64      3m  AB     4096     9216      256       24    24  1.00  1.00  1.00
+abcijk-ejbc-ikea        c64      3m  BA     9216     4096       24      256     1  1.00  1.00  1.00  <- rule
+abcijk-ekab-ijec        f32    real  AB     6144     6144      384     6144     1  1.00  1.00  1.00  <- rule
+abcijk-ekab-ijec        f32    real  BA     6144     6144     6144      384   384  1.00  1.00  1.00
+abcijk-ekab-ijec        f64    real  AB     6144     6144      384     6144     1  1.00  1.00  1.00  <- rule
+abcijk-ekab-ijec        f64    real  BA     6144     6144     6144      384   384  1.00  1.00  1.00
+abcijk-ekab-ijec        c32  planar  AB     6144     6144      384     6144     1  1.00  1.00  1.00  <- rule
+abcijk-ekab-ijec        c32  planar  BA     6144     6144     6144      384   384  1.00  1.00  1.00
+abcijk-ekab-ijec        c32      1m  AB     6144     6144      384     6144     1  1.00  1.00  1.00  <- rule
+abcijk-ekab-ijec        c32      1m  BA     6144     6144     6144      384   384  1.00  1.00  1.00
+abcijk-ekab-ijec        c32      3m  AB     6144     6144      384     6144     1  1.00  1.00  1.00  <- rule
+abcijk-ekab-ijec        c32      3m  BA     6144     6144     6144      384   384  1.00  1.00  1.00
+abcijk-ekab-ijec        c64  planar  AB     6144     6144      384     6144     1  1.00  1.00  1.00  <- rule
+abcijk-ekab-ijec        c64  planar  BA     6144     6144     6144      384   384  1.00  1.00  1.00
+abcijk-ekab-ijec        c64      1m  AB     6144     6144      384     6144     1  1.00  1.00  1.00  <- rule
+abcijk-ekab-ijec        c64      1m  BA     6144     6144     6144      384   384  1.00  1.00  1.00
+abcijk-ekab-ijec        c64      3m  AB     6144     6144      384     6144     1  1.00  1.00  1.00  <- rule
+abcijk-ekab-ijec        c64      3m  BA     6144     6144     6144      384   384  1.00  1.00  1.00
+abcijk-ekac-ijeb        f32    real  AB     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-ekac-ijeb        f32    real  BA     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-ekac-ijeb        f64    real  AB     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-ekac-ijeb        f64    real  BA     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-ekac-ijeb        c32  planar  AB     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-ekac-ijeb        c32  planar  BA     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-ekac-ijeb        c32      1m  AB     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-ekac-ijeb        c32      1m  BA     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-ekac-ijeb        c32      3m  AB     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-ekac-ijeb        c32      3m  BA     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-ekac-ijeb        c64  planar  AB     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-ekac-ijeb        c64  planar  BA     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-ekac-ijeb        c64      1m  AB     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-ekac-ijeb        c64      1m  BA     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-ekac-ijeb        c64      3m  AB     6144     6144       24       16     1  1.00  1.00  1.00  <- rule
+abcijk-ekac-ijeb        c64      3m  BA     6144     6144       16       24    24  1.00  1.00  1.00
+abcijk-ekbc-ijea        f32    real  AB     4096     9216      256       24    24  1.00  1.00  1.00
+abcijk-ekbc-ijea        f32    real  BA     9216     4096       24      256     1  1.00  1.00  1.00  <- rule
+abcijk-ekbc-ijea        f64    real  AB     4096     9216      256       24    24  1.00  1.00  1.00
+abcijk-ekbc-ijea        f64    real  BA     9216     4096       24      256     1  1.00  1.00  1.00  <- rule
+abcijk-ekbc-ijea        c32  planar  AB     4096     9216      256       24    24  1.00  1.00  1.00
+abcijk-ekbc-ijea        c32  planar  BA     9216     4096       24      256     1  1.00  1.00  1.00  <- rule
+abcijk-ekbc-ijea        c32      1m  AB     4096     9216      256       24    24  1.00  1.00  1.00
+abcijk-ekbc-ijea        c32      1m  BA     9216     4096       24      256     1  1.00  1.00  1.00  <- rule
+abcijk-ekbc-ijea        c32      3m  AB     4096     9216      256       24    24  1.00  1.00  1.00
+abcijk-ekbc-ijea        c32      3m  BA     9216     4096       24      256     1  1.00  1.00  1.00  <- rule
+abcijk-ekbc-ijea        c64  planar  AB     4096     9216      256       24    24  1.00  1.00  1.00
+abcijk-ekbc-ijea        c64  planar  BA     9216     4096       24      256     1  1.00  1.00  1.00  <- rule
+abcijk-ekbc-ijea        c64      1m  AB     4096     9216      256       24    24  1.00  1.00  1.00
+abcijk-ekbc-ijea        c64      1m  BA     9216     4096       24      256     1  1.00  1.00  1.00  <- rule
+abcijk-ekbc-ijea        c64      3m  AB     4096     9216      256       24    24  1.00  1.00  1.00
+abcijk-ekbc-ijea        c64      3m  BA     9216     4096       24      256     1  1.00  1.00  1.00  <- rule
+abc-bk-akc              f32    real  AB      216    44064      216      216   216  1.00  1.00  1.00
+abc-bk-akc              f32    real  BA    44064      216      216      216     1  1.00  1.00  1.00  <- rule
+abc-bk-akc              f64    real  AB      216    44064      216      216   216  1.00  1.00  1.00
+abc-bk-akc              f64    real  BA    44064      216      216      216     1  1.00  1.00  1.00  <- rule
+abc-bk-akc              c32  planar  AB      216    44064      216      216   216  1.00  1.00  1.00
+abc-bk-akc              c32  planar  BA    44064      216      216      216     1  1.00  1.00  1.00  <- rule
+abc-bk-akc              c32      1m  AB      216    44064      216      216   216  1.00  1.00  1.00
+abc-bk-akc              c32      1m  BA    44064      216      216      216     1  1.00  1.00  1.00  <- rule
+abc-bk-akc              c32      3m  AB      216    44064      216      216   216  1.00  1.00  1.00
+abc-bk-akc              c32      3m  BA    44064      216      216      216     1  1.00  1.00  1.00  <- rule
+abc-bk-akc              c64  planar  AB      216    44064      216      216   216  1.00  1.00  1.00
+abc-bk-akc              c64  planar  BA    44064      216      216      216     1  1.00  1.00  1.00  <- rule
+abc-bk-akc              c64      1m  AB      216    44064      216      216   216  1.00  1.00  1.00
+abc-bk-akc              c64      1m  BA    44064      216      216      216     1  1.00  1.00  1.00  <- rule
+abc-bk-akc              c64      3m  AB      216    44064      216      216   216  1.00  1.00  1.00
+abc-bk-akc              c64      3m  BA    44064      216      216      216     1  1.00  1.00  1.00  <- rule
+
+wrote bench-results/CKF6QCDVPD-m3max/orient.csv
+
+
+########## verify, TENSORCONTRACT_COMPLEX=planar ##########
+
+host        : CKF6QCDVPD
+target      : aarch64 / macos
+cpu features: neon fp16 bf16 
+caches      : L1=128KiB/8-way/1sh L2=16384KiB/8-way/6sh (via sysctl), blocking=legacy
+l3 domains  : t1=1 t4=4 t8=8 t16=16 t32=32
+baselines   : tblis=false blas=openblas
+
+verifying 49 cases at 32 MiB nominal size
+
+             case | dtype |      m |     n |     k | vs ttgt | vs tblis | status 
+------------------+-------+--------+-------+-------+---------+----------+--------
+         ij-ik-kj |   f32 |   2064 |  2048 |  2064 |  4.8e-7 |        - |     ok 
+         ij-ik-kj |   f64 |   2064 |  2048 |  2064 | 6.7e-16 |        - |     ok 
+         ij-ik-kj |   c32 |   2064 |  2048 |  2064 |  5.4e-7 |        - |     ok 
+         ij-ik-kj |   c64 |   2064 |  2048 |  2064 | 8.6e-16 |        - |     ok 
+       ij-ikl-ljk |   f32 |    168 |   160 | 26880 |  5.3e-7 |        - |     ok 
+       ij-ikl-ljk |   f64 |    168 |   160 | 26880 | 8.2e-16 |        - |     ok 
+       ij-ikl-ljk |   c32 |    168 |   160 | 26880 |  6.1e-7 |        - |     ok 
+       ij-ikl-ljk |   c64 |    168 |   160 | 26880 | 1.1e-15 |        - |     ok 
+       ij-kil-lkj |   f32 |    168 |   160 | 28224 |  5.3e-7 |        - |     ok 
+       ij-kil-lkj |   f64 |    168 |   160 | 28224 | 8.3e-16 |        - |     ok 
+       ij-kil-lkj |   c32 |    168 |   160 | 28224 |  6.2e-7 |        - |     ok 
+       ij-kil-lkj |   c64 |    168 |   160 | 28224 | 1.1e-15 |        - |     ok 
+       ijk-ikl-lj |   f32 |  26880 |   160 |   168 |  1.5e-7 |        - |     ok 
+       ijk-ikl-lj |   f64 |  26880 |   160 |   168 | 2.8e-16 |        - |     ok 
+       ijk-ikl-lj |   c32 |  26880 |   160 |   168 |  1.8e-7 |        - |     ok 
+       ijk-ikl-lj |   c64 |  26880 |   160 |   168 | 6.3e-16 |        - |     ok 
+       ijk-il-jlk |   f32 |    168 | 26880 |   160 |  1.5e-7 |        - |     ok 
+       ijk-il-jlk |   f64 |    168 | 26880 |   160 | 2.7e-16 |        - |     ok 
+       ijk-il-jlk |   c32 |    168 | 26880 |   160 |  1.7e-7 |        - |     ok 
+       ijk-il-jlk |   c64 |    168 | 26880 |   160 | 6.1e-16 |        - |     ok 
+       ijk-ilk-jl |   f32 |  26880 |   168 |   160 |  1.5e-7 |        - |     ok 
+       ijk-ilk-jl |   f64 |  26880 |   168 |   160 | 2.7e-16 |        - |     ok 
+       ijk-ilk-jl |   c32 |  26880 |   168 |   160 |  1.7e-7 |        - |     ok 
+       ijk-ilk-jl |   c64 |  26880 |   168 |   160 | 6.1e-16 |        - |     ok 
+       ijk-ilk-lj |   f32 |  26880 |   160 |   168 |  1.5e-7 |        - |     ok 
+       ijk-ilk-lj |   f64 |  26880 |   160 |   168 | 2.8e-16 |        - |     ok 
+       ijk-ilk-lj |   c32 |  26880 |   160 |   168 |  1.8e-7 |        - |     ok 
+       ijk-ilk-lj |   c64 |  26880 |   160 |   168 | 6.2e-16 |        - |     ok 
+     ijk-ilmk-mjl |   f32 |   2112 |    44 |  2112 |  4.8e-7 |        - |     ok 
+     ijk-ilmk-mjl |   f64 |   2112 |    44 |  2112 | 6.7e-16 |        - |     ok 
+     ijk-ilmk-mjl |   c32 |   2112 |    44 |  2112 |  5.4e-7 |        - |     ok 
+     ijk-ilmk-mjl |   c64 |   2112 |    44 |  2112 | 8.6e-16 |        - |     ok 
+   ijkl-imjn-lnkm |   f32 |   2112 |  2112 |  1936 |  4.7e-7 |        - |     ok 
+   ijkl-imjn-lnkm |   f64 |   2112 |  2112 |  1936 | 6.6e-16 |        - |     ok 
+   ijkl-imjn-lnkm |   c32 |   2112 |  2112 |  1936 |  5.6e-7 |        - |     ok 
+   ijkl-imjn-lnkm |   c64 |   2112 |  2112 |  1936 | 8.5e-16 |        - |     ok 
+   ijkl-imjn-nlmk |   f32 |   2112 |  1936 |  2112 |  4.8e-7 |        - |     ok 
+   ijkl-imjn-nlmk |   f64 |   2112 |  1936 |  2112 | 6.8e-16 |        - |     ok 
+   ijkl-imjn-nlmk |   c32 |   2112 |  1936 |  2112 |  5.5e-7 |        - |     ok 
+   ijkl-imjn-nlmk |   c64 |   2112 |  1936 |  2112 | 8.5e-16 |        - |     ok 
+   ijkl-imkn-jnlm |   f32 |   2112 |  2112 |  1936 |  4.7e-7 |        - |     ok 
+   ijkl-imkn-jnlm |   f64 |   2112 |  2112 |  1936 | 6.6e-16 |        - |     ok 
+   ijkl-imkn-jnlm |   c32 |   2112 |  2112 |  1936 |  5.6e-7 |        - |     ok 
+   ijkl-imkn-jnlm |   c64 |   2112 |  2112 |  1936 | 8.5e-16 |        - |     ok 
+   ijkl-imkn-njml |   f32 |   2112 |  1936 |  2112 |  4.8e-7 |        - |     ok 
+   ijkl-imkn-njml |   f64 |   2112 |  1936 |  2112 | 6.8e-16 |        - |     ok 
+   ijkl-imkn-njml |   c32 |   2112 |  1936 |  2112 |  5.5e-7 |        - |     ok 
+   ijkl-imkn-njml |   c64 |   2112 |  1936 |  2112 | 8.5e-16 |        - |     ok 
+   ijkl-imln-jnkm |   f32 |   2112 |  2112 |  1936 |  4.7e-7 |        - |     ok 
+   ijkl-imln-jnkm |   f64 |   2112 |  2112 |  1936 | 6.6e-16 |        - |     ok 
+   ijkl-imln-jnkm |   c32 |   2112 |  2112 |  1936 |  5.6e-7 |        - |     ok 
+   ijkl-imln-jnkm |   c64 |   2112 |  2112 |  1936 | 8.5e-16 |        - |     ok 
+   ijkl-imln-njmk |   f32 |   2112 |  1936 |  2112 |  4.8e-7 |        - |     ok 
+   ijkl-imln-njmk |   f64 |   2112 |  1936 |  2112 | 6.8e-16 |        - |     ok 
+   ijkl-imln-njmk |   c32 |   2112 |  1936 |  2112 |  5.5e-7 |        - |     ok 
+   ijkl-imln-njmk |   c64 |   2112 |  1936 |  2112 | 8.5e-16 |        - |     ok 
+   ijkl-imnj-nlkm |   f32 |   2112 |  1936 |  2112 |  4.8e-7 |        - |     ok 
+   ijkl-imnj-nlkm |   f64 |   2112 |  1936 |  2112 | 6.8e-16 |        - |     ok 
+   ijkl-imnj-nlkm |   c32 |   2112 |  1936 |  2112 |  5.5e-7 |        - |     ok 
+   ijkl-imnj-nlkm |   c64 |   2112 |  1936 |  2112 | 8.5e-16 |        - |     ok 
+   ijkl-imnk-njml |   f32 |   2112 |  1936 |  2112 |  4.8e-7 |        - |     ok 
+   ijkl-imnk-njml |   f64 |   2112 |  1936 |  2112 | 6.8e-16 |        - |     ok 
+   ijkl-imnk-njml |   c32 |   2112 |  1936 |  2112 |  5.5e-7 |        - |     ok 
+   ijkl-imnk-njml |   c64 |   2112 |  1936 |  2112 | 8.5e-16 |        - |     ok 
+   ijkl-minj-nlmk |   f32 |   2112 |  1936 |  2304 |  4.9e-7 |        - |     ok 
+   ijkl-minj-nlmk |   f64 |   2112 |  1936 |  2304 | 6.9e-16 |        - |     ok 
+   ijkl-minj-nlmk |   c32 |   2112 |  1936 |  2304 |  5.6e-7 |        - |     ok 
+   ijkl-minj-nlmk |   c64 |   2112 |  1936 |  2304 | 8.6e-16 |        - |     ok 
+   ijkl-mink-jnlm |   f32 |   2112 |  2112 |  2112 |  4.8e-7 |        - |     ok 
+   ijkl-mink-jnlm |   f64 |   2112 |  2112 |  2112 | 6.8e-16 |        - |     ok 
+   ijkl-mink-jnlm |   c32 |   2112 |  2112 |  2112 |  5.5e-7 |        - |     ok 
+   ijkl-mink-jnlm |   c64 |   2112 |  2112 |  2112 | 8.5e-16 |        - |     ok 
+   ijkl-minl-njmk |   f32 |   2112 |  1936 |  2304 |  4.9e-7 |        - |     ok 
+   ijkl-minl-njmk |   f64 |   2112 |  1936 |  2304 | 6.9e-16 |        - |     ok 
+   ijkl-minl-njmk |   c32 |   2112 |  1936 |  2304 |  5.6e-7 |        - |     ok 
+   ijkl-minl-njmk |   c64 |   2112 |  1936 |  2304 | 8.6e-16 |        - |     ok 
+     aqrs-pa-pqrs |   f32 |     48 | 85184 |    48 |  1.1e-7 |        - |     ok 
+     aqrs-pa-pqrs |   f64 |     48 | 85184 |    48 | 2.0e-16 |        - |     ok 
+     aqrs-pa-pqrs |   c32 |     48 | 85184 |    48 |  1.3e-7 |        - |     ok 
+     aqrs-pa-pqrs |   c64 |     48 | 85184 |    48 | 2.4e-16 |        - |     ok 
+     abrs-qb-aqrs |   f32 |     44 | 92928 |    48 |  1.1e-7 |        - |     ok 
+     abrs-qb-aqrs |   f64 |     44 | 92928 |    48 | 2.0e-16 |        - |     ok 
+     abrs-qb-aqrs |   c32 |     44 | 92928 |    48 |  1.4e-7 |        - |     ok 
+     abrs-qb-aqrs |   c64 |     44 | 92928 |    48 | 2.7e-16 |        - |     ok 
+     abcs-rc-abrs |   f32 |     44 | 92928 |    48 |  1.1e-7 |        - |     ok 
+     abcs-rc-abrs |   f64 |     44 | 92928 |    48 | 2.0e-16 |        - |     ok 
+     abcs-rc-abrs |   c32 |     44 | 92928 |    48 |  1.4e-7 |        - |     ok 
+     abcs-rc-abrs |   c64 |     44 | 92928 |    48 | 2.7e-16 |        - |     ok 
+       abj-bka-kj |   f32 |  28224 |   160 |   168 |  1.5e-7 |        - |     ok 
+       abj-bka-kj |   f64 |  28224 |   160 |   168 | 2.8e-16 |        - |     ok 
+       abj-bka-kj |   c32 |  28224 |   160 |   168 |  1.8e-7 |        - |     ok 
+       abj-bka-kj |   c64 |  28224 |   160 |   168 | 6.2e-16 |        - |     ok 
+       ajb-kba-jk |   f32 |  26880 |   168 |   168 |  1.5e-7 |        - |     ok 
+       ajb-kba-jk |   f64 |  26880 |   168 |   168 | 2.8e-16 |        - |     ok 
+       ajb-kba-jk |   c32 |  26880 |   168 |   168 |  1.8e-7 |        - |     ok 
+       ajb-kba-jk |   c64 |  26880 |   168 |   168 | 6.2e-16 |        - |     ok 
+     abjc-cbka-kj |   f32 | 101376 |    44 |    48 |  1.1e-7 |        - |     ok 
+     abjc-cbka-kj |   f64 | 101376 |    44 |    48 | 2.0e-16 |        - |     ok 
+     abjc-cbka-kj |   c32 | 101376 |    44 |    48 |  1.3e-7 |        - |     ok 
+     abjc-cbka-kj |   c64 | 101376 |    44 |    48 | 2.4e-16 |        - |     ok 
+     ajbc-ckba-jk |   f32 | 101376 |    48 |    44 |  1.0e-7 |        - |     ok 
+     ajbc-ckba-jk |   f64 | 101376 |    48 |    44 | 2.0e-16 |        - |     ok 
+     ajbc-ckba-jk |   c32 | 101376 |    48 |    44 |  1.3e-7 |        - |     ok 
+     ajbc-ckba-jk |   c64 | 101376 |    48 |    44 | 2.3e-16 |        - |     ok 
+     abjc-kbac-jk |   f32 |  92928 |    48 |    48 |  1.1e-7 |        - |     ok 
+     abjc-kbac-jk |   f64 |  92928 |    48 |    48 | 2.0e-16 |        - |     ok 
+     abjc-kbac-jk |   c32 |  92928 |    48 |    48 |  1.3e-7 |        - |     ok 
+     abjc-kbac-jk |   c64 |  92928 |    48 |    48 | 2.4e-16 |        - |     ok 
+   abjcd-dkbac-jk |   f32 | 230400 |    24 |    20 |  8.5e-8 |        - |     ok 
+   abjcd-dkbac-jk |   f64 | 230400 |    24 |    20 | 1.6e-16 |        - |     ok 
+   abjcd-dkbac-jk |   c32 | 230400 |    24 |    20 |  1.0e-7 |        - |     ok 
+   abjcd-dkbac-jk |   c64 | 230400 |    24 |    20 | 1.9e-16 |        - |     ok 
+   adbjc-cbdka-kj |   f32 | 230400 |    20 |    24 |  8.9e-8 |        - |     ok 
+   adbjc-cbdka-kj |   f64 | 230400 |    20 |    24 | 1.7e-16 |        - |     ok 
+   adbjc-cbdka-kj |   c32 | 230400 |    20 |    24 |  1.1e-7 |        - |     ok 
+   adbjc-cbdka-kj |   c64 | 230400 |    20 |    24 | 2.0e-16 |        - |     ok 
+   ajbdc-ckbad-jk |   f32 | 230400 |    24 |    20 |  8.5e-8 |        - |     ok 
+   ajbdc-ckbad-jk |   f64 | 230400 |    24 |    20 | 1.6e-16 |        - |     ok 
+   ajbdc-ckbad-jk |   c32 | 230400 |    24 |    20 |  1.0e-7 |        - |     ok 
+   ajbdc-ckbad-jk |   c64 | 230400 |    24 |    20 | 1.9e-16 |        - |     ok 
+ abcijk-ijma-mkbc |   f32 |   6912 |  1728 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-ijma-mkbc |   f64 |   6912 |  1728 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-ijma-mkbc |   c32 |   6912 |  1728 |    24 |  1.1e-7 |        - |     ok 
+ abcijk-ijma-mkbc |   c64 |   6912 |  1728 |    24 | 2.0e-16 |        - |     ok 
+ abcijk-ijmb-mkac |   f32 |   3456 |  3456 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-ijmb-mkac |   f64 |   3456 |  3456 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-ijmb-mkac |   c32 |   3456 |  3456 |    24 |  1.2e-7 |        - |     ok 
+ abcijk-ijmb-mkac |   c64 |   3456 |  3456 |    24 | 2.2e-16 |        - |     ok 
+ abcijk-ijmc-mkab |   f32 |   3456 |  3456 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-ijmc-mkab |   f64 |   3456 |  3456 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-ijmc-mkab |   c32 |   3456 |  3456 |    24 |  1.2e-7 |        - |     ok 
+ abcijk-ijmc-mkab |   c64 |   3456 |  3456 |    24 | 2.2e-16 |        - |     ok 
+ abcijk-ikma-mjbc |   f32 |   6912 |  1728 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-ikma-mjbc |   f64 |   6912 |  1728 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-ikma-mjbc |   c32 |   6912 |  1728 |    24 |  1.1e-7 |        - |     ok 
+ abcijk-ikma-mjbc |   c64 |   6912 |  1728 |    24 | 2.0e-16 |        - |     ok 
+ abcijk-ikmb-mjac |   f32 |   3456 |  3456 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-ikmb-mjac |   f64 |   3456 |  3456 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-ikmb-mjac |   c32 |   3456 |  3456 |    24 |  1.2e-7 |        - |     ok 
+ abcijk-ikmb-mjac |   c64 |   3456 |  3456 |    24 | 2.2e-16 |        - |     ok 
+ abcijk-ikmc-mjab |   f32 |   3456 |  3456 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-ikmc-mjab |   f64 |   3456 |  3456 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-ikmc-mjab |   c32 |   3456 |  3456 |    24 |  1.2e-7 |        - |     ok 
+ abcijk-ikmc-mjab |   c64 |   3456 |  3456 |    24 | 2.2e-16 |        - |     ok 
+ abcijk-jkma-mibc |   f32 |   6912 |  1728 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-jkma-mibc |   f64 |   6912 |  1728 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-jkma-mibc |   c32 |   6912 |  1728 |    24 |  1.1e-7 |        - |     ok 
+ abcijk-jkma-mibc |   c64 |   6912 |  1728 |    24 | 2.0e-16 |        - |     ok 
+ abcijk-jkmb-miac |   f32 |   3456 |  3456 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-jkmb-miac |   f64 |   3456 |  3456 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-jkmb-miac |   c32 |   3456 |  3456 |    24 |  1.2e-7 |        - |     ok 
+ abcijk-jkmb-miac |   c64 |   3456 |  3456 |    24 | 2.2e-16 |        - |     ok 
+ abcijk-jkmc-miab |   f32 |   3456 |  3456 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-jkmc-miab |   f64 |   3456 |  3456 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-jkmc-miab |   c32 |   3456 |  3456 |    24 |  1.2e-7 |        - |     ok 
+ abcijk-jkmc-miab |   c64 |   3456 |  3456 |    24 | 2.2e-16 |        - |     ok 
+ abcijk-eiab-jkec |   f32 |   3456 |  3456 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-eiab-jkec |   f64 |   3456 |  3456 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-eiab-jkec |   c32 |   3456 |  3456 |    24 |  1.1e-7 |        - |     ok 
+ abcijk-eiab-jkec |   c64 |   3456 |  3456 |    24 | 2.0e-16 |        - |     ok 
+ abcijk-eiac-jkeb |   f32 |   3456 |  3456 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-eiac-jkeb |   f64 |   3456 |  3456 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-eiac-jkeb |   c32 |   3456 |  3456 |    24 |  1.1e-7 |        - |     ok 
+ abcijk-eiac-jkeb |   c64 |   3456 |  3456 |    24 | 2.0e-16 |        - |     ok 
+ abcijk-eibc-jkea |   f32 |   1728 |  6912 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-eibc-jkea |   f64 |   1728 |  6912 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-eibc-jkea |   c32 |   1728 |  6912 |    24 |  1.2e-7 |        - |     ok 
+ abcijk-eibc-jkea |   c64 |   1728 |  6912 |    24 | 2.2e-16 |        - |     ok 
+ abcijk-ejab-ikec |   f32 |   3456 |  3456 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-ejab-ikec |   f64 |   3456 |  3456 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-ejab-ikec |   c32 |   3456 |  3456 |    24 |  1.1e-7 |        - |     ok 
+ abcijk-ejab-ikec |   c64 |   3456 |  3456 |    24 | 2.0e-16 |        - |     ok 
+ abcijk-ejac-ikeb |   f32 |   3456 |  3456 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-ejac-ikeb |   f64 |   3456 |  3456 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-ejac-ikeb |   c32 |   3456 |  3456 |    24 |  1.1e-7 |        - |     ok 
+ abcijk-ejac-ikeb |   c64 |   3456 |  3456 |    24 | 2.0e-16 |        - |     ok 
+ abcijk-ejbc-ikea |   f32 |   1728 |  6912 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-ejbc-ikea |   f64 |   1728 |  6912 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-ejbc-ikea |   c32 |   1728 |  6912 |    24 |  1.2e-7 |        - |     ok 
+ abcijk-ejbc-ikea |   c64 |   1728 |  6912 |    24 | 2.2e-16 |        - |     ok 
+ abcijk-ekab-ijec |   f32 |   3456 |  3456 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-ekab-ijec |   f64 |   3456 |  3456 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-ekab-ijec |   c32 |   3456 |  3456 |    24 |  1.1e-7 |        - |     ok 
+ abcijk-ekab-ijec |   c64 |   3456 |  3456 |    24 | 2.0e-16 |        - |     ok 
+ abcijk-ekac-ijeb |   f32 |   3456 |  3456 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-ekac-ijeb |   f64 |   3456 |  3456 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-ekac-ijeb |   c32 |   3456 |  3456 |    24 |  1.1e-7 |        - |     ok 
+ abcijk-ekac-ijeb |   c64 |   3456 |  3456 |    24 | 2.0e-16 |        - |     ok 
+ abcijk-ekbc-ijea |   f32 |   1728 |  6912 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-ekbc-ijea |   f64 |   1728 |  6912 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-ekbc-ijea |   c32 |   1728 |  6912 |    24 |  1.2e-7 |        - |     ok 
+ abcijk-ekbc-ijea |   c64 |   1728 |  6912 |    24 | 2.2e-16 |        - |     ok 
+       abc-bk-akc |   f32 |    168 | 26880 |   160 |  1.5e-7 |        - |     ok 
+       abc-bk-akc |   f64 |    168 | 26880 |   160 | 2.7e-16 |        - |     ok 
+       abc-bk-akc |   c32 |    168 | 26880 |   160 |  2.0e-7 |        - |     ok 
+       abc-bk-akc |   c64 |    168 | 26880 |   160 | 6.2e-16 |        - |     ok 
+
+all comparisons within tolerance
+
+
+########## verify, TENSORCONTRACT_COMPLEX=1m ##########
+
+host        : CKF6QCDVPD
+target      : aarch64 / macos
+cpu features: neon fp16 bf16 
+caches      : L1=128KiB/8-way/1sh L2=16384KiB/8-way/6sh (via sysctl), blocking=legacy
+l3 domains  : t1=1 t4=4 t8=8 t16=16 t32=32
+baselines   : tblis=false blas=openblas
+
+verifying 49 cases at 32 MiB nominal size
+
+             case | dtype |      m |     n |     k | vs ttgt | vs tblis | status 
+------------------+-------+--------+-------+-------+---------+----------+--------
+         ij-ik-kj |   f32 |   2064 |  2048 |  2064 |  4.8e-7 |        - |     ok 
+         ij-ik-kj |   f64 |   2064 |  2048 |  2064 | 6.7e-16 |        - |     ok 
+         ij-ik-kj |   c32 |   2064 |  2048 |  2064 |  5.5e-7 |        - |     ok 
+         ij-ik-kj |   c64 |   2064 |  2048 |  2064 | 8.6e-16 |        - |     ok 
+       ij-ikl-ljk |   f32 |    168 |   160 | 26880 |  5.3e-7 |        - |     ok 
+       ij-ikl-ljk |   f64 |    168 |   160 | 26880 | 8.2e-16 |        - |     ok 
+       ij-ikl-ljk |   c32 |    168 |   160 | 26880 |  6.2e-7 |        - |     ok 
+       ij-ikl-ljk |   c64 |    168 |   160 | 26880 | 1.1e-15 |        - |     ok 
+       ij-kil-lkj |   f32 |    168 |   160 | 28224 |  5.3e-7 |        - |     ok 
+       ij-kil-lkj |   f64 |    168 |   160 | 28224 | 8.3e-16 |        - |     ok 
+       ij-kil-lkj |   c32 |    168 |   160 | 28224 |  6.2e-7 |        - |     ok 
+       ij-kil-lkj |   c64 |    168 |   160 | 28224 | 1.1e-15 |        - |     ok 
+       ijk-ikl-lj |   f32 |  26880 |   160 |   168 |  1.5e-7 |        - |     ok 
+       ijk-ikl-lj |   f64 |  26880 |   160 |   168 | 2.8e-16 |        - |     ok 
+       ijk-ikl-lj |   c32 |  26880 |   160 |   168 |  2.0e-7 |        - |     ok 
+       ijk-ikl-lj |   c64 |  26880 |   160 |   168 | 6.3e-16 |        - |     ok 
+       ijk-il-jlk |   f32 |    168 | 26880 |   160 |  1.5e-7 |        - |     ok 
+       ijk-il-jlk |   f64 |    168 | 26880 |   160 | 2.7e-16 |        - |     ok 
+       ijk-il-jlk |   c32 |    168 | 26880 |   160 |  2.0e-7 |        - |     ok 
+       ijk-il-jlk |   c64 |    168 | 26880 |   160 | 6.2e-16 |        - |     ok 
+       ijk-ilk-jl |   f32 |  26880 |   168 |   160 |  1.5e-7 |        - |     ok 
+       ijk-ilk-jl |   f64 |  26880 |   168 |   160 | 2.7e-16 |        - |     ok 
+       ijk-ilk-jl |   c32 |  26880 |   168 |   160 |  2.0e-7 |        - |     ok 
+       ijk-ilk-jl |   c64 |  26880 |   168 |   160 | 6.2e-16 |        - |     ok 
+       ijk-ilk-lj |   f32 |  26880 |   160 |   168 |  1.5e-7 |        - |     ok 
+       ijk-ilk-lj |   f64 |  26880 |   160 |   168 | 2.8e-16 |        - |     ok 
+       ijk-ilk-lj |   c32 |  26880 |   160 |   168 |  2.0e-7 |        - |     ok 
+       ijk-ilk-lj |   c64 |  26880 |   160 |   168 | 6.3e-16 |        - |     ok 
+     ijk-ilmk-mjl |   f32 |   2112 |    44 |  2112 |  4.8e-7 |        - |     ok 
+     ijk-ilmk-mjl |   f64 |   2112 |    44 |  2112 | 6.7e-16 |        - |     ok 
+     ijk-ilmk-mjl |   c32 |   2112 |    44 |  2112 |  5.5e-7 |        - |     ok 
+     ijk-ilmk-mjl |   c64 |   2112 |    44 |  2112 | 8.6e-16 |        - |     ok 
+   ijkl-imjn-lnkm |   f32 |   2112 |  2112 |  1936 |  4.7e-7 |        - |     ok 
+   ijkl-imjn-lnkm |   f64 |   2112 |  2112 |  1936 | 6.6e-16 |        - |     ok 
+   ijkl-imjn-lnkm |   c32 |   2112 |  2112 |  1936 |  5.6e-7 |        - |     ok 
+   ijkl-imjn-lnkm |   c64 |   2112 |  2112 |  1936 | 8.5e-16 |        - |     ok 
+   ijkl-imjn-nlmk |   f32 |   2112 |  1936 |  2112 |  4.8e-7 |        - |     ok 
+   ijkl-imjn-nlmk |   f64 |   2112 |  1936 |  2112 | 6.8e-16 |        - |     ok 
+   ijkl-imjn-nlmk |   c32 |   2112 |  1936 |  2112 |  5.5e-7 |        - |     ok 
+   ijkl-imjn-nlmk |   c64 |   2112 |  1936 |  2112 | 8.6e-16 |        - |     ok 
+   ijkl-imkn-jnlm |   f32 |   2112 |  2112 |  1936 |  4.7e-7 |        - |     ok 
+   ijkl-imkn-jnlm |   f64 |   2112 |  2112 |  1936 | 6.6e-16 |        - |     ok 
+   ijkl-imkn-jnlm |   c32 |   2112 |  2112 |  1936 |  5.6e-7 |        - |     ok 
+   ijkl-imkn-jnlm |   c64 |   2112 |  2112 |  1936 | 8.5e-16 |        - |     ok 
+   ijkl-imkn-njml |   f32 |   2112 |  1936 |  2112 |  4.8e-7 |        - |     ok 
+   ijkl-imkn-njml |   f64 |   2112 |  1936 |  2112 | 6.8e-16 |        - |     ok 
+   ijkl-imkn-njml |   c32 |   2112 |  1936 |  2112 |  5.5e-7 |        - |     ok 
+   ijkl-imkn-njml |   c64 |   2112 |  1936 |  2112 | 8.6e-16 |        - |     ok 
+   ijkl-imln-jnkm |   f32 |   2112 |  2112 |  1936 |  4.7e-7 |        - |     ok 
+   ijkl-imln-jnkm |   f64 |   2112 |  2112 |  1936 | 6.6e-16 |        - |     ok 
+   ijkl-imln-jnkm |   c32 |   2112 |  2112 |  1936 |  5.6e-7 |        - |     ok 
+   ijkl-imln-jnkm |   c64 |   2112 |  2112 |  1936 | 8.5e-16 |        - |     ok 
+   ijkl-imln-njmk |   f32 |   2112 |  1936 |  2112 |  4.8e-7 |        - |     ok 
+   ijkl-imln-njmk |   f64 |   2112 |  1936 |  2112 | 6.8e-16 |        - |     ok 
+   ijkl-imln-njmk |   c32 |   2112 |  1936 |  2112 |  5.5e-7 |        - |     ok 
+   ijkl-imln-njmk |   c64 |   2112 |  1936 |  2112 | 8.6e-16 |        - |     ok 
+   ijkl-imnj-nlkm |   f32 |   2112 |  1936 |  2112 |  4.8e-7 |        - |     ok 
+   ijkl-imnj-nlkm |   f64 |   2112 |  1936 |  2112 | 6.8e-16 |        - |     ok 
+   ijkl-imnj-nlkm |   c32 |   2112 |  1936 |  2112 |  5.5e-7 |        - |     ok 
+   ijkl-imnj-nlkm |   c64 |   2112 |  1936 |  2112 | 8.6e-16 |        - |     ok 
+   ijkl-imnk-njml |   f32 |   2112 |  1936 |  2112 |  4.8e-7 |        - |     ok 
+   ijkl-imnk-njml |   f64 |   2112 |  1936 |  2112 | 6.8e-16 |        - |     ok 
+   ijkl-imnk-njml |   c32 |   2112 |  1936 |  2112 |  5.5e-7 |        - |     ok 
+   ijkl-imnk-njml |   c64 |   2112 |  1936 |  2112 | 8.6e-16 |        - |     ok 
+   ijkl-minj-nlmk |   f32 |   2112 |  1936 |  2304 |  4.9e-7 |        - |     ok 
+   ijkl-minj-nlmk |   f64 |   2112 |  1936 |  2304 | 6.9e-16 |        - |     ok 
+   ijkl-minj-nlmk |   c32 |   2112 |  1936 |  2304 |  5.7e-7 |        - |     ok 
+   ijkl-minj-nlmk |   c64 |   2112 |  1936 |  2304 | 8.6e-16 |        - |     ok 
+   ijkl-mink-jnlm |   f32 |   2112 |  2112 |  2112 |  4.8e-7 |        - |     ok 
+   ijkl-mink-jnlm |   f64 |   2112 |  2112 |  2112 | 6.8e-16 |        - |     ok 
+   ijkl-mink-jnlm |   c32 |   2112 |  2112 |  2112 |  5.5e-7 |        - |     ok 
+   ijkl-mink-jnlm |   c64 |   2112 |  2112 |  2112 | 8.6e-16 |        - |     ok 
+   ijkl-minl-njmk |   f32 |   2112 |  1936 |  2304 |  4.9e-7 |        - |     ok 
+   ijkl-minl-njmk |   f64 |   2112 |  1936 |  2304 | 6.9e-16 |        - |     ok 
+   ijkl-minl-njmk |   c32 |   2112 |  1936 |  2304 |  5.7e-7 |        - |     ok 
+   ijkl-minl-njmk |   c64 |   2112 |  1936 |  2304 | 8.6e-16 |        - |     ok 
+     aqrs-pa-pqrs |   f32 |     48 | 85184 |    48 |  1.1e-7 |        - |     ok 
+     aqrs-pa-pqrs |   f64 |     48 | 85184 |    48 | 2.0e-16 |        - |     ok 
+     aqrs-pa-pqrs |   c32 |     48 | 85184 |    48 |  1.4e-7 |        - |     ok 
+     aqrs-pa-pqrs |   c64 |     48 | 85184 |    48 | 2.7e-16 |        - |     ok 
+     abrs-qb-aqrs |   f32 |     44 | 92928 |    48 |  1.1e-7 |        - |     ok 
+     abrs-qb-aqrs |   f64 |     44 | 92928 |    48 | 2.0e-16 |        - |     ok 
+     abrs-qb-aqrs |   c32 |     44 | 92928 |    48 |  1.3e-7 |        - |     ok 
+     abrs-qb-aqrs |   c64 |     44 | 92928 |    48 | 2.4e-16 |        - |     ok 
+     abcs-rc-abrs |   f32 |     44 | 92928 |    48 |  1.1e-7 |        - |     ok 
+     abcs-rc-abrs |   f64 |     44 | 92928 |    48 | 2.0e-16 |        - |     ok 
+     abcs-rc-abrs |   c32 |     44 | 92928 |    48 |  1.3e-7 |        - |     ok 
+     abcs-rc-abrs |   c64 |     44 | 92928 |    48 | 2.4e-16 |        - |     ok 
+       abj-bka-kj |   f32 |  28224 |   160 |   168 |  1.5e-7 |        - |     ok 
+       abj-bka-kj |   f64 |  28224 |   160 |   168 | 2.8e-16 |        - |     ok 
+       abj-bka-kj |   c32 |  28224 |   160 |   168 |  2.0e-7 |        - |     ok 
+       abj-bka-kj |   c64 |  28224 |   160 |   168 | 6.3e-16 |        - |     ok 
+       ajb-kba-jk |   f32 |  26880 |   168 |   168 |  1.5e-7 |        - |     ok 
+       ajb-kba-jk |   f64 |  26880 |   168 |   168 | 2.8e-16 |        - |     ok 
+       ajb-kba-jk |   c32 |  26880 |   168 |   168 |  2.0e-7 |        - |     ok 
+       ajb-kba-jk |   c64 |  26880 |   168 |   168 | 6.3e-16 |        - |     ok 
+     abjc-cbka-kj |   f32 | 101376 |    44 |    48 |  1.1e-7 |        - |     ok 
+     abjc-cbka-kj |   f64 | 101376 |    44 |    48 | 2.0e-16 |        - |     ok 
+     abjc-cbka-kj |   c32 | 101376 |    44 |    48 |  1.4e-7 |        - |     ok 
+     abjc-cbka-kj |   c64 | 101376 |    44 |    48 | 2.7e-16 |        - |     ok 
+     ajbc-ckba-jk |   f32 | 101376 |    48 |    44 |  1.0e-7 |        - |     ok 
+     ajbc-ckba-jk |   f64 | 101376 |    48 |    44 | 2.0e-16 |        - |     ok 
+     ajbc-ckba-jk |   c32 | 101376 |    48 |    44 |  1.4e-7 |        - |     ok 
+     ajbc-ckba-jk |   c64 | 101376 |    48 |    44 | 2.6e-16 |        - |     ok 
+     abjc-kbac-jk |   f32 |  92928 |    48 |    48 |  1.1e-7 |        - |     ok 
+     abjc-kbac-jk |   f64 |  92928 |    48 |    48 | 2.0e-16 |        - |     ok 
+     abjc-kbac-jk |   c32 |  92928 |    48 |    48 |  1.4e-7 |        - |     ok 
+     abjc-kbac-jk |   c64 |  92928 |    48 |    48 | 2.7e-16 |        - |     ok 
+   abjcd-dkbac-jk |   f32 | 230400 |    24 |    20 |  8.5e-8 |        - |     ok 
+   abjcd-dkbac-jk |   f64 | 230400 |    24 |    20 | 1.6e-16 |        - |     ok 
+   abjcd-dkbac-jk |   c32 | 230400 |    24 |    20 |  1.1e-7 |        - |     ok 
+   abjcd-dkbac-jk |   c64 | 230400 |    24 |    20 | 2.1e-16 |        - |     ok 
+   adbjc-cbdka-kj |   f32 | 230400 |    20 |    24 |  8.9e-8 |        - |     ok 
+   adbjc-cbdka-kj |   f64 | 230400 |    20 |    24 | 1.7e-16 |        - |     ok 
+   adbjc-cbdka-kj |   c32 | 230400 |    20 |    24 |  1.2e-7 |        - |     ok 
+   adbjc-cbdka-kj |   c64 | 230400 |    20 |    24 | 2.2e-16 |        - |     ok 
+   ajbdc-ckbad-jk |   f32 | 230400 |    24 |    20 |  8.5e-8 |        - |     ok 
+   ajbdc-ckbad-jk |   f64 | 230400 |    24 |    20 | 1.6e-16 |        - |     ok 
+   ajbdc-ckbad-jk |   c32 | 230400 |    24 |    20 |  1.1e-7 |        - |     ok 
+   ajbdc-ckbad-jk |   c64 | 230400 |    24 |    20 | 2.1e-16 |        - |     ok 
+ abcijk-ijma-mkbc |   f32 |   6912 |  1728 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-ijma-mkbc |   f64 |   6912 |  1728 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-ijma-mkbc |   c32 |   6912 |  1728 |    24 |  1.2e-7 |        - |     ok 
+ abcijk-ijma-mkbc |   c64 |   6912 |  1728 |    24 | 2.2e-16 |        - |     ok 
+ abcijk-ijmb-mkac |   f32 |   3456 |  3456 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-ijmb-mkac |   f64 |   3456 |  3456 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-ijmb-mkac |   c32 |   3456 |  3456 |    24 |  1.1e-7 |        - |     ok 
+ abcijk-ijmb-mkac |   c64 |   3456 |  3456 |    24 | 2.0e-16 |        - |     ok 
+ abcijk-ijmc-mkab |   f32 |   3456 |  3456 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-ijmc-mkab |   f64 |   3456 |  3456 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-ijmc-mkab |   c32 |   3456 |  3456 |    24 |  1.1e-7 |        - |     ok 
+ abcijk-ijmc-mkab |   c64 |   3456 |  3456 |    24 | 2.0e-16 |        - |     ok 
+ abcijk-ikma-mjbc |   f32 |   6912 |  1728 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-ikma-mjbc |   f64 |   6912 |  1728 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-ikma-mjbc |   c32 |   6912 |  1728 |    24 |  1.2e-7 |        - |     ok 
+ abcijk-ikma-mjbc |   c64 |   6912 |  1728 |    24 | 2.2e-16 |        - |     ok 
+ abcijk-ikmb-mjac |   f32 |   3456 |  3456 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-ikmb-mjac |   f64 |   3456 |  3456 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-ikmb-mjac |   c32 |   3456 |  3456 |    24 |  1.1e-7 |        - |     ok 
+ abcijk-ikmb-mjac |   c64 |   3456 |  3456 |    24 | 2.0e-16 |        - |     ok 
+ abcijk-ikmc-mjab |   f32 |   3456 |  3456 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-ikmc-mjab |   f64 |   3456 |  3456 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-ikmc-mjab |   c32 |   3456 |  3456 |    24 |  1.1e-7 |        - |     ok 
+ abcijk-ikmc-mjab |   c64 |   3456 |  3456 |    24 | 2.0e-16 |        - |     ok 
+ abcijk-jkma-mibc |   f32 |   6912 |  1728 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-jkma-mibc |   f64 |   6912 |  1728 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-jkma-mibc |   c32 |   6912 |  1728 |    24 |  1.2e-7 |        - |     ok 
+ abcijk-jkma-mibc |   c64 |   6912 |  1728 |    24 | 2.2e-16 |        - |     ok 
+ abcijk-jkmb-miac |   f32 |   3456 |  3456 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-jkmb-miac |   f64 |   3456 |  3456 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-jkmb-miac |   c32 |   3456 |  3456 |    24 |  1.1e-7 |        - |     ok 
+ abcijk-jkmb-miac |   c64 |   3456 |  3456 |    24 | 2.0e-16 |        - |     ok 
+ abcijk-jkmc-miab |   f32 |   3456 |  3456 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-jkmc-miab |   f64 |   3456 |  3456 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-jkmc-miab |   c32 |   3456 |  3456 |    24 |  1.1e-7 |        - |     ok 
+ abcijk-jkmc-miab |   c64 |   3456 |  3456 |    24 | 2.0e-16 |        - |     ok 
+ abcijk-eiab-jkec |   f32 |   3456 |  3456 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-eiab-jkec |   f64 |   3456 |  3456 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-eiab-jkec |   c32 |   3456 |  3456 |    24 |  1.2e-7 |        - |     ok 
+ abcijk-eiab-jkec |   c64 |   3456 |  3456 |    24 | 2.2e-16 |        - |     ok 
+ abcijk-eiac-jkeb |   f32 |   3456 |  3456 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-eiac-jkeb |   f64 |   3456 |  3456 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-eiac-jkeb |   c32 |   3456 |  3456 |    24 |  1.2e-7 |        - |     ok 
+ abcijk-eiac-jkeb |   c64 |   3456 |  3456 |    24 | 2.2e-16 |        - |     ok 
+ abcijk-eibc-jkea |   f32 |   1728 |  6912 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-eibc-jkea |   f64 |   1728 |  6912 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-eibc-jkea |   c32 |   1728 |  6912 |    24 |  1.1e-7 |        - |     ok 
+ abcijk-eibc-jkea |   c64 |   1728 |  6912 |    24 | 2.0e-16 |        - |     ok 
+ abcijk-ejab-ikec |   f32 |   3456 |  3456 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-ejab-ikec |   f64 |   3456 |  3456 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-ejab-ikec |   c32 |   3456 |  3456 |    24 |  1.2e-7 |        - |     ok 
+ abcijk-ejab-ikec |   c64 |   3456 |  3456 |    24 | 2.2e-16 |        - |     ok 
+ abcijk-ejac-ikeb |   f32 |   3456 |  3456 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-ejac-ikeb |   f64 |   3456 |  3456 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-ejac-ikeb |   c32 |   3456 |  3456 |    24 |  1.2e-7 |        - |     ok 
+ abcijk-ejac-ikeb |   c64 |   3456 |  3456 |    24 | 2.2e-16 |        - |     ok 
+ abcijk-ejbc-ikea |   f32 |   1728 |  6912 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-ejbc-ikea |   f64 |   1728 |  6912 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-ejbc-ikea |   c32 |   1728 |  6912 |    24 |  1.1e-7 |        - |     ok 
+ abcijk-ejbc-ikea |   c64 |   1728 |  6912 |    24 | 2.0e-16 |        - |     ok 
+ abcijk-ekab-ijec |   f32 |   3456 |  3456 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-ekab-ijec |   f64 |   3456 |  3456 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-ekab-ijec |   c32 |   3456 |  3456 |    24 |  1.2e-7 |        - |     ok 
+ abcijk-ekab-ijec |   c64 |   3456 |  3456 |    24 | 2.2e-16 |        - |     ok 
+ abcijk-ekac-ijeb |   f32 |   3456 |  3456 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-ekac-ijeb |   f64 |   3456 |  3456 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-ekac-ijeb |   c32 |   3456 |  3456 |    24 |  1.2e-7 |        - |     ok 
+ abcijk-ekac-ijeb |   c64 |   3456 |  3456 |    24 | 2.2e-16 |        - |     ok 
+ abcijk-ekbc-ijea |   f32 |   1728 |  6912 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-ekbc-ijea |   f64 |   1728 |  6912 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-ekbc-ijea |   c32 |   1728 |  6912 |    24 |  1.1e-7 |        - |     ok 
+ abcijk-ekbc-ijea |   c64 |   1728 |  6912 |    24 | 2.0e-16 |        - |     ok 
+       abc-bk-akc |   f32 |    168 | 26880 |   160 |  1.5e-7 |        - |     ok 
+       abc-bk-akc |   f64 |    168 | 26880 |   160 | 2.7e-16 |        - |     ok 
+       abc-bk-akc |   c32 |    168 | 26880 |   160 |  1.7e-7 |        - |     ok 
+       abc-bk-akc |   c64 |    168 | 26880 |   160 | 6.1e-16 |        - |     ok 
+
+all comparisons within tolerance
+
+
+########## verify, TENSORCONTRACT_COMPLEX=3m ##########
+
+host        : CKF6QCDVPD
+target      : aarch64 / macos
+cpu features: neon fp16 bf16 
+caches      : L1=128KiB/8-way/1sh L2=16384KiB/8-way/6sh (via sysctl), blocking=legacy
+l3 domains  : t1=1 t4=4 t8=8 t16=16 t32=32
+baselines   : tblis=false blas=openblas
+
+verifying 49 cases at 32 MiB nominal size
+
+             case | dtype |      m |     n |     k | vs ttgt | vs tblis | status 
+------------------+-------+--------+-------+-------+---------+----------+--------
+         ij-ik-kj |   f32 |   2064 |  2048 |  2064 |  4.8e-7 |        - |     ok 
+         ij-ik-kj |   f64 |   2064 |  2048 |  2064 | 6.7e-16 |        - |     ok 
+         ij-ik-kj |   c32 |   2064 |  2048 |  2064 |  6.1e-7 |        - |     ok 
+         ij-ik-kj |   c64 |   2064 |  2048 |  2064 | 9.2e-16 |        - |     ok 
+       ij-ikl-ljk |   f32 |    168 |   160 | 26880 |  5.3e-7 |        - |     ok 
+       ij-ikl-ljk |   f64 |    168 |   160 | 26880 | 8.2e-16 |        - |     ok 
+       ij-ikl-ljk |   c32 |    168 |   160 | 26880 |  6.6e-7 |        - |     ok 
+       ij-ikl-ljk |   c64 |    168 |   160 | 26880 | 1.1e-15 |        - |     ok 
+       ij-kil-lkj |   f32 |    168 |   160 | 28224 |  5.3e-7 |        - |     ok 
+       ij-kil-lkj |   f64 |    168 |   160 | 28224 | 8.3e-16 |        - |     ok 
+       ij-kil-lkj |   c32 |    168 |   160 | 28224 |  6.7e-7 |        - |     ok 
+       ij-kil-lkj |   c64 |    168 |   160 | 28224 | 1.1e-15 |        - |     ok 
+       ijk-ikl-lj |   f32 |  26880 |   160 |   168 |  1.5e-7 |        - |     ok 
+       ijk-ikl-lj |   f64 |  26880 |   160 |   168 | 2.8e-16 |        - |     ok 
+       ijk-ikl-lj |   c32 |  26880 |   160 |   168 |  4.6e-7 |        - |     ok 
+       ijk-ikl-lj |   c64 |  26880 |   160 |   168 | 7.5e-16 |        - |     ok 
+       ijk-il-jlk |   f32 |    168 | 26880 |   160 |  1.5e-7 |        - |     ok 
+       ijk-il-jlk |   f64 |    168 | 26880 |   160 | 2.7e-16 |        - |     ok 
+       ijk-il-jlk |   c32 |    168 | 26880 |   160 |  4.5e-7 |        - |     ok 
+       ijk-il-jlk |   c64 |    168 | 26880 |   160 | 7.3e-16 |        - |     ok 
+       ijk-ilk-jl |   f32 |  26880 |   168 |   160 |  1.5e-7 |        - |     ok 
+       ijk-ilk-jl |   f64 |  26880 |   168 |   160 | 2.7e-16 |        - |     ok 
+       ijk-ilk-jl |   c32 |  26880 |   168 |   160 |  4.5e-7 |        - |     ok 
+       ijk-ilk-jl |   c64 |  26880 |   168 |   160 | 7.3e-16 |        - |     ok 
+       ijk-ilk-lj |   f32 |  26880 |   160 |   168 |  1.5e-7 |        - |     ok 
+       ijk-ilk-lj |   f64 |  26880 |   160 |   168 | 2.8e-16 |        - |     ok 
+       ijk-ilk-lj |   c32 |  26880 |   160 |   168 |  4.6e-7 |        - |     ok 
+       ijk-ilk-lj |   c64 |  26880 |   160 |   168 | 7.5e-16 |        - |     ok 
+     ijk-ilmk-mjl |   f32 |   2112 |    44 |  2112 |  4.8e-7 |        - |     ok 
+     ijk-ilmk-mjl |   f64 |   2112 |    44 |  2112 | 6.7e-16 |        - |     ok 
+     ijk-ilmk-mjl |   c32 |   2112 |    44 |  2112 |  6.1e-7 |        - |     ok 
+     ijk-ilmk-mjl |   c64 |   2112 |    44 |  2112 | 9.2e-16 |        - |     ok 
+   ijkl-imjn-lnkm |   f32 |   2112 |  2112 |  1936 |  4.7e-7 |        - |     ok 
+   ijkl-imjn-lnkm |   f64 |   2112 |  2112 |  1936 | 6.6e-16 |        - |     ok 
+   ijkl-imjn-lnkm |   c32 |   2112 |  2112 |  1936 |  6.2e-7 |        - |     ok 
+   ijkl-imjn-lnkm |   c64 |   2112 |  2112 |  1936 | 9.1e-16 |        - |     ok 
+   ijkl-imjn-nlmk |   f32 |   2112 |  1936 |  2112 |  4.8e-7 |        - |     ok 
+   ijkl-imjn-nlmk |   f64 |   2112 |  1936 |  2112 | 6.8e-16 |        - |     ok 
+   ijkl-imjn-nlmk |   c32 |   2112 |  1936 |  2112 |  6.1e-7 |        - |     ok 
+   ijkl-imjn-nlmk |   c64 |   2112 |  1936 |  2112 | 9.1e-16 |        - |     ok 
+   ijkl-imkn-jnlm |   f32 |   2112 |  2112 |  1936 |  4.7e-7 |        - |     ok 
+   ijkl-imkn-jnlm |   f64 |   2112 |  2112 |  1936 | 6.6e-16 |        - |     ok 
+   ijkl-imkn-jnlm |   c32 |   2112 |  2112 |  1936 |  6.2e-7 |        - |     ok 
+   ijkl-imkn-jnlm |   c64 |   2112 |  2112 |  1936 | 9.1e-16 |        - |     ok 
+   ijkl-imkn-njml |   f32 |   2112 |  1936 |  2112 |  4.8e-7 |        - |     ok 
+   ijkl-imkn-njml |   f64 |   2112 |  1936 |  2112 | 6.8e-16 |        - |     ok 
+   ijkl-imkn-njml |   c32 |   2112 |  1936 |  2112 |  6.1e-7 |        - |     ok 
+   ijkl-imkn-njml |   c64 |   2112 |  1936 |  2112 | 9.1e-16 |        - |     ok 
+   ijkl-imln-jnkm |   f32 |   2112 |  2112 |  1936 |  4.7e-7 |        - |     ok 
+   ijkl-imln-jnkm |   f64 |   2112 |  2112 |  1936 | 6.6e-16 |        - |     ok 
+   ijkl-imln-jnkm |   c32 |   2112 |  2112 |  1936 |  6.2e-7 |        - |     ok 
+   ijkl-imln-jnkm |   c64 |   2112 |  2112 |  1936 | 9.1e-16 |        - |     ok 
+   ijkl-imln-njmk |   f32 |   2112 |  1936 |  2112 |  4.8e-7 |        - |     ok 
+   ijkl-imln-njmk |   f64 |   2112 |  1936 |  2112 | 6.8e-16 |        - |     ok 
+   ijkl-imln-njmk |   c32 |   2112 |  1936 |  2112 |  6.1e-7 |        - |     ok 
+   ijkl-imln-njmk |   c64 |   2112 |  1936 |  2112 | 9.1e-16 |        - |     ok 
+   ijkl-imnj-nlkm |   f32 |   2112 |  1936 |  2112 |  4.8e-7 |        - |     ok 
+   ijkl-imnj-nlkm |   f64 |   2112 |  1936 |  2112 | 6.8e-16 |        - |     ok 
+   ijkl-imnj-nlkm |   c32 |   2112 |  1936 |  2112 |  6.1e-7 |        - |     ok 
+   ijkl-imnj-nlkm |   c64 |   2112 |  1936 |  2112 | 9.1e-16 |        - |     ok 
+   ijkl-imnk-njml |   f32 |   2112 |  1936 |  2112 |  4.8e-7 |        - |     ok 
+   ijkl-imnk-njml |   f64 |   2112 |  1936 |  2112 | 6.8e-16 |        - |     ok 
+   ijkl-imnk-njml |   c32 |   2112 |  1936 |  2112 |  6.1e-7 |        - |     ok 
+   ijkl-imnk-njml |   c64 |   2112 |  1936 |  2112 | 9.2e-16 |        - |     ok 
+   ijkl-minj-nlmk |   f32 |   2112 |  1936 |  2304 |  4.9e-7 |        - |     ok 
+   ijkl-minj-nlmk |   f64 |   2112 |  1936 |  2304 | 6.9e-16 |        - |     ok 
+   ijkl-minj-nlmk |   c32 |   2112 |  1936 |  2304 |  6.2e-7 |        - |     ok 
+   ijkl-minj-nlmk |   c64 |   2112 |  1936 |  2304 | 9.2e-16 |        - |     ok 
+   ijkl-mink-jnlm |   f32 |   2112 |  2112 |  2112 |  4.8e-7 |        - |     ok 
+   ijkl-mink-jnlm |   f64 |   2112 |  2112 |  2112 | 6.8e-16 |        - |     ok 
+   ijkl-mink-jnlm |   c32 |   2112 |  2112 |  2112 |  6.1e-7 |        - |     ok 
+   ijkl-mink-jnlm |   c64 |   2112 |  2112 |  2112 | 9.1e-16 |        - |     ok 
+   ijkl-minl-njmk |   f32 |   2112 |  1936 |  2304 |  4.9e-7 |        - |     ok 
+   ijkl-minl-njmk |   f64 |   2112 |  1936 |  2304 | 6.9e-16 |        - |     ok 
+   ijkl-minl-njmk |   c32 |   2112 |  1936 |  2304 |  6.2e-7 |        - |     ok 
+   ijkl-minl-njmk |   c64 |   2112 |  1936 |  2304 | 9.2e-16 |        - |     ok 
+     aqrs-pa-pqrs |   f32 |     48 | 85184 |    48 |  1.1e-7 |        - |     ok 
+     aqrs-pa-pqrs |   f64 |     48 | 85184 |    48 | 2.0e-16 |        - |     ok 
+     aqrs-pa-pqrs |   c32 |     48 | 85184 |    48 |  2.5e-7 |        - |     ok 
+     aqrs-pa-pqrs |   c64 |     48 | 85184 |    48 | 4.7e-16 |        - |     ok 
+     abrs-qb-aqrs |   f32 |     44 | 92928 |    48 |  1.1e-7 |        - |     ok 
+     abrs-qb-aqrs |   f64 |     44 | 92928 |    48 | 2.0e-16 |        - |     ok 
+     abrs-qb-aqrs |   c32 |     44 | 92928 |    48 |  2.5e-7 |        - |     ok 
+     abrs-qb-aqrs |   c64 |     44 | 92928 |    48 | 4.7e-16 |        - |     ok 
+     abcs-rc-abrs |   f32 |     44 | 92928 |    48 |  1.1e-7 |        - |     ok 
+     abcs-rc-abrs |   f64 |     44 | 92928 |    48 | 2.0e-16 |        - |     ok 
+     abcs-rc-abrs |   c32 |     44 | 92928 |    48 |  2.5e-7 |        - |     ok 
+     abcs-rc-abrs |   c64 |     44 | 92928 |    48 | 4.7e-16 |        - |     ok 
+       abj-bka-kj |   f32 |  28224 |   160 |   168 |  1.5e-7 |        - |     ok 
+       abj-bka-kj |   f64 |  28224 |   160 |   168 | 2.8e-16 |        - |     ok 
+       abj-bka-kj |   c32 |  28224 |   160 |   168 |  4.6e-7 |        - |     ok 
+       abj-bka-kj |   c64 |  28224 |   160 |   168 | 7.5e-16 |        - |     ok 
+       ajb-kba-jk |   f32 |  26880 |   168 |   168 |  1.5e-7 |        - |     ok 
+       ajb-kba-jk |   f64 |  26880 |   168 |   168 | 2.8e-16 |        - |     ok 
+       ajb-kba-jk |   c32 |  26880 |   168 |   168 |  4.6e-7 |        - |     ok 
+       ajb-kba-jk |   c64 |  26880 |   168 |   168 | 7.5e-16 |        - |     ok 
+     abjc-cbka-kj |   f32 | 101376 |    44 |    48 |  1.1e-7 |        - |     ok 
+     abjc-cbka-kj |   f64 | 101376 |    44 |    48 | 2.0e-16 |        - |     ok 
+     abjc-cbka-kj |   c32 | 101376 |    44 |    48 |  2.5e-7 |        - |     ok 
+     abjc-cbka-kj |   c64 | 101376 |    44 |    48 | 4.7e-16 |        - |     ok 
+     ajbc-ckba-jk |   f32 | 101376 |    48 |    44 |  1.0e-7 |        - |     ok 
+     ajbc-ckba-jk |   f64 | 101376 |    48 |    44 | 2.0e-16 |        - |     ok 
+     ajbc-ckba-jk |   c32 | 101376 |    48 |    44 |  2.4e-7 |        - |     ok 
+     ajbc-ckba-jk |   c64 | 101376 |    48 |    44 | 4.5e-16 |        - |     ok 
+     abjc-kbac-jk |   f32 |  92928 |    48 |    48 |  1.1e-7 |        - |     ok 
+     abjc-kbac-jk |   f64 |  92928 |    48 |    48 | 2.0e-16 |        - |     ok 
+     abjc-kbac-jk |   c32 |  92928 |    48 |    48 |  2.5e-7 |        - |     ok 
+     abjc-kbac-jk |   c64 |  92928 |    48 |    48 | 4.7e-16 |        - |     ok 
+   abjcd-dkbac-jk |   f32 | 230400 |    24 |    20 |  8.5e-8 |        - |     ok 
+   abjcd-dkbac-jk |   f64 | 230400 |    24 |    20 | 1.6e-16 |        - |     ok 
+   abjcd-dkbac-jk |   c32 | 230400 |    24 |    20 |  1.7e-7 |        - |     ok 
+   abjcd-dkbac-jk |   c64 | 230400 |    24 |    20 | 3.2e-16 |        - |     ok 
+   adbjc-cbdka-kj |   f32 | 230400 |    20 |    24 |  8.9e-8 |        - |     ok 
+   adbjc-cbdka-kj |   f64 | 230400 |    20 |    24 | 1.7e-16 |        - |     ok 
+   adbjc-cbdka-kj |   c32 | 230400 |    20 |    24 |  1.8e-7 |        - |     ok 
+   adbjc-cbdka-kj |   c64 | 230400 |    20 |    24 | 3.4e-16 |        - |     ok 
+   ajbdc-ckbad-jk |   f32 | 230400 |    24 |    20 |  8.5e-8 |        - |     ok 
+   ajbdc-ckbad-jk |   f64 | 230400 |    24 |    20 | 1.6e-16 |        - |     ok 
+   ajbdc-ckbad-jk |   c32 | 230400 |    24 |    20 |  1.7e-7 |        - |     ok 
+   ajbdc-ckbad-jk |   c64 | 230400 |    24 |    20 | 3.2e-16 |        - |     ok 
+ abcijk-ijma-mkbc |   f32 |   6912 |  1728 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-ijma-mkbc |   f64 |   6912 |  1728 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-ijma-mkbc |   c32 |   6912 |  1728 |    24 |  1.8e-7 |        - |     ok 
+ abcijk-ijma-mkbc |   c64 |   6912 |  1728 |    24 | 3.4e-16 |        - |     ok 
+ abcijk-ijmb-mkac |   f32 |   3456 |  3456 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-ijmb-mkac |   f64 |   3456 |  3456 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-ijmb-mkac |   c32 |   3456 |  3456 |    24 |  1.8e-7 |        - |     ok 
+ abcijk-ijmb-mkac |   c64 |   3456 |  3456 |    24 | 3.4e-16 |        - |     ok 
+ abcijk-ijmc-mkab |   f32 |   3456 |  3456 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-ijmc-mkab |   f64 |   3456 |  3456 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-ijmc-mkab |   c32 |   3456 |  3456 |    24 |  1.8e-7 |        - |     ok 
+ abcijk-ijmc-mkab |   c64 |   3456 |  3456 |    24 | 3.4e-16 |        - |     ok 
+ abcijk-ikma-mjbc |   f32 |   6912 |  1728 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-ikma-mjbc |   f64 |   6912 |  1728 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-ikma-mjbc |   c32 |   6912 |  1728 |    24 |  1.8e-7 |        - |     ok 
+ abcijk-ikma-mjbc |   c64 |   6912 |  1728 |    24 | 3.4e-16 |        - |     ok 
+ abcijk-ikmb-mjac |   f32 |   3456 |  3456 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-ikmb-mjac |   f64 |   3456 |  3456 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-ikmb-mjac |   c32 |   3456 |  3456 |    24 |  1.8e-7 |        - |     ok 
+ abcijk-ikmb-mjac |   c64 |   3456 |  3456 |    24 | 3.4e-16 |        - |     ok 
+ abcijk-ikmc-mjab |   f32 |   3456 |  3456 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-ikmc-mjab |   f64 |   3456 |  3456 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-ikmc-mjab |   c32 |   3456 |  3456 |    24 |  1.8e-7 |        - |     ok 
+ abcijk-ikmc-mjab |   c64 |   3456 |  3456 |    24 | 3.4e-16 |        - |     ok 
+ abcijk-jkma-mibc |   f32 |   6912 |  1728 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-jkma-mibc |   f64 |   6912 |  1728 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-jkma-mibc |   c32 |   6912 |  1728 |    24 |  1.8e-7 |        - |     ok 
+ abcijk-jkma-mibc |   c64 |   6912 |  1728 |    24 | 3.4e-16 |        - |     ok 
+ abcijk-jkmb-miac |   f32 |   3456 |  3456 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-jkmb-miac |   f64 |   3456 |  3456 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-jkmb-miac |   c32 |   3456 |  3456 |    24 |  1.8e-7 |        - |     ok 
+ abcijk-jkmb-miac |   c64 |   3456 |  3456 |    24 | 3.4e-16 |        - |     ok 
+ abcijk-jkmc-miab |   f32 |   3456 |  3456 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-jkmc-miab |   f64 |   3456 |  3456 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-jkmc-miab |   c32 |   3456 |  3456 |    24 |  1.8e-7 |        - |     ok 
+ abcijk-jkmc-miab |   c64 |   3456 |  3456 |    24 | 3.4e-16 |        - |     ok 
+ abcijk-eiab-jkec |   f32 |   3456 |  3456 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-eiab-jkec |   f64 |   3456 |  3456 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-eiab-jkec |   c32 |   3456 |  3456 |    24 |  1.8e-7 |        - |     ok 
+ abcijk-eiab-jkec |   c64 |   3456 |  3456 |    24 | 3.4e-16 |        - |     ok 
+ abcijk-eiac-jkeb |   f32 |   3456 |  3456 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-eiac-jkeb |   f64 |   3456 |  3456 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-eiac-jkeb |   c32 |   3456 |  3456 |    24 |  1.8e-7 |        - |     ok 
+ abcijk-eiac-jkeb |   c64 |   3456 |  3456 |    24 | 3.4e-16 |        - |     ok 
+ abcijk-eibc-jkea |   f32 |   1728 |  6912 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-eibc-jkea |   f64 |   1728 |  6912 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-eibc-jkea |   c32 |   1728 |  6912 |    24 |  1.8e-7 |        - |     ok 
+ abcijk-eibc-jkea |   c64 |   1728 |  6912 |    24 | 3.4e-16 |        - |     ok 
+ abcijk-ejab-ikec |   f32 |   3456 |  3456 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-ejab-ikec |   f64 |   3456 |  3456 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-ejab-ikec |   c32 |   3456 |  3456 |    24 |  1.8e-7 |        - |     ok 
+ abcijk-ejab-ikec |   c64 |   3456 |  3456 |    24 | 3.4e-16 |        - |     ok 
+ abcijk-ejac-ikeb |   f32 |   3456 |  3456 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-ejac-ikeb |   f64 |   3456 |  3456 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-ejac-ikeb |   c32 |   3456 |  3456 |    24 |  1.8e-7 |        - |     ok 
+ abcijk-ejac-ikeb |   c64 |   3456 |  3456 |    24 | 3.4e-16 |        - |     ok 
+ abcijk-ejbc-ikea |   f32 |   1728 |  6912 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-ejbc-ikea |   f64 |   1728 |  6912 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-ejbc-ikea |   c32 |   1728 |  6912 |    24 |  1.8e-7 |        - |     ok 
+ abcijk-ejbc-ikea |   c64 |   1728 |  6912 |    24 | 3.4e-16 |        - |     ok 
+ abcijk-ekab-ijec |   f32 |   3456 |  3456 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-ekab-ijec |   f64 |   3456 |  3456 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-ekab-ijec |   c32 |   3456 |  3456 |    24 |  1.8e-7 |        - |     ok 
+ abcijk-ekab-ijec |   c64 |   3456 |  3456 |    24 | 3.4e-16 |        - |     ok 
+ abcijk-ekac-ijeb |   f32 |   3456 |  3456 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-ekac-ijeb |   f64 |   3456 |  3456 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-ekac-ijeb |   c32 |   3456 |  3456 |    24 |  1.8e-7 |        - |     ok 
+ abcijk-ekac-ijeb |   c64 |   3456 |  3456 |    24 | 3.4e-16 |        - |     ok 
+ abcijk-ekbc-ijea |   f32 |   1728 |  6912 |    24 |  8.9e-8 |        - |     ok 
+ abcijk-ekbc-ijea |   f64 |   1728 |  6912 |    24 | 1.7e-16 |        - |     ok 
+ abcijk-ekbc-ijea |   c32 |   1728 |  6912 |    24 |  1.8e-7 |        - |     ok 
+ abcijk-ekbc-ijea |   c64 |   1728 |  6912 |    24 | 3.4e-16 |        - |     ok 
+       abc-bk-akc |   f32 |    168 | 26880 |   160 |  1.5e-7 |        - |     ok 
+       abc-bk-akc |   f64 |    168 | 26880 |   160 | 2.7e-16 |        - |     ok 
+       abc-bk-akc |   c32 |    168 | 26880 |   160 |  4.5e-7 |        - |     ok 
+       abc-bk-akc |   c64 |    168 | 26880 |   160 | 7.3e-16 |        - |     ok 
+
+all comparisons within tolerance
+
+
+########## bench-results/CKF6QCDVPD-m3max/bin/tcbench-openblas premise --size 64 --reps 3 --engines planar,1m,3m,ttgt --dtype f64,c64 --csv bench-results/CKF6QCDVPD-m3max/premise-openblas-f64c64.csv ##########
+
+host        : CKF6QCDVPD
+target      : aarch64 / macos
+cpu features: neon fp16 bf16 
+caches      : L1=128KiB/8-way/1sh L2=16384KiB/8-way/6sh (via sysctl), blocking=legacy
+l3 domains  : t1=1 t4=4 t8=8 t16=16 t32=32
+baselines   : tblis=false blas=openblas
+
+warning: built without the `tblis` feature; TBLIS columns will be empty
+premise check: 12 cases at 64 MiB nominal tensor size, 3 reps, stress=none
+
+  abjcd-dkbac-jk : m=331776 n=24 k=24 macs=1.911e8
+  ajbc-ckba-jk : m=269568 n=72 k=52 macs=1.009e9
+  abcijk-ikmb-mjac : m=6144 n=6144 k=24 macs=9.060e8
+  abrs-qb-aqrs : m=52 n=194688 k=72 macs=7.289e8
+  ij-ikl-ljk : m=216 n=204 k=44064 macs=1.942e9
+  ijkl-imjn-nlmk : m=3744 n=2704 k=3744 macs=3.790e10
+  ijkl-imkn-jnlm : m=3744 n=3744 k=2704 macs=3.790e10
+  ijkl-imnj-nlkm : m=3744 n=2704 k=3744 macs=3.790e10
+  abcijk-ikma-mjbc : m=9216 n=4096 k=24 macs=9.060e8
+  abcijk-eiab-jkec : m=6144 n=6144 k=24 macs=9.060e8
+  abcijk-ejac-ikeb : m=6144 n=6144 k=24 macs=9.060e8
+  abc-bk-akc : m=216 n=44064 k=204 macs=1.942e9
+
+=== ttgt: complex vs real efficiency against the GEMM ceiling ===
+             case | regA | f64 GF/s | gemm f64 |   eff | c64 GF/s | gemm c64 |   eff | eff ratio 
+------------------+------+----------+----------+-------+----------+----------+-------+-----------
+   abjcd-dkbac-jk | 1.00 |     14.6 |     38.0 | 0.386 |     20.4 |     31.2 | 0.652 |     1.689 
+     ajbc-ckba-jk | 1.00 |     18.2 |     49.5 | 0.368 |     31.0 |     44.1 | 0.703 |     1.913 
+ abcijk-ikmb-mjac | 1.00 |     16.9 |     42.5 | 0.396 |     25.9 |     32.6 | 0.793 |     2.000 
+     abrs-qb-aqrs | 1.00 |     29.8 |     49.1 | 0.607 |     37.6 |     44.2 | 0.851 |     1.402 
+       ij-ikl-ljk | 1.00 |     46.3 |     54.8 | 0.846 |     43.4 |     45.3 | 0.957 |     1.132 
+   ijkl-imjn-nlmk | 1.00 |     55.8 |     57.6 | 0.968 |     46.1 |     45.9 | 1.004 |     1.038 
+   ijkl-imkn-jnlm | 1.00 |     55.7 |     57.0 | 0.978 |     46.0 |     46.2 | 0.995 |     1.018 
+   ijkl-imnj-nlkm | 1.00 |     56.4 |     57.3 | 0.984 |     44.4 |     45.3 | 0.980 |     0.995 
+ abcijk-ikma-mjbc | 1.00 |     20.6 |     43.2 | 0.479 |     30.7 |     42.2 | 0.728 |     1.522 
+ abcijk-eiab-jkec | 1.00 |     26.0 |     42.6 | 0.611 |     33.2 |     41.4 | 0.801 |     1.312 
+ abcijk-ejac-ikeb | 1.00 |     26.2 |     42.5 | 0.616 |     31.7 |     41.5 | 0.762 |     1.237 
+       abc-bk-akc | 1.00 |     45.3 |     56.6 | 0.800 |     42.2 |     44.9 | 0.940 |     1.175 
+             MEAN |      |          |          |       |          |          |       |     1.369 
+
+=== planar: complex vs real efficiency against the GEMM ceiling ===
+             case | regA | f64 GF/s | gemm f64 |   eff | c64 GF/s | gemm c64 |   eff | eff ratio 
+------------------+------+----------+----------+-------+----------+----------+-------+-----------
+   abjcd-dkbac-jk | 1.00 |     10.0 |     38.0 | 0.265 |     15.2 |     31.2 | 0.488 |     1.844 
+     ajbc-ckba-jk | 1.00 |     17.9 |     49.5 | 0.361 |     23.0 |     44.1 | 0.521 |     1.442 
+ abcijk-ikmb-mjac | 1.00 |     17.8 |     42.5 | 0.419 |     23.1 |     32.6 | 0.709 |     1.691 
+     abrs-qb-aqrs | 1.00 |     19.3 |     49.1 | 0.393 |     24.6 |     44.2 | 0.557 |     1.417 
+       ij-ikl-ljk | 1.00 |     23.6 |     54.8 | 0.430 |     26.9 |     45.3 | 0.595 |     1.383 
+   ijkl-imjn-nlmk | 1.00 |     26.0 |     57.6 | 0.451 |     27.8 |     45.9 | 0.607 |     1.346 
+   ijkl-imkn-jnlm | 1.00 |     25.9 |     57.0 | 0.453 |     27.6 |     46.2 | 0.597 |     1.317 
+   ijkl-imnj-nlkm | 1.00 |     26.1 |     57.3 | 0.455 |     27.6 |     45.3 | 0.610 |     1.341 
+ abcijk-ikma-mjbc | 1.00 |     18.5 |     43.2 | 0.428 |     23.6 |     42.2 | 0.559 |     1.306 
+ abcijk-eiab-jkec | 1.00 |     18.4 |     42.6 | 0.431 |     23.5 |     41.4 | 0.567 |     1.317 
+ abcijk-ejac-ikeb | 1.00 |     17.6 |     42.5 | 0.414 |     23.2 |     41.5 | 0.558 |     1.348 
+       abc-bk-akc | 1.00 |     24.4 |     56.6 | 0.431 |     27.5 |     44.9 | 0.613 |     1.421 
+             MEAN |      |          |          |       |          |          |       |     1.431 
+
+=== 1m: complex vs real efficiency against the GEMM ceiling ===
+             case | regA | f64 GF/s | gemm f64 |   eff | c64 GF/s | gemm c64 |   eff | eff ratio 
+------------------+------+----------+----------+-------+----------+----------+-------+-----------
+   abjcd-dkbac-jk | 1.00 |     10.0 |     38.0 | 0.265 |     15.0 |     31.2 | 0.482 |     1.819 
+     ajbc-ckba-jk | 1.00 |     17.9 |     49.5 | 0.361 |     21.9 |     44.1 | 0.498 |     1.378 
+ abcijk-ikmb-mjac | 1.00 |     17.8 |     42.5 | 0.419 |     22.5 |     32.6 | 0.691 |     1.648 
+     abrs-qb-aqrs | 1.00 |     19.3 |     49.1 | 0.393 |     23.1 |     44.2 | 0.522 |     1.328 
+       ij-ikl-ljk | 1.00 |     23.6 |     54.8 | 0.430 |     25.7 |     45.3 | 0.568 |     1.320 
+   ijkl-imjn-nlmk | 1.00 |     26.0 |     57.6 | 0.451 |     26.7 |     45.9 | 0.581 |     1.289 
+   ijkl-imkn-jnlm | 1.00 |     25.9 |     57.0 | 0.453 |     26.4 |     46.2 | 0.572 |     1.260 
+   ijkl-imnj-nlkm | 1.00 |     26.1 |     57.3 | 0.455 |     26.6 |     45.3 | 0.587 |     1.292 
+ abcijk-ikma-mjbc | 1.00 |     18.5 |     43.2 | 0.428 |     23.0 |     42.2 | 0.546 |     1.276 
+ abcijk-eiab-jkec | 1.00 |     18.4 |     42.6 | 0.431 |     22.8 |     41.4 | 0.551 |     1.278 
+ abcijk-ejac-ikeb | 1.00 |     17.6 |     42.5 | 0.414 |     22.5 |     41.5 | 0.543 |     1.310 
+       abc-bk-akc | 1.00 |     24.4 |     56.6 | 0.431 |     26.4 |     44.9 | 0.588 |     1.362 
+             MEAN |      |          |          |       |          |          |       |     1.380 
+
+=== 3m: complex vs real efficiency against the GEMM ceiling ===
+             case | regA | f64 GF/s | gemm f64 |   eff | c64 GF/s | gemm c64 |   eff | eff ratio 
+------------------+------+----------+----------+-------+----------+----------+-------+-----------
+   abjcd-dkbac-jk | 1.00 |     10.0 |     38.0 | 0.265 |     16.4 |     31.2 | 0.525 |     1.984 
+     ajbc-ckba-jk | 1.00 |     17.9 |     49.5 | 0.361 |     27.5 |     44.1 | 0.623 |     1.725 
+ abcijk-ikmb-mjac | 1.00 |     17.8 |     42.5 | 0.419 |     26.9 |     32.6 | 0.826 |     1.970 
+     abrs-qb-aqrs | 1.00 |     19.3 |     49.1 | 0.393 |     30.1 |     44.2 | 0.680 |     1.729 
+       ij-ikl-ljk | 1.00 |     23.6 |     54.8 | 0.430 |     35.0 |     45.3 | 0.772 |     1.796 
+   ijkl-imjn-nlmk | 1.00 |     26.0 |     57.6 | 0.451 |     36.8 |     45.9 | 0.803 |     1.780 
+   ijkl-imkn-jnlm | 1.00 |     25.9 |     57.0 | 0.453 |     36.6 |     46.2 | 0.793 |     1.748 
+   ijkl-imnj-nlkm | 1.00 |     26.1 |     57.3 | 0.455 |     36.9 |     45.3 | 0.815 |     1.793 
+ abcijk-ikma-mjbc | 1.00 |     18.5 |     43.2 | 0.428 |     28.0 |     42.2 | 0.664 |     1.551 
+ abcijk-eiab-jkec | 1.00 |     18.4 |     42.6 | 0.431 |     27.8 |     41.4 | 0.670 |     1.554 
+ abcijk-ejac-ikeb | 1.00 |     17.6 |     42.5 | 0.414 |     27.2 |     41.5 | 0.655 |     1.581 
+       abc-bk-akc | 1.00 |     24.4 |     56.6 | 0.431 |     35.7 |     44.9 | 0.795 |     1.843 
+             MEAN |      |          |          |       |          |          |       |     1.755 
+
+interpretation: 'eff' is contraction GF/s divided by same-shape GEMM GF/s.
+'eff ratio' is complex eff over real eff. Below 1.0 means the engine loses
+more to overheads on complex data than on real data -- the headroom this
+project targets. At or above 1.0 the complex-weakness thesis is refuted.
+
+wrote bench-results/CKF6QCDVPD-m3max/premise-openblas-f64c64.csv
+
+
+########## bench-results/CKF6QCDVPD-m3max/bin/tcbench-accelerate premise --size 64 --reps 3 --engines planar,1m,3m,ttgt --dtype f64,c64 --csv bench-results/CKF6QCDVPD-m3max/premise-accelerate-f64c64.csv ##########
+
+host        : CKF6QCDVPD
+target      : aarch64 / macos
+cpu features: neon fp16 bf16 
+caches      : L1=128KiB/8-way/1sh L2=16384KiB/8-way/6sh (via sysctl), blocking=legacy
+l3 domains  : t1=1 t4=4 t8=8 t16=16 t32=32
+baselines   : tblis=false blas=accelerate
+
+warning: built without the `tblis` feature; TBLIS columns will be empty
+premise check: 12 cases at 64 MiB nominal tensor size, 3 reps, stress=none
+
+  abjcd-dkbac-jk : m=331776 n=24 k=24 macs=1.911e8
+  ajbc-ckba-jk : m=269568 n=72 k=52 macs=1.009e9
+  abcijk-ikmb-mjac : m=6144 n=6144 k=24 macs=9.060e8
+  abrs-qb-aqrs : m=52 n=194688 k=72 macs=7.289e8
+  ij-ikl-ljk : m=216 n=204 k=44064 macs=1.942e9
+  ijkl-imjn-nlmk : m=3744 n=2704 k=3744 macs=3.790e10
+  ijkl-imkn-jnlm : m=3744 n=3744 k=2704 macs=3.790e10
+  ijkl-imnj-nlkm : m=3744 n=2704 k=3744 macs=3.790e10
+  abcijk-ikma-mjbc : m=9216 n=4096 k=24 macs=9.060e8
+  abcijk-eiab-jkec : m=6144 n=6144 k=24 macs=9.060e8
+  abcijk-ejac-ikeb : m=6144 n=6144 k=24 macs=9.060e8
+  abc-bk-akc : m=216 n=44064 k=204 macs=1.942e9
+
+=== ttgt: complex vs real efficiency against the GEMM ceiling ===
+             case | regA | f64 GF/s | gemm f64 |   eff | c64 GF/s | gemm c64 |   eff | eff ratio 
+------------------+------+----------+----------+-------+----------+----------+-------+-----------
+   abjcd-dkbac-jk | 1.00 |     17.6 |     67.4 | 0.261 |     21.3 |     32.9 | 0.647 |     2.474 
+     ajbc-ckba-jk | 1.00 |     29.9 |    157.1 | 0.190 |     50.9 |     89.1 | 0.571 |     3.006 
+ abcijk-ikmb-mjac | 1.00 |     24.4 |    171.0 | 0.142 |     56.7 |    104.6 | 0.542 |     3.804 
+     abrs-qb-aqrs | 1.00 |     50.6 |    137.0 | 0.369 |     62.7 |     85.1 | 0.737 |     1.998 
+       ij-ikl-ljk | 1.00 |    156.7 |    335.8 | 0.467 |    170.1 |    206.2 | 0.825 |     1.768 
+   ijkl-imjn-nlmk | 1.00 |    334.8 |    378.1 | 0.886 |    339.8 |    356.9 | 0.952 |     1.075 
+   ijkl-imkn-jnlm | 1.00 |    325.2 |    375.0 | 0.867 |    343.1 |    362.2 | 0.947 |     1.092 
+   ijkl-imnj-nlkm | 1.00 |    334.7 |    374.0 | 0.895 |    342.1 |    357.0 | 0.958 |     1.071 
+ abcijk-ikma-mjbc | 1.00 |     45.5 |    165.4 | 0.275 |     54.6 |    100.9 | 0.541 |     1.965 
+ abcijk-eiab-jkec | 1.00 |     47.6 |    167.8 | 0.284 |     63.4 |    105.0 | 0.604 |     2.127 
+ abcijk-ejac-ikeb | 1.00 |     49.0 |    170.7 | 0.287 |     57.7 |    104.9 | 0.550 |     1.915 
+       abc-bk-akc | 1.00 |    154.1 |    363.9 | 0.424 |    177.2 |    227.2 | 0.780 |     1.842 
+             MEAN |      |          |          |       |          |          |       |     2.012 
+
+=== planar: complex vs real efficiency against the GEMM ceiling ===
+             case | regA | f64 GF/s | gemm f64 |   eff | c64 GF/s | gemm c64 |   eff | eff ratio 
+------------------+------+----------+----------+-------+----------+----------+-------+-----------
+   abjcd-dkbac-jk | 1.00 |      9.6 |     67.4 | 0.142 |     15.1 |     32.9 | 0.459 |     3.226 
+     ajbc-ckba-jk | 1.00 |     17.9 |    157.1 | 0.114 |     23.1 |     89.1 | 0.259 |     2.271 
+ abcijk-ikmb-mjac | 1.00 |     17.8 |    171.0 | 0.104 |     23.0 |    104.6 | 0.220 |     2.113 
+     abrs-qb-aqrs | 1.00 |     18.8 |    137.0 | 0.137 |     24.2 |     85.1 | 0.284 |     2.069 
+       ij-ikl-ljk | 1.00 |     23.5 |    335.8 | 0.070 |     26.5 |    206.2 | 0.128 |     1.838 
+   ijkl-imjn-nlmk | 1.00 |     26.1 |    378.1 | 0.069 |     27.8 |    356.9 | 0.078 |     1.129 
+   ijkl-imkn-jnlm | 1.00 |     26.0 |    375.0 | 0.069 |     27.6 |    362.2 | 0.076 |     1.101 
+   ijkl-imnj-nlkm | 1.00 |     26.1 |    374.0 | 0.070 |     27.6 |    357.0 | 0.077 |     1.108 
+ abcijk-ikma-mjbc | 1.00 |     18.9 |    165.4 | 0.114 |     22.6 |    100.9 | 0.224 |     1.959 
+ abcijk-eiab-jkec | 1.00 |     18.0 |    167.8 | 0.107 |     23.6 |    105.0 | 0.225 |     2.096 
+ abcijk-ejac-ikeb | 1.00 |     17.7 |    170.7 | 0.103 |     23.1 |    104.9 | 0.220 |     2.126 
+       abc-bk-akc | 1.00 |     24.4 |    363.9 | 0.067 |     27.4 |    227.2 | 0.121 |     1.798 
+             MEAN |      |          |          |       |          |          |       |     1.903 
+
+=== 1m: complex vs real efficiency against the GEMM ceiling ===
+             case | regA | f64 GF/s | gemm f64 |   eff | c64 GF/s | gemm c64 |   eff | eff ratio 
+------------------+------+----------+----------+-------+----------+----------+-------+-----------
+   abjcd-dkbac-jk | 1.00 |      9.6 |     67.4 | 0.142 |     14.7 |     32.9 | 0.448 |     3.149 
+     ajbc-ckba-jk | 1.00 |     17.9 |    157.1 | 0.114 |     21.6 |     89.1 | 0.242 |     2.125 
+ abcijk-ikmb-mjac | 1.00 |     17.8 |    171.0 | 0.104 |     22.2 |    104.6 | 0.212 |     2.035 
+     abrs-qb-aqrs | 1.00 |     18.8 |    137.0 | 0.137 |     23.0 |     85.1 | 0.270 |     1.971 
+       ij-ikl-ljk | 1.00 |     23.5 |    335.8 | 0.070 |     25.5 |    206.2 | 0.124 |     1.768 
+   ijkl-imjn-nlmk | 1.00 |     26.1 |    378.1 | 0.069 |     26.7 |    356.9 | 0.075 |     1.082 
+   ijkl-imkn-jnlm | 1.00 |     26.0 |    375.0 | 0.069 |     26.5 |    362.2 | 0.073 |     1.056 
+   ijkl-imnj-nlkm | 1.00 |     26.1 |    374.0 | 0.070 |     26.6 |    357.0 | 0.074 |     1.067 
+ abcijk-ikma-mjbc | 1.00 |     18.9 |    165.4 | 0.114 |     21.6 |    100.9 | 0.214 |     1.870 
+ abcijk-eiab-jkec | 1.00 |     18.0 |    167.8 | 0.107 |     22.8 |    105.0 | 0.218 |     2.030 
+ abcijk-ejac-ikeb | 1.00 |     17.7 |    170.7 | 0.103 |     22.6 |    104.9 | 0.215 |     2.079 
+       abc-bk-akc | 1.00 |     24.4 |    363.9 | 0.067 |     26.3 |    227.2 | 0.116 |     1.725 
+             MEAN |      |          |          |       |          |          |       |     1.830 
+
+=== 3m: complex vs real efficiency against the GEMM ceiling ===
+             case | regA | f64 GF/s | gemm f64 |   eff | c64 GF/s | gemm c64 |   eff | eff ratio 
+------------------+------+----------+----------+-------+----------+----------+-------+-----------
+   abjcd-dkbac-jk | 1.00 |      9.6 |     67.4 | 0.142 |     15.8 |     32.9 | 0.482 |     3.390 
+     ajbc-ckba-jk | 1.00 |     17.9 |    157.1 | 0.114 |     27.0 |     89.1 | 0.304 |     2.663 
+ abcijk-ikmb-mjac | 1.00 |     17.8 |    171.0 | 0.104 |     27.2 |    104.6 | 0.260 |     2.497 
+     abrs-qb-aqrs | 1.00 |     18.8 |    137.0 | 0.137 |     30.0 |     85.1 | 0.353 |     2.569 
+       ij-ikl-ljk | 1.00 |     23.5 |    335.8 | 0.070 |     34.7 |    206.2 | 0.168 |     2.408 
+   ijkl-imjn-nlmk | 1.00 |     26.1 |    378.1 | 0.069 |     36.7 |    356.9 | 0.103 |     1.491 
+   ijkl-imkn-jnlm | 1.00 |     26.0 |    375.0 | 0.069 |     35.6 |    362.2 | 0.098 |     1.421 
+   ijkl-imnj-nlkm | 1.00 |     26.1 |    374.0 | 0.070 |     36.9 |    357.0 | 0.103 |     1.480 
+ abcijk-ikma-mjbc | 1.00 |     18.9 |    165.4 | 0.114 |     28.1 |    100.9 | 0.279 |     2.437 
+ abcijk-eiab-jkec | 1.00 |     18.0 |    167.8 | 0.107 |     27.9 |    105.0 | 0.265 |     2.475 
+ abcijk-ejac-ikeb | 1.00 |     17.7 |    170.7 | 0.103 |     27.3 |    104.9 | 0.260 |     2.515 
+       abc-bk-akc | 1.00 |     24.4 |    363.9 | 0.067 |     35.7 |    227.2 | 0.157 |     2.341 
+             MEAN |      |          |          |       |          |          |       |     2.307 
+
+interpretation: 'eff' is contraction GF/s divided by same-shape GEMM GF/s.
+'eff ratio' is complex eff over real eff. Below 1.0 means the engine loses
+more to overheads on complex data than on real data -- the headroom this
+project targets. At or above 1.0 the complex-weakness thesis is refuted.
+
+wrote bench-results/CKF6QCDVPD-m3max/premise-accelerate-f64c64.csv
+
+
+########## bench-results/CKF6QCDVPD-m3max/bin/tcbench-openblas sweep --size 64 --reps 3 --engines planar,1m,3m,ttgt --dtype f64,c64 --csv bench-results/CKF6QCDVPD-m3max/warm-f64c64.csv ##########
+
+host        : CKF6QCDVPD
+target      : aarch64 / macos
+cpu features: neon fp16 bf16 
+caches      : L1=128KiB/8-way/1sh L2=16384KiB/8-way/6sh (via sysctl), blocking=legacy
+l3 domains  : t1=1 t4=4 t8=8 t16=16 t32=32
+baselines   : tblis=false blas=openblas
+
+sweeping 49 cases at 64 MiB nominal tensor size, 3 reps, stress=none
+

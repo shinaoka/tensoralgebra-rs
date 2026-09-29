@@ -1,0 +1,119 @@
+The A/B for the three answers to the per-call thread spawn cost. Four arms.
+
+  machine : worker5086 (Rusty, `gen` partition, `rome`)
+            AMD EPYC Zen2, 2 x 64 cores, SMT off, avx2 + fma, no AVX-512
+            16 MiB L3 per 4 cores, so 64 threads span 16 L3 domains
+  date    : 2026-08-05T14:20:42 -> 16:07:50 (107 min)
+  slurm   : job 6760092, --constraint=rome --exclusive, 128 CPUs, OverSubscribe=NO
+  script  : ARMS="base;pool:TENSORCONTRACT_POOL=on;guard:TENSORCONTRACT_AMORTISE=on;
+            both:TENSORCONTRACT_POOL=on TENSORCONTRACT_AMORTISE=on" STAGES=small
+            sbatch scripts/rusty-phase4.sbatch
+  stages  : prep rc=0 (0 min), small rc=0 (106 min), grid skipped
+  host    : session.log, slurm-job.txt, slurm-tp-phase4-6760092.out, topology.json
+
+This is the **first job to use a per-job build tree** (D51). The log records
+`build tree: .../target-job-6760092 (private to this job)`, so an editing session on
+the submit host could not relink the binary its arms were invoking -- and did not
+have to be avoided, which is the point.
+
+  engine  : commit a2f425f, built on the node by `prep`
+  arms    : sm-* = base, sm-pool-*, sm-guard-*, sm-both-*
+            4 sizes (0.25/1/4/16 MiB) x 7 widths (1..64) x 2 dtype pairs x 4 arms
+            225 CSVs, 32928 rows in the base+pool pair alone, 0 zero-second rows
+
+## What it decides, and it is not what was expected
+
+**The pool wins and should ship. The guard should not.** Both looked good against
+`base` on their own; the *joint* arm is what shows they conflict, and without it both
+would have shipped and small threaded contractions would have lost ~3x. That is A20
+stated positively -- the joint arm is the one that decides.
+
+Drift-corrected treatment/base geomeans (each row deflated by its own `t1`, which no
+switch can touch):
+
+              pool t4   pool t64 | guard t4  guard t64 | both t4  both t64
+  0.25 f64       1.53      10.30 |    0.61       7.86  |   0.63      8.48
+  0.25 f32       1.77      11.64 |    0.73      10.84  |   0.79     12.50
+    16 f64       0.99       2.38 |    0.99       1.08  |   1.01      2.41
+    16 c32       1.02       2.27 |    1.00       1.02  |   1.01      2.40
+
+and `both / pool` at 0.25 MiB reaches **0.32** (f64, t16): once threads are pooled
+the guard is pure loss, because it rations a cost that no longer exists.
+
+Per case over all 2352 points per width, control-corrected -- read this rather than
+the geomeans, because it is where the two differ:
+
+  width | pool p10  pool worst  pool <0.90 | both p10  both worst  both <0.90
+      4 |    0.995       0.742          23 |    0.681       0.327         323
+      8 |    1.011       0.578          33 |    0.861       0.302         286
+     64 |    1.782       0.928           0 |    1.785       0.850           1
+
+The pool's sub-0.90 tail is 0.7-1.4% of points, which is what A39's floor already
+produces on *identical* configurations -- not evidence of a systematic loss, and not
+proof of none. The guard's is **12-14% of points**, far outside that floor.
+
+## Three findings that were not the point of the run
+
+1. **The base arm replicates part 16 on a fourth Zen2 node.** 16 MiB `f64` reads
+   best 6.20@t32 / t64 5.00 here against worker5139's 6.19@t32 / 5.03@t64. Two
+   within-session ratios agreeing to 0.6%, which is what makes the treatment arm
+   beside it trustworthy.
+2. **The offline calibration of D48 replicates too**, simulated from this node's own
+   base grid: no guard 0.20/564 slower, C=3e6 1.65/0 slower, oracle 2.37 -- against
+   worker5139's 0.20/565, 1.66/0, 2.40. The *simulation* is sound; what it could not
+   see is below.
+3. **Part 16's "benign bandwidth ceiling above 1 MiB" is substantially wrong.** In
+   all eight size x dtype rows, pooled `t64` beats unpooled *best-at-any-width*: at
+   16 MiB `f64`, unpooled peaks at 6.20@t32 and pooled reaches 13.19@t32. Much of
+   what was attributed to bandwidth was fixed cost.
+
+## And the cost removed is more than thread spawn -- but the excess is unexplained
+
+Median per-call time removed at t64, divided by 64:
+
+  0.25 MiB  37.2 us/thread (f64c64)   37.2 (f32c32)
+     1 MiB  43.4                      41.5
+     4 MiB  54.0                      49.8
+    16 MiB  93.6                      66.2
+
+A spawn cost is size-independent. At 0.25 MiB this lands at the top of A43's
+20-36 us -- an independent confirmation of it -- and by 16 MiB it is 2.5x that.
+
+**Read that column with care: it is partly an artefact.** It divides the whole
+pooled-vs-unpooled difference by the thread count, which assumes a pure fixed cost. The
+difference is neither purely fixed (2.4 -> 6.0 ms) nor purely proportional (ratio
+9.6 -> 2.1), so dividing manufactures some of the growth.
+
+The per-thread packed-`A` buffer was offered as the mechanism and is **refuted from
+this same data**: `ap_len` is identical at all four sizes (65536 reals in f64, 22528 in
+c64, 135168 in f32, 46080 in c32), because `mc` never binds against `m` at these
+shapes. Do not hoist those allocations expecting a win. Note also the trap that turned
+up in checking it -- the `mc` in the `notes` column is the *derived* blocking from
+`plan_config`, not the capped value the driver allocates from (`driver.rs:404`, `:445`)
+-- so any footprint analysis from these CSVs must apply the cap itself.
+
+What is solid: a fixed ~37 us/thread. The size-scaling component is unexplained;
+scheduler placement of fresh threads and barrier skew are untested candidates.
+
+Not comparable to anything measured on ccqlin038, and the absolute speedups are not
+comparable to part 16's -- different node. Every ratio here is within-session.
+
+LAYOUT -- where the numbers actually are
+----------------------------------------
+phase4g/            453 files, the largest single directory in this repository.
+                    Named for scripts/phase4g-small.sh, which produced it. One
+                    CSV and one .txt per (arm, size, width, dtype-pair) cell:
+                      sm-<arm>-s<size>-t<threads>-<dtypes>.{csv,txt}
+                    with <arm> in {base, pool, guard, both} -- the 2x2 that is
+                    the whole point of this run, since either switch alone looks
+                    good and the joint arm is what shows they conflict.
+                    Sizes 0.25 / 1 / 4 / 16 MiB, widths 1..64.
+features.csv        structural features of every corpus case, zero CPU.
+shapes.csv          what each MR does to the write-back, zero CPU.
+topology.{json,txt} what the machine is, and which cores each arm was given.
+placement.log,      occupancy evidence: which cores were busy during each arm.
+  session.log
+slurm-tp-phase4-6760092.out   the job transcript.
+
+Read with: docs/notebook/ -> Threading -> "Part 18", and D48, D49, D52, D53,
+A50, A53, A54; and docs/refuted.md for the guard.
