@@ -101,11 +101,26 @@ The bundle's `lib.rs` names each selected crate (`pub use tprims_blas_capi;`) so
 
 The C ABI uses [DLPack](https://dmlc.github.io/dlpack/latest/) so that NumPy, PyTorch, JAX, CuPy and Julia arrays pass without copying.
 
-- **Inputs** are borrowed `const DLTensor*`. The library honours `byte_offset`, arbitrary element strides (column-major and negative strides included) and a NULL `strides` meaning compact row-major. `lanes` must be 1. Accepted devices are `kDLCPU` and `kDLCUDAHost`.
-- **Caller-provided outputs** are `DLTensor*` written in place with `C = alpha * op(A, B) + beta * C` semantics and defined zero-size behaviour. Outputs must not overlap inputs unless an operation documents in-place support; overlap is checked where affordable.
+- **Operand descriptor.** Every tensor argument is a borrowed `tprims_tensor`, a view plus the DLPack flags that `DLTensor` alone does not carry (`DLPACK_FLAG_BITMASK_READ_ONLY` lives in `DLManagedTensorVersioned.flags`):
+
+  ```c
+  typedef struct {
+      DLTensor *view;      /* borrowed; never freed by tprims */
+      uint64_t  flags;     /* DLPACK_FLAG_BITMASK_* */
+  } tprims_tensor;
+
+  /* Borrow a versioned tensor: copies view pointer and flags; takes no ownership, never calls the deleter. */
+  tprims_tensor tprims_tensor_borrow_versioned(DLManagedTensorVersioned *m);
+  /* Raw DLTensor (DLPack 0.x producers): the caller asserts the memory is writable if used as an output. */
+  tprims_tensor tprims_tensor_borrow_raw(DLTensor *t, uint64_t flags);
+  ```
+
+  The descriptor is valid only for the duration of the call; ownership and lifetime stay with the caller.
+- **Inputs** are `tprims_tensor` read through `view`; the READ_ONLY flag is permitted and no copy is made. The library honours `byte_offset`, arbitrary element strides (column-major and negative strides included) and a NULL `strides` meaning compact row-major. `lanes` must be 1. Accepted devices are `kDLCPU` and `kDLCUDAHost`.
+- **Caller-provided outputs** are `tprims_tensor` written in place with `C = alpha * op(A, B) + beta * C` semantics and defined zero-size behaviour. Outputs must not overlap inputs unless an operation documents in-place support; overlap is checked where affordable.
 - **Library-allocated outputs** are returned as `DLManagedTensorVersioned` (DLPack 1.x) with a deleter, for results whose shape or storage the library determines (factors, `eigh` results). The receiver owns them and can hand them to NumPy or Julia without a copy.
 - **Conjugation** is a per-operand argument, since DLPack has no conjugation flag. It maps to the lazy conjugation already present in `strided-view`.
-- **Read-only** versioned tensors are rejected as outputs.
+- **Read-only outputs** are rejected with `TPRIMS_ERR_READ_ONLY` during validation, before any write. For a descriptor made with `tprims_tensor_borrow_raw`, the check sees only the flags the caller passed; writability of the memory is the caller's precondition.
 - **Materialization** is never hidden. When a stride layout forces an internal copy, the call reports the selected strategy; the flag `TPRIMS_NO_MATERIALIZE` turns that case into an error.
 - **Dtypes** in ABI v1: `f32`, `f64`, `complex64`, `complex128`. Tag space for `f16` / `bf16` exists in DLPack; whether v1 accepts them is an open decision.
 
@@ -125,13 +140,16 @@ tprims_exec *tprims_exec_rayon_create(size_t nthreads, const tprims_rayon_opts *
 tprims_exec *tprims_exec_from_callbacks(const tprims_exec_vtable *host);
 size_t       tprims_exec_num_threads(const tprims_exec *exec);
 tprims_status tprims_exec_set_budget(tprims_exec *exec, size_t max_threads);
-tprims_status tprims_exec_close(tprims_exec *exec);
+tprims_status tprims_exec_close(tprims_exec *exec);   /* owned pool: joins workers; borrowed: detaches */
 void         tprims_exec_retain(tprims_exec *exec);
 void         tprims_exec_release(tprims_exec *exec);
 ```
 
 - **Lifetime:** handles are reference counted so that a host binding and several library objects can share one pool.
-- **Close is synchronous.** Dropping a Rayon `ThreadPool` terminates its threads asynchronously. `tprims_exec_close` marks the context closed, returns `TPRIMS_BUSY` if work is in flight, and otherwise waits until every worker has exited, observed through the pool's exit handler. Calls on a closed context return an error.
+- **Close of an owned pool is synchronous and joins the threads.** A pool created by `tprims_exec_rayon_create` is built with `ThreadPoolBuilder::spawn_handler`, which spawns each worker with `std::thread::Builder` and keeps its `JoinHandle`. `tprims_exec_close` marks the context closed, returns `TPRIMS_BUSY` if work is in flight, otherwise drops the pool to start shutdown and joins every handle. An exit-handler notification is not sufficient: in rayon-core 1.13 it runs inside the worker's main loop, before thread-local destructors ([probe](../experiments/pool-close/README.md)). After a successful close no tprims worker code, including TLS teardown, is running.
+- **Close of a borrowed context only detaches.** A context wrapping a host pool (the Rust `Exec::Rayon` case, or a C host's callback executor) never terminates the host's threads; close waits for tprims calls in flight on that context (or returns `TPRIMS_BUSY`) and then invalidates the handle.
+- **Edge cases.** Close called from a worker of the same pool returns `TPRIMS_ERR_WOULD_DEADLOCK` without side effects (detected with `ThreadPool::current_thread_index`). A second close is a no-op returning `TPRIMS_OK`. Calls on a closed context return `TPRIMS_ERR_CLOSED`. `release` of the last reference to an owned pool that was never closed performs the close; if that happens on a worker of the pool, the join is handed to a detached reaper thread and reported through a debug status, since joining is impossible there.
+- **Tests when implemented:** a TLS-destructor handshake with a bounded wait (as in the probe) proving close does not return early; busy, repeated and self-worker close.
 - **Thread budget:** one budget controls batch-level and inner-matrix parallelism so nested parallelism does not oversubscribe.
 - **Scratch:** operations expose scratch-size queries; a context can own reusable per-worker scratch.
 
@@ -144,6 +162,21 @@ pub enum Exec<'a> {
     Host(&'a dyn BroadcastExecutor),    // host scheduler with guaranteed width
 }
 ```
+
+**Three widths, kept distinct.**
+
+- *Budget* `b`: the most threads a kernel may occupy, set by the host (`tprims_exec_set_budget`, never above the pool size). tprims never creates threads beyond the pool; there is no scoped-thread fallback.
+- *Active width* `k`: the number of workers doing arithmetic, chosen from the work, `k ≤ b`.
+- *Dispatch width* `d`: the number of workers woken. It sets the entry cost. For Rayon `ThreadPool::broadcast`, `d` is always the whole pool, whatever `k` is: on a fixed 18-worker pool, a broadcast with one active worker costs as much as one with 18 (about 165 µs from idle, [measurement](../experiments/rayon-entry/README.md#active-width-on-a-fixed-pool)).
+
+Two execution shapes follow:
+
+- **Barrier-free partition** (batches, independent output tiles, faer's own parallel loops): `install` plus `k` tasks, so `d ≈ k`. Entry scales with `k` (about 17 µs for one task, 50 µs for four, from idle). Tasks are not guaranteed to run concurrently, so no barrier may be used.
+- **SPMD with barriers** (the TBLIS inner driver): needs `k` workers guaranteed to run at once. On Rayon this is `broadcast`, so `k = d =` pool width, and it is chosen only when the kernel is large enough to amortize the full-pool entry. A narrower SPMD team on a borrowed Rayon pool would need a subset-broadcast primitive that Rayon lacks; that is a separate prototype, not an assumption.
+
+**Insufficient width.** If a plan's partition needs more workers than `b`, the planner repartitions to at most `b` (down to serial) before execution. It never spawns extra threads and never enters a barrier with fewer participants than the barrier counts.
+
+**Nesting.** An SPMD kernel called from a worker that is already inside an SPMD region, or inside any job of the same pool, runs its barrier-free variant or serially: a worker blocked at an outer barrier could not take its share of an inner broadcast. Concurrent SPMD kernels on one pool from different host threads are serialized by the context. Both rules are tested before the adapter is used as a general borrowed-pool solution.
 
 ### Cost of parallel execution
 
@@ -159,18 +192,18 @@ where `L` depends on the width and on whether the workers are awake. The [rayon-
 | --- | --- | --- |
 | Caller wake-up | about 3 µs | The caller outside the pool blocks on a lock latch (a `Condvar`) and must be woken when the job finishes. Same as a raw two-thread `Condvar` round trip. |
 | Worker wake-up | 6 to 8 µs | Idle workers sleep after 32 `yield_now` rounds, within 100 µs; Rayon wakes one sleeping worker per injected job. |
-| Fan-out | 55 to 200 µs at 18 threads | Waking every worker; the heterogeneous efficiency cores likely contribute. About 8 to 17 µs at 4 threads. |
+| Fan-out | 55 to 200 µs at 18 threads | Waking every worker; the heterogeneous efficiency cores likely contribute. About 8 to 17 µs at 4 threads. Grows with the dispatch width, not the active width. |
 | Already inside the pool | 8 to 33 ns | No handoff: the job runs on the current worker. |
 
 Consequences for the design:
 
 - **Break-even.** Parallelism gains only if `T - T/n > L`. With `L` about 10 µs at small width, work below roughly 50 to 100 µs should run serially on the calling thread; an `N = 100` matrix-vector product (about 1 µs) is always serial. Full width pays off only for work of the order of milliseconds.
-- **Width from work.** A kernel picks `n` from its flop and byte count, not from the pool size, so a medium kernel wakes a few workers rather than all of them. The thresholds are per kernel and per machine and must be measured; they are not fixed constants of the API.
+- **Width from work.** A kernel picks `n` from its flop and byte count, not from the pool size, so a medium kernel wakes a few workers rather than all of them. This holds for barrier-free partitions only; an SPMD kernel on Rayon always pays full-pool dispatch (see *Three widths* above), so its threshold is higher. The thresholds are per kernel and per machine and must be measured; they are not fixed constants of the API.
 - **No per-call handoff for serial work.** This is the difference from tenferro-rs today, which enters its pool once per session and so pays 8 to 14 µs on every FFI call, including serial ones ([tenferro #1945](https://github.com/tensor4all/tenferro-rs/issues/1945)).
-- **OpenMP is not intrinsically cheaper.** A default libomp parallel region costs 12 µs at 4 threads and 53 to 100 µs at 18 threads, the same range as Rayon. Sub-microsecond OpenMP entry comes from active waiting (`KMP_BLOCKTIME`), which burns cores and produced p90 spikes of 80 to 190 µs when spinning threads exceeded cores. A spin policy is therefore deferred ([decision](decision-log.md#execution)).
+- **OpenMP is not intrinsically cheaper.** A default libomp parallel region costs 10 to 12 µs at 4 threads and 53 to 94 µs at 18 threads, the same range as Rayon. Sub-microsecond OpenMP entry comes from active waiting (`KMP_BLOCKTIME`), which burns cores; at 18 threads (all cores) its median rose to 59 µs and p90 to 1.1 ms after a 10 ms idle gap. A spin policy is therefore deferred ([decision](decision-log.md#execution)).
 - **Chains of small parallel kernels** are the case the model penalizes most: each pays `L`. The remedy is fusing them into one parallel region (a batch, or an SPMD kernel with barriers), not lowering `L`.
 
-Not yet measured: real GEMM and contraction break-even against width, barrier cost inside one SPMD call, a homogeneous x86 CPU, and the fixed cost through the C ABI ([Prototype 4](experiments.md#prototype-4-c-abi-slice)).
+Not yet measured: real GEMM and contraction break-even against width, barrier cost inside one SPMD call, a subset-broadcast primitive, a homogeneous x86 CPU, and the fixed cost through the C ABI ([Prototype 4](experiments.md#prototype-4-c-abi-slice)).
 
 TBLIS also uses cooperating threads and barriers inside a blocked contraction. An arbitrary task-submission interface, including host callbacks, does not automatically provide that contract. Start with outer-batch parallelism and serial inner contractions, then prototype an explicitly synchronized inner driver on a Rayon context if large contractions need it.
 
@@ -185,7 +218,7 @@ TBLIS also uses cooperating threads and barriers inside a blocked contraction. A
 
 A plan validates free-left, contracted, free-right and batch indices, output shape and aliasing, then selects a strategy. Planning may fold contiguous dimensions and reorder logical traversal without changing user-visible index order. The comparison reports end-to-end time, bytes moved and scratch, for tiny contractions where entry dominates and for large ones where packing and cache behavior dominate.
 
-The TBLIS strategy runs cooperating workers with barriers inside one contraction. It therefore needs `broadcast(n, f)` with guaranteed width from `tprims-exec`, not arbitrary task submission; the rayon `ThreadPool::broadcast` implementation proposed in [tensorprimitives-rs #1](https://github.com/lkdvos/tensorprimitives-rs/issues/1) provides it, declining to a scoped-thread fallback if the pool is narrower than the partition.
+The TBLIS strategy runs cooperating workers with barriers inside one contraction. It therefore needs guaranteed concurrent width from `tprims-exec`, not arbitrary task submission. The Rayon `ThreadPool::broadcast` adapter proposed in [tensorprimitives-rs #1](https://github.com/lkdvos/tensorprimitives-rs/issues/1) provides it at full pool width only: workers with index at or above the active width return immediately but are still dispatched and awaited. tprims therefore uses it only for contractions large enough to amortize full-pool entry, repartitions to the budget instead of that proposal's scoped-thread fallback, and otherwise runs a barrier-free partition (independent output tiles, each worker packing its own panels). See [three widths](#execution-context).
 
 The ported source keeps its authorship, commit history and license notices; the import mechanism (for example `git subtree` without squashing) is chosen when the code is brought in, after the design is settled. See the [provenance policy](provenance.md).
 
@@ -202,7 +235,8 @@ The ported source keeps its authorship, commit history and license notices; the 
 | LDLᴴ | Symmetric-indefinite factorization with Bunch-Kaufman pivoting (LAPACK `SYTRF`/`HETRF`). | Reuse the serial routine first. |
 | QR | Householder reflectors, small unblocked path, compact blocked application and trailing update; column pivoting as a variant. Store reflectors/`tau`; generate Q only on request. [LAPACK `GEQRF`](https://www.netlib.org/lapack/explore-html/d3/d69/dgeqrf_8f_source.html). | Reuse scalar QR first; compare a specialized small-matrix route later. |
 | SVD | Scaling, bidiagonal reduction, a robust bidiagonal solver, and singular-vector back-transformation. GEMM assists updates but does not provide accuracy or convergence. [LAPACK SVD overview](https://www.netlib.org/lapack/lug/node53.html). | Begin with a validated provider or correct serial implementation per item; defer specialized batched SVD until justified. |
-| Symmetric / Hermitian eigen | Tridiagonal reduction and a tridiagonal solver (LAPACK `SYEVD`/`HEEVD` family). Nonsymmetric `GEEV` is deferred. | Per-item serial first. |
+| Symmetric / Hermitian eigen | Tridiagonal reduction and a tridiagonal solver (LAPACK `SYEVD`/`HEEVD` family). | Per-item serial first. |
+| Nonsymmetric eigen | Phase 1: a thin wrapper over faer's nonsymmetric eigendecomposition (complex eigenvalues and eigenvectors), because tenferro's CPU backend exposes `eig`. A native solver (Hessenberg reduction, shifted QR, LAPACK `GEEV`) is deferred. | Per-item faer. |
 
 ### Solves
 
@@ -247,11 +281,11 @@ Phase 1 puts being usable as the tenferro-rs CPU backend first. It also builds a
 
 | Phase | Content | Done when |
 | --- | --- | --- |
-| 1a | `tprims-exec`: borrowed Rayon pool, width chosen from work, kernel-level entry, `broadcast(n, f)`. | tenferro's pool runs a faer kernel and a TBLIS SPMD kernel through `tprims-exec`, with no entry for serial work. |
+| 1a | `tprims-exec`: borrowed Rayon pool, width chosen from work, kernel-level entry, `broadcast(n, f)`. | tenferro's pool runs a faer kernel and a TBLIS SPMD kernel through `tprims-exec`, with no entry for serial work. Tests: active width below pool width, partition above budget (repartitioned, no new threads, no barrier deadlock), nested and concurrent SPMD. Benchmark: fixed large pool, several active widths. |
 | 1b | `tprims-blas`: GEMM and batched GEMM, faer plus loop and TBLIS-style; TRSM on faer (heavily used by AD rules). | Both batched GEMM implementations pass the same correctness suite; a measured selection rule by shape. |
 | 1c | `tprims-contract`: permute plus batched GEMM (ported from tenferro) and TBLIS-style direct (ported from tensorprimitives-rs); batch dimensions, conjugation, `alpha`/`beta`. | Both strategies agree with a reference; comparison recorded on a predeclared corpus. |
-| 1d | `tprims-linalg`: faer per item plus batched loops, covering the tenferro CPU linear algebra operations (Cholesky, triangular solve, LU and full-pivot LU families with solves, QR and Householder operations, SVD, eigh, eig). | tenferro's linear algebra and AD rule tests pass. |
-| 1e | tenferro-rs integration behind a `cpu-tprims` feature: `dot_general`, grouped / batched GEMM, then linear algebra. | A/B correctness against the current backend, and a same-run performance gate. |
+| 1d | `tprims-linalg`: faer per item plus batched loops, covering the tenferro CPU linear algebra operations (Cholesky, triangular solve, LU and full-pivot LU families with solves, QR and Householder operations, SVD, eigh, and nonsymmetric eig as a faer wrapper). | tenferro's linear algebra and AD rule tests pass, including nonsymmetric `eig` cases. |
+| 1e | tenferro-rs integration behind a `cpu-tprims` feature: `dot_general`, grouped / batched GEMM, then linear algebra. An operation table maps each tenferro CPU op to tprims or to the existing tenferro backend as an explicit fallback. | A/B correctness against the current backend for every op routed to tprims; fallback ops pass tenferro's suite unchanged with the feature on; a same-run performance gate. |
 | 1f | C ABI slice: `tprims-core` (DLPack types, status, `tprims_exec` create / borrow / close), `tprims-blas-capi` (GEMM, batched GEMM), `tprims-contract-capi`, and `tprims-bundle` with those features. A C benchmark harness. | From C: per-call fixed cost of a small GEMM and contraction against direct Rust, zero copy verified for strided and column-major DLPack inputs, pool create / use / close, cross-part handles, recorded under the experiment protocol. |
 | 2 | Full C ABI: `tprims-linalg-capi` with factor handles, `strided-capi`, host-callback executors, capability queries. Build and call from a real C program on Linux, macOS and Windows. | ABI conventions and pool close verified on all three platforms. |
 | 3 | Replace faer paths or add specialized small-batch kernels only where measured; SVD and eigensolver accuracy requirements before any native solver. | Each replacement passes the correctness suite and a performance gate. |

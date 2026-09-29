@@ -3,3 +3,5 @@
 .DS_Store
 *.profraw
 *.profdata
+.codegraph/
+experiments/rayon-entry/omp

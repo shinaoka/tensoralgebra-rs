@@ -60,7 +60,7 @@ Data crosses the C ABI as [DLPack](https://dmlc.github.io/dlpack/latest/) descri
 A caller must be able to see and control what an operation costs.
 
 - **No hidden copies.** If a layout forces materialization, the operation reports the chosen strategy, and a caller can forbid it.
-- **No hidden threads.** Every expensive operation receives an explicit execution context. No part uses an ambient global pool, spawns threads on its own, or keeps threads alive after the context is closed.
+- **No hidden threads.** Every expensive operation receives an explicit execution context. No part uses an ambient global pool, spawns threads on its own (including fallback teams when a pool is narrower than a plan), or keeps threads alive after the context is closed.
 - **No hidden allocation in hot paths.** Scratch sizes are queryable and scratch is reusable across calls.
 - **Explicit plans.** Validation and planning can be separated from execution so repeated calls pay only for the work.
 
@@ -69,7 +69,7 @@ A caller must be able to see and control what an operation costs.
 Whoever embeds the stack decides how many threads run and on which runtime.
 
 - A Rust caller passes an execution context. A C, Julia or Python host can create, use and close a Rayon pool through the ABI, or inject its own scheduler through callbacks, or run serially.
-- Closing a pool is synchronous, so a host can shut down cleanly.
+- Closing a pool the library created joins its threads, so a host can shut down cleanly. Closing a context that borrows the host's pool never stops the host's threads.
 - One thread budget governs both batch-level and inner parallelism so nested parallelism does not oversubscribe.
 
 ## 9. Correct first, then measured

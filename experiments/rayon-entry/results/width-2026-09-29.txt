@@ -1,0 +1,11 @@
+# 2026-09-29T12:17:18Z width.rs rayon 1.11.0 / rayon-core 1.13.0, release
+gap     0us k  1: broadcast(18 dispatched) p10   30.46 p50   72.38 p90  110.17 | install+scope(k tasks) p10   15.38 p50   21.17 p90   36.75
+gap     0us k  2: broadcast(18 dispatched) p10   29.83 p50   64.96 p90  101.25 | install+scope(k tasks) p10   15.54 p50   22.75 p90   89.54
+gap     0us k  4: broadcast(18 dispatched) p10   29.17 p50   60.92 p90   97.12 | install+scope(k tasks) p10   15.33 p50   22.25 p90   94.50
+gap     0us k  8: broadcast(18 dispatched) p10   28.62 p50   57.75 p90   96.33 | install+scope(k tasks) p10   15.25 p50   22.83 p90  109.83
+gap     0us k 18: broadcast(18 dispatched) p10   26.58 p50   49.12 p90   90.08 | install+scope(k tasks) p10   15.75 p50   24.00 p90  119.46
+gap  1000us k  1: broadcast(18 dispatched) p10  137.96 p50  164.79 p90  194.58 | install+scope(k tasks) p10   12.88 p50   16.71 p90   20.17
+gap  1000us k  2: broadcast(18 dispatched) p10  137.67 p50  164.21 p90  192.25 | install+scope(k tasks) p10   14.54 p50   19.12 p90   35.71
+gap  1000us k  4: broadcast(18 dispatched) p10  136.71 p50  164.25 p90  194.92 | install+scope(k tasks) p10   21.88 p50   49.75 p90  103.25
+gap  1000us k  8: broadcast(18 dispatched) p10  138.08 p50  166.62 p90  196.25 | install+scope(k tasks) p10  107.29 p50  141.08 p90  184.00
+gap  1000us k 18: broadcast(18 dispatched) p10  138.38 p50  165.96 p90  194.96 | install+scope(k tasks) p10  106.54 p50  144.33 p90  189.88

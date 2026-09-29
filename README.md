@@ -108,7 +108,7 @@ a handle created by one part is accepted by another.
   `DLManagedTensorVersioned` (DLPack 1.x) with a deleter, for outputs whose
   size the library determines, such as factors.
 - Conjugation is a per-operand argument because DLPack has no conjugation
-  flag. A `READ_ONLY` versioned tensor is rejected as an output.
+  flag. Every operand is a borrowed `tprims_tensor` (the `DLTensor*` view plus DLPack flags), so a `READ_ONLY` versioned tensor can be detected and is rejected as an output before any write.
 - If a stride layout would require internal materialization, the call reports
   the selected strategy; `TPRIMS_NO_MATERIALIZE` turns that case into an
   error instead of a hidden copy.
@@ -121,12 +121,12 @@ tprims_exec *tprims_exec_rayon_create(size_t nthreads, const tprims_rayon_opts *
 tprims_exec *tprims_exec_from_callbacks(const tprims_exec_vtable *host);
 size_t       tprims_exec_num_threads(const tprims_exec *exec);
 tprims_status tprims_exec_set_budget(tprims_exec *exec, size_t max_threads);
-tprims_status tprims_exec_close(tprims_exec *exec);   /* joins all workers */
+tprims_status tprims_exec_close(tprims_exec *exec);   /* owned pool: joins workers */
 void         tprims_exec_retain(tprims_exec *exec);
 void         tprims_exec_release(tprims_exec *exec);
 ```
 
-Every expensive operation takes an explicit `tprims_exec`. Rust callers pass an `Exec` that borrows the host's Rayon pool, for example the pool of tenferro-rs, for the duration of the call. Serial work runs on the calling thread without entering any pool; only a kernel that runs in parallel enters the pool, and not at all if the caller is already one of its workers. With that rule an entry cost of about 10 µs is acceptable ([measurement](experiments/rayon-entry/README.md)): work below roughly 50 to 100 µs runs serially, and a kernel picks its width from its work so that full-width fan-out (55 to 200 µs at 18 threads) is paid only by large kernels ([cost model](docs/architecture.md#cost-of-parallel-execution)). faer can therefore serve as the first backend. `close` is synchronous: dropping a Rayon `ThreadPool` only terminates threads asynchronously, so the handle waits for all workers through an exit handler, and returns `TPRIMS_BUSY` while work is in flight. [Details](docs/architecture.md#execution-context).
+Every expensive operation takes an explicit `tprims_exec`. Rust callers pass an `Exec` that borrows the host's Rayon pool, for example the pool of tenferro-rs, for the duration of the call. Serial work runs on the calling thread without entering any pool; only a kernel that runs in parallel enters the pool, and not at all if the caller is already one of its workers. With that rule an entry cost of about 10 µs is acceptable ([measurement](experiments/rayon-entry/README.md)): work below roughly 50 to 100 µs runs serially, and a kernel picks its width from its work so that full-width fan-out (55 to 200 µs at 18 threads) is paid only by large kernels ([cost model](docs/architecture.md#cost-of-parallel-execution)). faer can therefore serve as the first backend. `close` of a pool created through the C ABI is synchronous: dropping a Rayon `ThreadPool` only terminates threads asynchronously, so the handle keeps each worker's `JoinHandle` and joins them, returning `TPRIMS_BUSY` while work is in flight. Closing a context that borrows a host pool never stops the host's threads. [Details](docs/architecture.md#execution-context).
 
 ## Two contraction strategies, compared
 
@@ -139,8 +139,8 @@ Every expensive operation takes an explicit `tprims_exec`. Rust callers pass an 
 | 1a | `tprims-exec`: borrowed pool, width from work, kernel-level entry, `broadcast(n, f)` |
 | 1b | `tprims-blas`: GEMM, batched GEMM (faer + loop, TBLIS), TRSM |
 | 1c | `tprims-contract`: permute + batched GEMM and TBLIS direct, compared |
-| 1d | `tprims-linalg`: faer per item plus batched loops, covering tenferro's CPU linear algebra |
-| 1e | tenferro-rs integration behind a feature, with A/B correctness and a same-run performance gate |
+| 1d | `tprims-linalg`: faer per item plus batched loops, covering tenferro's CPU linear algebra including nonsymmetric `eig` |
+| 1e | tenferro-rs integration behind a feature, with an explicit per-op fallback to the current backend, A/B correctness and a same-run performance gate |
 | 1f | A thin C ABI slice (core, blas, contract, bundle) and C benchmarks, to test the design across the C boundary early |
 
 Full C ABI coverage is Phase 2. [Full plan](docs/architecture.md#implementation-order).

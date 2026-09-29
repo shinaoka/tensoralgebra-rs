@@ -1,0 +1,17 @@
+# 2026-09-29T12:16:24Z omp.c d5fe20b+fix; clang -O2; libomp libomp 22.1.5
+omp  4 thr gap     0us: p10  10.08 p50  12.17 p90  15.46 us
+omp  4 thr gap   100us: p10   7.46 p50  10.17 p90  13.75 us
+omp  4 thr gap  1000us: p10   9.75 p50  10.88 p90  14.67 us
+omp  4 thr gap 10000us: p10  10.58 p50  11.46 p90  15.08 us
+omp-active  4 thr gap     0us: p10   0.38 p50   0.42 p90   0.46 us
+omp-active  4 thr gap   100us: p10   0.46 p50   0.46 p90   0.50 us
+omp-active  4 thr gap  1000us: p10   0.46 p50   0.50 p90   0.83 us
+omp-active  4 thr gap 10000us: p10   0.75 p50   1.12 p90   4.25 us
+omp 18 thr gap     0us: p10  43.75 p50  52.83 p90  64.58 us
+omp 18 thr gap   100us: p10  47.75 p50  56.71 p90  67.04 us
+omp 18 thr gap  1000us: p10  67.33 p50  77.92 p90  89.50 us
+omp 18 thr gap 10000us: p10  80.79 p50  94.33 p90 106.96 us
+omp-active 18 thr gap     0us: p10   1.79 p50   1.83 p90   1.92 us
+omp-active 18 thr gap   100us: p10   2.00 p50   2.62 p90 165.75 us
+omp-active 18 thr gap  1000us: p10   2.71 p50   5.17 p90 879.62 us
+omp-active 18 thr gap 10000us: p10   3.71 p50  58.96 p90 1118.96 us
