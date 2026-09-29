@@ -28,38 +28,51 @@ correctness before measurement, measurement before optimization.
 
 ## Parts, not a facade
 
-**Arrows mean "depends on."** Only the nearest dependency of each part is
-drawn; the dashed arrow marks the one direct dependency that matters for the
-design. Every part except `tprims-gemm-kernel` also takes `tprims-exec`
-directly. [Full dependency list](docs/architecture.md#crates). Rust crates
-carry no C symbols. Each C ABI crate is an `rlib` owned by the part it
-exposes; only `tprims-bundle` produces a shared or static library.
+**Arrows mean "depends on"** and are drawn from the manifests (`cargo tree`).
+`tprims-contract` and `tprims-linalg` are siblings on top of `tprims-blas`:
+a contraction needs matrix GEMM only, and a tensor factorization is the
+caller reshaping a view and calling `tprims-linalg`. Every part also takes
+`tprims-exec` directly. [Full dependency list](docs/architecture.md#crates).
+Rust crates carry no C symbols. Each C ABI crate is an `rlib` owned by the
+part it exposes; only `tprims-bundle` produces a shared or static library.
 
 ```mermaid
 flowchart TB
     CT["<b>tprims-contract</b><br/>Binary contraction<br/>permute + batched GEMM<br/>or TBLIS direct"]
     LA["<b>tprims-linalg</b><br/>Factorizations, solves<br/>lstsq, eigh, batched<br/>(faer first)"]
     BL["<b>tprims-blas</b><br/>GEMM, batched GEMM, TRSM<br/>faer + loop or TBLIS"]
-    GK["<b>tprims-gemm-kernel</b><br/>Packed format<br/>microkernels (TBLIS path)"]
-    ST["<b>strided-*</b> (existing)<br/>Views, permutation<br/>elementwise kernels"]
-    EX["<b>tprims-exec</b><br/>Execution context<br/>borrowed pool, width, scratch"]
-    CT --> LA --> BL --> GK --> ST --> EX
-    CT -.->|"direct tensor path"| GK
+    TC["<b>tensorcontract</b><br/>(tensorprimitives-rs)<br/>TBLIS-style packing, microkernels"]
+    FA["faer"]
+    ST["<b>strided-rs</b> (external)<br/>views, permutation, copies"]
+    EX["<b>tprims-exec</b><br/>Execution context<br/>borrowed pool, width"]
+    CT --> BL
+    LA --> BL
+    BL --> FA
+    LA --> FA
+    CT -->|"direct tensor path"| TC
+    BL -->|"TBLIS batched GEMM"| TC
+    CT --> ST
+    BL --> ST
+    BL --> EX
+    EX -.->|"feature strided"| ST
     classDef tensor fill:#e8f2ff,stroke:#2563a6,color:#132f50
     classDef matrix fill:#e7f5ec,stroke:#28784c,color:#173d27
     classDef base fill:#edf0f4,stroke:#536477,color:#233244
     class CT tensor
-    class LA,BL,GK matrix
-    class ST,EX base
+    class LA,BL,TC matrix
+    class FA,ST,EX base
 ```
+
+A separate `tprims-gemm-kernel` (packed format and microkernels split out of
+`tensorcontract`) is planned, not built.
 
 | Crate | Owns | C ABI crate |
 | --- | --- | --- |
 | `tprims-exec` | Execution context: serial, a Rayon pool borrowed from the host (or created by a C host), host scheduling callbacks; width chosen from work; reusable scratch. No ambient global pool. | `tprims-core` |
-| `strided-*` (existing, [strided-rs](https://github.com/tensor4all/strided-rs)) | Checked strided views, scalar and conjugation contracts, copy and permutation, map / reduce / fused elementwise. | `strided-capi` |
-| `tprims-gemm-kernel` | Packed A/B panel format and register-tile microkernels for the TBLIS-style path, initially ported from tensorprimitives-rs. No scheduler, no full-matrix API. | none |
+| `strided-*` (external, [strided-rs](https://github.com/tensor4all/strided-rs)) | Checked strided views, scalar and conjugation contracts, copy and permutation, map / reduce / fused elementwise. | `strided-capi` (planned) |
+| `tensorcontract` (imported, tensorprimitives-rs by Lukas Devos) | TBLIS-style packing, register-tile microkernels, the direct contraction driver. A separate `tprims-gemm-kernel` is planned. | none |
 | `tprims-blas` | GEMM and batched GEMM (faer plus a loop over items, or TBLIS-style; compared), TRSM, later SYRK / HERK. | `tprims-blas-capi` |
-| `tprims-linalg` | LU, Cholesky, LDLᴴ, QR, SVD, symmetric / Hermitian eigendecomposition; solves on factor objects, `solve`, `lstsq`, `inv`, `det`; `batched` module. faer per item first. | `tprims-linalg-capi` |
+| `tprims-linalg` | LU, Cholesky, LDLᴴ, QR, SVD, symmetric / Hermitian eigendecomposition; solves on factor objects, `solve`, `lstsq`, `inv`, `det`; `batched` module. faer per item first. | `tprims-linalg-capi` (Phase 2) |
 | `tprims-contract` | Binary contraction with batch indices (`dot_general` semantics) with two strategies to compare: permute plus batched GEMM (from tenferro-rs) and TBLIS-style direct (from tensorprimitives-rs); thin permute / add / trace wrappers. | `tprims-contract-capi` |
 
 Crate, header and symbol names map one to one: `tprims-blas` exposes

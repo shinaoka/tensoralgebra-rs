@@ -42,3 +42,6 @@ This is a research repository, not a production tensor-algebra library. Read `RE
   `cargo test -j 16 -p tensorcontract --release`. Build `cargo build -j 16 -p tprims-bundle`
   before the workspace tests (the C ABI test links the built `libtprims.so`). CI uses stable clippy,
   which may be newer than a local toolchain.
+- Before a PR, also check README and `docs/` against the implementation
+  (REPOSITORY_RULES.md, Public Surface Drift): diagrams and dependency tables
+  against `cargo tree`, names, features, commands and status against the code.

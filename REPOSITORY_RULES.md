@@ -14,6 +14,12 @@ file minimal.
 - When the public API changes, check `README`, rustdoc, and examples for stale
   names, stale capability claims, and deleted paths before considering the
   work complete.
+- Before every PR, check the README and `docs/` against the implementation,
+  not only against the diff: crate lists, diagrams and dependency tables
+  against the manifests (`cargo tree -e normal --depth 1 -p <crate>`); names,
+  features, commands and status lines against the code; planned items
+  labelled as planned. A 2026-09-29 diagram showed `tprims-contract` depending
+  on `tprims-linalg` for a day after the code had settled otherwise.
 
 ## Public Surface Discipline
 
