@@ -9,7 +9,7 @@ ABI can be built from any subset of parts into a single shared library,
 contributions are welcome.
 
 **Status:** design and experiments; no stable API, ABI or performance claim.
-This repository currently holds only design notes.
+This repository holds design notes and small measurement experiments under `experiments/`.
 
 **Design principles** ([full text](docs/design-principles.md)): parts, not a
 facade; one direction of dependency; short names under the `tprims-` prefix;

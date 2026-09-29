@@ -21,6 +21,8 @@ Implement minimal `f64` work that can be called through (a) direct Rust, (b) an 
 
 The roughly 8 to 14 µs session entry in [tenferro #1945](https://github.com/tensor4all/tenferro-rs/issues/1945) is a motivating observation, **not** a predicted result here. Its sub-1 µs fixed-cost target is a design target to test, not an achieved property.
 
+**Preliminary result (2026-09-29):** [Rayon entry latency](../experiments/rayon-entry/README.md) on an M5 Max separates worker wake-up (6 to 8 µs), caller wake-up (about 3 µs) and full-width fan-out (55 to 200 µs at 18 threads), and compares OpenMP. It led to the entry-cost decision in the [decision log](decision-log.md#execution). Still to do: C host, real small kernels, a homogeneous x86 CPU.
+
 **Decision gate:** A viable API makes pool ownership, thread budget, session lifetime, and C error behavior explicit. It must show its measured fixed cost and avoid nested oversubscription.
 
 ## Prototype 2: batched GEMM and factorizations

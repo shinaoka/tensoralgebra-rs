@@ -1,0 +1,13 @@
+[package]
+name = "rayon-entry"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+rayon = "=1.11.0"
+
+[profile.release]
+opt-level = 3
+
+[workspace]

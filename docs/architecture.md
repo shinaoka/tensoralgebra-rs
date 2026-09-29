@@ -116,7 +116,7 @@ The DLPack header is Apache-2.0; `tprims-core` mirrors its `#[repr(C)]` layout a
 `tprims-exec` defines the Rust contract and `tprims-core` its C face. A context is one of:
 
 - **Serial:** work runs on the calling thread.
-- **Rayon pool:** a caller-created pool, used through `install`/`scope` on that pool only. The global Rayon pool is never used implicitly.
+- **Rayon pool:** a pool borrowed from the host (for example the pool of tenferro-rs) for the duration of a call, or created through `tprims_exec_rayon_create` by a C host that has none. The global Rayon pool is never used implicitly.
 - **Host callbacks:** a vtable through which a Julia, Python or C host schedules tasks on its own threads.
 
 ```c
@@ -134,6 +134,16 @@ void         tprims_exec_release(tprims_exec *exec);
 - **Close is synchronous.** Dropping a Rayon `ThreadPool` terminates its threads asynchronously. `tprims_exec_close` marks the context closed, returns `TPRIMS_BUSY` if work is in flight, and otherwise waits until every worker has exited, observed through the pool's exit handler. Calls on a closed context return an error.
 - **Thread budget:** one budget controls batch-level and inner-matrix parallelism so nested parallelism does not oversubscribe.
 - **Scratch:** operations expose scratch-size queries; a context can own reusable per-worker scratch.
+
+**Entry happens inside kernels, only for parallel work.** The calling thread drives every call. A kernel chooses its width from the amount of work; at width one it runs on the calling thread and never touches the pool. Only a parallel kernel enters the pool, and not at all if the calling thread is already one of its workers. With this rule an entry cost of about 10 µs is acceptable ([measurement](../experiments/rayon-entry/README.md), [decision](decision-log.md#execution)), and faer can serve as the initial backend: `Par::Seq` for serial work, `install` followed by `Par::rayon(n)` for parallel work.
+
+```rust
+pub enum Exec<'a> {
+    Serial,
+    Rayon(&'a rayon::ThreadPool),       // borrowed from the host
+    Host(&'a dyn BroadcastExecutor),    // host scheduler with guaranteed width
+}
+```
 
 TBLIS also uses cooperating threads and barriers inside a blocked contraction. An arbitrary task-submission interface, including host callbacks, does not automatically provide that contract. Start with outer-batch parallelism and serial inner contractions, then prototype an explicitly synchronized inner driver on a Rayon context if large contractions need it.
 

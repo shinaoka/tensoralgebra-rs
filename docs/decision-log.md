@@ -18,6 +18,17 @@ Dated 2026-09-29. A source link supports the observation; the proposed response 
 | Solves and eigendecomposition? | **Decided:** in `tprims-linalg` with the factorizations, because solves use each factorization's internal representation. Nonsymmetric eigen deferred. | Design reasoning |
 | Iterative Krylov solvers? | **Deferred, out of scope for now.** They need a linear-operator callback, convergence control and preconditioning, a different contract from dense linear algebra, and many consumers carry their own. A later `tprims-krylov` would depend on `tprims-blas`. | Maintainer decision, 2026-09-29 |
 
+## Execution
+
+| Question | Present position | Evidence or next check |
+| --- | --- | --- |
+| How much pool-entry cost is acceptable? | **Decided:** about 10 µs per parallel kernel is acceptable. Serial operations never enter a pool; they run on the calling thread. Parallel width is chosen from the amount of work, so full-width fan-out is reserved for large kernels. | [Rayon entry measurement](../experiments/rayon-entry/README.md), 2026-09-29, M5 Max: `install` 4 to 10 µs at 1 to 4 threads; 18-thread fan-out 55 to 200 µs. Maintainer decision, 2026-09-29. |
+| Who owns the pool when a host library such as tenferro-rs also uses Rayon? | **Decided: borrow.** `tprims-exec` borrows the host's pool for the duration of a call (or a host session) and never creates a second pool beside it. `tprims_exec_rayon_create` exists only for C hosts that have no pool. | Two pools would oversubscribe cores and turn every call into a cross-pool handoff. Sharing a pool by reference requires one Rayon build in one binary. |
+| Where is the pool entered? | **Decided:** inside a kernel, and only when it runs in parallel. If the calling thread is already a worker of the borrowed pool, the kernel runs in place without `install`. The caller's thread stays the driving thread for everything else, so host thread-local state needs no propagation. | Contrast: tenferro enters once per session and runs the whole session on a worker ([tenferro #1945](https://github.com/tensor4all/tenferro-rs/issues/1945)). |
+| Initial backend? | **Decided (provisional):** faer for GEMM and dense linear algebra. `Par::Seq` on the calling thread for serial work; `install` on the borrowed pool, then `Par::rayon(n)`, for parallel work. Replace kernels only with measured justification. | Works with faer's ambient-pool API ([faer #319](https://codeberg.org/sarah-quinones/faer/issues/319) still open) because entry happens only at parallel kernels. |
+| C ABI for execution: explicit handle per call, or a C-level "enter pool and run callback" command? | Open; leaning to an explicit `tprims_exec*` argument on every call with kernel-level entry inside. A C callback run on a pool worker would reintroduce the tenferro session problems and requires foreign runtimes (Python GIL, Julia thread adoption) to accept calls on threads they did not create. | Decide with the first `tprims-core` prototype |
+| Spin-wait policy (OpenMP `KMP_BLOCKTIME` style)? | **Deferred.** Not needed while serial calls skip the pool and parallel calls are large. Revisit if a measured workload needs sub-microsecond chaining of parallel kernels. | OpenMP with active wait: 0.5 µs at 4 threads, but p90 spikes of 80 to 190 µs when spinning threads exceed cores ([measurement](../experiments/rayon-entry/README.md)). |
+
 ## Numerical and performance questions
 
 | Question | Present position | Evidence or next check |
