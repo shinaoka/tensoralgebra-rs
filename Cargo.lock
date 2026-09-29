@@ -1407,6 +1407,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "tprims-core"
+version = "0.1.0"
+dependencies = [
+ "rayon",
+ "strided-view",
+ "tprims-exec",
+]
+
+[[package]]
 name = "tprims-exec"
 version = "0.1.0"
 dependencies = [
