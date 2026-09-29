@@ -66,3 +66,19 @@ pub(crate) fn square(rows: usize, cols: usize) -> Result<usize> {
         Err(Error::NotSquare { rows, cols })
     }
 }
+
+/// |x| in f64.
+pub(crate) fn abs<T: Scalar>(x: T) -> f64 {
+    use tensorcontract::{Element, Real};
+    let (re, im) = (Element::re(x).to_f64(), Element::im(x).to_f64());
+    re.hypot(im)
+}
+
+/// Machine epsilon of `T`'s real type.
+pub(crate) fn eps<T: Scalar>() -> f64 {
+    if std::mem::size_of::<T::Re>() == 4 {
+        f32::EPSILON as f64
+    } else {
+        f64::EPSILON
+    }
+}

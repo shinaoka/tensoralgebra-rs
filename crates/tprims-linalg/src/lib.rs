@@ -25,9 +25,11 @@
 //! ```
 mod cholesky;
 mod error;
+mod lu;
 mod mat;
 mod util;
 
 pub use cholesky::{cholesky, ldlt, Cholesky, Ldlt};
 pub use error::{Error, Result};
+pub use lu::{det, inv, logdet, lu, lu_full, solve, FullPivLu, Lu};
 pub use mat::Matrix;
