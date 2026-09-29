@@ -175,3 +175,16 @@ keeps its existing layout until it is otherwise changed.
   imported code is an ordinary commit here; say in the message when it
   diverges from upstream behaviour.
 - `deprecated/` directories are frozen: not built, not edited.
+- Authorship is never dropped. Imported history is never rewritten
+  (no squash merges of import branches, no history filtering). Imported
+  crates keep their upstream `authors` (Lukas Devos for `tensorcontract` and
+  `tensorprimitives-*`; Satoshi Terasaki and Hiroshi Shinaoka for `strided-*`).
+- Code moved or ported out of an imported crate into a `tprims-*` crate (for
+  example tensorcontract's packing and micro-kernels into
+  `tprims-gemm-kernel`) keeps the original authors in that crate's `authors`,
+  keeps the upstream copyright and license notice in each moved file's
+  header, moves with `git mv` where possible so history follows, and names
+  the original author with a `Co-authored-by:` trailer in the commit.
+- Crates and documents that build on imported work credit it: the TBLIS-style
+  strategies credit Lukas Devos's tensorprimitives-rs and Matthews's TBLIS
+  paper in rustdoc and README.
