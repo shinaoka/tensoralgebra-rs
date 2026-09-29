@@ -1373,6 +1373,7 @@ dependencies = [
  "strided-perm",
  "strided-view",
  "tensorcontract",
+ "tprims-blas",
  "tprims-exec",
 ]
 
