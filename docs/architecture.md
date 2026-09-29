@@ -158,10 +158,12 @@ void         tprims_exec_release(tprims_exec *exec);
 ```rust
 pub enum Exec<'a> {
     Serial,
-    Rayon(&'a rayon::ThreadPool),       // borrowed from the host
-    Host(&'a dyn BroadcastExecutor),    // host scheduler with guaranteed width
+    Rayon { pool: &'a Pool<'a>, budget: NonZeroUsize }, // pool borrowed from the host
+    // Host(&'a dyn BroadcastExecutor): host scheduler with guaranteed width, Phase 2
 }
 ```
+
+Implemented in Phase 1a as `crates/tprims-exec` (`install`, `for_each_partition`, `broadcast`, `width_for`); see the [decision log](decision-log.md#execution).
 
 **Three widths, kept distinct.**
 

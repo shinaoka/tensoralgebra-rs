@@ -19,7 +19,7 @@ GEMM result is checked bitwise against the serial run (`CHECK ... ok`).
 
 ## Observation, 2026-09-29 (single run, not a claim)
 
-- tprims-rs `96a5dc1` (phase1a-exec) plus the harness sample-count fix;
+- tprims-rs phase1a-exec at `96a5dc1` (before its rebase onto main; the measured code is unchanged in `5d4ef3c`) plus the harness sample-count fix;
   release profile (thin LTO, codegen-units 1); rustc 1.97.1.
 - AMD EPYC 7713P (64 cores, 1 thread/core, 8 L3 domains of 8 cores), shared
   host with load average about 7.3; cores 19-22 (one L3 domain) measured idle

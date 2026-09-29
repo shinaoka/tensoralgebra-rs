@@ -235,7 +235,7 @@ impl<'a> Exec<'a> {
     }
 
     /// Partition width for work estimated at `serial_ns` on one thread,
-    /// minimizing the [`WidthPolicy`] cost model within the budget.
+    /// minimizing the [`WidthPolicy`](crate::WidthPolicy) cost model within the budget.
     ///
     /// # Examples
     ///
