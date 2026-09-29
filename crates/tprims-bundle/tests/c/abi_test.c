@@ -60,6 +60,40 @@ int main(void) {
   CHECK(c[0] == 35 && c[3] == 56, "contract values");
   tprims_contract_plan_destroy(plan);
 
+  /* Complex operands whose byte_offset is one real, not one element (#16):
+     complex elements align to their real type, so these are valid. */
+  {
+    int64_t s1[2] = {1, 1};
+    double za[4] = {0, 2, 1, 0}, zb[4] = {0, 3, 4, 0}, zc[4] = {0, 0, 0, 0};
+    double zone[2] = {1, 0}, zzero[2] = {0, 0};
+    DLTensor x[3];
+    double *zd[3] = {za, zb, zc};
+    for (int i = 0; i < 3; i++) {
+      x[i] = f64_tensor(zd[i], 2, s1, NULL);
+      x[i].dtype.code = kDLComplex; x[i].dtype.bits = 128; x[i].byte_offset = 8;
+    }
+    /* (2+1i)(3+4i) = 2+11i */
+    CHECK(tprims_blas_gemm(serial, zone, tprims_tensor_borrow_raw(&x[0], 0), 0, tprims_tensor_borrow_raw(&x[1], 0), 0,
+                           zzero, tprims_tensor_borrow_raw(&x[2], 0)) == TPRIMS_OK,
+          "complex128 byte_offset 8");
+    CHECK(zc[1] == 2 && zc[2] == 11, "complex128 values");
+    float fa[4] = {0, 2, 1, 0}, fb[4] = {0, 3, 4, 0}, fc[4] = {0, 0, 0, 0};
+    float fone[2] = {1, 0}, fzero[2] = {0, 0};
+    float *fd[3] = {fa, fb, fc};
+    for (int i = 0; i < 3; i++) {
+      x[i].data = fd[i]; x[i].dtype.bits = 64; x[i].byte_offset = 4;
+    }
+    CHECK(tprims_blas_gemm(serial, fone, tprims_tensor_borrow_raw(&x[0], 0), 0, tprims_tensor_borrow_raw(&x[1], 0), 0,
+                           fzero, tprims_tensor_borrow_raw(&x[2], 0)) == TPRIMS_OK,
+          "complex64 byte_offset 4");
+    CHECK(fc[1] == 2 && fc[2] == 11, "complex64 values");
+    /* A genuinely misaligned effective address is still rejected. */
+    x[0].byte_offset = 2;
+    CHECK(tprims_blas_gemm(serial, fone, tprims_tensor_borrow_raw(&x[0], 0), 0, tprims_tensor_borrow_raw(&x[1], 0), 0,
+                           fzero, tprims_tensor_borrow_raw(&x[2], 0)) == TPRIMS_ERR_INVALID_ARGUMENT,
+          "misaligned complex64 rejected");
+  }
+
   /* Errors: read-only output, output aliasing an input, closed pool. */
   CHECK(tprims_blas_gemm(serial, &one, tprims_tensor_borrow_raw(&ta, 0), 0, tprims_tensor_borrow_raw(&tb, 0), 0,
                          &zero, tprims_tensor_borrow_raw(&tc, DLPACK_FLAG_BITMASK_READ_ONLY)) == TPRIMS_ERR_READ_ONLY,

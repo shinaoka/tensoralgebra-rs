@@ -172,3 +172,31 @@ fn rust_mirror_matches_the_c_layout() {
     assert_eq!(offset_of!(DLManagedTensorVersioned, dl_tensor), 32);
     assert_eq!(size_of::<tprims_core::tensor::tprims_tensor>(), 16);
 }
+
+#[test]
+fn complex_byte_offsets_need_element_alignment_not_element_size() {
+    // #16: complex elements are aligned to their real type, so an offset of
+    // one real (4 bytes for complex64, 8 for complex128) is valid.
+    for (bits, dt, off, ok) in [
+        (128u8, DType::C64, 8u64, true),
+        (64, DType::C32, 4, true),
+        (128, DType::C64, 4, false),
+        (64, DType::C32, 2, false),
+    ] {
+        let mut d = vec![0.0f64; 4];
+        let mut shape = [1i64, 1];
+        let mut t = tensor(&mut d, &mut shape, None, off);
+        t.dtype = DLDataType {
+            code: kDLComplex,
+            bits,
+            lanes: 1,
+        };
+        let r = layout(&tprims_tensor_borrow_raw(&mut t, 0), dt);
+        if ok {
+            let l = r.unwrap_or_else(|e| panic!("bits={bits} off={off}: {}", e.message));
+            assert_eq!(l.origin as usize, d.as_ptr() as usize + off as usize);
+        } else {
+            assert_eq!(r.unwrap_err().status, TPRIMS_ERR_INVALID_ARGUMENT);
+        }
+    }
+}
