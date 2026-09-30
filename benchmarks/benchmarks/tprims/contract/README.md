@@ -114,3 +114,30 @@ Findings:
    checked separately.
 3. Hence `Strategy::Auto` now picks TBLIS-style exactly when permute+GEMM
    would copy (decision log), which is also the best of both columns above.
+
+## Hadamard products: elementwise path vs TBLIS-style (2026-09-30)
+
+Whether the dedicated all-batch path could be dropped in favour of the
+TBLIS-style kernel. Corpus [`../corpus/hadamard.json`](../corpus/hadamard.json):
+24 cases, f64 and c64, vectors of 2^10-2^24 elements, 256^2 and 2048^2
+matrices, rank-4 and rank-12 tensors, some with B stored transposed (`_bT`).
+The `pg` rows run tprims-contract's elementwise path (`PermuteGemm` and
+`Auto` both route all-batch problems there), `tblis` rows the TBLIS-style
+kernel. Same setup as P2: tprims-rs `d8e565a`, EPYC 7713P CPUs 0-7, 1T/4T/8T
+paired per case, three sessions
+([`results/2026-09-30-hadamard/`](results/2026-09-30-hadamard/)). All `CHECK`
+lines ok.
+
+TBLIS-style time / elementwise time, median over sessions:
+
+| threads | range over the 24 cases | f64, 2^22 vector | c64, 2^22 vector | f64, 256^2 |
+| --- | --- | --- | --- | --- |
+| 1T | 7.0-24.4x | 24.4x | 11.2x | 21.5x |
+| 4T | 11.2-92.1x | 92.1x | 46.0x | 21.7x |
+| 8T | 10.1-131.6x | 131.6x | 61.7x | 18.0x |
+
+The TBLIS-style kernel runs a Hadamard product as a batch of 1x1x1 GEMMs,
+paying micro-kernel and packing overhead per element, and its batch axis is
+serial inside the SPMD team, so it does not scale with threads while the
+elementwise path does (hypothesis consistent with the growth from 1T to 8T).
+The dedicated elementwise path stays.
