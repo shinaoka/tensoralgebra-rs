@@ -6,10 +6,10 @@ use tprims_gemm_kernel::*;
 #[test]
 fn zero_requirement_never_allocates() {
     let arena = ArenaProvider::traced();
-    let _ = workspace::trace_take();
+    let _ = arena.trace_take();
     arena.with_worker(&WorkspaceReq::default(), &mut |_, _, _| {});
     let _lease = arena.take_team(&WorkspaceReq::default(), 1, 1);
-    assert!(workspace::trace_take().is_empty());
+    assert!(arena.trace_take().is_empty());
 }
 
 #[test]
@@ -108,7 +108,7 @@ fn trimmed_storage_is_released_and_live_storage_is_not() {
 #[test]
 fn worker_buffers_are_allocated_on_the_worker() {
     let arena = ArenaProvider::traced();
-    let _ = workspace::trace_take();
+    let _ = arena.trace_take();
     let req = WorkspaceReq {
         a_bytes: 1 << 16,
         tile_bytes: 4096,
@@ -122,7 +122,7 @@ fn worker_buffers_are_allocated_on_the_worker() {
         .join()
         .unwrap()
     });
-    let recorded = workspace::trace_take();
+    let recorded = arena.trace_take();
     assert!(!recorded.is_empty(), "the worker's buffers were not grown");
     assert!(
         recorded.iter().all(|(t, _)| *t == tid),

@@ -96,6 +96,18 @@ impl<'a> Exec<'a> {
         }
     }
 
+    /// Storage the operations on this context may share, or none.
+    ///
+    /// A pool lends its own arena to every operation that runs on it; the
+    /// serial context owns nothing, so a caller that wants reuse keeps a
+    /// provider of its own and lends it directly.
+    pub fn workspace(&self) -> Option<&dyn tprims_gemm_kernel::WorkspaceProvider> {
+        match self {
+            Exec::Serial => None,
+            Exec::Rayon { pool, .. } => Some(pool.workspace()),
+        }
+    }
+
     /// Whether the calling thread is a worker of this context's pool.
     pub fn is_worker(&self) -> bool {
         match self {

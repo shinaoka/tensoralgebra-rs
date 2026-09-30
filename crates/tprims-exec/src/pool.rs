@@ -1,5 +1,6 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
+use tprims_gemm_kernel::ArenaProvider;
 
 /// A Rayon pool lent by the host for the lifetime `'p`.
 ///
@@ -19,6 +20,10 @@ use std::sync::Mutex;
 pub struct Pool<'p> {
     pool: PoolRef<'p>,
     pub(crate) spmd: Mutex<()>,
+    /// Retained storage for the operations that run on this pool. One owner per
+    /// pool, so two operations on it reuse the same worker buffers, B panel and
+    /// barriered team sets, and none of it is visible to any other pool.
+    workspace: ArenaProvider,
     entries: AtomicU64,
     broadcasts: AtomicU64,
     inline_runs: AtomicU64,
@@ -56,10 +61,27 @@ impl<'p> Pool<'p> {
         Self {
             pool,
             spmd: Mutex::new(()),
+            workspace: ArenaProvider::new(),
             entries: AtomicU64::new(0),
             broadcasts: AtomicU64::new(0),
             inline_runs: AtomicU64::new(0),
         }
+    }
+
+    /// The storage this pool lends to every operation that runs on it.
+    ///
+    /// Borrowed, not copied: one pool is one owner, and a driver that is given
+    /// this provider returns its team sets to it on drop.
+    pub fn workspace(&self) -> &ArenaProvider {
+        &self.workspace
+    }
+
+    /// Release the pool's idle workspace storage. Live leases and borrowed
+    /// worker buffers survive; a worker parked on this pool keeps its slot
+    /// until it is idle again.
+    pub fn trim_workspace(&self) {
+        use tprims_gemm_kernel::WorkspaceProvider;
+        self.workspace.trim();
     }
 
     /// Number of workers.

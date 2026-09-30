@@ -19,6 +19,8 @@ use crate::{Conj, Error, Result, Scalar};
 pub(crate) struct ExecSpmd<'a> {
     pub exec: &'a Exec<'a>,
     pub width: usize,
+    /// Storage this operation's threads share: the pool's own when it has one.
+    pub workspace: Option<&'a dyn tprims_gemm_kernel::WorkspaceProvider>,
 }
 
 impl Spmd for ExecSpmd<'_> {
@@ -27,6 +29,9 @@ impl Spmd for ExecSpmd<'_> {
     }
     fn broadcast(&self, p: usize, f: &(dyn Fn(usize) + Sync)) -> bool {
         self.exec.broadcast(p, f).is_ok()
+    }
+    fn workspace(&self) -> Option<&dyn tprims_gemm_kernel::WorkspaceProvider> {
+        self.workspace
     }
 }
 
@@ -94,6 +99,7 @@ pub(crate) fn run<T: Scalar>(
             let serial = ExecSpmd {
                 exec: &Exec::Serial,
                 width: 1,
+                workspace: None,
             };
             lanes.for_each_partition(s.count, &|i| item(i, &serial));
         }
@@ -102,6 +108,7 @@ pub(crate) fn run<T: Scalar>(
             let spmd = ExecSpmd {
                 exec,
                 width: sched.inner,
+                workspace: exec.workspace(),
             };
             for i in 0..s.count {
                 item(i, &spmd);

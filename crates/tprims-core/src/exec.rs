@@ -22,7 +22,9 @@ pub struct tprims_rayon_opts {
 enum Kind {
     Serial,
     Pool {
-        pool: RwLock<Option<Pool<'static>>>,
+        // Boxed: the pool owns its workspace arena, which is much larger than
+        // the serial variant, and this handle lives in a C-visible struct.
+        pool: RwLock<Option<Box<Pool<'static>>>>,
         joins: Mutex<Vec<JoinHandle<()>>>,
         budget: AtomicUsize,
     },
@@ -158,7 +160,7 @@ pub unsafe extern "C" fn tprims_exec_rayon_create(
                 .unwrap_or_else(std::sync::PoisonError::into_inner),
         );
         out = boxed(Kind::Pool {
-            pool: RwLock::new(Some(Pool::owned(tp))),
+            pool: RwLock::new(Some(Box::new(Pool::owned(tp)))),
             joins: Mutex::new(handles),
             budget: AtomicUsize::new(nthreads),
         });

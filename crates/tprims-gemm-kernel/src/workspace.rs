@@ -63,7 +63,8 @@ pub struct WorkspaceReq {
 pub struct PageBuf {
     ptr: *mut u8,
     cap: usize,
-    traced: bool,
+    /// Owner key this buffer reports growths under, or zero when untraced.
+    traced: u64,
 }
 
 // SAFETY: the buffer owns its allocation and hands out pointers only through
@@ -71,10 +72,11 @@ pub struct PageBuf {
 unsafe impl Send for PageBuf {}
 
 impl PageBuf {
-    /// A traced buffer, for tests that prove where storage was first touched.
-    pub fn traced() -> Self {
+    /// A buffer that reports its growths under `owner`, for tests that prove
+    /// where storage was first touched. Zero means untraced.
+    pub fn traced(owner: u64) -> Self {
         Self {
-            traced: true,
+            traced: owner,
             ..Self::default()
         }
     }
@@ -108,8 +110,8 @@ impl PageBuf {
             );
             self.ptr = new;
             self.cap = want;
-            if self.traced {
-                record(want);
+            if self.traced != 0 {
+                record(self.traced, want);
             }
         }
         self.ptr
@@ -163,18 +165,11 @@ struct WorkerSlot {
 }
 
 impl WorkerSlot {
-    fn new(traced: bool) -> Self {
+    /// `owner` is the tracing key, or zero for an untraced owner.
+    fn new(owner: u64) -> Self {
         Self {
-            a: if traced {
-                PageBuf::traced()
-            } else {
-                PageBuf::default()
-            },
-            tile: if traced {
-                PageBuf::traced()
-            } else {
-                PageBuf::default()
-            },
+            a: PageBuf::traced(owner),
+            tile: PageBuf::traced(owner),
             scratch: Vec::new(),
             borrowed: false,
         }
@@ -286,7 +281,7 @@ pub struct ArenaProvider {
     next_worker: AtomicU64,
     /// Panel bytes currently leased out, which the free list no longer holds.
     leased: AtomicUsize,
-    traced: bool,
+    traced: u64,
 }
 
 impl Default for ArenaProvider {
@@ -304,21 +299,14 @@ thread_local! {
 }
 
 static NEXT_PROVIDER: AtomicU64 = AtomicU64::new(1);
-static NEXT_TRACE: Mutex<Vec<(std::thread::ThreadId, usize)>> = Mutex::new(Vec::new());
+static TRACE: Mutex<Vec<(u64, std::thread::ThreadId, usize)>> = Mutex::new(Vec::new());
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-fn record(bytes: usize) {
-    lock(&NEXT_TRACE).push((std::thread::current().id(), bytes));
-}
-
-/// Take the recorded buffer growths, leaving the log empty.
-///
-/// Empty unless a provider was built with [`ArenaProvider::traced`].
-pub fn trace_take() -> Vec<(std::thread::ThreadId, usize)> {
-    lock(&NEXT_TRACE).split_off(0)
+fn record(owner: u64, bytes: usize) {
+    lock(&TRACE).push((owner, std::thread::current().id(), bytes));
 }
 
 impl ArenaProvider {
@@ -330,16 +318,32 @@ impl ArenaProvider {
             teams: Mutex::new(Vec::new()),
             next_worker: AtomicU64::new(0),
             leased: AtomicUsize::new(0),
-            traced: false,
+            traced: 0,
         }
     }
 
-    /// A fresh owner that records where its storage is first touched.
+    /// A fresh owner that records where its storage is first touched, readable
+    /// through [`ArenaProvider::trace_take`].
     pub fn traced() -> Self {
-        Self {
-            traced: true,
-            ..Self::new()
-        }
+        let mut arena = Self::new();
+        arena.traced = arena.key;
+        arena
+    }
+
+    /// Take this owner's recorded buffer growths, leaving its log empty.
+    ///
+    /// Empty unless the owner was built with [`ArenaProvider::traced`].
+    pub fn trace_take(&self) -> Vec<(std::thread::ThreadId, usize)> {
+        let mut mine = Vec::new();
+        lock(&TRACE).retain(|(owner, thread, bytes)| {
+            if *owner == self.key {
+                mine.push((*thread, *bytes));
+                false
+            } else {
+                true
+            }
+        });
+        mine
     }
 
     /// Bytes currently retained, for accounting in tests and diagnostics.
@@ -404,11 +408,7 @@ impl WorkspaceProvider for ArenaProvider {
 
     fn take_team(&self, req: &WorkspaceReq, pm: usize, pn: usize) -> TeamLease<'_> {
         let mut set = lock(&self.teams).pop().unwrap_or_else(|| TeamSet {
-            b: if self.traced {
-                PageBuf::traced()
-            } else {
-                PageBuf::default()
-            },
+            b: PageBuf::traced(self.traced),
             ..TeamSet::default()
         });
         set.prepare(req, pm, pn);

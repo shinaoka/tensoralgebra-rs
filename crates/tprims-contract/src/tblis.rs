@@ -15,6 +15,9 @@ use crate::{Error, Result};
 struct ExecSpmd<'a> {
     exec: &'a Exec<'a>,
     width: usize,
+    /// Storage this operation's threads share: the pool's when it borrowed one,
+    /// and the plan's own otherwise, so a serial plan reuses its buffers too.
+    workspace: &'a dyn tprims_gemm_kernel::WorkspaceProvider,
 }
 
 impl Spmd for ExecSpmd<'_> {
@@ -24,13 +27,20 @@ impl Spmd for ExecSpmd<'_> {
     fn broadcast(&self, p: usize, f: &(dyn Fn(usize) + Sync)) -> bool {
         self.exec.broadcast(p, f).is_ok()
     }
+    fn workspace(&self) -> Option<&dyn tprims_gemm_kernel::WorkspaceProvider> {
+        Some(self.workspace)
+    }
 }
 
 /// A tensorcontract plan with its labels, built once.
+///
+/// It owns a workspace, so a serial operation on this plan reuses its worker
+/// buffers and B panel across calls instead of allocating per call.
 #[derive(Debug)]
 pub(crate) struct TbPlan {
     plan: Plan,
     work: f64,
+    workspace: tprims_gemm_kernel::ArenaProvider,
 }
 
 fn layout(dims: &[usize], strides: &[isize]) -> Result<Layout> {
@@ -96,6 +106,7 @@ pub(crate) fn plan(
     Ok(TbPlan {
         plan,
         work: 2.0 * (out as f64) * (k as f64),
+        workspace: tprims_gemm_kernel::ArenaProvider::new(),
     })
 }
 
@@ -114,7 +125,13 @@ pub(crate) fn execute<T: Scalar>(
         flops * tprims_blas::GemmPolicy::default().ns_per_flop,
         &WidthPolicy::default(),
     );
-    let spmd = ExecSpmd { exec, width };
+    // A borrowed pool lends its own arena; a serial context uses the plan's,
+    // which is why a serial plan's steady state allocates nothing either.
+    let spmd = ExecSpmd {
+        exec,
+        width,
+        workspace: exec.workspace().unwrap_or(&p.workspace),
+    };
     let d = c.as_mut_ptr();
     // SAFETY: the plan was built from these views' validated layouts (checked
     // again in `ContractPlan::execute`); all three are non-empty so their

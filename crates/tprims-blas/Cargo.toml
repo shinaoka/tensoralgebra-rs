@@ -14,6 +14,7 @@ strided-view = { workspace = true }
 tensorcontract = { workspace = true }
 thiserror = { workspace = true }
 tprims-exec = { workspace = true }
+tprims-gemm-kernel = { workspace = true, default-features = false }
 
 [dev-dependencies]
 rayon = { workspace = true }
