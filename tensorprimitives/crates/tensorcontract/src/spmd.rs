@@ -37,4 +37,15 @@ pub trait Spmd: Sync {
     /// nothing and return `false`; the driver then executes the contraction
     /// serially on the calling thread. `p` never exceeds [`Spmd::width`].
     fn broadcast(&self, p: usize, f: &(dyn Fn(usize) + Sync)) -> bool;
+
+    /// Storage this host offers the driver, or none.
+    ///
+    /// The provider is borrowed for the duration of the call rather than
+    /// required to be `'static`, because it belongs to whoever owns the
+    /// threads: a `tprims_exec::Pool` lends its arena to every operation that
+    /// runs on it, and a serial plan lends its own. A host that shares pools
+    /// with someone else answers `None` and gets the driver's per-call buffers.
+    fn workspace(&self) -> Option<&dyn tprims_gemm_kernel::WorkspaceProvider> {
+        None
+    }
 }

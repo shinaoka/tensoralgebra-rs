@@ -124,8 +124,9 @@ use crate::element::Element;
 use crate::kernel::{config_for_plan, Blocking, KernelSet};
 use crate::pack::{pack_panel, panel_len};
 use crate::plan::Plan;
-use crate::scatter::{build_block_scatter, IRREGULAR};
+use crate::scatter::IRREGULAR;
 use crate::writeback::{scale_only, writeback};
+use tprims_gemm_kernel::scatter::append_block_scatter;
 use tprims_gemm_kernel::{Axis, BAccess, DriverFamily, Real, UkrAux, UkrFn};
 
 /// Operand-dependent decisions the driver makes once per execute, kept
@@ -160,9 +161,8 @@ where
     } else {
         (&plan.b_k, &plan.b_n)
     };
-    let b_n_bs = build_block_scatter(bn, rg.nr);
     ResolvedCall {
-        pack_b_needed: pack_b_needed(rg.family().b_access, bk, &b_n_bs),
+        pack_b_needed: pack_b_needed(rg.family().b_access, bk, bn, rg.nr),
         direct_c_allowed: direct_c_allowed(plan, c, d, beta),
     }
 }
@@ -170,7 +170,10 @@ where
 /// Whether the family must pack this call's column operand: it must accept an
 /// in-place B, B's k stride must be one, and every `NR` block's column offsets
 /// must be an arithmetic progression, so one stride expresses the tile.
-fn pack_b_needed(b_access: BAccess, bk: &[i64], b_n_bs: &[i64]) -> bool {
+///
+/// This reads the operand's own scatter rather than its block scatter, so it
+/// can decide before any scratch buffer exists.
+fn pack_b_needed(b_access: BAccess, bk: &[i64], bn: &[i64], nr: usize) -> bool {
     if !matches!(
         b_access,
         BAccess::Direct {
@@ -182,7 +185,7 @@ fn pack_b_needed(b_access: BAccess, bk: &[i64], b_n_bs: &[i64]) -> bool {
     if bk.len() > 1 && !bk.windows(2).all(|w| w[1] - w[0] == 1) {
         return true;
     }
-    b_n_bs.contains(&IRREGULAR)
+    !tprims_gemm_kernel::scatter::block_scatter_regular(bn, nr)
 }
 
 /// Whether the Direct kernel may write D in place. Real storage only, no C or D
@@ -197,6 +200,25 @@ fn direct_c_allowed<T: Element>(plan: &Plan, c: *const T, d: *mut T, beta: T) ->
                 && plan.c_m == plan.d_m
                 && plan.c_n == plan.d_n
                 && plan.h_c == plan.h_d))
+}
+
+/// Where the five block-scatter vectors sit inside one reused scatter buffer.
+///
+/// They are built together into the team's buffer so a steady-state execute
+/// allocates nothing; these offsets are what keeps them separate slices.
+#[derive(Clone, Copy, Default)]
+struct ScatterRuns {
+    a: (usize, usize),
+    b: (usize, usize),
+    dm: (usize, usize),
+    dn: (usize, usize),
+    cm: (usize, usize),
+}
+
+impl ScatterRuns {
+    fn slice<'a>(&self, buf: &'a [i64], run: (usize, usize)) -> &'a [i64] {
+        &buf[run.0..run.1]
+    }
 }
 
 /// A raw pointer shared across the threads of one [`execute`] call.
@@ -262,11 +284,9 @@ where
     dn: &'a [i64],
     ha: &'a [i64],
     hb: &'a [i64],
-    a_m_bs: &'a [i64],
-    b_n_bs: &'a [i64],
-    d_m_bs: &'a [i64],
-    d_n_bs: &'a [i64],
-    c_m_bs: &'a [i64],
+    /// Every block-scatter vector this call needs, laid out by `runs`.
+    scatter: &'a [i64],
+    runs: ScatterRuns,
     conj_a: bool,
     conj_b: bool,
     alpha: T,
@@ -473,18 +493,6 @@ pub unsafe fn execute_resolved<T: Element>(
     unsafe { execute_capped(plan, alpha, a, b, beta, c, d, usize::MAX, spmd, Some(rg)) }
 }
 
-/// The serial seam: width one, never asked to broadcast.
-struct Inline;
-
-impl crate::spmd::Spmd for Inline {
-    fn width(&self) -> usize {
-        1
-    }
-    fn broadcast(&self, _p: usize, _f: &(dyn Fn(usize) + Sync)) -> bool {
-        false
-    }
-}
-
 /// [`execute`] with host-supplied co-scheduled threads (tprims addition).
 ///
 /// # Safety
@@ -627,6 +635,7 @@ pub(crate) unsafe fn execute_capped<T>(
         (&plan.h_a, &plan.h_b)
     };
 
+    let workspace = spmd.and_then(|s| s.workspace());
     let m = am.len();
     let n = bn.len();
     let k = ak.len();
@@ -649,27 +658,12 @@ pub(crate) unsafe fn execute_capped<T>(
         return;
     }
 
-    // Block-scatter metadata. Cheap (O(M/MR + N/NR)) and element-type
-    // dependent only through MR/NR, so it lives here rather than in the plan.
-    let a_m_bs = build_block_scatter(am, mr);
-    let b_n_bs = build_block_scatter(bn, nr);
-    // Row block scatter for the output too: the write-back uses it exactly as
-    // packing uses the operands', to keep scatter-table loads out of its
-    // innermost loop. `C` is only consulted when beta is nonzero.
-    let d_m_bs = build_block_scatter(dm, mr);
-    // Column half of the same: a direct tile needs both, because the kernel
-    // takes single strides where the write-back takes scatter vectors.
-    let d_n_bs = build_block_scatter(dn, nr);
-    let c_m_bs = if beta == T::zero() {
-        Vec::new()
-    } else {
-        build_block_scatter(cm, mr)
-    };
-
     // Operand-dependent decisions, made once for the whole call: the family's
-    // B access, this B's strides, and whether D can be updated in place.
+    // B access, this B's strides, and whether D can be updated in place. Both
+    // are allocation-free, because the partition below depends on them and the
+    // team's buffer is only borrowed once the shape is known.
     let call = resolved.map(|rg| ResolvedCall {
-        pack_b_needed: pack_b_needed(rg.family().b_access, bk, &b_n_bs),
+        pack_b_needed: pack_b_needed(rg.family().b_access, bk, bn, nr),
         direct_c_allowed: direct_c_allowed(plan, c, d, beta),
     });
     let direct_b = call.is_some_and(|c| !c.pack_b_needed);
@@ -775,8 +769,58 @@ pub(crate) unsafe fn execute_capped<T>(
     let ap_len = panel_len(mc, mr, kc, fam.a_pack);
     let group_cap = nc.div_ceil(nr).div_ceil(pn);
     let b_group = panel_len(group_cap * nr, nr, kc, fam.b_pack);
-    // A direct-B call never touches the panel, so it is not allocated at all.
-    let mut bp = Panel::<T::Real>::new(if direct_b { 0 } else { pn * b_group });
+    // What this call needs from the owner, if it has one. Everything is in
+    // bytes except the element counts of the scratch vectors.
+    let element = core::mem::size_of::<T::Real>();
+    let req = tprims_gemm_kernel::WorkspaceReq {
+        a_bytes: ap_len * element,
+        tile_bytes: (fam.tile + fam.induced_scratch(kc)) * element,
+        worker_scatter: 0,
+        // A direct-B call never touches the panel, so it asks for none.
+        b_bytes: if direct_b { 0 } else { pn * b_group * element },
+        team_scatter: am.len().div_ceil(mr)
+            + bn.len().div_ceil(nr)
+            + dm.len().div_ceil(mr)
+            + dn.len().div_ceil(nr)
+            + if beta == T::zero() {
+                0
+            } else {
+                cm.len().div_ceil(mr)
+            },
+        barriers: if pm > 1 { pn } else { 0 },
+    };
+    let mut lease = workspace.map(|ws| ws.take_team(&req, pm, pn));
+    // The panel lives in the lease when there is one, and in a call-local
+    // allocation otherwise; a direct-B call sizes it to zero either way. The
+    // pointer is taken before the scatter borrow, which is held to the end.
+    let has_lease = lease.is_some();
+    let mut bp = Panel::<T::Real>::new(match has_lease || direct_b {
+        true => 0,
+        false => pn * b_group,
+    });
+    let bp_ptr = match lease.as_mut() {
+        Some(l) => l.panel(req.b_bytes) as *mut T::Real,
+        None => bp.as_mut_ptr(),
+    };
+    // A leased team set also carries the scatter vectors, so a steady-state
+    // call reuses their capacity instead of allocating five of them.
+    let mut local_scatter = Vec::new();
+    let scatter_buf = match lease.as_mut() {
+        Some(l) => &mut l.scatter,
+        None => &mut local_scatter,
+    };
+    scatter_buf.clear();
+    scatter_buf.reserve(req.team_scatter);
+    let runs = ScatterRuns {
+        a: append_block_scatter(scatter_buf, am, mr),
+        b: append_block_scatter(scatter_buf, bn, nr),
+        dm: append_block_scatter(scatter_buf, dm, mr),
+        dn: append_block_scatter(scatter_buf, dn, nr),
+        cm: match beta == T::zero() {
+            true => (scatter_buf.len(), scatter_buf.len()),
+            false => append_block_scatter(scatter_buf, cm, mr),
+        },
+    };
 
     let cx = Ctx::<T> {
         plan,
@@ -804,11 +848,8 @@ pub(crate) unsafe fn execute_capped<T>(
         dn,
         ha,
         hb,
-        a_m_bs: &a_m_bs,
-        b_n_bs: &b_n_bs,
-        d_m_bs: &d_m_bs,
-        d_n_bs: &d_n_bs,
-        c_m_bs: &c_m_bs,
+        scatter: scatter_buf,
+        runs,
         conj_a,
         conj_b,
         alpha,
@@ -817,22 +858,32 @@ pub(crate) unsafe fn execute_capped<T>(
         b: Shared(ptr_b as *mut T),
         c: Shared(c as *mut T),
         d: Shared(d),
-        bp: Shared(bp.as_mut_ptr()),
+        bp: Shared(bp_ptr),
     };
 
+    // Worker buffers come from the owner when there is one, and from a fresh
+    // per-call panel otherwise; either way they are the caller-of-`f`'s for the
+    // duration of `f`, and the 4m scratch is carved out of the tile.
+    let with_buffers = |f: &mut dyn FnMut(*mut T::Real, *mut T::Real)| match workspace {
+        Some(ws) => {
+            ws.with_worker(&req, &mut |a, tile, _| {
+                f(a as *mut T::Real, tile as *mut T::Real)
+            });
+        }
+        None => {
+            let mut ap = Panel::<T::Real>::new(ap_len);
+            let mut tile = Panel::<T::Real>::new(fam.tile + fam.induced_scratch(kc));
+            f(ap.as_mut_ptr(), tile.as_mut_ptr());
+        }
+    };
+    let scratch_off = fam.tile;
+
     if p == 1 {
-        let mut ap = Panel::<T::Real>::new(ap_len);
-        let mut tile = Panel::<T::Real>::new(fam.tile);
-        let mut scratch = Panel::<T::Real>::new(fam.induced_scratch(kc));
-        run_strip::<T>(
-            &cx,
-            0,
-            m,
-            ap.as_mut_ptr(),
-            tile.as_mut_ptr(),
-            scratch.as_mut_ptr(),
-            BPart::SERIAL,
-        );
+        with_buffers(&mut |ap, tile| {
+            // SAFETY: `execute`'s contract, and these buffers are exclusive to
+            // this call for its duration.
+            unsafe { run_strip::<T>(&cx, 0, m, ap, tile, tile.add(scratch_off), BPart::SERIAL) }
+        });
         return;
     }
 
@@ -861,23 +912,12 @@ pub(crate) unsafe fn execute_capped<T>(
             bar: (pm > 1).then(|| &bars[g]),
         };
         let (lo, hi) = tprims_gemm_kernel::partition::strip(r, pm, cx.m, mr, align);
-        let mut ap = Panel::<T::Real>::new(ap_len);
-        let mut tile = Panel::<T::Real>::new(cx.fam.tile);
-        let mut scratch = Panel::<T::Real>::new(cx.fam.induced_scratch(cx.kc));
-        // SAFETY: `execute`'s contract covers the accesses; the strips and column
-        // groups partition the output, so this thread's writes are disjoint from
-        // every other thread's.
-        unsafe {
-            run_strip::<T>(
-                cx,
-                lo,
-                hi,
-                ap.as_mut_ptr(),
-                tile.as_mut_ptr(),
-                scratch.as_mut_ptr(),
-                bpart,
-            )
-        };
+        with_buffers(&mut |ap, tile| {
+            // SAFETY: `execute`'s contract covers the accesses; the strips and
+            // column groups partition the output, so this thread's writes are
+            // disjoint from every other thread's.
+            unsafe { run_strip::<T>(cx, lo, hi, ap, tile, tile.add(scratch_off), bpart) };
+        });
     };
 
     // Pooled if asked for and if the pool can serve this width, otherwise spawn.
@@ -887,24 +927,15 @@ pub(crate) unsafe fn execute_capped<T>(
         if s.broadcast(p, &cell) {
             return;
         }
-        // Declined: nothing ran, so rerunning serially is safe. Never fall
-        // back to spawning threads behind the host's back.
-        // A width-one seam keeps the rerun serial even under a pinned
-        // partition. SAFETY: forwarded unchanged from this call's contract.
-        unsafe {
-            execute_capped(
-                plan,
-                alpha,
-                a,
-                b,
-                beta,
-                c,
-                d,
-                1,
-                Some(&Inline),
-                resolved.as_ref(),
-            )
-        };
+        // Declined: nothing ran, so running serially is safe, and never spawn
+        // threads behind the host's back. The caller does the work with this
+        // call's own buffers and panel, so the refusal costs no second
+        // allocation and no second lease.
+        with_buffers(&mut |ap, tile| {
+            // SAFETY: forwarded unchanged from this call's contract; a serial
+            // strip is the degenerate partition and needs no barrier.
+            unsafe { run_strip::<T>(&cx, 0, m, ap, tile, tile.add(scratch_off), BPart::SERIAL) }
+        });
         return;
     }
 
@@ -971,11 +1002,8 @@ unsafe fn run_strip<T>(
         dn,
         ha,
         hb,
-        a_m_bs,
-        b_n_bs,
-        d_m_bs,
-        d_n_bs,
-        c_m_bs,
+        scatter,
+        runs,
         conj_a,
         conj_b,
         alpha,
@@ -984,6 +1012,11 @@ unsafe fn run_strip<T>(
         ..
     } = *cx;
     let (ptr_a, ptr_b, c, d, bp_ptr) = (cx.a.0, cx.b.0, cx.c.0 as *const T, cx.d.0, cx.bp.0);
+    // The five block scatters live in one buffer, in `runs` order; these are
+    // the same vectors the driver used to build separately.
+    let (a_m_bs, b_n_bs) = (runs.slice(scatter, runs.a), runs.slice(scatter, runs.b));
+    let (d_m_bs, d_n_bs) = (runs.slice(scatter, runs.dm), runs.slice(scatter, runs.dn));
+    let c_m_bs = runs.slice(scatter, runs.cm);
     let one = T::one();
 
     for h in 0..plan.stats.batch {

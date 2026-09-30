@@ -130,15 +130,53 @@ pub fn build_scatter(extents: &[i64], strides: &[i64]) -> Vec<i64> {
 /// assert_eq!(build_block_scatter(&scat, 3), vec![IRREGULAR, IRREGULAR]);
 /// ```
 pub fn build_block_scatter(scat: &[i64], blk: usize) -> Vec<i64> {
+    let mut out = Vec::new();
+    append_block_scatter(&mut out, scat, blk);
+    out
+}
+
+/// [`build_block_scatter`], appended to a caller's buffer so a reused team
+/// buffer can hold several of them without reallocating.
+///
+/// # Examples
+/// ```
+/// use tprims_gemm_kernel::scatter::append_block_scatter;
+/// let mut buf = Vec::new();
+/// let first = append_block_scatter(&mut buf, &[0, 1, 2], 2);
+/// let second = append_block_scatter(&mut buf, &[0, 5], 2);
+/// assert_eq!((first, second), ((0, 2), (2, 3)));
+/// assert_eq!(buf, vec![1, 0, 5]);
+/// ```
+pub fn append_block_scatter(out: &mut Vec<i64>, scat: &[i64], blk: usize) -> (usize, usize) {
     assert!(blk > 0);
+    let start = out.len();
     let nblk = scat.len().div_ceil(blk);
-    let mut out = Vec::with_capacity(nblk);
     for b in 0..nblk {
         let lo = b * blk;
         let hi = (lo + blk).min(scat.len());
-        out.push(run_stride(&scat[lo..hi]));
+        let stride = run_stride(&scat[lo..hi]);
+        out.push(stride);
     }
-    out
+    (start, out.len())
+}
+
+/// Whether every `blk`-sized block of `scat` is an arithmetic progression, so
+/// one stride per block expresses the whole scatter. Allocation-free, for
+/// decisions taken before any scratch exists.
+///
+/// # Examples
+/// ```
+/// use tprims_gemm_kernel::scatter::block_scatter_regular;
+/// assert!(block_scatter_regular(&[0, 1, 2, 3], 2));
+/// assert!(!block_scatter_regular(&[0, 1, 10, 11], 4));
+/// ```
+pub fn block_scatter_regular(scat: &[i64], blk: usize) -> bool {
+    assert!(blk > 0);
+    (0..scat.len().div_ceil(blk)).all(|b| {
+        let lo = b * blk;
+        let hi = (lo + blk).min(scat.len());
+        run_stride(&scat[lo..hi]) != IRREGULAR
+    })
 }
 
 /// Common difference of a run, or [`IRREGULAR`].
