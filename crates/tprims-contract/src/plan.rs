@@ -19,8 +19,13 @@ use crate::{Error, Result};
 #[non_exhaustive]
 pub enum Strategy {
     /// Library choice: an elementwise pass for all-batch (Hadamard)
-    /// problems, otherwise [`Strategy::PermuteGemm`] (faster than TBLIS-style
-    /// on every fusable case of the Phase 1c corpus).
+    /// problems; otherwise [`Strategy::PermuteGemm`] when it fuses every
+    /// operand without a copy, and [`Strategy::Tblis`] when permute+GEMM
+    /// would copy any operand. Measured on the tenferro-benchmark shape
+    /// corpus (Phase 1e P2, `docs/decision-log.md`): permute+GEMM wins the
+    /// copy-free problems, TBLIS-style wins the copying ones, which carry
+    /// most of the workload time. With [`Flags::no_materialize`], a copying
+    /// problem therefore plans TBLIS-style instead of failing.
     Auto,
     /// Fuse to strided batched GEMM, copying non-fusable operands once.
     PermuteGemm,
@@ -144,13 +149,27 @@ impl<T: Scalar> ContractPlan<T> {
                 b_axes: cfg.rhs_batch.clone(),
             },
             Strategy::Tblis => Inner::Tb(Box::new(tblis::plan(cfg, &shape, dims, strides, conj)?)),
-            Strategy::Auto | Strategy::PermuteGemm => Inner::Pg(Box::new(permute_gemm::plan(
+            Strategy::PermuteGemm => Inner::Pg(Box::new(permute_gemm::plan(
                 cfg,
                 &shape,
                 dims,
                 strides,
                 flags.no_materialize,
             )?)),
+            Strategy::Auto => {
+                let pg = permute_gemm::plan(cfg, &shape, dims, strides, false)?;
+                if pg.materialized.iter().any(|&m| m) {
+                    match tblis::plan(cfg, &shape, dims, strides, conj) {
+                        Ok(tb) => Inner::Tb(Box::new(tb)),
+                        // tensorcontract declined: keep the copying plan
+                        // unless copies were refused.
+                        Err(e) if flags.no_materialize => return Err(e),
+                        Err(_) => Inner::Pg(Box::new(pg)),
+                    }
+                } else {
+                    Inner::Pg(Box::new(pg))
+                }
+            }
         };
         Ok(Self {
             layouts: [0, 1, 2].map(|o| (dims[o].to_vec(), strides[o].to_vec())),

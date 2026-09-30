@@ -17,6 +17,10 @@
 //!   arXiv:1607.00291), which packs general strides straight into the
 //!   micro-kernel panels.
 //!
+//! [`Strategy::Auto`] runs permute+GEMM when it copies nothing and the
+//! TBLIS-style kernel when permute+GEMM would copy an operand (measured on
+//! tenferro's shape corpus; `docs/decision-log.md`).
+//!
 //! # Examples
 //!
 //! ```
