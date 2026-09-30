@@ -1157,6 +1157,7 @@ dependencies = [
  "tensorcontract",
  "thiserror",
  "tprims-gemm-kernel",
+ "tprims-kernel-tensorcontract",
 ]
 
 [[package]]

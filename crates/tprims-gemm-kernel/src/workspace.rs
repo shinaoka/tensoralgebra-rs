@@ -352,8 +352,15 @@ impl ArenaProvider {
             .values()
             .map(|s| s.a.cap_bytes() + s.tile.cap_bytes())
             .sum();
-        let teams: usize = lock(&self.teams).iter().map(|t| t.b.cap_bytes()).sum();
-        workers + teams + self.leased.load(Ordering::Relaxed)
+        workers + self.retained_panel_bytes()
+    }
+
+    /// Panel bytes retained, idle or leased. Unlike [`ArenaProvider::retained_bytes`]
+    /// this does not depend on which workers happened to take part, so it is
+    /// what a test can compare between two runs of one shape.
+    pub fn retained_panel_bytes(&self) -> usize {
+        let idle: usize = lock(&self.teams).iter().map(|t| t.b.cap_bytes()).sum();
+        idle + self.leased.load(Ordering::Relaxed)
     }
 
     fn slot(&self, index: u64) -> *mut WorkerSlot {
@@ -412,6 +419,9 @@ impl WorkspaceProvider for ArenaProvider {
             ..TeamSet::default()
         });
         set.prepare(req, pm, pn);
+        // Account the whole leased panel, so `Drop` can subtract exactly what
+        // it returns and `panel()` only has to add its growth.
+        self.leased.fetch_add(set.b.cap_bytes(), Ordering::Relaxed);
         TeamLease {
             owner: self,
             set: Some(set),
