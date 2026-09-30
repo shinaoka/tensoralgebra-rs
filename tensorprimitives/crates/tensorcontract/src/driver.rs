@@ -794,32 +794,48 @@ pub(crate) unsafe fn execute_capped<T>(
     // allocation otherwise; a direct-B call sizes it to zero either way. The
     // pointer is taken before the scatter borrow, which is held to the end.
     let has_lease = lease.is_some();
-    let mut bp = Panel::<T::Real>::new(match has_lease || direct_b {
-        true => 0,
-        false => pn * b_group,
-    });
+    let mut local_bp = match has_lease || direct_b {
+        true => None,
+        false => Some(Panel::<T::Real>::new(pn * b_group)),
+    };
     let bp_ptr = match lease.as_mut() {
         Some(l) => l.panel(req.b_bytes) as *mut T::Real,
-        None => bp.as_mut_ptr(),
-    };
-    // A leased team set also carries the scatter vectors, so a steady-state
-    // call reuses their capacity instead of allocating five of them.
-    let mut local_scatter = Vec::new();
-    let scatter_buf = match lease.as_mut() {
-        Some(l) => &mut l.scatter,
-        None => &mut local_scatter,
-    };
-    scatter_buf.clear();
-    scatter_buf.reserve(req.team_scatter);
-    let runs = ScatterRuns {
-        a: append_block_scatter(scatter_buf, am, mr),
-        b: append_block_scatter(scatter_buf, bn, nr),
-        dm: append_block_scatter(scatter_buf, dm, mr),
-        dn: append_block_scatter(scatter_buf, dn, nr),
-        cm: match beta == T::zero() {
-            true => (scatter_buf.len(), scatter_buf.len()),
-            false => append_block_scatter(scatter_buf, cm, mr),
+        None => match local_bp.as_mut() {
+            Some(p) => p.as_mut_ptr(),
+            // A direct-B call reads B in place, so it has no panel at all.
+            None => std::ptr::NonNull::<T::Real>::dangling().as_ptr(),
         },
+    };
+    // A leased team set also carries the scatter vectors and the barriers, so a
+    // steady-state call reuses their capacity instead of allocating five
+    // vectors and a barrier list. Both are taken as shared slices once the
+    // filling is done, so they can be borrowed together.
+    let mut local_scatter = Vec::new();
+    let local_bars: Vec<Barrier>;
+    let runs = {
+        let buf = match lease.as_mut() {
+            Some(l) => &mut l.scatter,
+            None => &mut local_scatter,
+        };
+        buf.clear();
+        buf.reserve(req.team_scatter);
+        ScatterRuns {
+            a: append_block_scatter(buf, am, mr),
+            b: append_block_scatter(buf, bn, nr),
+            dm: append_block_scatter(buf, dm, mr),
+            dn: append_block_scatter(buf, dn, nr),
+            cm: match beta == T::zero() {
+                true => (buf.len(), buf.len()),
+                false => append_block_scatter(buf, cm, mr),
+            },
+        }
+    };
+    let (scatter_buf, bars) = match lease.as_ref() {
+        Some(l) => (l.scatter.as_slice(), l.barriers.as_slice()),
+        None => {
+            local_bars = (0..pn).map(|_| Barrier::new(pm)).collect();
+            (local_scatter.as_slice(), local_bars.as_slice())
+        }
     };
 
     let cx = Ctx::<T> {
@@ -891,9 +907,7 @@ pub(crate) unsafe fn execute_capped<T>(
     // that write and read that group's slice of the packed `B` panel. Groups
     // never need to synchronise with each other, so they do not: the barrier is
     // `pm`-way, not `p`-way. At `pm == 1` there is nothing to synchronise and
-    // the threads take no barrier at all.
-    let bars: Vec<Barrier> = (0..pn).map(|_| Barrier::new(pm)).collect();
-    let bars = &bars;
+    // the threads take no barrier at all — which `bars` being empty expresses.
 
     // One thread's whole job, as a function of its index in the `pm x pn` grid.
     // Written once and reached two ways — from a pooled broadcast or from
@@ -1216,10 +1230,11 @@ unsafe fn run_strip<T>(
                                         } else {
                                             apan
                                         },
-                                        b_next: if jr + nr < jc_len {
-                                            bpan.add(b_sliver)
-                                        } else {
-                                            bpan
+                                        // In-place B has no panel to point past.
+                                        b_next: match (direct_b, jr + nr < jc_len) {
+                                            (true, _) => b_base,
+                                            (false, true) => bpan.add(b_sliver),
+                                            (false, false) => bpan,
                                         },
                                         inner: None,
                                     };

@@ -1092,6 +1092,7 @@ dependencies = [
  "tensorcontract",
  "thiserror",
  "tprims-exec",
+ "tprims-gemm-kernel",
 ]
 
 [[package]]
@@ -1124,6 +1125,7 @@ dependencies = [
  "thiserror",
  "tprims-blas",
  "tprims-exec",
+ "tprims-gemm-kernel",
 ]
 
 [[package]]
@@ -1154,6 +1156,7 @@ dependencies = [
  "strided-basic",
  "tensorcontract",
  "thiserror",
+ "tprims-gemm-kernel",
 ]
 
 [[package]]
