@@ -159,3 +159,73 @@ Plan caches/default selection, monomorphized pack/write-back pointers and
 driver integration are next. No new family has been connected to execution
 by this increment. Tasks 4–12 and final performance/CI gates remain; the
 durable goal stays active.
+
+## Tasks 4–8 (continued): driver on resolved families, Direct, induced, partition, workspace
+
+Task 4 is complete. `Plan` caches one fallible `ResolvedGemm` per storage
+dtype (`b011dc2`/`8d9c444`), `run`/`run_with` and every batch item validate
+selection before any shortcut, and the driver consumes the cached descriptor,
+its format-monomorphized packers and its write-back emitter, deriving `NC` from
+the *active* grid width rather than the requested thread count. `process_default`
+freezes one default (including its error) per dtype and reads the legacy
+`TENSORCONTRACT_KERNEL`/`COMPLEX` controls once; `KernelForce` moved into the
+kernel crate so both dispatch paths share one startup fact. `Plan::resolved`
+and `with_kernel` are the public surface; `Error::KernelSelection` carries the
+typed `SelectError` with its source chain. Evidence: `task4-driver-*`,
+`task4-defaults-*`, `task4-explicit-spmd.log`.
+
+Task 5 adds the two portable Direct families per real dtype, a driver family
+view that can dispatch either `UkrFn` arm, the plan-level direct-C guard, the
+per-tile fallback when D's own scatters are irregular, and in-place B with the
+`pm == 1` partition it requires. `driver_decisions` exposes the same rule the
+driver uses so tests pin it. Evidence: `tensorcontract/tests/direct.rs`
+(guard matrix, irregular-scatter fallback, in-place B, swapped-orientation
+refusal, selection errors).
+
+Task 6 generates 1m and 4m complex families from every registered real family,
+once per storage type, with `allow_auto: false`. 1m's 2x2 real block lands in
+exactly `TileFormat::OneM`; 4m copies planar panels into contiguous ones and
+makes four calls. The legacy Auto menu excludes induced families, because that
+path reproduces the compiled `KernelSet` list. Evidence:
+`crates/tprims-gemm-kernel/tests/induced.rs` plus the all-family sweeps.
+
+Task 7 makes the grid a policy: `partition::strip` is the single M split used
+by both the cost model and an explicit `StaticGrid`, `align_c_lines` rounds
+boundaries to a 64-byte line of `C` while the last strip keeps the tail, and
+`DynamicTiles` is refused at resolution. The width sweep is bitwise identical
+to serial for the scalar, portable and Direct families, aligned or not.
+
+Task 8 (in progress) adds an owning `ArenaProvider`: per-thread worker slots
+named by thread-local handles, page-aligned grow-only `PageBuf`s, an exclusive
+`TeamLease` over the B panel, scatter vectors and barriers, and fresh
+call-local buffers on re-entry. `Spmd::workspace()` lets a host lend its own
+provider; the driver then builds the five block scatters into one reused
+buffer, takes the panel from the lease, and on a declined broadcast runs the
+strips on the caller with that same lease. One provider per `Pool` and one per
+contract plan, so both adapters on a pool share storage and a serial plan
+reuses its own. The workspace trace is keyed by owner, so tests cannot confuse
+one owner's records with another's.
+
+### Recorded deviations from the plan text
+
+* `ResolvedGemm::resolve_with` takes `(choice, width, partition, opts)`: the
+  plan's `method`/`cpu` arguments are resolved inside (the family id already
+  encodes the method) and the blocking override has its own `with_blocking`.
+* `WorkspaceReq` sizes are **bytes**, not reals: the provider is element-type
+  erased, so the driver converts its real counts once.
+* Workspace tracing is a runtime opt-in per owner (`ArenaProvider::traced`,
+  `trace_take`) rather than a `workspace-trace` Cargo feature, because an
+  integration test cannot enable its own crate's feature; and the trace is
+  per owner rather than global, so parallel tests do not interfere.
+* `PageBuf` growth is by doubling, not by an exact-size realloc, so a growing
+  sequence of calls does not reallocate every time.
+* Task 5's per-tile direct-C decision and Task 6's induced arithmetic are
+  pinned in `tensorcontract/tests/direct.rs` and
+  `crates/tprims-gemm-kernel/tests/induced.rs` respectively; the all-family
+  sweeps cover them through the real driver, so no separate
+  `tensorcontract/tests/resolved.rs` binary was added.
+
+Remaining: the allocation-counting steady-state test and the same-pool
+adapter test for Task 8, then Tasks 9 (gemm-f64/pgx86 providers), 10, 11
+(selection/query APIs and compatibility), and 12 (docs, benchmark option,
+ABBA non-regression gates, PR). No performance measurement has been taken.
