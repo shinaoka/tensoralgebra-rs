@@ -184,8 +184,12 @@ the same run.
 each with 1T/4T benchmarks under [`benchmarks/benchmarks/tprims/`](benchmarks/benchmarks/tprims/README.md)
 and [`benchmarks/c/`](benchmarks/c/README.md). 1e (tenferro-rs integration,
 [design](docs/superpowers/specs/2026-09-30-phase1e-tenferro-integration-design.md))
-is in progress: the tprims side (grouped GEMM, corpus replay for the TBLIS
-decision) is done; the tenferro hooks and provider are next.
+is in progress: the tenferro injection points and the optional tprims
+providers (GEMM, `dot_general`, linalg kernels) are merged in tenferro-rs
+(#1954, #1955) and selectable in tenferro-benchmark (`--features tprims`);
+on tenferro's shape corpus `Strategy::Auto` now contracts TBLIS-style when
+permute+GEMM would copy an operand (decision log). Per-family acceptance
+runs in tenferro-benchmark are next.
 
 Full C ABI coverage is Phase 2. [Full plan](docs/architecture.md#implementation-order).
 
