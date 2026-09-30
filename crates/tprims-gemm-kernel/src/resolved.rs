@@ -4,6 +4,7 @@
 
 use crate::{
     cache::{self, BlockModel, CacheHierarchy, PanelGeom},
+    partition::{PartitionOpts, PartitionPolicy},
     types::{env_blocking, BlockingOverride},
     Blocking, CpuFeatures, Families, KernelFamily, Layout, Real, Registry, SelectError, TileFormat,
 };
@@ -198,6 +199,10 @@ pub struct ResolvedGemm<R: Real> {
     pub kc: usize,
     /// Width against which blocking was derived.
     pub effective_threads: usize,
+    /// How the driver cuts the output into worker cells.
+    pub partition: PartitionPolicy,
+    /// Options that change which cells exist without changing the grid.
+    pub opts: PartitionOpts,
     policy: BlockingPolicy,
     gather: bool,
 }
@@ -281,6 +286,62 @@ impl<R: Real> ResolvedGemm<R> {
         choice: &KernelChoice,
         effective_threads: usize,
     ) -> Result<Self, SelectError> {
+        Self::resolve_with::<T>(
+            choice,
+            effective_threads,
+            PartitionPolicy::default(),
+            PartitionOpts::default(),
+        )
+    }
+
+    /// [`resolve`](Self::resolve), with an explicit partition policy and the
+    /// execution options that go with it.
+    ///
+    /// # Errors
+    /// Everything [`resolve`](Self::resolve) returns, plus
+    /// [`SelectError::NotImplemented`] for a designed-but-unbuilt policy and
+    /// [`SelectError::Incompatible`] for a half-specified grid.
+    ///
+    /// # Examples
+    /// ```
+    /// use tprims_gemm_kernel::{KernelChoice, PartitionOpts, PartitionPolicy, ResolvedGemm};
+    /// let grid = PartitionPolicy::StaticGrid { pm: 2, pn: 2 };
+    /// let rg = ResolvedGemm::<f64>::resolve_with::<f64>(
+    ///     &KernelChoice::Auto, 4, grid, PartitionOpts { align_c_lines: true })?;
+    /// assert_eq!(rg.partition, grid);
+    /// assert!(rg.opts.align_c_lines);
+    /// # Ok::<(), tprims_gemm_kernel::SelectError>(())
+    /// ```
+    pub fn resolve_with<T: Families<Real = R>>(
+        choice: &KernelChoice,
+        effective_threads: usize,
+        partition: PartitionPolicy,
+        opts: PartitionOpts,
+    ) -> Result<Self, SelectError> {
+        match partition {
+            PartitionPolicy::DynamicTiles { .. } => {
+                return Err(SelectError::NotImplemented {
+                    what: "DynamicTiles partition",
+                })
+            }
+            PartitionPolicy::StaticGrid { pm, pn } if (pm == 0) != (pn == 0) => {
+                return Err(SelectError::Incompatible {
+                    id: "StaticGrid".into(),
+                    reason: "pm and pn must both be zero (driver cost model) or both nonzero",
+                })
+            }
+            PartitionPolicy::StaticGrid { .. } => {}
+        }
+        let mut rg = Self::resolve_selected::<T>(choice, effective_threads)?;
+        rg.partition = partition;
+        rg.opts = opts;
+        Ok(rg)
+    }
+
+    fn resolve_selected<T: Families<Real = R>>(
+        choice: &KernelChoice,
+        effective_threads: usize,
+    ) -> Result<Self, SelectError> {
         if effective_threads == 0 {
             return Err(SelectError::Incompatible {
                 id: match choice {
@@ -326,6 +387,8 @@ impl<R: Real> ResolvedGemm<R> {
             nc: 0,
             kc: 0,
             effective_threads: 0,
+            partition: PartitionPolicy::default(),
+            opts: PartitionOpts::default(),
             policy: BlockingPolicy::snapshot(),
             gather: crate::writeback::force_gather(),
         };

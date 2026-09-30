@@ -392,6 +392,16 @@ impl BPart<'_> {
     }
 }
 
+fn lcm(a: usize, b: usize) -> usize {
+    fn gcd(mut a: usize, mut b: usize) -> usize {
+        while b != 0 {
+            (a, b) = (b, a % b);
+        }
+        a
+    }
+    a / gcd(a, b) * b
+}
+
 /// Execute a plan.
 ///
 /// # Safety
@@ -679,7 +689,6 @@ pub(crate) unsafe fn execute_capped<T>(
     // each; it caps them at the panel and block counts, so a contraction with
     // three row panels and two column blocks uses six threads at most however
     // many were asked for and however much work it contains.
-    let npanels = m.div_ceil(mr);
     // With a host-supplied `Spmd` the width is the host's, not the plan's or
     // `TENSORCONTRACT_THREADS`.
     let want = match spmd {
@@ -688,10 +697,22 @@ pub(crate) unsafe fn execute_capped<T>(
     }
     .min(max_threads)
     .max(1);
-    let (mut pm, mut pn) = plan.partition_with(mr, nr, want);
+    // An explicit grid is clamped to the width this call may use; the default
+    // grid is the plan's own cost model, which already respects it.
+    let explicit_grid = match resolved.map(|rg| rg.partition) {
+        Some(tprims_gemm_kernel::PartitionPolicy::StaticGrid { pm, pn }) if pm != 0 => {
+            Some((pm, pn))
+        }
+        _ => None,
+    };
+    let (mut pm, mut pn) = match explicit_grid {
+        Some((pm, pn)) => (pm, pn),
+        None => plan.partition_with(mr, nr, want),
+    };
     // A host-supplied `Spmd` promises `p <= width`; a pinned partition
-    // (`TENSORCONTRACT_PARTITION`) ignores the thread count, so shrink it.
-    if spmd.is_some() {
+    // (`TENSORCONTRACT_PARTITION` or an explicit grid) ignores the thread
+    // count, so shrink it.
+    if spmd.is_some() || explicit_grid.is_some() {
         while pm * pn > want {
             if pn > 1 {
                 pn -= 1;
@@ -725,6 +746,12 @@ pub(crate) unsafe fn execute_capped<T>(
     let Blocking { mc, kc, nc } = blocking;
     let mc = mc.min(m.next_multiple_of(mr));
     let nc = nc.min(n.next_multiple_of(nr));
+    // C-line aligned strips, when asked for: one line of `C` is 64 bytes, so
+    // the boundary is a multiple of both the panel and the line.
+    let align = match resolved.map(|rg| rg.opts.align_c_lines) {
+        Some(true) => lcm(mr, (64 / core::mem::size_of::<T>()).max(1)),
+        _ => 0,
+    };
 
     // Panel sizes come from the kernel's declared per-k sliver widths, so a
     // method that packs more reals per element (1m's "1e", 3m's sum plane)
@@ -833,8 +860,7 @@ pub(crate) unsafe fn execute_capped<T>(
             pm,
             bar: (pm > 1).then(|| &bars[g]),
         };
-        let lo = (r * npanels / pm) * mr;
-        let hi = (((r + 1) * npanels / pm) * mr).min(cx.m);
+        let (lo, hi) = tprims_gemm_kernel::partition::strip(r, pm, cx.m, mr, align);
         let mut ap = Panel::<T::Real>::new(ap_len);
         let mut tile = Panel::<T::Real>::new(cx.fam.tile);
         let mut scratch = Panel::<T::Real>::new(cx.fam.induced_scratch(cx.kc));

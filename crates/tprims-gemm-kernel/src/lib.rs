@@ -44,6 +44,7 @@ mod family;
 pub mod induced;
 #[doc(hidden)]
 pub mod pack;
+pub mod partition;
 pub mod portable;
 mod registry;
 mod resolved;
@@ -55,6 +56,7 @@ pub mod writeback;
 pub use cpu::{kernel_force, CpuFeatures, Isa, KernelForce};
 pub use element::{Element, Real, C32, C64};
 pub use family::*;
+pub use partition::{PartitionOpts, PartitionPolicy};
 pub use registry::{
     list_kernels, register, register_known_prefix, Families, KernelInfo, RealSlot, Registry,
     SelectError,

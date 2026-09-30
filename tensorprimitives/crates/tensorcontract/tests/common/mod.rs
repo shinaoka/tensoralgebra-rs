@@ -13,6 +13,7 @@ use tensorcontract::kernel::KernelSet;
 use tensorcontract::plan::{ElementOp, Operand};
 use tensorcontract::reference::{contract_reference, RefOperand};
 use tensorcontract::{driver_decisions, Blocking, KernelChoice, Layout, Plan, ResolvedCall};
+use tprims_gemm_kernel::ResolvedGemm;
 use tprims_gemm_kernel::{CpuFeatures, Families, Registry};
 
 /// One case's operand and call options.
@@ -251,4 +252,97 @@ where
         "family {id}, opts {opts:?}: relative error {err:e} exceeds {tol:e}"
     );
     calls
+}
+
+/// Problem shape for the width-sweep tests.
+#[derive(Clone, Copy, Debug)]
+pub struct Shape {
+    /// Rows of `D`.
+    pub m: usize,
+    /// Columns of `D`.
+    pub n: usize,
+    /// Contracted length.
+    pub k: usize,
+}
+
+/// A host that supplies co-scheduled workers from scoped threads, as the
+/// tprims seam expects.
+pub struct ScopeSpmd {
+    /// Workers this host promises.
+    pub width: usize,
+}
+
+impl tensorcontract::spmd::Spmd for ScopeSpmd {
+    fn width(&self) -> usize {
+        self.width
+    }
+    fn broadcast(&self, p: usize, f: &(dyn Fn(usize) + Sync)) -> bool {
+        std::thread::scope(|s| {
+            for t in 0..p {
+                s.spawn(move || f(t));
+            }
+        });
+        true
+    }
+}
+
+/// One `ij,jk->ik` contraction at `width`, through the host seam and the
+/// resolved driver, with `D` overwritten (`beta = 0`).
+pub fn run_with_width<T>(
+    id: &'static str,
+    width: usize,
+    shape: Shape,
+    align_c_lines: bool,
+) -> Vec<T>
+where
+    T: Element + Families,
+    T::Real: KernelSet,
+{
+    let Shape { m, n, k } = shape;
+    let la = Layout::col_major(&[m as i64, k as i64]);
+    let lb = Layout::col_major(&[k as i64, n as i64]);
+    let ld = Layout::col_major(&[m as i64, n as i64]);
+    let (ia, ib, idd) = (vec![0i64, 2], vec![2i64, 1], vec![0i64, 1]);
+    let a: Vec<T> = (0..la.storage_len() as usize).map(value).collect();
+    let b: Vec<T> = (0..lb.storage_len() as usize).map(value).collect();
+    let mut d = vec![T::zero(); ld.storage_len() as usize];
+    let choice = KernelChoice::Id(id.into());
+    let plan = Plan::new(
+        Operand::new(&la, &ia),
+        Operand::new(&lb, &ib),
+        None,
+        Operand::new(&ld, &idd),
+    )
+    .unwrap()
+    .with_kernel(choice.clone())
+    .unwrap()
+    .with_threads(width);
+    let rg = if align_c_lines {
+        ResolvedGemm::<T::Real>::resolve_with::<T>(
+            &choice,
+            width,
+            tprims_gemm_kernel::PartitionPolicy::default(),
+            tprims_gemm_kernel::PartitionOpts { align_c_lines },
+        )
+        .unwrap()
+    } else {
+        plan.resolved::<T>().unwrap()
+    };
+    let host = ScopeSpmd { width };
+    // SAFETY: every buffer is sized by its layout, `beta` is zero so `C` is
+    // never read, and `D` is exclusively borrowed here.
+    unsafe {
+        tensorcontract::execute_resolved(
+            &plan,
+            &rg,
+            Some(&host),
+            T::one(),
+            a.as_ptr(),
+            b.as_ptr(),
+            T::zero(),
+            std::ptr::null(),
+            d.as_mut_ptr(),
+        )
+    };
+    d
 }
