@@ -1,9 +1,10 @@
 # HANDOFF — switchable GEMM engine (issue #23)
 
 Date: 2026-09-30. Branch: `gemm-engine-spec` (pushed, no PR yet).
-State: **design and implementation plan finished and approved; no
-implementation started.** The maintainer asked to stop here and continue in
-a new session.
+State: **implementation resumed in the main session; Task 1 baseline is
+next.** On 2026-09-30 the maintainer rejected the process-global workspace
+ruling and approved pool-owned team buffers plus worker-local A/tile buffers.
+The spec and Task 8 now reflect that correction; no implementation has moved yet.
 
 ## Read first (in this order)
 
@@ -25,10 +26,9 @@ a new session.
 
 ## How to continue
 
-- Execute the plan with superpowers:subagent-driven-development or
-  superpowers:executing-plans. Ask the maintainer which one: the handoff
-  step of the writing-plans skill was not done because the maintainer said
-  to stop.
+- Execute the plan sequentially in the main session, with tests first and
+  a final integrated self-review. Do not delegate unless requested. The
+  superpowers skills named in the original plan are not installed here.
 - Start at Task 1, Step 1. It rebases this branch on `origin/main`; the
   whole plan is one PR on this branch.
 - Stop after Task 12: merge on green CI plus the non-regression gate, and
@@ -69,9 +69,14 @@ a new session.
 
 - `KernelFamily<R>` is keyed by the real scalar, not by the element type,
   because kernels operate on `T::Real` today.
-- The workspace arena is process-wide (`tprims_gemm_kernel::ARENA`), since
-  `ExecSpmd` lives in tprims-blas/contract, not tprims-exec. The cost: team
-  buffers are reused across pools, which is fine on one NUMA node.
+- Workspace ownership correction: no process-global `ARENA`. Each
+  `tprims_exec::Pool` owns its provider; both blas/contract `ExecSpmd`
+  adapters borrow it. `tprims-exec` may depend on the thread-free
+  `tprims-gemm-kernel` contract without a cycle. A/tile buffers are
+  worker-local and owner-keyed; B/team sets are leased exclusively and
+  returned only to their originating provider, never another pool. Serial
+  typed plans own their workspace rather than using a hidden global cache.
+  Owner drop/trim releases idle payloads even for borrowed host pools.
 - Block-scatter vectors are filled by the caller into the leased arena. The
   spec's cooperative fill is deferred.
 - `SelectedGemm` wraps `Selected` (additive) so tenferro-cpu-tprims, pinned

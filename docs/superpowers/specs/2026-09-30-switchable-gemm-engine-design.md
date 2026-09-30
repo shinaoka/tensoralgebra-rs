@@ -2,8 +2,8 @@
 
 - Date: 2026-09-30
 - Issue: #23 (this spec revises its provenance rule; see §9)
-- Status: draft v3 for maintainer review (v1 reviewed by an independent
-  reviewer; findings and resolutions in Appendix A)
+- Status: approved v3, with the maintainer-approved workspace ownership
+  correction on 2026-09-30 (v1 review resolutions in Appendix A)
 - Scope: the **mechanism only**. Optimization, kernel ports and tuning are a
   separate, later session. This work stops when the mechanism is in place,
   tested, and shown not to slow down the current paths.
@@ -424,13 +424,19 @@ be zero.
   to pack B when its strides are unfriendly.
 
 Buffers come from a **workspace arena reached through the `Spmd` seam**:
-- `Spmd` gains `fn workspace(&self) -> Option<&dyn WorkspaceProvider>`.
-  `ExecSpmd` (tprims-exec) owns a provider for its pool; tensorcontract's own
-  `std::thread::scope` fallback and opt-in pool (`driver.rs:598-608`,
-  `pool.rs`) return `None` and keep today's per-call allocation. Those paths
-  remain for upstream users; tprims never reaches them.
+- `Spmd` gains `fn workspace(&self) -> Option<&dyn WorkspaceProvider>`;
+  the reference borrows the context, not `'static` state. Each
+  `tprims_exec::Pool` owns an `ArenaProvider`. Both `ExecSpmd` adapters
+  (in tprims-blas and tprims-contract, not tprims-exec) borrow it.
+  `tprims-exec` depends on the thread-free kernel contract, not on
+  tensorcontract; this introduces no cycle or ambient pool.
+  Serial typed plans own a provider reused on the caller without entering
+  a pool. Tensorcontract's upstream scoped-thread and opt-in pool paths
+  return `None` and retain per-call allocation.
 - **Per-worker buffers**:
-  - held in the worker thread's TLS, keyed by the pool;
+  - accessed through the consuming thread's TLS, keyed by the provider;
+    TLS holds non-owning handles so borrowed host threads cannot keep
+    payloads alive after the owner is dropped;
   - allocated and first touched by the worker that consumes them, inside the
     broadcast closure;
   - page-aligned (4096 B), grow-only, reused across calls.
@@ -440,15 +446,23 @@ Buffers come from a **workspace arena reached through the `Spmd` seam**:
     pointer before `broadcast` and places it in `Ctx`;
   - the provider allocates without touching pages, so each packing worker
     first touches only the slice it packs, before the barrier;
-  - one team buffer set per concurrent execute on the pool (a small
-    lock-free free-list), so concurrent plans on one pool never share one.
-- **Re-entrancy**: TLS buffers are taken with `RefCell::try_borrow_mut`, and
-  a failed borrow falls back to a fresh `Vec` for that call, as
-  private-gemm-x86 does (`lib.rs:1300-1310`). The width-1 serial fallback
-  uses the caller's buffers and no longer allocates B twice.
-- **Bound and release**: per worker, one A block plus the tile(s) at the
-  largest size seen; per team set, one B panel. `WorkspaceProvider::trim()`
-  releases everything, and dropping a pool drops its provider.
+  - one exclusively leased team set per active execute, returned only to
+    the same provider's mutex-protected free-list, never another pool;
+    concurrent/nested executes never share a live set. Existing `Exec`
+    serialization of SPMD broadcasts stays unchanged.
+- **Re-entrancy**: an already-borrowed worker slot falls back to fresh
+  call-local buffers without waiting on itself. The width-1 fallback uses
+  caller-local buffers keyed by the selected owner and does not allocate B
+  twice.
+- **Bound and release**: per worker, one A block plus tile(s) at the largest
+  size seen; per team set, one B panel. `trim()` frees idle worker and team
+  payloads, including those on borrowed host threads, without invalidating
+  active leases. Owner drop releases retained storage; active leases stay
+  valid until returned. No owning TLS reference or global arena may extend
+  the owner's lifetime.
+- Pool ownership is not a NUMA-placement guarantee: OS thread migration
+  and shared B consumption still matter. One NUMA node does not remove
+  cross-L3 costs.
 - **Steady state**: after a first call of a given size, an execute performs
   no heap allocation for packing, barriers or scatter vectors. This is
   tested with a counting allocator.
@@ -492,7 +506,8 @@ arena rather than by the caller.
 - **`tprims-linalg`** uses `tensorcontract::Element` (`cholesky.rs:55`,
   `batched.rs:16`, `mat.rs:34`). `Element` does not move, so nothing breaks;
   it is listed so the shim removal checks these callers.
-- **`tprims-exec`**: `ExecSpmd` gets the `WorkspaceProvider`.
+- **`tprims-exec`**: `Pool` owns the provider; both blas/contract
+  `ExecSpmd` adapters borrow it. Serial typed plans own serial workspace.
 - **Docs, in the same PR** (docs-vs-code check):
   - `README.md` crate table and the `tprims-gemm-kernel` mention;
   - `docs/architecture.md:32-55`, where the planned `tprims-gemm-kernel`
@@ -561,7 +576,11 @@ for it.
   - steady-state executes allocate nothing;
   - per-worker buffers are allocated on their consuming worker (debug
     instrumentation records the allocating thread);
-  - re-entrant calls work.
+  - re-entrant calls work;
+  - pools never exchange retained B/team sets; same-pool reuse is tested
+    by identity, not timing;
+  - owner drop/trim releases idle worker/team payloads while borrowed host
+    threads stay alive, and trim does not free live leases.
 - **No env reads on execute**: changing a `TENSORCONTRACT_*`/`TPRIMS_*`
   variable after planning does not change the plan's result or
   `selected()`.

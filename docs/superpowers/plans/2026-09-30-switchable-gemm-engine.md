@@ -1,6 +1,12 @@
 # Switchable GEMM Engine Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **Execution:** proceed task-by-task in the main session, with tests first
+> and a final integrated self-review. Delegate only on explicit request.
+> The original superpowers skills are not installed here. Steps use
+> checkbox (`- [ ]`) syntax for tracking.
+>
+> **2026-09-30 ownership correction:** Task 8 uses pool-owned team storage
+> and owner-keyed worker TLS, not a process-global arena.
 
 **Goal:** Turn every choice in tprims' GEMM path into an immutable, queryable
 value: engine, kernel family, complex method and layout, partition policy,
@@ -1622,7 +1628,7 @@ Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
 
 **Files:**
 - Create: `crates/tprims-gemm-kernel/src/workspace.rs`
-- Modify: `tensorcontract/src/{spmd.rs,driver.rs,buffer.rs}`, `crates/tprims-blas/src/tblis.rs`, `crates/tprims-contract/src/tblis.rs` (the `ExecSpmd` impls)
+- Modify: `tensorcontract/src/{spmd.rs,driver.rs,buffer.rs}`, `crates/tprims-exec/{Cargo.toml,src/pool.rs,src/exec.rs}`, typed blas/contract plan storage and their `tblis.rs` adapters. Add only the thread-free `tprims-gemm-kernel` dependency to tprims-exec (no driver dependency).
 - Test: `crates/tprims-gemm-kernel/tests/workspace.rs`, `tensorcontract/tests/workspace_alloc.rs` (own binary, counting allocator)
 
 **Interfaces:**
@@ -1646,27 +1652,31 @@ pub trait WorkspaceProvider: Sync {
 }
 pub struct TeamLease<'a> { /* returns the set to the free-list on drop */ }
 impl std::ops::DerefMut for TeamLease<'_> { type Target = TeamSet; }
-pub static ARENA: ArenaProvider;  // process-wide; per-worker buffers in thread_local!
+// No process-global ARENA. Construct one ArenaProvider per owner.
 ```
-- `tensorcontract::spmd::Spmd` gains `fn workspace(&self) ->
-  Option<&'static dyn tprims_gemm_kernel::WorkspaceProvider> { None }`, a
-  default method, so upstream impls keep compiling.
-- Both tprims `ExecSpmd` impls override it with
-  `Some(&tprims_gemm_kernel::ARENA)`.
-- **Ruling** (recorded in the ledger at execution): the spec says
-  "`ExecSpmd` (tprims-exec) owns a provider for its pool". `ExecSpmd`
-  actually lives in tprims-blas and tprims-contract (`tblis.rs` in each),
-  and tprims-exec does not depend on tensorcontract. A process-wide
-  `ARENA` gives the same guarantees:
-  - per-worker buffers live in the worker thread's TLS, and pool workers
-    belong to one pool, so they are keyed by the thread;
-  - team sets come from a free-list, so no two concurrent executes share
-    one.
-
-  The cost if wrong: team buffers are reused across pools, so a B panel
-  first touched by pool X's workers may later be packed by pool Y's
-  workers. That is acceptable on one NUMA node; per-pool teams are
-  multi-node future work (spec §6.2).
+- `Spmd` gains `fn workspace(&self) -> Option<&dyn WorkspaceProvider>
+  { None }`, borrowing the context rather than requiring `'static`.
+- Each `tprims_exec::Pool` owns one `ArenaProvider` and exposes a borrowed
+  provider accessor. Both blas/contract `ExecSpmd` adapters use that same
+  accessor, so two operations on one Pool reuse its storage. Multiple
+  wrappers around a borrowed host Rayon pool remain separate owners.
+- Serial typed plans retain an owner-local provider and lend it to their
+  inline adapter. No ambient serial arena or per-execute construction.
+- Worker A/tile/scatter payloads are allocated by their consuming thread.
+  TLS caches non-owning handles keyed by provider identity, not merely by
+  ThreadId or a recyclable pool address. The provider owns retained worker
+  slots; stale TLS handles are discarded. Taking an already-borrowed slot
+  uses fresh call-local storage, never blocks on itself.
+- Team sets are exclusively leased and returned only to the originating
+  provider. No cross-pool free-list. Pool drop releases idle worker/team
+  storage even when borrowed host threads stay alive; `trim()` releases
+  idle payloads without invalidating active leases. Serial-owner drop has
+  the same rule.
+- This corrects the earlier process-global ruling. The actual location of
+  `ExecSpmd` does not prevent Pool ownership: tprims-exec can depend on the
+  thread-free kernel contract without depending on tensorcontract.
+  Existing SPMD serialization and re-entrant serial fallback remain intact.
+  Pool ownership alone does not guarantee NUMA or L3 placement.
 - **`WorkspaceReq`** is computed at `execute_resolved` from `(mc, kc, nc,
   pm, pn, family formats, pack_b_needed)`:
   - `a_reals = panel_len(mc, mr, kc, a_layout)`;
@@ -1717,42 +1727,47 @@ use tprims_gemm_kernel::*;
 
 #[test]
 fn zero_requirement_never_allocates() {
+    let arena = ArenaProvider::default();
     let _ = workspace::trace_take();
-    ARENA.with_worker(&WorkspaceReq::default(), &mut |_, _, _| {});
-    let _lease = ARENA.take_team(&WorkspaceReq::default(), 1, 1);
+    arena.with_worker(&WorkspaceReq::default(), &mut |_, _, _| {});
+    let _lease = arena.take_team(&WorkspaceReq::default(), 1, 1);
     assert!(workspace::trace_take().is_empty());
 }
 
 #[test]
 fn page_aligned_and_reused() {
+    let arena = ArenaProvider::default();
     let req = WorkspaceReq { a_reals: 1000, tile_reals: 64, ..Default::default() };
     let mut p1 = 0usize; let mut p2 = 0usize;
-    ARENA.with_worker(&req, &mut |a, _, _| p1 = a as usize);
-    ARENA.with_worker(&req, &mut |a, _, _| p2 = a as usize);
+    arena.with_worker(&req, &mut |a, _, _| p1 = a as usize);
+    arena.with_worker(&req, &mut |a, _, _| p2 = a as usize);
     assert_eq!(p1 % 4096, 0); assert_eq!(p1, p2);
 }
 
 #[test]
 fn reentrant_execute_uses_fresh_buffers() {
+    let arena = ArenaProvider::default();
     let req = WorkspaceReq { a_reals: 64, ..Default::default() };
-    ARENA.with_worker(&req, &mut |outer, _, _| {
-        ARENA.with_worker(&req, &mut |inner, _, _| assert_ne!(outer, inner));
+    arena.with_worker(&req, &mut |outer, _, _| {
+        arena.with_worker(&req, &mut |inner, _, _| assert_ne!(outer, inner));
     });
 }
 
 #[test]
 fn concurrent_executes_never_share_team_buffers() {
+    let arena = ArenaProvider::default();
     let req = WorkspaceReq { b_reals: 4096, ..Default::default() };
-    let a = ARENA.take_team(&req, 2, 2);
-    let b = ARENA.take_team(&req, 2, 2);
+    let a = arena.take_team(&req, 2, 2);
+    let b = arena.take_team(&req, 2, 2);
     assert_ne!(a.b.as_ptr(), b.b.as_ptr());
 }
 
 #[test]
 fn worker_buffers_are_allocated_on_the_worker() {
+    let arena = ArenaProvider::default();
     let _ = workspace::trace_take();
     let req = WorkspaceReq { a_reals: 1 << 16, ..Default::default() };
-    let h = std::thread::spawn(move || { ARENA.with_worker(&req, &mut |_, _, _| {}); std::thread::current().id() });
+    let h = std::thread::spawn(move || { arena.with_worker(&req, &mut |_, _, _| {}); std::thread::current().id() });
     let tid = h.join().unwrap();
     assert!(workspace::trace_take().iter().all(|(t, _)| *t == tid));
 }
@@ -1773,7 +1788,7 @@ mod common; use common::*;
 
 #[test]
 fn steady_state_execute_allocates_nothing_and_direct_b_allocates_no_b() {
-    // warm up, then count; tprims-style Spmd with ARENA
+    // warm up, then count; Spmd borrows a persistent owner-local provider
     let mut run = prepared_run::<f64>("tc.scalar.f64.4x4", 2, Shape { m: 300, n: 300, k: 300 });
     run(); let before = N.load(Relaxed); run(); run();
     assert_eq!(N.load(Relaxed), before, "steady-state execute allocated");
@@ -1786,8 +1801,8 @@ fn steady_state_execute_allocates_nothing_and_direct_b_allocates_no_b() {
 }
 ```
 `prepared_run` builds the plan, resolution and operands once, and returns a
-closure that runs `execute_resolved` with an `ArenaSpmd { width }`. That
-test `Spmd` returns `Some(&ARENA)` and broadcasts on persistent threads, so
+closure that runs `execute_resolved` with an `ArenaSpmd { width, arena }`. That
+test `Spmd` returns `Some(&self.arena)` and broadcasts on persistent threads, so
 no thread spawns allocate: start `width − 1` parked threads once in
 `prepared_run` and hand them work via a `Mutex`/`Condvar`.
 
@@ -1799,14 +1814,25 @@ Expected: compile errors.
 - [ ] **Step 3: Implement** `workspace.rs`:
 - `PageBuf` via `std::alloc::alloc` with `Layout::from_size_align(bytes,
   4096)`, grown by doubling to the requested size;
-- `thread_local! { static WORKER: RefCell<(PageBuf, PageBuf, Vec<i64>)> }`,
-  borrowed with `try_borrow_mut`, falling back to local fresh buffers
-  dropped at the end;
-- `take_team` pops from a `Mutex<Vec<TeamSet>>` free-list, or creates;
-  `TeamLease::drop` pushes back.
+- provider-owned worker slots with non-owning TLS lookup, keyed by owner;
+  a failed exclusive borrow uses fresh call-local buffers;
+- provider-local `Mutex<Vec<TeamSet>>` free-list, exclusive `TeamLease`,
+  return-on-drop to the same provider;
+- owner drop and `trim()` free idle payloads, not live leases; stale TLS
+  lookup handles do not retain storage.
 
-Then the `Spmd::workspace` default method, the driver changes, and the two
-`ExecSpmd` overrides.
+Then add the Pool-owned provider, serial-plan workspace ownership,
+`Spmd::workspace`, driver changes and both `ExecSpmd` overrides.
+
+Additional failing tests before implementation:
+- same-provider B identity is reused after return;
+- different pools never borrow the same retained live B/team set;
+- blas and contract adapters on the same Pool borrow the same provider;
+- owner drop frees idle team/worker payloads while borrowed host workers
+  remain alive (allocation accounting, not pointer reuse after free);
+- trim frees idle payloads and cannot free a currently borrowed buffer;
+- two owners used on one caller do not share a worker slot;
+- serial steady-state allocation and re-entrant checks remain enabled.
 
 - [ ] **Step 4: Run tests**
 
@@ -2315,7 +2341,8 @@ Expected: it lists the cases without error.
   - the revision of the issue #23 no-port rule.
 - **`docs/decision-log.md`**: add an entry "2026-09-30 switchable GEMM
   engine: two-level selection, crate split, DynamicTiles designed only,
-  process-wide workspace arena (ruling), SelectedGemm additive (ruling)".
+  pool-owned team workspace and owner-keyed worker TLS (ownership
+  correction), SelectedGemm additive (ruling)".
 
 Run: `grep -n "planned" README.md docs/architecture.md | grep -i kernel`
 Expected: no stale "planned" mention of `tprims-gemm-kernel`.
