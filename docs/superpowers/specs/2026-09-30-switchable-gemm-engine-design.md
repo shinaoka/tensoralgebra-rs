@@ -2,7 +2,7 @@
 
 - Date: 2026-09-30
 - Issue: #23 (this spec revises its provenance rule; see §9)
-- Status: draft v2 for maintainer review (v1 reviewed by an independent
+- Status: draft v3 for maintainer review (v1 reviewed by an independent
   reviewer; findings and resolutions in Appendix A)
 - Scope: the **mechanism only**. Optimization, kernel ports and tuning are a
   separate, later session. This work stops when the mechanism is in place,
@@ -136,26 +136,40 @@ GemmEngine                                  per plan (default resolved once per 
 
 ### 3.1 Crates
 
-The contract lives **in `tensorcontract`**, next to the packers, write-back
-and element traits it depends on (`pack.rs`, `writeback.rs`, `element.rs`,
-`scatter.rs`), so Lukas Devos's code stays in place. The previously planned
-separate `tprims-gemm-kernel` crate is withdrawn: extracting it would mean
-relocating his files for no functional gain in this phase.
+The kernel layer is split out of `tensorcontract` into its own crates, so
+the driver, the kernel contract and each origin's kernels are separate
+crates and licenses never mix. Lukas Devos's files move with `git mv`: their
+history stays reachable with `git log --follow`, file headers and
+authorship are kept, and `authors` in the new crates' `Cargo.toml` lists
+him. Moving files out of the `tensorprimitives/` subtree ends plain
+`git subtree pull` from upstream for those files; this is accepted and is
+recorded in `docs/provenance.md`.
 
-| Crate | Role | License / authorship |
+| Crate | Contents | License / authorship |
 | --- | --- | --- |
-| `tensorcontract` (existing, `tensorprimitives/`) | Adds the contract module `tensorcontract::family`: `KernelFamily<T>`, fn-pointer types, enums, per-dtype registry, selection, validation, `WorkspaceReq`, the portable family (§4.5). Its existing kernel tables become registrations; its driver consumes `ResolvedGemm<T>`. | MIT OR Apache-2.0; Lukas Devos's code, reworked commits carry `Co-authored-by: Lukas Devos` |
-| `tprims-kernel-gemm` (new, optional) | Wraps `gemm-f64` / `gemm-f32` public microkernels (`MicroKernelFn`) as `CUpdate::Direct` families. Calls only; no source copied. | adapter MIT OR Apache-2.0; depends on `gemm-*` (MIT, Sarah Quiñones) |
+| `tprims-gemm-kernel` (new) | The contract. Moved from tensorcontract: `element.rs` (`Element`, `Real`), `scatter.rs`, `pack.rs`, `writeback.rs`, `kernel/cache.rs`, and the type half of `kernel/mod.rs` (`PackFormat`, `TileFormat`, `Ukr`, `Blocking`, `ComplexMethod`). New: `KernelFamily<T>`, the fn-pointer types, the per-dtype registry, selection and validation, `CpuFeatures`, `WorkspaceReq` and `WorkspaceProvider`, induced 1m/4m generation, and the portable family (§4.5). It has no threading and depends on no other tprims crate. | MIT OR Apache-2.0; moved files keep Lukas Devos's authorship; commits that rework them carry `Co-authored-by: Lukas Devos` |
+| `tprims-kernel-tensorcontract` (new) | Lukas Devos's SIMD and scalar microkernels (`kernel/x86.rs`, `aarch64.rs`, `simd.rs`, `scalar.rs`), moved and registered as families | MIT OR Apache-2.0, Lukas Devos |
+| `tprims-kernel-gemm` (new, optional) | Wraps the public `gemm-f64`/`gemm-f32` microkernels (`MicroKernelFn`) as `CUpdate::Direct` families. Calls only; no source copied. | adapter MIT OR Apache-2.0; depends on `gemm-*` (MIT, Sarah Quiñones) |
 | `tprims-kernel-pgx86` (new, optional) | Calls `private_gemm_x86::gemm` as the `PrivateGemmX86` engine. Calls only. | adapter MIT OR Apache-2.0; depends on private-gemm-x86 (MIT, Sarah Quiñones) |
-| `tprims-kernel-blis`, `-openblas`, `-faer` (future) | Ported families, one crate per origin so licenses never mix inside a crate. Not created now. | BSD-3-Clause / BSD-3-Clause / MIT with original notices |
-| `tprims-blas`, `tprims-contract` | Typed plans that resolve engine, family and policies, and expose selection and query. | unchanged |
+| `tprims-kernel-blis`, `-openblas`, `-faer` (future) | Ported families, one crate per origin. Not created now. | BSD-3-Clause / BSD-3-Clause / MIT with original notices |
+| `tensorcontract` (existing) | The packed (TBLIS-style) driver: `plan.rs`, `driver.rs`, `batch.rs`, `layout.rs`, `buffer.rs`, `pool.rs`, `spmd.rs`, `reference.rs` (the test oracle), `error.rs`, plus the plan glue that stays from `kernel/mod.rs` (`config_for_plan`, `plan_config`, env handling). It re-exports the moved types (`Element`, `Real`, `C32`, `C64`, `Blocking`, `ComplexMethod`, `KernelSet`), so its public API does not change. | MIT OR Apache-2.0, Lukas Devos |
+| `tprims-blas`, `tprims-contract` | Typed plans that resolve engine, family and policies, and expose selection and query | unchanged |
 
-Dependency direction: `tensorcontract` ← kernel crates ← `tprims-blas` ←
-`tprims-contract`. Kernel crates depend on `tensorcontract` for the contract
-types only (and on their upstream crate). `tprims-blas` features choose which
-kernel crates are built (`kernel-gemm`, `kernel-pgx86`, later `kernel-blis`,
-…) and registers them with the registry at plan-resolution time. The
-tensorcontract families and the portable family are always built.
+Dependency direction:
+
+```
+tprims-gemm-kernel  <-  tprims-kernel-*  <-  tensorcontract  <-  tprims-blas  <-  tprims-contract
+        ^                                        |
+        +----------------------------------------+   (the driver uses the contract directly)
+```
+
+- Kernel crates depend only on `tprims-gemm-kernel` and their own upstream
+  crate. They never depend on the driver.
+- `tensorcontract` depends on `tprims-gemm-kernel` and
+  `tprims-kernel-tensorcontract`, which provide its default families.
+- `tprims-blas` features choose which optional kernel crates are built
+  (`kernel-gemm`, `kernel-pgx86`, later `kernel-blis`, …).
+- The portable family and the tensorcontract families are always built.
 
 ## 4. Kernel families
 
@@ -307,7 +321,7 @@ arithmetic are per family:
 
 ### 4.5 Portable family
 
-Project-owned, in `tensorcontract::family::portable`:
+Project-owned, in `tprims-gemm-kernel` (`portable` module):
 
 - `fn portable_ukr<T, const MR: usize, const NR: usize>` for real and native
   interleaved complex, written with plain loops for LLVM to vectorize (no
@@ -444,19 +458,29 @@ arena rather than by the caller.
 
 ## 7. Changes to existing code
 
-- **`tensorcontract`**:
-  - new module `family`; `KernelConfig`/`IsaConfigs` menus become
-    `KernelFamily<T>` registrations (each MR×NR menu entry a family with an
-    id);
-  - `config_for_plan` leaves the execute path;
-  - packing and write-back go through family pointers: the per-element
-    format `match` becomes per-layout monomorphized functions, and the
-    orientation swap swaps `pack_a`/`pack_b`;
+- **Crate split** (new crates under `crates/`, per the repository layout):
+  - `tprims-gemm-kernel` receives `element.rs`, `scatter.rs`, `pack.rs`,
+    `writeback.rs`, `kernel/cache.rs` and the type half of `kernel/mod.rs`;
+  - `tprims-kernel-tensorcontract` receives `kernel/x86.rs`, `aarch64.rs`,
+    `simd.rs`, `scalar.rs`; their `KernelConfig`/`IsaConfigs` menus become
+    `KernelFamily<T>` registrations, each MR×NR menu entry a family with an
+    id;
+  - their unit tests move with them; doc links to `crate::Plan` in moved
+    files become links to `tensorcontract`, or plain text where a link would
+    create a dependency cycle.
+- **In `tprims-gemm-kernel`**:
+  - packing and write-back become family pointers, and the per-element
+    format `match` becomes per-layout monomorphized functions;
   - a four-plane tile format and write-back recombination for 4m;
+  - the test `x86_isas_agree_on_the_pack_contract` (moved to
+    `tprims-kernel-tensorcontract`) becomes "families with the same complex
+    scheme agree on the pack contract".
+- **`tensorcontract`**:
+  - re-exports the moved public types;
+  - `config_for_plan` leaves the execute path;
+  - the orientation swap swaps `pack_a`/`pack_b`;
   - env reads happen once;
-  - `Spmd::workspace`;
-  - the test `x86_isas_agree_on_the_pack_contract` becomes "families with
-    the same complex scheme agree on the pack contract".
+  - `Spmd::workspace`.
 - **`tprims-blas`**:
   - plans carry `EngineChoice`/`KernelChoice`;
   - the `Scalar::Re: KernelSet` bound (`scalar.rs:34`) moves to the
@@ -471,8 +495,8 @@ arena rather than by the caller.
 - **`tprims-exec`**: `ExecSpmd` gets the `WorkspaceProvider`.
 - **Docs, in the same PR** (docs-vs-code check):
   - `README.md` crate table and the `tprims-gemm-kernel` mention;
-  - `docs/architecture.md:32-55`, where the planned crate is withdrawn and
-    the contract lives in `tensorcontract::family`, plus the scalar-trait
+  - `docs/architecture.md:32-55`, where the planned `tprims-gemm-kernel`
+    becomes real and the kernel crates are added, plus the scalar-trait
     dependency at line 34;
   - `docs/provenance.md`: per-origin crates, and `gemm-*`/private-gemm-x86
     as called dependencies;
@@ -558,17 +582,21 @@ for it.
 ## 11. Delivery
 
 One PR on tprims-rs, in reviewable commits:
-1. the `tensorcontract::family` contract, the registry, and the portable
+1. the crate split: `git mv` of the contract files into `tprims-gemm-kernel`
+   and the microkernels into `tprims-kernel-tensorcontract`, with re-exports
+   so `tensorcontract`'s API and all tests are unchanged (a pure move, so it
+   is reviewable on its own);
+2. the contract (`KernelFamily<T>`), the registry, and the portable
    family with its three variants;
-2. the tensorcontract families, and the driver on `ResolvedGemm`
+3. the tensorcontract families, and the driver on `ResolvedGemm`
    (typed-plan path plus the `OnceLock` shim for `Plan::run`);
-3. 1m/4m induced-family generation, and the four-plane tile;
-4. the partition policy (StaticGrid, effective-width blocking fix,
+4. 1m/4m induced-family generation, and the four-plane tile;
+5. the partition policy (StaticGrid, effective-width blocking fix,
    DynamicTiles designed only);
-5. the workspace arena through `Spmd`;
-6. `tprims-kernel-gemm`, and `tprims-kernel-pgx86`;
-7. tprims-blas / tprims-contract selection and query;
-8. docs.
+6. the workspace arena through `Spmd`;
+7. `tprims-kernel-gemm`, and `tprims-kernel-pgx86`;
+8. tprims-blas / tprims-contract selection and query;
+9. docs.
 
 Merge after green CI and the non-regression benchmark, as for earlier phases;
 then stop. Optimization starts in a separate session.
@@ -577,7 +605,7 @@ then stop. Optimization starts in a separate session.
 
 | # | Finding | Resolution |
 | --- | --- | --- |
-| C1 | Crate layout contradicted itself: generic packers claimed for a new crate below `tensorcontract` while also "staying in place" | Contract moves into `tensorcontract::family`; `tprims-gemm-kernel` withdrawn; kernel crates depend on `tensorcontract` for types (§3.1) |
+| C1 | Crate layout contradicted itself: generic packers claimed for a new crate below `tensorcontract` while also "staying in place" | v2 kept the contract in `tensorcontract`; the maintainer chose the split instead (v3): the contract files move into `tprims-gemm-kernel` and the microkernels into `tprims-kernel-tensorcontract`, with authorship and history preserved (§3.1) |
 | C2 | `CUpdate::Direct` ignored distinct C/D and conj_c/conj_d | Plan-level guard (aliasing or beta = 0, no C/D conj, full constant-stride tile), else scratch tile (§4.2) |
 | C3 | `ResolvedGemm` had no home in dtype-agnostic `Plan` | Typed tprims plans own `ResolvedGemm<T>`; `execute_with` takes it; `OnceLock` shim for `Plan::run` (§3) |
 | C4 | Team B buffer could not be published from a worker TLS; barriers/scatter vectors unaccounted | Arena through `Spmd::workspace`, team buffers owned by the provider, try_borrow fallback, barriers and scatter in arena (§6.2) |
