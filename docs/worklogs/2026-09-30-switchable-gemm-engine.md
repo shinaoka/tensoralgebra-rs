@@ -117,6 +117,16 @@ suggests, disagrees with the declared panel footprints. The existing driver
 uses `ukr.a_pack` for row-A and `ukr.b_pack` for column-B after exchanging the
 operand pointers. Add explicit swapped-output/asymmetric-family tests.
 
+The existing `correctness.rs::large_gemm_case_oriented` already tests both
+output orientations and all three complex methods. No duplicate test was
+added. Fresh release runs of its c32/c64 cases pass under all four explicit
+settings: `TENSORCONTRACT_KERNEL=scalar|avx2` ×
+`TENSORCONTRACT_ORIENT=none|swap`, with runtime and test-thread counts both
+one. Evidence: `task4-legacy-{scalar,avx2}-{none,swap}.log`. This establishes
+the legacy orientation baseline before changing dispatch, not performance
+or completion of Task 4. The kache store recheck also passed (6648 valid
+entries, no corruption).
+
 These proposed public-contract changes are not yet approved or implemented.
 Task 4 is blocked on that decision; the durable completion goal stays active.
 Tasks 4–12 and final performance/CI gates remain.
