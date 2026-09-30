@@ -485,6 +485,13 @@ arena rather than by the caller.
     files become links to `tensorcontract`, or plain text where a link would
     create a dependency cycle.
 - **In `tprims-gemm-kernel`**:
+  - external provider registration is `unsafe`: the provider promises the
+    actual ABI, full overwrite/direct update, ISA requirements and immutable
+    manifest. Shape validation alone cannot prove these properties. Mutable
+    registration slots are private; built-in providers expose safe wrappers;
+  - canonical resolution/default APIs return `Result`, with no panic-only
+    accessor or parallel `try_*` escape. Existing generic execution APIs and
+    foreign `KernelSet` default behavior remain compatible;
   - packing and write-back become family pointers, and the per-element
     format `match` becomes per-layout monomorphized functions;
   - a four-plane tile format and write-back recombination for 4m;
@@ -494,7 +501,9 @@ arena rather than by the caller.
 - **`tensorcontract`**:
   - re-exports the moved public types;
   - `config_for_plan` leaves the execute path;
-  - the orientation swap swaps `pack_a`/`pack_b`;
+  - orientation swaps the user operand/scatter/conjugation roles, not the
+    kernel's packing contracts: row-A uses `pack_a`, column-B uses `pack_b`.
+    Direct-B eligibility refers to the resulting column operand;
   - env reads happen once;
   - `Spmd::workspace`.
 - **`tprims-blas`**:

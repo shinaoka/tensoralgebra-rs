@@ -74,10 +74,11 @@ argues from it.
 ## Review Focus
 
 1. **Orientation swap with asymmetric families.** When
-   `plan.transposes_gemm(mr)` swaps A and B, the family's `pack_a`/`pack_b`,
-   `b_access` and the 1m 1e/1r roles must swap consistently. Otherwise the
-   swapped problem packs B with A's layout, or tries to read "direct B" from
-   the original A. Tests: `swapped_orientation_matches_oracle_for_every_family`
+   `plan.transposes_gemm(mr)` exchanges user operands, their scatters and
+   conjugations. The kernel's contracts remain fixed: row-A uses `pack_a`
+   (1e for 1m), column-B uses `pack_b` (1r for 1m). Direct-B checks the
+   post-swap column operand, which is the original user A. Swapping layout
+   fields alone violates panel footprints and the kernel ABI. Tests: `swapped_orientation_matches_oracle_for_every_family`
    (Task 4) and `direct_b_disabled_when_orientation_swaps_to_strided_b`
    (Task 5).
 2. **Direct C update with D ≠ C, `conj_d`, or beta ≠ 0.** Direct must fall
@@ -536,10 +537,12 @@ impl core::error::Error for SelectError {}
 - The registry is **extensible without dependency cycles**:
   - `tprims-gemm-kernel` cannot name the kernel crates, so `Registry` holds
     a process-wide list of registration functions, one list per real type.
-  - Registration: `pub fn register<R: Real>(f: fn() -> &'static [&'static
-    KernelFamily<R>])`, which appends to a `OnceLock<Mutex<Vec<fn() ->
-    …>>>` per `R` (a `TypeId`-keyed map is avoided: use two statics
-    through a sealed trait `RealSlot` implemented for f32/f64).
+  - Registration: `pub unsafe fn register<R: RealSlot>(f: fn() -> &'static
+    [&'static KernelFamily<R>])`, appending to a private `Mutex<Vec<fn() ->
+    …>>` per real type. Two typed statics and a sealed dispatch trait avoid
+    a TypeId-keyed map. No public mutable slot accessor is exposed. The
+    provider promises actual ABI/ISA, complete output initialization and a
+    constant immutable manifest; built-in providers wrap registration safely.
   - Families supply their list as `static` descriptors, so the functions
     are free.
   - Lookup: `Registry::families::<T: Element>(cpu: CpuFeatures, include_unavailable: bool) -> Vec<&'static KernelFamily<T::Real>>`
@@ -656,15 +659,13 @@ the tests use:
 Registry statics:
 
 ```rust
-use std::sync::{Mutex, OnceLock};
 type List<R> = fn() -> &'static [&'static KernelFamily<R>];
-pub trait RealSlot: Real { fn slot() -> &'static OnceLock<Mutex<Vec<List<Self>>>>; }
-impl RealSlot for f32 { fn slot() -> &'static OnceLock<Mutex<Vec<List<f32>>>> { static S: OnceLock<Mutex<Vec<List<f32>>>> = OnceLock::new(); &S } }
-impl RealSlot for f64 { fn slot() -> &'static OnceLock<Mutex<Vec<List<f64>>>> { static S: OnceLock<Mutex<Vec<List<f64>>>> = OnceLock::new(); &S } }
-pub fn register<R: RealSlot>(f: List<R>) {
-    let v = R::slot().get_or_init(|| Mutex::new(Vec::new()));
-    let mut v = v.lock().unwrap();
-    if !v.iter().any(|g| core::ptr::fn_addr_eq(*g, f)) { v.push(f); }
+// RealSlot is sealed to f32/f64. Its required hidden dispatch methods
+// return copied callbacks and append only across the unsafe ABI boundary.
+// The actual Mutex<Vec<List<R>>> statics remain private.
+pub unsafe fn register<R: RealSlot>(f: List<R>) {
+    // SAFETY: forwarded provider ABI/ISA and immutable-manifest promise.
+    unsafe { R::add_provider(f) };
 }
 ```
 If `fn_addr_eq` is not stable at MSRV 1.89, compare `*g as usize == f as
@@ -981,7 +982,7 @@ pub struct ResolvedGemm<R: 'static> {
 pub enum KernelChoice { Auto, Id(std::borrow::Cow<'static, str>) }
 pub fn resolve<T: Element + Families>(choice: &KernelChoice, method: Option<Method>, cpu: CpuFeatures,
     width: usize, blocking_override: Option<Blocking>) -> Result<ResolvedGemm<T::Real>, SelectError>;
-pub fn process_default<T: Element + Families>() -> &'static ResolvedGemm<T::Real>;  // OnceLock per dtype, width = env_threads()
+pub fn process_default<T: Element + Families>() -> Result<&'static ResolvedGemm<T::Real>, SelectError>;  // OnceLock per dtype, width = env_threads()
 ```
 
 - **Packers**. `PackFn<T>` is generic over the element `T`, while
@@ -1000,7 +1001,7 @@ pub fn process_default<T: Element + Families>() -> &'static ResolvedGemm<T::Real
   exerciser until a port needs one; the spec's pack pointers are satisfied
   by the layout-selected monomorphized packers.
 - **`Plan` side**:
-  - add `pub fn resolved<T>(&self) -> ResolvedGemm<T::Real>`; it returns
+  - add `pub fn resolved<T>(&self) -> Result<ResolvedGemm<T::Real>, SelectError>`; it returns
     the plan's cached value, or `process_default::<T>()` adjusted by the
     plan's `complex_method` and `row_block` overrides, cached in the plan;
   - add `pub fn with_kernel(self, choice: KernelChoice) -> Result<Plan>`,
@@ -1008,8 +1009,10 @@ pub fn process_default<T: Element + Families>() -> &'static ResolvedGemm<T::Real
     `T`, so `with_kernel` stores the choice, and `resolved::<T>()` resolves
     and caches per dtype in four `OnceLock<Result<ResolvedGemm<_>,
     SelectError>>` fields;
-  - errors surface through `Plan::try_resolved::<T>() -> Result<…>`, which
-    typed callers (tprims) call at plan creation.
+  - errors surface through the canonical `Plan::resolved::<T>() -> Result<…>`;
+    safe execution propagates them before shortcuts/provider access. No
+    separate `try_resolved` API or panic-only accessor is added. Legacy
+    foreign-scalar default execution continues through its existing KernelSet.
 - **Driver**:
   - `execute_capped` gains a `rg: &ResolvedGemm<T::Real>` parameter;
   - `execute`/`execute_with` pass `&plan.resolved::<T>()`;
@@ -1069,7 +1072,7 @@ fn execute_does_not_rebuild_config() {
     // resolved() is cached: two calls return the same family pointer and blocking.
     let (a, b, d) = small_plan();
     let p = Plan::new(Operand::new(&a, &[0, 2]), Operand::new(&b, &[2, 1]), None, Operand::new(&d, &[0, 1])).unwrap();
-    let r1 = p.resolved::<f64>(); let r2 = p.resolved::<f64>();
+    let r1 = p.resolved::<f64>().unwrap(); let r2 = p.resolved::<f64>().unwrap();
     assert!(core::ptr::eq(r1.family, r2.family));
     assert_eq!((r1.mc, r1.kc, r1.nc), (r2.mc, r2.kc, r2.nc));
 }
@@ -1079,7 +1082,7 @@ fn unknown_kernel_id_is_a_plan_error() {
     let (a, b, d) = small_plan();
     let p = Plan::new(Operand::new(&a, &[0, 2]), Operand::new(&b, &[2, 1]), None, Operand::new(&d, &[0, 1])).unwrap()
         .with_kernel(KernelChoice::Id("tc.nope.f64.1x1".into())).unwrap();
-    assert!(matches!(p.try_resolved::<f64>(), Err(tprims_gemm_kernel::SelectError::UnknownId { .. })));
+    assert!(matches!(p.resolved::<f64>(), Err(tprims_gemm_kernel::SelectError::UnknownId { .. })));
 }
 
 #[test]
@@ -1096,9 +1099,9 @@ mutates the environment:
 ```rust
 #[test]
 fn env_change_after_planning_has_no_effect() {
-    let before = tprims_gemm_kernel::process_default::<f64>().kc;
+    let before = tprims_gemm_kernel::process_default::<f64>().unwrap().kc;
     unsafe { std::env::set_var("TENSORCONTRACT_KC_COUPLE", "7"); std::env::set_var("TENSORCONTRACT_KERNEL", "scalar"); }
-    let after = tprims_gemm_kernel::process_default::<f64>();
+    let after = tprims_gemm_kernel::process_default::<f64>().unwrap();
     assert_eq!(after.kc, before);
     assert!(!after.family.id.starts_with("tc.scalar") || before == after.kc);
 }
@@ -1148,9 +1151,10 @@ Expected: compile errors (`resolved`, `with_kernel`, `KernelChoice` and
      rg.kc, rg.nc);`;
    - keep the rest as is;
    - replace every `pack_panel::<T>(…, ukr.a_pack, …)` call with
-     `(pack_a)(…)`, where `let pack_a = pack_fn::<T>(if swap { rg.b_layout
-     } else { rg.a_layout });` and likewise for `pack_b`. This is the
-     orientation swap of the packers (Review Focus 1).
+     `(pack_a)(…)`, where `let pack_a = pack_fn::<T>(rg.a_layout);` and
+     `let pack_b = pack_fn::<T>(rg.b_layout);`. Operand pointers/scatters
+     have already exchanged roles; packers remain kernel-row/kernel-column
+     contracts (Review Focus 1).
 5. **`pack_fn::<T>`** in `pack.rs`:
 
    ```rust
@@ -1178,9 +1182,11 @@ Expected: compile errors (`resolved`, `with_kernel`, `KernelChoice` and
      for f64. Index 0 is real and 1 is complex, so there are four slots in
      total. `Plan` must stay `Clone`: implement `Clone` manually and clone
      the choices, not the caches;
-   - `resolved::<T>()` panics with the `SelectError` message if resolution
-     fails. Upstream callers get a clear panic; tprims calls
-     `try_resolved` first;
+   - `resolved::<T>()` returns `Result`; invalid input never becomes a
+     library panic. Safe execution validates selection before shortcuts and
+     translates SelectError into its crate error, preserving the source.
+     Raw execution keeps its existing signature and documents the caller's
+     obligation to use a valid selection;
    - the legacy `row_block` menu: if `plan.row_block(menu)` returns `Some(i)`,
      choose the family whose `(mr, nr)` equals `menu[i]` among the same
      ISA's families.
@@ -1200,7 +1206,7 @@ git add -A && git commit -m "tensorcontract: execute a plan-resolved ResolvedGem
 
 Blocking is resolved with the effective thread width (fixes the Analytical
 model sizing NC with plan.threads()). Packers are layout-monomorphized and
-swap with the orientation.
+stay with the kernel's row/column roles when user operands are exchanged.
 
 Co-authored-by: Lukas Devos <ldevos@flatironinstitute.org>
 Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"

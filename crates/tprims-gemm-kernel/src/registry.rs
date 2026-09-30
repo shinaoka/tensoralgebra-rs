@@ -4,7 +4,7 @@
 use crate::{
     ComplexScheme, CpuFeatures, Element, FamilyError, Isa, KernelFamily, Origin, Real, C32, C64,
 };
-use std::sync::{Mutex, OnceLock};
+use std::sync::Mutex;
 
 type List<R> = fn() -> &'static [&'static KernelFamily<R>];
 mod sealed {
@@ -17,23 +17,47 @@ mod sealed {
 
 /// Real types supported by the built-in registration slots.
 /// Sealed: foreign scalar types keep using tensorcontract's legacy `KernelSet`.
+/// Mutable registration storage is not part of the public API.
+///
+/// ```compile_fail
+/// use tprims_gemm_kernel::RealSlot;
+/// let _ = <f64 as RealSlot>::slot();
+/// ```
+/// The typed dispatch method cannot bypass the unsafe registration boundary.
+/// ```compile_fail
+/// use tprims_gemm_kernel::{RealSlot, KernelFamily};
+/// fn none() -> &'static [&'static KernelFamily<f64>] { &[] }
+/// <f64 as RealSlot>::add_provider(none);
+/// ```
 pub trait RealSlot: Real + sealed::Sealed {
-    /// Internal registration storage for this real type.
+    /// Copy of provider callbacks; modifying it does not change the registry.
     #[doc(hidden)]
-    fn slot() -> &'static OnceLock<Mutex<Vec<List<Self>>>>;
+    fn providers() -> Vec<List<Self>>;
+    /// Internal typed registration dispatch.
+    ///
+    /// # Safety
+    /// The same ABI/ISA and immutable-manifest obligations as [`register`].
+    #[doc(hidden)]
+    unsafe fn add_provider(list: List<Self>);
 }
 macro_rules! real_slot {
-    ($r:ty) => {
+    ($r:ty, $slot:ident) => {
+        static $slot: Mutex<Vec<List<$r>>> = Mutex::new(Vec::new());
         impl RealSlot for $r {
-            fn slot() -> &'static OnceLock<Mutex<Vec<List<Self>>>> {
-                static SLOT: OnceLock<Mutex<Vec<List<$r>>>> = OnceLock::new();
-                &SLOT
+            fn providers() -> Vec<List<Self>> {
+                $slot.lock().unwrap_or_else(|e| e.into_inner()).clone()
+            }
+            unsafe fn add_provider(list: List<Self>) {
+                let mut lists = $slot.lock().unwrap_or_else(|e| e.into_inner());
+                if !lists.iter().any(|&f| core::ptr::fn_addr_eq(f, list)) {
+                    lists.push(list);
+                }
             }
         }
     };
 }
-real_slot!(f32);
-real_slot!(f64);
+real_slot!(f32, F32_PROVIDERS);
+real_slot!(f64, F64_PROVIDERS);
 
 /// Storage element types supported by the family registry.
 /// Sealed to f32/f64/c32/c64; each uses its real type's registration slot.
@@ -63,11 +87,7 @@ families!(C64, f64, "c64", crate::portable::families_f64);
 fn registered<R: RealSlot>(
     builtin: &'static [&'static KernelFamily<R>],
 ) -> Vec<&'static KernelFamily<R>> {
-    let lists = R::slot()
-        .get_or_init(|| Mutex::new(Vec::new()))
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .clone();
+    let lists = R::providers();
     // Registration callbacks may initialize other providers; do not hold the
     // registry mutex while invoking them.
     builtin
@@ -80,21 +100,29 @@ fn registered<R: RealSlot>(
 /// Register a provider's static descriptor list, idempotently by callback.
 /// Lists are inspected at plan creation, not inside kernel execution.
 ///
+/// Calling this boundary requires an explicit ABI/ISA safety promise.
+/// ```compile_fail
+/// use tprims_gemm_kernel::{register, KernelFamily};
+/// fn none() -> &'static [&'static KernelFamily<f64>] { &[] }
+/// register::<f64>(none);
+/// ```
+///
+/// # Safety
+/// The callback must return an immutable, process-constant manifest. Each
+/// accepted descriptor's function must implement its declared arithmetic,
+/// panel strides/footprints, complete tile overwrite or direct-update ABI,
+/// and CPU requirements. Geometry validation cannot prove these promises.
+///
 /// # Examples
 /// ```
 /// use tprims_gemm_kernel::{register, KernelFamily};
 /// fn none() -> &'static [&'static KernelFamily<f64>] { &[] }
-/// register::<f64>(none);
-/// register::<f64>(none);
+/// // SAFETY: the immutable empty manifest has no kernel ABI obligations.
+/// unsafe { register::<f64>(none); register::<f64>(none); }
 /// ```
-pub fn register<R: RealSlot>(list: List<R>) {
-    let mut lists = R::slot()
-        .get_or_init(|| Mutex::new(Vec::new()))
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
-    if !lists.iter().any(|&f| core::ptr::fn_addr_eq(f, list)) {
-        lists.push(list);
-    }
+pub unsafe fn register<R: RealSlot>(list: List<R>) {
+    // SAFETY: forwarded unchanged from the registration contract.
+    unsafe { R::add_provider(list) };
 }
 
 static PREFIXES: Mutex<Vec<(&'static str, &'static str)>> = Mutex::new(Vec::new());

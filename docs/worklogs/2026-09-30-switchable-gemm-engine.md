@@ -85,7 +85,7 @@ lists were derived from their source menus; aarch64-apple-darwin and wasm32
 all-targets checks pass, but those target tests were not executed here.
 No performance claim or execution-driver change has been made.
 
-## Task 4 contract corrections — pending maintainer approval
+## Task 4 contract corrections — approved
 
 Before connecting registry pointers to safe execution, a bounded reproducer
 confirmed that safe `register`/`select` accepts a 4×4, 16-real descriptor
@@ -127,6 +127,16 @@ the legacy orientation baseline before changing dispatch, not performance
 or completion of Task 4. The kache store recheck also passed (6648 valid
 entries, no corruption).
 
-These proposed public-contract changes are not yet approved or implemented.
-Task 4 is blocked on that decision; the durable completion goal stays active.
-Tasks 4–12 and final performance/CI gates remain.
+The maintainer approved these corrections (`Y`). The spec and plan now
+record unsafe external registration, private mutable slots, canonical Result
+resolution and fixed kernel packing roles. The registration boundary is
+implemented: three compile-fail examples prevent safe registration, safe
+trait-dispatch bypass and public mutable-slot access. Required trait methods
+expose only copied callbacks and unsafe append; typed storage remains private.
+Built-in tc registration wraps verified immutable compiled menus. Integration
+fixtures now use real matching kernels, not an ABI-incompatible noop.
+Contract/provider tests and all-targets clippy 1.98 pass; evidence is in
+`task4-registration-{red,green,clippy}.log`.
+
+Canonical resolution and driver integration are next in Task 4. Tasks 4–12
+and final performance/CI gates remain; the durable goal stays active.

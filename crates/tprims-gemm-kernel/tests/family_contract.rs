@@ -1,7 +1,5 @@
 use tprims_gemm_kernel::*;
 
-unsafe fn nop_tile(_: usize, _: *const f64, _: *const f64, _: *mut f64) {}
-
 const fn fam(mr: usize, nr: usize) -> KernelFamily<f64> {
     KernelFamily {
         id: "test.f64.4x4",
@@ -17,7 +15,7 @@ const fn fam(mr: usize, nr: usize) -> KernelFamily<f64> {
         b_per_k: nr,
         tile_bound: mr * nr,
         c_pref: CPref::Any,
-        ukr: UkrFn::Tile(nop_tile),
+        ukr: UkrFn::Tile(portable::real_tile::<f64, 4, 4>),
         b_access: BAccess::Packed,
         c_update: CUpdate::ScratchTile,
         blocks: Blocksizes {
@@ -187,24 +185,31 @@ fn registry_registration_cpu_mask_and_forced_errors() {
         tile_bound: 32,
         complex: Some(ComplexScheme {
             method: Method::Native,
-            a: Layout::Planar,
-            b: Layout::Planar,
-            tile: TileFormat::Planar,
+            a: Layout::Interleaved,
+            b: Layout::Interleaved,
+            tile: TileFormat::Interleaved,
         }),
+        ukr: UkrFn::Tile(portable::cplx_tile::<f64, 4, 4>),
         ..fam(4, 4)
     };
     static LIST: [&KernelFamily<f64>; 3] = [&BASE, &FAST, &COMPLEX];
     fn list() -> &'static [&'static KernelFamily<f64>] {
         &LIST
     }
-    register::<f64>(list);
-    register::<f64>(list);
+    // SAFETY: immutable 4x4 descriptors use the matching portable real and
+    // interleaved kernels; FAST deliberately requires a stricter CPU subset.
+    unsafe {
+        register::<f64>(list);
+        register::<f64>(list);
+    }
     let ids: Vec<_> = Registry::families::<f64>(CpuFeatures::NONE, true)
         .iter()
         .filter(|f| f.id.starts_with("test."))
         .map(|f| f.id)
         .collect();
     assert_eq!(ids, [FAST.id, BASE.id]);
+    let mut copied = <f64 as RealSlot>::providers();
+    copied.clear(); // A mutable copy must not change the registered manifest.
     let available = Registry::families::<f64>(CpuFeatures::NONE, false);
     assert!(available.iter().any(|f| f.id == BASE.id));
     assert!(!available.iter().any(|f| f.id == FAST.id));
@@ -269,7 +274,11 @@ fn registry_registration_cpu_mask_and_forced_errors() {
     fn aliases() -> &'static [&'static KernelFamily<f64>] {
         &ALIASES
     }
-    register::<f64>(aliases);
+    // SAFETY: both immutable aliases use matching 4x4 portable kernels;
+    // id ambiguity is a typed selection error, not an ABI violation.
+    unsafe {
+        register::<f64>(aliases);
+    }
     assert_eq!(
         Registry::families::<f64>(CpuFeatures::NONE, true)
             .iter()

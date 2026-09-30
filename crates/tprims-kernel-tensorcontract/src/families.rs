@@ -232,7 +232,12 @@ family_list!(f64, families_f64, isa_configs_f64);
 pub fn register() {
     static REGISTER: Once = Once::new();
     REGISTER.call_once(|| {
-        tprims_gemm_kernel::register::<f32>(families_f32);
-        tprims_gemm_kernel::register::<f64>(families_f64);
+        // SAFETY: immutable compiled menus derive each pointer, tile/panel
+        // footprint and ISA from the same scalar/SIMD config definitions.
+        // Every available entry is tested against a packed-product oracle.
+        unsafe {
+            tprims_gemm_kernel::register::<f32>(families_f32);
+            tprims_gemm_kernel::register::<f64>(families_f64);
+        }
     });
 }

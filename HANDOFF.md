@@ -2,8 +2,10 @@
 
 Date: 2026-09-30. Branch: `gemm-engine-spec` (spec pushed earlier;
 implementation commits local, no PR yet).
-State: **Tasks 1–3 complete; Task 4 blocked on approval of public-contract
-safety corrections.** Task 1 commits are `d5776b8` (pure renames) and `6822d7d`
+State: **Tasks 1–3 complete; Task 4 resumed after maintainer approval of
+public-contract safety corrections.** Registration is now an unsafe ABI/ISA
+boundary with private mutable slots; canonical Result resolution and driver
+integration are next. Task 1 commits are `d5776b8` (pure renames) and `6822d7d`
 (wiring); its workspace tests remained 367 and combined release tests 124.
 Task 2 adds 11 focused descriptor/registry tests; contract tests,
 std-disabled check and clippy 1.98 pass. Task 3 adds portable native
@@ -39,12 +41,11 @@ The spec and Task 8 now reflect that correction.
 - Execute the plan sequentially in the main session, with tests first and
   a final integrated self-review. Do not delegate unless requested. The
   superpowers skills named in the original plan are not installed here.
-- First resolve the pending Task 4 contract proposal in the implementation
-  worklog: unsafe external ABI registration (without mutable public slots),
-  canonical `Result` resolution APIs, and packing roles fixed to kernel
-  operands after an orientation swap. Do not treat this proposal as approved.
+- The maintainer approved Task 4's safety corrections: unsafe external ABI
+  registration (without mutable public slots), canonical `Result` resolution
+  APIs, and packing roles fixed to kernel operands after orientation swaps.
   Existing generic/foreign-scalar execution must remain compatible.
-- Then continue at Task 4, Step 1. Task 1 rebased on `origin/main` (already
+- Continue Task 4 with resolution/driver tests first. Task 1 rebased on `origin/main` (already
   up to date); the whole plan remains one PR on this branch.
 - Stop after Task 12: merge on green CI plus the non-regression gate, and
   update #23. Optimization (DynamicTiles, native SIMD complex kernels,
