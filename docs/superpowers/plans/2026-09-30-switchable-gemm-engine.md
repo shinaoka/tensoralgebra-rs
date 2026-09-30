@@ -513,7 +513,7 @@ impl<R: Real> KernelFamily<R> {
 pub struct FamilyError { pub id: &'static str, pub reason: &'static str }
 
 // registry.rs
-pub trait Families: Element { fn registered() -> &'static [&'static KernelFamily<Self::Real>]; }
+pub trait Families: Element { /* sealed built-in dtype access to its real registry slot */ }
 pub struct Registry;  // see below
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct KernelInfo { pub id: &'static str, pub origin: Origin, pub crate_name: &'static str,
@@ -538,7 +538,7 @@ impl core::error::Error for SelectError {}
     a process-wide list of registration functions, one list per real type.
   - Registration: `pub fn register<R: Real>(f: fn() -> &'static [&'static
     KernelFamily<R>])`, which appends to a `OnceLock<Mutex<Vec<fn() ->
-    …>>>` per `R` (a `TypeId`-keyed map is avoided: use four statics
+    …>>>` per `R` (a `TypeId`-keyed map is avoided: use two statics
     through a sealed trait `RealSlot` implemented for f32/f64).
   - Families supply their list as `static` descriptors, so the functions
     are free.
@@ -558,14 +558,18 @@ impl core::error::Error for SelectError {}
   - `tile_bound >= mr*nr*tile_planes(tile)`, where `Real` = 1, `Planar` = 2,
     `OneM` = 2, `ThreeM` = 3, `FourM` = 4, `Interleaved` = 2;
   - `blocks.mc.0 % mr == 0`, `blocks.nc.0 % nr == 0`, `default <= max`;
-  - `Method::OneM ⇒ mr % 2 == 0 && nr % 2 == 0`;
+  - 1m descriptors use **logical complex** MR/NR; neither must be even.
+    The expanded **inner real axis** is doubled. Existing tc 1m menus
+    remain valid (e.g. logical 3×5 from a real 6×5 kernel). Task 6's
+    generation eligibility checks apply to its inner real family, not the
+    already-halved logical descriptor;
   - `complex.is_some() ⇔ (a, b) ≠ (Real, Real)`;
   - `(method, a, b, tile)` must be one of the rows of spec §4.3;
   - `Direct ukr ⇔ c_update == Direct`;
   - `b_access == Direct ⇒ c_update == Direct` (the only in-place-B kernels
     in scope are Direct kernels).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `crates/tprims-gemm-kernel/tests/family_contract.rs`:
 
@@ -622,12 +626,12 @@ fn select_error_messages_name_the_cause() {
 }
 ```
 
-- [ ] **Step 2: Run to confirm they fail**
+- [x] **Step 2: Run to confirm they fail**
 
 Run: `cargo test -p tprims-gemm-kernel --test family_contract`
 Expected: compile errors (`KernelFamily` and friends not found).
 
-- [ ] **Step 3: Implement `cpu.rs`, `family.rs`, `registry.rs`**
+- [x] **Step 3: Implement `cpu.rs`, `family.rs`, `registry.rs`**
 
 `CpuFeatures::detect`:
 - on x86: `is_x86_feature_detected!("avx2")`, `("fma")`, `("avx512f")`;
@@ -645,7 +649,6 @@ the tests use:
 - `"default blocksize exceeds max"`
 - `"tile_bound below tile size"`
 - `"packed k-step shorter than the tile"`
-- `"1m needs even mr and nr"`
 - `"complex scheme not in the supported table"`
 - `"ukr kind disagrees with c_update"`
 - `"direct B needs a Direct kernel"`
@@ -669,20 +672,21 @@ usize`. It is stable since 1.85.
 
 `Registry::families` concatenates the portable list (Task 3) with every
 registered list, filters by complexity, by `cpu.contains(required)` (unless
-`include_unavailable`) and by `id` uniqueness (`debug_assert!` on
-duplicates), then sorts stably by `priority` descending.
+`include_unavailable`) and by `id` uniqueness, then sorts stably by
+`priority` descending. Explicit resolution rejects conflicting descriptors
+sharing an id with `Incompatible`, rather than a public-input panic.
 
 `list_kernels::<T>()` maps to `KernelInfo`. It uses `Registry::families(…,
 true)` and sets `available_on_this_cpu = CpuFeatures::detect().contains(f.required)`.
 `dtype` is `"f32"`, `"f64"`, `"c32"` or `"c64"`, from `T::IS_COMPLEX` and
 `size_of::<T::Real>()`.
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run: `cargo test -p tprims-gemm-kernel --test family_contract`
-Expected: 7 passed.
+Expected: 7 planned tests passed; actual: 11 including registry and 1m regressions.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A && git commit -m "tprims-gemm-kernel: kernel-family descriptor, CPU features, validation, registry
@@ -916,8 +920,9 @@ Expected: compile errors (`portable`, `PackFormat::Interleaved` and
   - `ukr` is `UkrFn::Tile(cfg.ukr.func)`;
   - the complex scheme maps `(a_pack, b_pack, tile_fmt)`:
     - `Planar, Planar, Planar` → `Method::Native`, `Layout::Planar`;
-    - `OneE, Real, OneM` → `OneM`, `(OneE, OneR)`; the packed B of 1m is
-      `PackFormat::Real` today, and `Layout::OneR` names that role;
+    - `OneE, Planar, OneM` → `OneM`, `(OneE, OneR)`; the packed B of 1m is
+      `PackFormat::Planar` today (two real k-steps), and `Layout::OneR`
+      names that role;
     - `ThreeM` → `ThreeM`.
   - check each against the §4.3 table in `validate`.
 - Create `tests/snapshots/f64_ids.txt` by running `id_snapshot` once with a

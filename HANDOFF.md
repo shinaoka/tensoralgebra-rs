@@ -1,10 +1,11 @@
 # HANDOFF — switchable GEMM engine (issue #23)
 
 Date: 2026-09-30. Branch: `gemm-engine-spec` (pushed, no PR yet).
-State: **implementation resumed in the main session; Task 1 complete,
-Task 2 next.** The pure-rename commit is `d5776b8`; workspace tests remain
-367 and the combined kernel/driver release tests remain 124. Build, fmt,
-rustdoc, std-disabled check and clippy 1.98 pass. Evidence is linked from
+State: **implementation resumed in the main session; Tasks 1–2 complete,
+Task 3 next.** Task 1 commits are `d5776b8` (pure renames) and `6822d7d`
+(wiring); its workspace tests remained 367 and combined release tests 124.
+Task 2 adds 11 focused descriptor/registry tests; contract tests,
+std-disabled check and clippy 1.98 pass. Evidence is linked from
 `docs/worklogs/2026-09-30-switchable-gemm-engine.md`.
 On 2026-09-30 the maintainer rejected the process-global workspace ruling
 and approved pool-owned team buffers plus worker-local A/tile buffers.
@@ -33,7 +34,7 @@ The spec and Task 8 now reflect that correction.
 - Execute the plan sequentially in the main session, with tests first and
   a final integrated self-review. Do not delegate unless requested. The
   superpowers skills named in the original plan are not installed here.
-- Continue at Task 2, Step 1. Task 1 rebased on `origin/main` (already
+- Continue at Task 3, Step 1. Task 1 rebased on `origin/main` (already
   up to date); the whole plan remains one PR on this branch.
 - Stop after Task 12: merge on green CI plus the non-regression gate, and
   update #23. Optimization (DynamicTiles, native SIMD complex kernels,
@@ -90,6 +91,10 @@ The spec and Task 8 now reflect that correction.
   monomorphized.
 - Direct kernels are real-only this phase; `validate` rejects complex
   Direct families.
+- Task 2 contract clarification: logical complex 1m MR/NR may be odd;
+  evenness refers to the expanded inner real axis, not the logical tile.
+  Existing 1m B packing is `Planar` (the OneR role), not `Real`. The spec,
+  plan and regression test now agree with the existing kernel source.
 
 ## Facts verified in this session (don't re-derive)
 

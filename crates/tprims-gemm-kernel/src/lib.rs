@@ -37,15 +37,24 @@ macro_rules! env_once {
 }
 
 pub mod cache;
+mod cpu;
 pub mod element;
+mod family;
 #[doc(hidden)]
 pub mod pack;
+mod registry;
 pub mod scatter;
 mod types;
 #[doc(hidden)]
 pub mod writeback;
 
+pub use cpu::{CpuFeatures, Isa};
 pub use element::{Element, Real, C32, C64};
+pub use family::*;
+pub use registry::{
+    list_kernels, register, register_known_prefix, Families, KernelInfo, RealSlot, Registry,
+    SelectError,
+};
 pub use scatter::IRREGULAR;
 pub use types::*;
 

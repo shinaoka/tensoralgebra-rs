@@ -205,7 +205,9 @@ constructors; no trait objects, no registration macros:
 The registry validates every descriptor in a unit test over all registered
 families, and in debug builds at first use:
 
-- MR and NR are non-zero, and even where 1m is allowed;
+- logical MR and NR are non-zero. For 1m, the expanded **inner real axis**
+  is even; logical complex MR/NR need not be even. Generation eligibility
+  below refers to the inner real family, not the logical descriptor;
 - the blocksize multiples hold;
 - `pack_mr` ≥ MR and `pack_nr` ≥ NR;
 - `tile_bound` covers the tile layout;
