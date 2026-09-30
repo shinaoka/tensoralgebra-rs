@@ -1,0 +1,9 @@
+tool: benchmarks/scripts/paired.sh
+date: 2026-09-30T04:39:00Z
+tprims-rs: a97593579944a019f132c44329e32109a08b368e
+binary: /home/shinaoka/tensor4all/tprims-rs/target/release/blas
+cpu: AMD EPYC 7713P 64-Core Processor
+cpus: 8,9,10,11,12,13,14,15
+threads: 1 4 8
+corpus: benchmarks/benchmarks/tprims/corpus/tenferro-p1-gemm.json sha256=e057f116145f9e3032c800d7ac0c2bff7618aefe2f8b677e538a77bfaecc98ed
+BENCH_RUNS=7 BENCH_WARMUP=1

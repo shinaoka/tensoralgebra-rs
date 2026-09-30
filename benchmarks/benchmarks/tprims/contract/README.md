@@ -71,6 +71,73 @@ corpus mode and used the older `run.sh CPUS1 CPUS4 OUT` (1T/4T only).
    (hypothesis: the copy, although parallel above strided's threshold, is
    bandwidth-bound; pg itself only scales 1.4x there). This is the first case where the direct strategy is preferable;
    an `Auto` rule "TBLIS when pg would materialize a large operand" is a
-   candidate, to be decided on a wider corpus.
+   candidate, to be decided on a wider corpus (decided in P2 below).
 3. Planning costs 1-2 us for pg and 1.6-14 us for tblis (scatter vectors of
    length M + N + K); both are outside `execute`.
+
+## Phase 1e P2: tenferro shape corpus (2026-09-30)
+
+- Corpus: [`../corpus/tenferro-p1.json`](../corpus/tenferro-p1.json), 57
+  `dot_general` shape groups (3150 calls) logged from tenferro-benchmark's
+  einsum suite (25 instances) and `cpu/public_api` quick run through the
+  tprims provider (`TPRIMS_SHAPE_LOG`, 1T), weighted by call count.
+- Runs: tprims-rs `d8e565a`, release profile, AMD EPYC 7713P, CPUs 0-7 (one
+  CCD, idle-checked before and after every run by `pinned.sh`), 1T/4T/8T
+  paired per case, `BENCH_RUNS=7`, three complete sessions
+  ([`results/2026-09-30-p2/`](results/2026-09-30-p2/), manifests inside). A
+  first session 3 stopped after 11 cases (idle retries exhausted) and was
+  discarded and rerun in full.
+- Decision ([`decision.txt`](results/2026-09-30-p2/decision.txt)): workload
+  time pg / tblis = 1.42-1.47 (1T), 1.57-1.66 (4T), 1.70-1.87 (8T), noise
+  1.7-4.7%; unweighted geometric mean 0.93-1.09. All `CHECK` lines ok.
+
+Workload time by what permute+GEMM must copy (session 3):
+
+| pg copies | cases | 1T pg | 1T tblis | ratio | 8T pg | 8T tblis | ratio |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| A and B | 23 | 12.32 s | 8.05 s | 1.53 | 3.48 s | 1.59 s | 2.19 |
+| B | 9 | 3.33 s | 2.39 s | 1.39 | 0.77 s | 0.44 s | 1.76 |
+| A | 6 | 1.17 s | 0.66 s | 1.78 | 0.36 s | 0.16 s | 2.21 |
+| nothing | 19 | 0.83 s | 0.88 s | 0.94 | 0.16 s | 0.41 s | 0.40 |
+
+Findings:
+
+1. The tensor-network contractions of tensor4all are high rank with small
+   extents, and their contracted axes are rarely adjacent in storage, so
+   permute+GEMM copies at least one operand in 38 of 57 groups, which carry
+   over 95% of the workload time. TBLIS-style packs straight from the
+   strides and skips that copy; the gap widens with threads (hypothesis: the
+   copy is bandwidth-bound and scales worse than the arithmetic).
+2. Without a copy the comparison is GEMM kernel against GEMM kernel, and
+   faer wins (also seen in the batched-GEMM corpus); the difference is
+   presumably already in the GEMM kernel, blocking or threading, to be
+   checked separately.
+3. Hence `Strategy::Auto` now picks TBLIS-style exactly when permute+GEMM
+   would copy (decision log), which is also the best of both columns above.
+
+## Hadamard products: elementwise path vs TBLIS-style (2026-09-30)
+
+Whether the dedicated all-batch path could be dropped in favour of the
+TBLIS-style kernel. Corpus [`../corpus/hadamard.json`](../corpus/hadamard.json):
+24 cases, f64 and c64, vectors of 2^10-2^24 elements, 256^2 and 2048^2
+matrices, rank-4 and rank-12 tensors, some with B stored transposed (`_bT`).
+The `pg` rows run tprims-contract's elementwise path (`PermuteGemm` and
+`Auto` both route all-batch problems there), `tblis` rows the TBLIS-style
+kernel. Same setup as P2: tprims-rs `d8e565a`, EPYC 7713P CPUs 0-7, 1T/4T/8T
+paired per case, three sessions
+([`results/2026-09-30-hadamard/`](results/2026-09-30-hadamard/)). All `CHECK`
+lines ok.
+
+TBLIS-style time / elementwise time, median over sessions:
+
+| threads | range over the 24 cases | f64, 2^22 vector | c64, 2^22 vector | f64, 256^2 |
+| --- | --- | --- | --- | --- |
+| 1T | 7.0-24.4x | 24.4x | 11.2x | 21.5x |
+| 4T | 11.2-92.1x | 92.1x | 46.0x | 21.7x |
+| 8T | 10.1-131.6x | 131.6x | 61.7x | 18.0x |
+
+The TBLIS-style kernel runs a Hadamard product as a batch of 1x1x1 GEMMs,
+paying micro-kernel and packing overhead per element, and its batch axis is
+serial inside the SPMD team, so it does not scale with threads while the
+elementwise path does (hypothesis consistent with the growth from 1T to 8T).
+The dedicated elementwise path stays.

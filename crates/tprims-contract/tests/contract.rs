@@ -321,3 +321,45 @@ fn validation_errors_are_typed_and_nothing_is_written() {
         assert!(c.data.iter().all(|&x| x == 7.0));
     }
 }
+
+#[test]
+fn auto_uses_tblis_exactly_when_permute_gemm_would_copy() {
+    // Phase 1e P2 (docs/decision-log.md): permute+GEMM wins copy-free
+    // problems, TBLIS-style wins the ones permute+GEMM must copy.
+    let plan = |case: &Case, flags: Flags| {
+        let a = T::<f64>::new(&case.a, 1);
+        let b = T::<f64>::new(&case.b, 2);
+        let od = out_dims(&case.cfg, &case.a, &case.b);
+        let c = T::<f64>::new(&od, 3);
+        ContractPlan::<f64>::new(
+            &case.cfg,
+            (&a.dims, &a.strides),
+            (&b.dims, &b.strides),
+            (&c.dims, &c.strides),
+            (Conj::No, Conj::No),
+            Strategy::Auto,
+            flags,
+        )
+    };
+    let fusable = &corpus()[0];
+    assert_eq!(
+        plan(fusable, Flags::default()).unwrap().selected(),
+        Selected::PermuteGemm {
+            materialized: [false, false, false]
+        }
+    );
+    let copying = &corpus()[2];
+    assert_eq!(
+        plan(copying, Flags::default()).unwrap().selected(),
+        Selected::Tblis
+    );
+    // TBLIS-style copies nothing, so Auto satisfies `no_materialize` there.
+    let strict = Flags {
+        no_materialize: true,
+    };
+    assert_eq!(plan(copying, strict).unwrap().selected(), Selected::Tblis);
+    assert!(matches!(
+        plan(fusable, strict).unwrap().selected(),
+        Selected::PermuteGemm { .. }
+    ));
+}

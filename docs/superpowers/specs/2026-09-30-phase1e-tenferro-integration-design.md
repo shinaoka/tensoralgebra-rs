@@ -163,9 +163,15 @@ cases, faer/permute+GEMM vs TBLIS-style, at 1T, 4T and 8T (one full L3
 domain; 16T reported only), in at least three
 sessions with an A/A noise measurement per session. Rule, applied separately
 to contraction (`Strategy::Auto`) and batched GEMM (default
-`BatchStrategy`): switch the default to TBLIS if the geometric mean of
-`time_pg / time_tblis` over the corpus exceeds 1 by more than the A/A noise at
-each of 1T, 4T and 8T in every session; otherwise keep the current default.
+`BatchStrategy`): switch the default to TBLIS if the workload time — the
+sum over corpus entries of `calls x execution median` — is shorter with TBLIS
+than with the current default by more than the session-to-session noise of
+those totals, at each of 1T, 4T and 8T in every session; otherwise keep the
+current default. (Revised by the maintainer, 2026-09-30, after sessions 1–2:
+the unweighted geometric mean over corpus entries, first written here, was
+dominated by many tiny contractions that contribute almost no time.) The
+unweighted geometric mean and the cases where the chosen default loses are
+reported alongside. `benchmarks/scripts/tblis_decision.py` applies the rule.
 8T gates because TBLIS reuses packed panels in L3, which a full CCD
 contends for most, and a global switch must not regress there. Cases
 where the chosen default loses are listed in the result page. The decision is
@@ -213,3 +219,7 @@ uninit GEMM in tprims.
   would pass at 1T/4T is held back by 8T.)
 - Measurement procedure lives in the `tprims-benchmark` skill, not in this
   spec.
+- P2 decides by workload time (calls-weighted total), not by the unweighted
+  geometric mean (2026-09-30, after sessions 1–2).
+- Large batched GEMM is compared as well: the GEMM-route corpus of the same
+  suites (`TPRIMS_ROUTES=gemm`) and a synthetic large-batch corpus.

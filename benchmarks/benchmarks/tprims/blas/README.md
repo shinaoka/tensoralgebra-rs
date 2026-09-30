@@ -93,3 +93,32 @@ Batched GEMM, both strategies (TBLIS/faer is the time ratio):
 3. The earlier run on cores 57-60 showed serial-path rows 15-23% slower in
    the 4T process; this run on cores 1-4 does not (n = 2, batch 1024: 32.6 µs
    vs 32.3 µs). It was not reproduced and is treated as host noise.
+
+## Phase 1e P2: batched GEMM corpora (2026-09-30)
+
+faer loop (`faer`) against TBLIS-style (`tblis`) on two corpora, tprims-rs
+`d8e565a`, release profile, EPYC 7713P, one CCD per session (CPUs 0-7; the
+`tenferro-p1-gemm` session 2 ran on CPUs 8-15), 1T/4T/8T paired per case,
+three sessions ([`results/2026-09-30-p2/`](results/2026-09-30-p2/), manifests
+and `decision.txt` inside). All `CHECK` lines ok.
+
+- [`tenferro-p1-gemm.json`](../corpus/tenferro-p1-gemm.json): 53 GEMM shape
+  groups of tenferro-benchmark's einsum and `cpu/public_api` suites with only
+  the GEMM slot on tprims (`TPRIMS_ROUTES=gemm`), weighted by call count —
+  mostly single large GEMMs (for example 990x2187x4620, 4782969x27x9) and a
+  few batched ones (batch 4-2187).
+- [`large-batched-gemm.json`](../corpus/large-batched-gemm.json): synthetic
+  large batched GEMM, 128^3 x 512 to 4096^3 x 1, f64 and c64, equal weights.
+
+| corpus | 1T faer/tblis | 4T | 8T | noise |
+| --- | --- | --- | --- | --- |
+| tenferro-p1-gemm (workload time) | 0.82 | 0.73-0.75 | 0.68-0.69 | 0.4-2.3% |
+| large-batched-gemm (workload time) | 0.93-0.94 | 0.86-0.88 | 0.85 | 0.8-3.1% |
+
+faer is faster at every thread count in every session; `BatchStrategy::Auto`
+stays the faer loop. Per case (session 3) faer/tblis ranges 0.47-0.98 at 1T
+and 0.65-0.99 at 8T; the gap is widest for many small items (128^3 x 512:
+0.47 f64 at 1T) and narrowest for single large GEMMs (4096^3: 0.94 at 1T,
+0.87 at 8T). Since no operand needs a copy here, this is the GEMM engine
+itself; see the source study
+[`docs/worklogs/2026-09-30-gemm-strategy-faer-vs-tensorcontract.md`](../../../../docs/worklogs/2026-09-30-gemm-strategy-faer-vs-tensorcontract.md).
