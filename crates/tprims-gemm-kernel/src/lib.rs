@@ -45,6 +45,7 @@ mod family;
 pub mod pack;
 pub mod portable;
 mod registry;
+mod resolved;
 pub mod scatter;
 mod types;
 #[doc(hidden)]
@@ -57,6 +58,7 @@ pub use registry::{
     list_kernels, register, register_known_prefix, Families, KernelInfo, RealSlot, Registry,
     SelectError,
 };
+pub use resolved::{KernelChoice, ResolvedGemm};
 pub use scatter::IRREGULAR;
 pub use types::*;
 

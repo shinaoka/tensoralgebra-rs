@@ -17,7 +17,9 @@ fn append_config<R: RealSlot>(
 ) {
     // Configs are process-constant compiled menus; effective-width blocking
     // is resolved separately when a plan selects a descriptor.
-    let cfg = cfg.normalise_for(1);
+    // Descriptor defaults are unscaled. Resolution applies environment/model
+    // overrides once; aligning the finite compiled menu needs no env lookup.
+    let cfg = cfg.with_blocking(cfg.blk);
     let u = cfg.ukr;
     let complex = match u.tile_fmt {
         TileFormat::Real => None,

@@ -143,8 +143,8 @@ macro_rules! families {
         };
         /// Static real and native-interleaved complex fallback descriptors.
         #[doc = concat!("\n# Examples\n```\nlet families = tprims_gemm_kernel::portable::",
-                    stringify!($list), "();\nassert_eq!(families.len(), 2);\n",
-                    "assert!(families.iter().all(|f| f.validate().is_ok()));\n```")]
+                                    stringify!($list), "();\nassert_eq!(families.len(), 2);\n",
+                                    "assert!(families.iter().all(|f| f.validate().is_ok()));\n```")]
         pub fn $list() -> &'static [&'static KernelFamily<$r>] {
             static LIST: [&KernelFamily<$r>; 2] = [&$real, &$cplx];
             &LIST

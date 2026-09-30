@@ -474,35 +474,12 @@ impl<T> KernelConfig<T> {
             cache::BlockModel::Legacy => self.blk,
             cache::BlockModel::Analytical => Blocking::model(&self.ukr, threads),
         };
-        // NB: under the analytical model this starts from the model's output
-        // every time, which is what makes re-normalising at a plan's thread
-        // count safe. Under the legacy constants it starts from `self.blk`,
-        // which the percentage overrides below have already scaled — so
-        // `normalise` must *not* be applied twice there. See
-        // [`KernelConfig::retarget_threads`].
+        // Preserve legacy arithmetic and API; canonical resolution selects
+        // checked multiplication and reports invalid overrides as errors.
         if let Some(o) = env_blocking() {
-            if let Some(v) = o.mc {
-                blk.mc = v;
-            }
-            if let Some(v) = o.kc {
-                blk.kc = v;
-            }
-            if let Some(v) = o.nc {
-                blk.nc = v;
-            }
-            // Percentage forms scale whatever the derivation produced. An
-            // absolute `MC` means different fractions of the L2 budget in each
-            // dtype and method — 1m derives half the `mc` planar does, by
-            // design — so pinning one number across a sweep arm would rig the
-            // comparison the same way getting `Blocking::derive` wrong would.
-            // The percentage stays budget-proportional, so one arm is one
-            // question.
-            if let Some(p) = o.mc_pct {
-                blk.mc = (blk.mc * p / 100).max(1);
-            }
-            if let Some(p) = o.nc_pct {
-                blk.nc = (blk.nc * p / 100).max(1);
-            }
+            // INVARIANT: this legacy multiplication callback always returns
+            // Some, so only the pre-existing arithmetic can fail here.
+            blk = o.apply(blk, |a, b| Some(a * b)).unwrap();
         }
         self.with_blocking(blk)
     }
@@ -535,13 +512,32 @@ impl<T> KernelConfig<T> {
     }
 }
 
-#[derive(Clone, Copy)]
-struct BlockingOverride {
-    mc: Option<usize>,
-    kc: Option<usize>,
-    nc: Option<usize>,
-    mc_pct: Option<usize>,
-    nc_pct: Option<usize>,
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct BlockingOverride {
+    pub(crate) mc: Option<usize>,
+    pub(crate) kc: Option<usize>,
+    pub(crate) nc: Option<usize>,
+    pub(crate) mc_pct: Option<usize>,
+    pub(crate) nc_pct: Option<usize>,
+}
+
+impl BlockingOverride {
+    pub(crate) fn apply(
+        self,
+        mut blk: Blocking,
+        multiply: impl Fn(usize, usize) -> Option<usize>,
+    ) -> Option<Blocking> {
+        blk.mc = self.mc.unwrap_or(blk.mc);
+        blk.kc = self.kc.unwrap_or(blk.kc);
+        blk.nc = self.nc.unwrap_or(blk.nc);
+        if let Some(p) = self.mc_pct {
+            blk.mc = (multiply(blk.mc, p)? / 100).max(1);
+        }
+        if let Some(p) = self.nc_pct {
+            blk.nc = (multiply(blk.nc, p)? / 100).max(1);
+        }
+        Some(blk)
+    }
 }
 
 /// `TENSORCONTRACT_MC` / `_KC` / `_NC` override the cache blocking absolutely;
@@ -550,7 +546,7 @@ struct BlockingOverride {
 /// `mc`/`nc` against the cache budgets at that depth. Read once per process;
 /// used for the Phase 4 parameter sweeps and to exercise every level of the
 /// loop nest on small test problems.
-fn env_blocking() -> Option<BlockingOverride> {
+pub(crate) fn env_blocking() -> Option<BlockingOverride> {
     #[cfg(feature = "std")]
     {
         use std::sync::OnceLock;

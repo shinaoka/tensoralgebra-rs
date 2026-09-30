@@ -138,5 +138,24 @@ fixtures now use real matching kernels, not an ABI-incompatible noop.
 Contract/provider tests and all-targets clippy 1.98 pass; evidence is in
 `task4-registration-{red,green,clippy}.log`.
 
-Canonical resolution and driver integration are next in Task 4. Tasks 4–12
-and final performance/CI gates remain; the durable goal stays active.
+Task 4 now has a Result-returning `ResolvedGemm::resolve` core and frozen
+blocking-policy snapshots. Exact ids report typed selection errors; zero
+width is rejected before registry access. Retargeting recomputes from the
+original descriptor/model with the effective width, applying percentages
+once. Synthetic shared-L3 coverage proves serial NC is larger than budget-8
+NC; a standalone 1T probe confirms later environment mutation is ignored.
+Geometry and checked overflow tests, model/percentage variants, std-disabled
+check and all-targets clippy pass (`task4-resolved-*` evidence).
+
+TC descriptors now retain unscaled register-aligned defaults, so model/env
+normalization happens in resolution rather than being applied twice. The shared
+override logic uses checked multiplication in canonical resolution, reporting
+`Incompatible` on overflow. Legacy signatures and arithmetic (including their
+pre-existing overflow behavior) are unchanged.
+The selected descriptor reference is private (with a read-only getter), so
+safe retargeting cannot be poisoned with replacement, unvalidated geometry.
+
+Plan caches/default selection, monomorphized pack/write-back pointers and
+driver integration are next. No new family has been connected to execution
+by this increment. Tasks 4–12 and final performance/CI gates remain; the
+durable goal stays active.
