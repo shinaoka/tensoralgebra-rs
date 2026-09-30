@@ -1,0 +1,112 @@
+# HANDOFF — switchable GEMM engine (issue #23)
+
+Date: 2026-09-30. Branch: `gemm-engine-spec` (pushed, no PR yet).
+State: **design and implementation plan finished and approved; no
+implementation started.** The maintainer asked to stop here and continue in
+a new session.
+
+## Read first (in this order)
+
+1. `docs/superpowers/specs/2026-09-30-switchable-gemm-engine-design.md`: the
+   approved spec, v3. It is the binding authority. Appendix A lists the
+   independent review of v1 and how each finding was resolved.
+2. `docs/superpowers/plans/2026-09-30-switchable-gemm-engine.md`: the
+   implementation plan, 12 tasks, TDD, with Review Focus.
+3. Research notes the spec is built on:
+   - `docs/worklogs/2026-09-30-research-blis-tblis-structure.md`: BLIS
+     `cntx_t`/cntl, TBLIS 1.x/2.x, partitioning, pack-buffer ownership.
+   - `docs/worklogs/2026-09-30-research-tensorcontract-faer-dispatch.md`:
+     tensorcontract's current dispatch, faer/gemm-common/private-gemm-x86
+     structure, threading boundaries, buffer locality problems.
+   - `docs/worklogs/2026-09-30-gemm-strategy-faer-vs-tensorcontract.md`:
+     why faer wins on copy-free GEMM on this EPYC.
+4. `AGENTS.md`, `REPOSITORY_RULES.md`, `PERFORMANCE_TIPS.md` (mandatory
+   before kernel, threading or benchmark work).
+
+## How to continue
+
+- Execute the plan with superpowers:subagent-driven-development or
+  superpowers:executing-plans. Ask the maintainer which one: the handoff
+  step of the writing-plans skill was not done because the maintainer said
+  to stop.
+- Start at Task 1, Step 1. It rebases this branch on `origin/main`; the
+  whole plan is one PR on this branch.
+- Stop after Task 12: merge on green CI plus the non-regression gate, and
+  update #23. Optimization (DynamicTiles, native SIMD complex kernels,
+  ports, per-node team pools, C ABI) is a separate session.
+
+## Maintainer decisions (2026-09-30), all reflected in the spec
+
+- Build the switching mechanism first, then stop; optimize in another
+  session.
+- Things that must be switchable:
+  - the complex packed layout (interleaved, planar, 1e/1r);
+  - the complex method (native, 1m, 3m, 4m);
+  - SIMD vs generic kernels;
+  - optimized native complex kernels, usable when they exist;
+  - the kernel and block sizes, chosen at startup through function-pointer
+    descriptors, with per-plan override.
+- Kernels are **ported** (BLIS, OpenBLAS, faer), not taken as external deps,
+  with copyright preserved. Each origin gets its own crate so licenses don't
+  mix. faer's MPL-2.0 parts need a separate decision.
+- private-gemm-x86 and gemm-common/gemm-* are **called** where possible, not
+  reimplemented. This is the plan's `tprims-kernel-gemm` and
+  `tprims-kernel-pgx86`.
+- The kernel layer is split out of `tensorcontract` into its own crates
+  (spec v3 §3.1). Lukas Devos's files move with `git mv`, keeping authorship
+  and history. This ends `git subtree pull` for the moved files, which is
+  accepted.
+- Parallel partition boundaries and buffer memory locality (first touch by
+  the consuming thread) are part of the design. If B is not packed, no B
+  buffer is allocated.
+- DynamicTiles (faer-style) is designed but **not implemented** in this
+  phase.
+- The spec was reviewed by Fable before approval.
+- P3 (tenferro-benchmark acceptance) stays cancelled until tprims is
+  optimized standalone.
+
+## Rulings already made in the plan (flag them in the PR)
+
+- `KernelFamily<R>` is keyed by the real scalar, not by the element type,
+  because kernels operate on `T::Real` today.
+- The workspace arena is process-wide (`tprims_gemm_kernel::ARENA`), since
+  `ExecSpmd` lives in tprims-blas/contract, not tprims-exec. The cost: team
+  buffers are reused across pools, which is fine on one NUMA node.
+- Block-scatter vectors are filled by the caller into the leased arena. The
+  spec's cooperative fill is deferred.
+- `SelectedGemm` wraps `Selected` (additive) so tenferro-cpu-tprims, pinned
+  at `d8e565a`, does not break.
+- Custom packers (`pack_override`) are declared but have no exerciser until
+  a port needs them. Packers are otherwise layout-selected and
+  monomorphized.
+- Direct kernels are real-only this phase; `validate` rejects complex
+  Direct families.
+
+## Facts verified in this session (don't re-derive)
+
+- `private_gemm_x86::gemm(dtype, itype, instr, nrows, ncols, depth, dst,
+  dst_rs, dst_cs, dst_row_idx, dst_col_idx, dst_kind, beta: Accum, lhs,
+  lhs_rs, lhs_cs, conj_lhs, real_diag, diag_stride, rhs, rhs_rs, rhs_cs,
+  conj_rhs, alpha, n_threads)` is public (`lib.rs:1154`).
+  - Its threading goes through spindle (`with_lock` →
+    `rayon::current_num_threads()` of the installed pool).
+  - Enums: `InstrSet::{Avx256, Avx512}` and `Accum::{Replace, Add}`.
+- `gemm_common::microkernel::MicroKernelFn<T>` is public, and `gemm-f64`
+  exposes `microkernel::{scalar, fma, avx512f}::f64::UKR[mr_div_n][nr]`.
+  - Semantics: `dst = alpha·dst + beta·(lhs·rhs)`; `alpha_status` 0 means
+    dst is not read.
+  - It handles partial m/n, and reads B in place via `rhs_rs`/`rhs_cs`.
+  - `gemm-c64` microkernels are private.
+- This host: EPYC 7713P, 1 NUMA node, 8 L3 domains × 8 cores. Build with
+  `CARGO_BUILD_JOBS=16`. While measuring on CCD 0, build with `taskset -c
+  16-63`.
+- tprims-rs main is at `690794c` (README faer citation, PR #25, merged).
+
+## Loose ends outside this plan
+
+- Worktrees `~/tensor4all/tenferro-rs-main` and
+  `~/tensor4all/tenferro-benchmark-p1` are leftovers from Phase 1e and can be
+  removed.
+- tenferro's `ext/tenferro-cpu-tprims` pins tprims at `d8e565a`, before the
+  copy-aware Auto change. Bump it when tprims next changes behaviour
+  tenferro should see.
