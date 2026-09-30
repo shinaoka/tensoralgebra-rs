@@ -301,7 +301,7 @@ regime where per-call threading loses."
 pub mod batch;
 mod buffer;
 mod driver;
-pub use driver::execute_resolved;
+pub use driver::{driver_decisions, execute_resolved, ResolvedCall};
 mod resolve;
 use tprims_gemm_kernel::pack;
 #[cfg(feature = "std")]

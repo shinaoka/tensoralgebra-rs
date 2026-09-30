@@ -53,7 +53,12 @@ fn every_available_family_matches_a_packed_product_oracle() {
     fn check<T: Families>(tol: f64) {
         for f in Registry::families::<T>(CpuFeatures::detect(), false) {
             f.validate().unwrap();
-            let u = f.as_ukr().unwrap();
+            // The oracle drives the packed-product arm directly, so it covers
+            // the scratch-tile families; a Direct family's own behaviour is
+            // pinned in `tensorcontract/tests/direct.rs`.
+            let Some(u) = f.as_ukr() else {
+                continue;
+            };
             let (mr, nr, kc) = (f.mr, f.nr, 7);
             let make = |i: usize| {
                 T::from_parts(

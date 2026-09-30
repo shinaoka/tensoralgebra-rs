@@ -6,3 +6,5 @@ tc.avx2.f64.12x4
 tc.avx2.f64.4x8
 tc.scalar.f64.4x4
 portable.f64.4x4
+portable.f64.4x4.direct
+portable.f64.4x4.direct-b

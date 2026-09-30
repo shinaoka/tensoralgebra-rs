@@ -210,6 +210,36 @@ pub struct UkrAux<R: 'static> {
     /// Real kernel underlying an induced family.
     pub inner: Option<&'static KernelFamily<R>>,
 }
+/// Driver-facing view of a validated family: register geometry, packing
+/// metadata and the kernel arm to dispatch on.
+///
+/// The driver needs this rather than [`Ukr`] alone because a
+/// [`UkrFn::Direct`] family has no [`Ukr::func`] scratch kernel; both arms
+/// share every other field, so one struct serves both.
+#[derive(Clone, Copy, Debug)]
+pub struct DriverFamily<R: 'static> {
+    /// Micro-tile rows, in logical elements.
+    pub mr: usize,
+    /// Micro-tile columns.
+    pub nr: usize,
+    /// Reals in an A sliver per logical k-step.
+    pub a_per_k: usize,
+    /// Reals in a B sliver per logical k-step.
+    pub b_per_k: usize,
+    /// Reals in the accumulator tile.
+    pub tile: usize,
+    /// Layout the packed A sliver must have.
+    pub a_pack: PackFormat,
+    /// Layout the packed B sliver must have.
+    pub b_pack: PackFormat,
+    /// Layout a scratch accumulator tile is in.
+    pub tile_fmt: TileFormat,
+    /// How the driver supplies B.
+    pub b_access: BAccess,
+    /// The kernel arm.
+    pub kernel: UkrFn<R>,
+}
+
 /// Monomorphized packer for one element type and layout.
 /// Caller supplies valid scatter offsets and a sufficiently sized output;
 /// every packed lane, including edge padding, is overwritten.
@@ -381,12 +411,37 @@ impl<R: Real> KernelFamily<R> {
         let UkrFn::Tile(func) = self.ukr else {
             return None;
         };
+        let g = self.driver_family()?;
+        Some(Ukr {
+            mr: g.mr,
+            nr: g.nr,
+            a_per_k: g.a_per_k,
+            b_per_k: g.b_per_k,
+            tile: g.tile,
+            a_pack: g.a_pack,
+            b_pack: g.b_pack,
+            tile_fmt: g.tile_fmt,
+            func,
+            name: self.id,
+        })
+    }
+
+    /// Everything the raw driver needs: geometry, packing metadata and which
+    /// kernel arm to dispatch on. Returns none for unsupported complex
+    /// schemes, which validation rejects before selection can reach one.
+    ///
+    /// # Examples
+    /// ```
+    /// let f = tprims_gemm_kernel::portable::families_f64()[0];
+    /// assert_eq!(f.driver_family().unwrap().mr, f.mr);
+    /// ```
+    pub fn driver_family(&self) -> Option<DriverFamily<R>> {
         let (a_pack, b_pack, tile_fmt) = match self.complex {
             None => (PackFormat::Real, PackFormat::Real, TileFormat::Real),
             Some(s) if supported(s) => (pack_format(s.a), pack_format(s.b), s.tile),
             Some(_) => return None,
         };
-        Some(Ukr {
+        Some(DriverFamily {
             mr: self.mr,
             nr: self.nr,
             a_per_k: self.a_per_k,
@@ -395,8 +450,8 @@ impl<R: Real> KernelFamily<R> {
             a_pack,
             b_pack,
             tile_fmt,
-            func,
-            name: self.id,
+            b_access: self.b_access,
+            kernel: self.ukr,
         })
     }
 }

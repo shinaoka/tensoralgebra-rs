@@ -135,10 +135,13 @@ where
             reason: "family implements a different complex method",
         });
     }
-    if rg.family().as_ukr().is_none() {
+    // A family whose kernel arm the driver cannot express (unsupported complex
+    // scheme) must never reach execution; validation rejects it the same way
+    // unsupported descriptors are rejected at registration.
+    if rg.family().driver_family().is_none() {
         return Err(SelectError::Incompatible {
             id: rg.family().id.into(),
-            reason: "kernel requires direct-update driver",
+            reason: "family has no driver-expressible kernel",
         });
     }
     if (p.conj_a && !rg.family().caps.conj_a) || (p.conj_b && !rg.family().caps.conj_b) {
