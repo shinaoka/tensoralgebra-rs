@@ -75,6 +75,20 @@ unsafe fn tile_value<R: Real>(
     match fmt {
         TileFormat::Real => (*ab.add(j * mr + i), R::ZERO),
         TileFormat::Planar => (*ab.add(j * mr + i), *ab.add(mr * nr + j * mr + i)),
+        TileFormat::Interleaved => {
+            // INVARIANT: tile_value's contract covers 2*mr*nr initialized reals.
+            let off = 2 * (j * mr + i);
+            (*ab.add(off), *ab.add(off + 1))
+        }
+        TileFormat::FourM => {
+            // INVARIANT: tile_value's contract covers four initialized planes.
+            let plane = mr * nr;
+            let off = j * mr + i;
+            (
+                *ab.add(off) - *ab.add(plane + off),
+                *ab.add(2 * plane + off) + *ab.add(3 * plane + off),
+            )
+        }
         // One real `2*mr x nr` tile: row 2i is Re, row 2i+1 is Im.
         TileFormat::OneM => {
             let base = j * (2 * mr) + 2 * i;

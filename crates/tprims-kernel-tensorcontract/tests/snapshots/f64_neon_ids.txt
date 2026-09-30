@@ -1,0 +1,6 @@
+tc.neon.f64.16x3
+tc.neon.f64.4x8
+tc.neon.f64.8x6
+tc.neon.f64.6x8
+tc.scalar.f64.4x4
+portable.f64.4x4

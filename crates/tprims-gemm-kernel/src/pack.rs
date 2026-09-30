@@ -135,6 +135,12 @@ unsafe fn emit<T: Element>(
     let re = z.re();
     match fmt {
         PackFormat::Real => *o.add(t) = re,
+        PackFormat::Interleaved => {
+            // INVARIANT: emit's output covers vr*reals_per_element for this step.
+            let im = if conj { -z.im() } else { z.im() };
+            *o.add(2 * t) = re;
+            *o.add(2 * t + 1) = im;
+        }
         PackFormat::Planar => {
             let im = if conj { -z.im() } else { z.im() };
             *o.add(t) = re;

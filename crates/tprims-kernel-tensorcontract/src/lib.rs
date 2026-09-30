@@ -10,6 +10,8 @@ pub use tprims_gemm_kernel::{
     Blocking, ComplexMethod, KernelConfig, PackFormat, Real, TileFormat, Ukr,
 };
 
+mod families;
+pub use families::{families_f32, families_f64, register};
 pub mod scalar;
 
 // The shared micro-kernel bodies. **Must be declared before the ISA modules
@@ -358,6 +360,18 @@ mod tests {
         match fmt {
             TileFormat::Real => (ab[j * mr + i].to_f64(), 0.0),
             TileFormat::Planar => (ab[j * mr + i].to_f64(), ab[mr * nr + j * mr + i].to_f64()),
+            TileFormat::Interleaved => (
+                ab[2 * (j * mr + i)].to_f64(),
+                ab[2 * (j * mr + i) + 1].to_f64(),
+            ),
+            TileFormat::FourM => {
+                let plane = mr * nr;
+                let off = j * mr + i;
+                (
+                    ab[off].to_f64() - ab[plane + off].to_f64(),
+                    ab[2 * plane + off].to_f64() + ab[3 * plane + off].to_f64(),
+                )
+            }
             TileFormat::OneM => (
                 ab[j * (2 * mr) + 2 * i].to_f64(),
                 ab[j * (2 * mr) + 2 * i + 1].to_f64(),
@@ -381,6 +395,10 @@ mod tests {
             for (t, &(re, im)) in row.iter().enumerate() {
                 match fmt {
                     PackFormat::Real => out[base + t] = T::from_f64(re),
+                    PackFormat::Interleaved => {
+                        out[base + 2 * t] = T::from_f64(re);
+                        out[base + 2 * t + 1] = T::from_f64(im);
+                    }
                     PackFormat::Planar => {
                         out[base + t] = T::from_f64(re);
                         out[base + vr + t] = T::from_f64(im);

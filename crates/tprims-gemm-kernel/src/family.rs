@@ -2,7 +2,7 @@
 //! BLIS (Van Zee & van de Geijn, TOMS 2015) and TBLIS (Matthews, SISC 2018).
 //! New descriptor code; existing pack/tile semantics come from tensorcontract.
 
-use crate::{CpuFeatures, Element, Isa, PackFormat, Real, TileFormat, Ukr};
+use crate::{tile_planes, CpuFeatures, Element, Isa, PackFormat, Real, TileFormat, Ukr};
 
 /// Kernel provenance (adapters call their upstream; they do not copy it).
 ///
@@ -334,8 +334,8 @@ impl<R: Real> KernelFamily<R> {
         if self.tile_bound < size {
             return fail("tile_bound below tile size");
         }
-        let a_len = self.mr.checked_mul(layout_width(a));
-        let b_len = self.nr.checked_mul(layout_width(b));
+        let a_len = self.mr.checked_mul(pack_format(a).reals_per_element());
+        let b_len = self.nr.checked_mul(pack_format(b).reals_per_element());
         if a_len.is_none_or(|n| self.a_per_k < n) || b_len.is_none_or(|n| self.b_per_k < n) {
             return fail("packed k-step shorter than the tile");
         }
@@ -359,7 +359,7 @@ impl<R: Real> KernelFamily<R> {
         };
         let (a_pack, b_pack, tile_fmt) = match self.complex {
             None => (PackFormat::Real, PackFormat::Real, TileFormat::Real),
-            Some(s) if supported(s) => (pack_format(s.a)?, pack_format(s.b)?, s.tile),
+            Some(s) if supported(s) => (pack_format(s.a), pack_format(s.b), s.tile),
             Some(_) => return None,
         };
         Some(Ukr {
@@ -385,6 +385,16 @@ fn supported(s: ComplexScheme) -> bool {
             Layout::Planar,
             Layout::Planar,
             TileFormat::Planar
+        ) | (
+            Method::Native,
+            Layout::Interleaved,
+            Layout::Interleaved,
+            TileFormat::Interleaved
+        ) | (
+            Method::FourM,
+            Layout::Planar,
+            Layout::Planar,
+            TileFormat::FourM
         ) | (Method::OneM, Layout::OneE, Layout::OneR, TileFormat::OneM)
             | (Method::OneM, Layout::OneR, Layout::OneE, TileFormat::OneM)
             | (
@@ -395,27 +405,12 @@ fn supported(s: ComplexScheme) -> bool {
             )
     )
 }
-fn layout_width(layout: Layout) -> usize {
+pub(crate) fn pack_format(layout: Layout) -> PackFormat {
     match layout {
-        Layout::Real => 1,
-        Layout::OneE => 4,
-        Layout::ThreeM => 3,
-        _ => 2,
-    }
-}
-fn pack_format(layout: Layout) -> Option<PackFormat> {
-    match layout {
-        Layout::Real => Some(PackFormat::Real),
-        Layout::Planar | Layout::OneR => Some(PackFormat::Planar),
-        Layout::OneE => Some(PackFormat::OneE),
-        Layout::ThreeM => Some(PackFormat::ThreeM),
-        Layout::Interleaved => None,
-    }
-}
-pub(crate) fn tile_planes(tile: TileFormat) -> usize {
-    match tile {
-        TileFormat::Real => 1,
-        TileFormat::Planar | TileFormat::OneM => 2,
-        TileFormat::ThreeM => 3,
+        Layout::Real => PackFormat::Real,
+        Layout::Planar | Layout::OneR => PackFormat::Planar,
+        Layout::OneE => PackFormat::OneE,
+        Layout::ThreeM => PackFormat::ThreeM,
+        Layout::Interleaved => PackFormat::Interleaved,
     }
 }

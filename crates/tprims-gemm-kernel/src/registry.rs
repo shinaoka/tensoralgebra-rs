@@ -46,21 +46,23 @@ pub trait Families: Element + sealed::Sealed {
     fn all_families() -> Vec<&'static KernelFamily<Self::Real>>;
 }
 macro_rules! families {
-    ($t:ty, $r:ty, $name:literal) => {
+    ($t:ty, $r:ty, $name:literal, $builtin:path) => {
         impl Families for $t {
             const DTYPE: &'static str = $name;
             fn all_families() -> Vec<&'static KernelFamily<$r>> {
-                registered::<$r>()
+                registered::<$r>($builtin())
             }
         }
     };
 }
-families!(f32, f32, "f32");
-families!(f64, f64, "f64");
-families!(C32, f32, "c32");
-families!(C64, f64, "c64");
+families!(f32, f32, "f32", crate::portable::families_f32);
+families!(f64, f64, "f64", crate::portable::families_f64);
+families!(C32, f32, "c32", crate::portable::families_f32);
+families!(C64, f64, "c64", crate::portable::families_f64);
 
-fn registered<R: RealSlot>() -> Vec<&'static KernelFamily<R>> {
+fn registered<R: RealSlot>(
+    builtin: &'static [&'static KernelFamily<R>],
+) -> Vec<&'static KernelFamily<R>> {
     let lists = R::slot()
         .get_or_init(|| Mutex::new(Vec::new()))
         .lock()
@@ -68,9 +70,10 @@ fn registered<R: RealSlot>() -> Vec<&'static KernelFamily<R>> {
         .clone();
     // Registration callbacks may initialize other providers; do not hold the
     // registry mutex while invoking them.
-    lists
-        .into_iter()
-        .flat_map(|list| list().iter().copied())
+    builtin
+        .iter()
+        .copied()
+        .chain(lists.into_iter().flat_map(|list| list().iter().copied()))
         .collect()
 }
 

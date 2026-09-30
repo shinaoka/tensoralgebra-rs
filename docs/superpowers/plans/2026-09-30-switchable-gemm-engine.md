@@ -753,7 +753,7 @@ Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
   `Box::leak` per descriptor. `families_*()` returns `&'static [...]` from
   it.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `crates/tprims-gemm-kernel/tests/portable.rs`:
 
@@ -839,18 +839,24 @@ fn id_snapshot() {
     tprims_kernel_tensorcontract::register();
     let ids: Vec<_> = list_kernels::<f64>().into_iter().map(|k| k.id).collect();
     // First run: print and paste into tests/snapshots/f64_ids.txt; later runs compare.
-    let want = include_str!("snapshots/f64_ids.txt");
+    // Architecture-specific compiled manifests, independent of CPU availability.
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    let want = include_str!("snapshots/f64_x86_ids.txt");
+    #[cfg(target_arch = "aarch64")]
+    let want = include_str!("snapshots/f64_neon_ids.txt");
+    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")))]
+    let want = include_str!("snapshots/f64_scalar_ids.txt");
     assert_eq!(ids.join("\n"), want.trim_end(), "update tests/snapshots/f64_ids.txt deliberately");
 }
 ```
 
-- [ ] **Step 2: Run to confirm they fail**
+- [x] **Step 2: Run to confirm they fail**
 
 Run: `cargo test -p tprims-gemm-kernel --test portable; cargo test -p tprims-kernel-tensorcontract --test families`
 Expected: compile errors (`portable`, `PackFormat::Interleaved` and
 `register` are missing).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 - `types.rs`:
   - add `PackFormat::Interleaved` (`reals_per_element` = 2);
@@ -925,16 +931,18 @@ Expected: compile errors (`portable`, `PackFormat::Interleaved` and
       names that role;
     - `ThreeM` → `ThreeM`.
   - check each against the §4.3 table in `validate`.
-- Create `tests/snapshots/f64_ids.txt` by running `id_snapshot` once with a
-  temporary `println!`. Review the list by eye: every menu entry of every
-  compiled ISA appears once. Then commit it.
+- Create architecture-specific `tests/snapshots/f64_{x86,neon,scalar}_ids.txt`.
+  Review the observed x86 list against the menus; derive non-host lists from
+  their source menus and cross-compile their tests. Each compiled real entry
+  appears once regardless of the current CPU's ISA availability. Execute the
+  non-host snapshot tests in their native CI lanes.
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run: `cargo test -p tprims-gemm-kernel && cargo test -p tprims-kernel-tensorcontract --release`
 Expected: all pass, including the moved kernel tests from Task 1.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A && git commit -m "Portable family, interleaved complex layout, tensorcontract kernels as families
@@ -1395,11 +1403,11 @@ cached in a `OnceLock<Vec<…>>` per dtype built on first lookup.
     `tile_bound = mr*nr`;
   - the ukr is the real ukr itself, called with `2*kc` real k-steps;
   - OneE packing of A gives a real `2mr'×2k` panel, and OneR packing of B
-    (`PackFormat::Real` on complex data: `[re; im]` per lane, interleaved
-    in k) gives `2k×nr`.
+    (`PackFormat::Planar` on complex data: `[re lanes; im lanes]` per
+    logical k-step) gives `2k×nr`.
 
   Before wiring this, verify it against the tensorcontract 1m kernel's
-  packed layout. The existing `OneE`/`Real` formats are exactly BLIS 1m
+  packed layout. The existing `OneE`/`Planar` formats are exactly BLIS 1m
   with the real ukr (issue #23 feasibility note), so the induced 1m ukr
   is a thin wrapper `unsafe fn(kc, a, b, t) { (inner)(2*kc, a, b, t) }`.
   Because a plain `fn` pointer cannot capture `inner`, the wrapper is

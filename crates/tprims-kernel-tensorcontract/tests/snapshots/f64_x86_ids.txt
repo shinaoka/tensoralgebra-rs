@@ -1,0 +1,8 @@
+tc.avx512.f64.24x8
+tc.avx512.f64.16x8
+tc.avx512.f64.8x8
+tc.avx2.f64.8x6
+tc.avx2.f64.12x4
+tc.avx2.f64.4x8
+tc.scalar.f64.4x4
+portable.f64.4x4

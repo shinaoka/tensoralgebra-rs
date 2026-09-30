@@ -1,5 +1,6 @@
-//! GEMM kernel contract, moved from Lukas Devos's tensorcontract.
-//! Source: lkdvos/tensorprimitives-rs, tensorcontract/src; MIT OR Apache-2.0.
+//! GEMM family contracts and project-owned portable kernels.
+//! Arithmetic traits, packing, scatter and write-back were moved from Lukas
+//! Devos's tensorcontract: lkdvos/tensorprimitives-rs; MIT OR Apache-2.0.
 #![warn(missing_docs)]
 #![warn(missing_debug_implementations)]
 
@@ -42,6 +43,7 @@ pub mod element;
 mod family;
 #[doc(hidden)]
 pub mod pack;
+pub mod portable;
 mod registry;
 pub mod scatter;
 mod types;

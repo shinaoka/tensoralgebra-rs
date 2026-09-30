@@ -61,5 +61,29 @@ checks valid packing lengths and bridging. Generation eligibility in Task 6
 still applies to the inner real family, not its already-halved descriptor.
 The spec, plan and HANDOFF record this clarification; no arithmetic changed.
 
-Implementation is not complete. Tasks 3–12 and final performance/CI gates
+Task 3 adds project-owned portable real/native-interleaved complex kernels,
+interleaved packing/write-back and four-plane decoding. Registry queries
+always include the portable fallback. tc registration adapts every compiled
+ISA/menu entry (including unavailable CPUs), keeps the legacy Auto head and
+Planar default, lowers 1m priority and excludes 3m from Auto. The finite
+process-constant descriptor manifest owns no workspace or executor.
+
+The portable and tc integration tests failed first on missing variants and
+registration. Four portable tests now cover native-complex arithmetic, KC=0,
+conjugated packing with zero padding, and partial interleaved/FourM output
+with beta=0/null C. Five tc tests check validation/ids, metadata/CPU masks,
+legacy heads, snapshots and every available family against a packed-product
+oracle for f32/f64/c32/c64 with all A/B conjugation combinations. Release
+kernel/driver suites pass (159 tests before the six added documentation
+examples; those examples also pass separately). Final docs: 23 contract and
+4 provider doctests pass. Full workspace/all-targets clippy 1.98 with
+`-D warnings` and std-disabled tensorcontract check pass (`task3-*` logs).
+
+Architecture-specific f64 snapshots avoid a host-CPU-dependent golden list.
+x86's list was observed and checked against its compiled menus. NEON/scalar
+lists were derived from their source menus; aarch64-apple-darwin and wasm32
+all-targets checks pass, but those target tests were not executed here.
+No performance claim or execution-driver change has been made.
+
+Implementation is not complete. Tasks 4–12 and final performance/CI gates
 remain.

@@ -215,6 +215,8 @@ pub enum PackFormat {
     OneE,
     /// Three planes per k-step: real, imaginary, and their sum.
     ThreeM,
+    /// Adjacent real and imaginary values for each logical lane.
+    Interleaved,
 }
 
 impl PackFormat {
@@ -223,7 +225,7 @@ impl PackFormat {
     pub const fn reals_per_element(self) -> usize {
         match self {
             PackFormat::Real => 1,
-            PackFormat::Planar => 2,
+            PackFormat::Planar | PackFormat::Interleaved => 2,
             PackFormat::ThreeM => 3,
             PackFormat::OneE => 4,
         }
@@ -243,6 +245,28 @@ pub enum TileFormat {
     /// Three `MR x NR` planes `M1`, `M2`, `M3`; the complex value is
     /// `(M1 - M2) + i*(M3 - M1 - M2)`.
     ThreeM,
+    /// Adjacent real/imaginary values, complex column-major.
+    Interleaved,
+    /// Four column-major planes: Ar·Br, Ai·Bi, Ar·Bi, Ai·Br.
+    /// Write-back reconstructs `(p0 - p1) + i*(p2 + p3)`.
+    FourM,
+}
+
+/// Real values per logical tile element for a scratch format.
+///
+/// # Examples
+/// ```
+/// use tprims_gemm_kernel::{tile_planes, TileFormat};
+/// assert_eq!(tile_planes(TileFormat::FourM), 4);
+/// assert_eq!(tile_planes(TileFormat::Interleaved), 2);
+/// ```
+pub const fn tile_planes(tile: TileFormat) -> usize {
+    match tile {
+        TileFormat::Real => 1,
+        TileFormat::Planar | TileFormat::OneM | TileFormat::Interleaved => 2,
+        TileFormat::ThreeM => 3,
+        TileFormat::FourM => 4,
+    }
 }
 
 /// A micro-kernel: register-blocked panel-panel product.
