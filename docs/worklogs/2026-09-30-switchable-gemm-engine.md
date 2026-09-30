@@ -85,5 +85,38 @@ lists were derived from their source menus; aarch64-apple-darwin and wasm32
 all-targets checks pass, but those target tests were not executed here.
 No performance claim or execution-driver change has been made.
 
-Implementation is not complete. Tasks 4–12 and final performance/CI gates
-remain.
+## Task 4 contract corrections — pending maintainer approval
+
+Before connecting registry pointers to safe execution, a bounded reproducer
+confirmed that safe `register`/`select` accepts a 4×4, 16-real descriptor
+whose public pointer is `portable::real_tile::<f64,8,8>` (64-real output).
+Geometry validation cannot prove a function's actual ABI, full-overwrite
+promise or ISA requirements. The kernel was **not executed**; no invalid
+memory was accessed. Evidence and reproducible source are in
+`task4-registration-abi.log` and `task4-registration-abi-reproducer.rs` in
+the existing artifact directory. This becomes unsafe when Task 4 wires the
+accepted descriptor into the safe `Plan::run` path.
+
+Proposed correction: external provider registration is an explicit `unsafe`
+ABI/ISA contract; built-in providers expose safe wrappers around their
+verified static menus. Remove the public mutable `RealSlot::slot` escape.
+Keep registry lookup, geometry validation and scheduling safe Rust.
+
+The plan also makes new `resolved`/`process_default` accessors panic on
+invalid user selections while adding parallel `try_*` accessors. Repository
+rules require typed errors and one canonical boundary. Proposed correction:
+new canonical resolution APIs return `Result`; existing generic execution
+APIs and foreign `KernelSet` default behavior remain compatible.
+
+Orientation wording must match the current kernel ABI: exchanging user
+operands changes which data fills the kernel's row-A and column-B panels,
+not the family's fixed packing roles. In 1m, row-A stays OneE and column-B
+stays OneR. Direct-B eligibility checks the post-orientation column operand
+(user A when swapped). Swapping layout fields alone, as the plan currently
+suggests, disagrees with the declared panel footprints. The existing driver
+uses `ukr.a_pack` for row-A and `ukr.b_pack` for column-B after exchanging the
+operand pointers. Add explicit swapped-output/asymmetric-family tests.
+
+These proposed public-contract changes are not yet approved or implemented.
+Task 4 is blocked on that decision; the durable completion goal stays active.
+Tasks 4–12 and final performance/CI gates remain.
