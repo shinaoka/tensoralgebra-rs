@@ -188,8 +188,10 @@ is in progress: the tenferro injection points and the optional tprims
 providers (GEMM, `dot_general`, linalg kernels) are merged in tenferro-rs
 (#1954, #1955) and selectable in tenferro-benchmark (`--features tprims`);
 on tenferro's shape corpus `Strategy::Auto` now contracts TBLIS-style when
-permute+GEMM would copy an operand (decision log). Per-family acceptance
-runs in tenferro-benchmark are next.
+permute+GEMM would copy an operand (decision log). Optimizing tprims itself
+comes next, starting with a switchable GEMM engine
+([#23](https://github.com/tensor4all/tprims-rs/issues/23)); acceptance runs
+in tenferro-benchmark are deferred until then.
 
 Full C ABI coverage is Phase 2. [Full plan](docs/architecture.md#implementation-order).
 
@@ -209,3 +211,33 @@ reproducible evidence for performance claims; see the
 tensorprimitives-rs was imported with history in Phase 0
 ([provenance](docs/provenance.md)); imported code keeps its own licenses. No crate has been published from this repository. The
 license of the new tprims code is pending a maintainer choice.
+
+## Acknowledgements and citation
+
+tprims builds on [faer](https://github.com/sarah-quinones/faer-rs) by Sarah
+Quiñones El Kazdadi: `tprims-blas` and `tprims-linalg` run their GEMM,
+factorizations and eigensolvers through faer, and GEMM kernels ported from
+faer's ecosystem keep their copyright and MIT license notices. If you use
+tprims in published work, please also cite the faer paper:
+
+> S. Q. El Kazdadi, "faer: A linear algebra library for the Rust programming
+> language", *Journal of Open Source Software* **11**(123), 6099 (2026),
+> [doi:10.21105/joss.06099](https://doi.org/10.21105/joss.06099).
+
+```bibtex
+@article{Kazdadi2026,
+  doi = {10.21105/joss.06099},
+  url = {https://doi.org/10.21105/joss.06099},
+  year = {2026},
+  publisher = {The Open Journal},
+  volume = {11},
+  number = {123},
+  pages = {6099},
+  author = {Kazdadi, Sarah Quiñones El},
+  title = {faer: A linear algebra library for the Rust programming language},
+  journal = {Journal of Open Source Software}
+}
+```
+
+Other upstream works and their licenses are credited in
+[docs/provenance.md](docs/provenance.md).
