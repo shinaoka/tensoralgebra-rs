@@ -28,11 +28,93 @@ pub enum KernelChoice {
     Id(String),
 }
 
+impl KernelChoice {
+    /// `TPRIMS_GEMM_KERNEL`, captured once; absent/auto means Auto.
+    ///
+    /// # Examples
+    /// ```
+    /// assert!(core::ptr::eq(tprims_gemm_kernel::KernelChoice::from_env(),
+    ///     tprims_gemm_kernel::KernelChoice::from_env()));
+    /// ```
+    pub fn from_env() -> &'static Self {
+        static CHOICE: std::sync::OnceLock<KernelChoice> = std::sync::OnceLock::new();
+        CHOICE.get_or_init(|| {
+            #[cfg(feature = "std")]
+            if let Ok(id) = std::env::var("TPRIMS_GEMM_KERNEL") {
+                if !id.eq_ignore_ascii_case("auto") {
+                    return Self::Id(id);
+                }
+            }
+            Self::Auto
+        })
+    }
+}
+
+/// Frozen process default for one storage dtype. Register providers first;
+/// later registration does not invalidate this immutable metadata cache.
+/// Selection failures are cached too. It owns no execution workspace.
+///
+/// # Examples
+/// ```
+/// let a = tprims_gemm_kernel::process_default::<f64>()?;
+/// let b = tprims_gemm_kernel::process_default::<f64>()?;
+/// assert!(core::ptr::eq(a, b));
+/// # Ok::<(), tprims_gemm_kernel::SelectError>(())
+/// ```
+pub fn process_default<T: Families>() -> Result<&'static ResolvedGemm<T::Real>, SelectError> {
+    T::process_default()
+}
+
+pub(crate) fn resolve_default<T: Families>() -> Result<ResolvedGemm<T::Real>, SelectError>
+where
+    T::Real: crate::RealSlot,
+{
+    let width = crate::env_threads();
+    if let KernelChoice::Id(_) = KernelChoice::from_env() {
+        return ResolvedGemm::<T::Real>::resolve::<T>(KernelChoice::from_env(), width);
+    }
+    let cpu = CpuFeatures::detect();
+    let method = crate::ComplexMethod::from_env();
+    let isa = match crate::kernel_force() {
+        crate::KernelForce::Auto => None,
+        crate::KernelForce::Avx2 if cpu.avx2 && cpu.fma => Some(crate::Isa::Avx2),
+        crate::KernelForce::Avx512 if cpu.avx512f && cpu.fma => Some(crate::Isa::Avx512),
+        crate::KernelForce::Neon if cpu.neon => Some(crate::Isa::Neon),
+        _ => Some(crate::Isa::Portable),
+    };
+    let candidates = Registry::families::<T>(cpu, false);
+    let family = candidates
+        .into_iter()
+        .find(|f| {
+            let method_matches = !T::IS_COMPLEX
+                || f.complex.is_some_and(|s| match method {
+                    crate::ComplexMethod::Planar => {
+                        matches!(s.method, crate::Method::FourM | crate::Method::Native)
+                    }
+                    crate::ComplexMethod::OneM => s.method == crate::Method::OneM,
+                    crate::ComplexMethod::ThreeM => s.method == crate::Method::ThreeM,
+                });
+            // ThreeM is excluded from unqualified Auto, but the legacy explicit
+            // COMPLEX=3m control requests it intentionally.
+            let eligible =
+                f.allow_auto || (T::IS_COMPLEX && method == crate::ComplexMethod::ThreeM);
+            method_matches
+                && eligible
+                && isa.is_none_or(|i| f.isa == i || f.isa == crate::Isa::Portable)
+        })
+        .ok_or(SelectError::Incompatible {
+            id: "auto".into(),
+            reason: "no available family for legacy ISA/complex preference",
+        })?;
+    ResolvedGemm::<T::Real>::resolve::<T>(&KernelChoice::Id(family.id.into()), width)
+}
+
 #[derive(Clone, Copy, Debug)]
 struct BlockingPolicy {
     model: BlockModel,
     hierarchy: CacheHierarchy,
     overrides: Option<BlockingOverride>,
+    explicit: Option<Blocking>,
 }
 impl BlockingPolicy {
     fn snapshot() -> Self {
@@ -40,6 +122,7 @@ impl BlockingPolicy {
             model: cache::block_model(),
             hierarchy: cache::hierarchy(),
             overrides: env_blocking(),
+            explicit: None,
         }
     }
 
@@ -62,7 +145,9 @@ impl BlockingPolicy {
                 &self.hierarchy,
             ),
         };
-        if let Some(o) = self.overrides {
+        if let Some(explicit) = self.explicit {
+            blk = explicit;
+        } else if let Some(o) = self.overrides {
             blk = o.apply(blk, usize::checked_mul)?;
         }
         blk.mc = blk.mc.checked_next_multiple_of(family.mr)?.max(family.mr);
@@ -114,6 +199,7 @@ pub struct ResolvedGemm<R: Real> {
     /// Width against which blocking was derived.
     pub effective_threads: usize,
     policy: BlockingPolicy,
+    gather: bool,
 }
 impl<R: Real> ResolvedGemm<R> {
     /// Selected immutable, registered descriptor. The reference cannot be
@@ -128,6 +214,52 @@ impl<R: Real> ResolvedGemm<R> {
     /// ```
     pub fn family(&self) -> &'static KernelFamily<R> {
         self.family
+    }
+
+    /// Bind packers once for a raw GEMM driver using storage type `T`.
+    /// Returned unsafe functions require the declared panel footprints. Packing
+    /// roles stay fixed when the driver exchanges user operands.
+    ///
+    /// # Examples
+    /// ```
+    /// use tprims_gemm_kernel::{KernelChoice, ResolvedGemm};
+    /// let rg = ResolvedGemm::<f64>::resolve::<f64>(
+    ///     &KernelChoice::Id("portable.f64.4x4".into()), 1)?;
+    /// let (pack_a, _) = rg.packers::<f64>();
+    /// let input = [1., 2., 3., 4.];
+    /// let mut output = [0.; 4];
+    /// // SAFETY: one full 4-row real panel, valid scatters and write capacity.
+    /// unsafe { pack_a(input.as_ptr(), &[0,1,2,3], &[1], &[0], 4, false, output.as_mut_ptr()); }
+    /// assert_eq!(output, input);
+    /// # Ok::<(), tprims_gemm_kernel::SelectError>(())
+    /// ```
+    pub fn packers<T: crate::Element<Real = R>>(&self) -> (crate::PackFn<T>, crate::PackFn<T>) {
+        (
+            crate::pack::pack_fn::<T>(self.a_layout),
+            crate::pack::pack_fn::<T>(self.b_layout),
+        )
+    }
+
+    /// Bind format-specialized write-back with the planning-time gather policy.
+    /// Returned raw function obeys [`crate::EmitFn`]'s tile/scatter contract.
+    ///
+    /// # Examples
+    /// ```
+    /// use tprims_gemm_kernel::{KernelChoice, ResolvedGemm};
+    /// let rg = ResolvedGemm::<f64>::resolve::<f64>(
+    ///     &KernelChoice::Id("portable.f64.4x4".into()), 1)?;
+    /// let emit = rg.emitter::<f64>();
+    /// let tile = [2.; 16];
+    /// let mut output = [99.];
+    /// // SAFETY: fully initialized 4x4 tile, one valid live element. Beta=0
+    /// // permits null C; output/scatters cover the complete live extent.
+    /// unsafe { emit(tile.as_ptr(),4,4,1,1,1.,0.,std::ptr::null(),&[0],&[0],1,false,
+    ///     output.as_mut_ptr(),&[0],&[0],1,false); }
+    /// assert_eq!(output, [2.]);
+    /// # Ok::<(), tprims_gemm_kernel::SelectError>(())
+    /// ```
+    pub fn emitter<T: crate::Element<Real = R>>(&self) -> crate::EmitFn<T> {
+        crate::writeback::emit_fn::<T>(self.tile_fmt, self.gather)
     }
 
     /// Resolve an exact choice or Auto for the storage dtype `T` on this CPU.
@@ -195,8 +327,29 @@ impl<R: Real> ResolvedGemm<R> {
             kc: 0,
             effective_threads: 0,
             policy: BlockingPolicy::snapshot(),
+            gather: crate::writeback::force_gather(),
         };
         rg.with_threads(effective_threads)
+    }
+
+    /// Override cache blocking, retaining it when the execution width changes.
+    /// Register alignment and the legacy minimum KC of one are preserved.
+    ///
+    /// # Errors
+    /// Returns `Incompatible` if register alignment overflows.
+    ///
+    /// # Examples
+    /// ```
+    /// use tprims_gemm_kernel::{Blocking, KernelChoice, ResolvedGemm};
+    /// let rg = ResolvedGemm::<f64>::resolve::<f64>(&KernelChoice::Auto, 1)?;
+    /// let rg = rg.with_blocking(Blocking { mc: 5, kc: 3, nc: 7 })?;
+    /// assert_eq!(rg.with_threads(4)?.kc, 3);
+    /// # Ok::<(), tprims_gemm_kernel::SelectError>(())
+    /// ```
+    pub fn with_blocking(mut self, blocking: Blocking) -> Result<Self, SelectError> {
+        self.policy.explicit = Some(blocking);
+        let width = self.effective_threads;
+        self.with_threads(width)
     }
 
     /// Recompute blocking using the effective execution width, not the budget.

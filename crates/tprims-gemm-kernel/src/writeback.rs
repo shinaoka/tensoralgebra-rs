@@ -42,7 +42,7 @@ use crate::TileFormat;
 /// makes the fast path an A/B switch at run time rather than a rebuild, so the
 /// two arms can be measured in one session under identical conditions. Read
 /// once per process.
-fn force_gather() -> bool {
+pub(crate) fn force_gather() -> bool {
     env_once!(bool, "TENSORCONTRACT_WRITEBACK", false, |v: &str| v
         .eq_ignore_ascii_case("gather")
         || v.eq_ignore_ascii_case("scatter"))
@@ -144,14 +144,118 @@ pub unsafe fn writeback<T: Element>(
     d_rs: i64,
     conj_d: bool,
 ) {
+    // SAFETY: forwarded unchanged; the existing legacy switch is read once.
+    unsafe {
+        writeback_mode::<T>(
+            ab,
+            fmt,
+            mr,
+            nr,
+            mrem,
+            nrem,
+            alpha,
+            beta,
+            c_base,
+            c_r,
+            c_c,
+            c_rs,
+            conj_c,
+            d_base,
+            d_r,
+            d_c,
+            d_rs,
+            conj_d,
+            force_gather(),
+        )
+    }
+}
+
+pub(crate) fn emit_fn<T: Element>(fmt: TileFormat, gather: bool) -> crate::EmitFn<T> {
+    macro_rules! pick {
+        ($f:literal) => {
+            if gather {
+                emit_fmt::<T, $f, true>
+            } else {
+                emit_fmt::<T, $f, false>
+            }
+        };
+    }
+    match fmt {
+        TileFormat::Real => pick!(0),
+        TileFormat::Planar => pick!(1),
+        TileFormat::OneM => pick!(2),
+        TileFormat::ThreeM => pick!(3),
+        TileFormat::Interleaved => pick!(4),
+        TileFormat::FourM => pick!(5),
+    }
+}
+
+unsafe fn emit_fmt<T: Element, const F: u8, const G: bool>(
+    ab: *const T::Real,
+    mr: usize,
+    nr: usize,
+    mrem: usize,
+    nrem: usize,
+    alpha: T,
+    beta: T,
+    c_base: *const T,
+    c_r: &[i64],
+    c_c: &[i64],
+    c_rs: i64,
+    conj_c: bool,
+    d_base: *mut T,
+    d_r: &[i64],
+    d_c: &[i64],
+    d_rs: i64,
+    conj_d: bool,
+) {
+    // INVARIANT: emit_fn instantiates only these six private format tags.
+    let fmt = match F {
+        0 => TileFormat::Real,
+        1 => TileFormat::Planar,
+        2 => TileFormat::OneM,
+        3 => TileFormat::ThreeM,
+        4 => TileFormat::Interleaved,
+        5 => TileFormat::FourM,
+        _ => unreachable!("private writeback format tag"),
+    };
+    // SAFETY: caller satisfies the same tile/scatter contract as writeback.
+    unsafe {
+        writeback_mode::<T>(
+            ab, fmt, mr, nr, mrem, nrem, alpha, beta, c_base, c_r, c_c, c_rs, conj_c, d_base, d_r,
+            d_c, d_rs, conj_d, G,
+        )
+    }
+}
+
+#[inline(always)]
+unsafe fn writeback_mode<T: Element>(
+    ab: *const T::Real,
+    fmt: TileFormat,
+    mr: usize,
+    nr: usize,
+    mrem: usize,
+    nrem: usize,
+    alpha: T,
+    beta: T,
+    c_base: *const T,
+    c_r: &[i64],
+    c_c: &[i64],
+    c_rs: i64,
+    conj_c: bool,
+    d_base: *mut T,
+    d_r: &[i64],
+    d_c: &[i64],
+    d_rs: i64,
+    conj_d: bool,
+    gather: bool,
+) {
     let beta_is_zero = beta == T::zero();
     // `C` is only read when beta is nonzero, so its regularity only matters
     // then. `beta = 0` with a scattered `C` is the common case (the harness and
     // most callers overwrite `D`), and it must not be pushed onto the slow path.
     let c_ok = beta_is_zero || c_rs != IRREGULAR;
     let (d0, c0) = (*d_r.get_unchecked(0), *c_r.get_unchecked(0));
-    let gather = force_gather();
-
     // The three arms differ in exactly two arguments -- how a row index becomes
     // an offset into `C` and into `D` -- and agreed on the other sixteen, which
     // were copied out three times. A `macro_rules!` rather than a struct of
@@ -307,6 +411,93 @@ pub unsafe fn scale_only<T: Element>(
                 v = v.conj();
             }
             *d_base.offset((dri + dcj) as isize) = v;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::C64;
+    #[test]
+    fn bound_emitters_match_legacy_all_formats_and_beta_zero() {
+        let ab: [f64; 24] = core::array::from_fn(|i| i as f64 / 7.);
+        let c = [C64::from_parts(3., -2.); 10];
+        let alpha = C64::from_parts(1.5, 0.3);
+        for fmt in [
+            TileFormat::Real,
+            TileFormat::Planar,
+            TileFormat::Interleaved,
+            TileFormat::OneM,
+            TileFormat::ThreeM,
+            TileFormat::FourM,
+        ] {
+            for gather in [false, true] {
+                for stride in [1, 2, IRREGULAR] {
+                    let rows = [0, if stride == IRREGULAR { 3 } else { stride }];
+                    for beta in [C64::zero(), C64::from_parts(0.4, -0.2)] {
+                        for conj_c in [false, true] {
+                            for conj_d in [false, true] {
+                                let mut expected = [C64::zero(); 10];
+                                let mut actual = expected;
+                                let cp = if beta == C64::zero() {
+                                    core::ptr::null()
+                                } else {
+                                    c.as_ptr()
+                                };
+                                // SAFETY: maximum-size initialized tile (3x2, four
+                                // planes), valid 2x1 live scatters, disjoint arrays.
+                                // Null C is intentional and permitted when beta=0.
+                                unsafe {
+                                    writeback::<C64>(
+                                        ab.as_ptr(),
+                                        fmt,
+                                        3,
+                                        2,
+                                        2,
+                                        1,
+                                        alpha,
+                                        beta,
+                                        cp,
+                                        &rows,
+                                        &[1],
+                                        stride,
+                                        conj_c,
+                                        expected.as_mut_ptr(),
+                                        &rows,
+                                        &[1],
+                                        stride,
+                                        conj_d,
+                                    );
+                                    emit_fn::<C64>(fmt, gather)(
+                                        ab.as_ptr(),
+                                        3,
+                                        2,
+                                        2,
+                                        1,
+                                        alpha,
+                                        beta,
+                                        cp,
+                                        &rows,
+                                        &[1],
+                                        stride,
+                                        conj_c,
+                                        actual.as_mut_ptr(),
+                                        &rows,
+                                        &[1],
+                                        stride,
+                                        conj_d,
+                                    );
+                                }
+                                assert_eq!(
+                                    actual, expected,
+                                    "{fmt:?}, gather={gather}, stride={stride}"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

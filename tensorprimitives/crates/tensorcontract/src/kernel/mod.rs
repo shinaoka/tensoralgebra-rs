@@ -48,7 +48,9 @@ where
 
 /// [`config_for`] plus the plan's choice of micro-tile row block.
 ///
-/// This is what execution uses. It differs from [`config_for`] only when the
+/// Used while resolving the legacy menu (and directly for foreign scalars).
+/// Built-in numerical execution consumes the cached descriptor instead.
+/// It differs from [`config_for`] only when the
 /// output's stride pattern makes a shape other than the kernel set's default
 /// worth having — see [`crate::Plan::row_block`] — and falls back to the
 /// default whenever the requested shape does not exist.
@@ -70,12 +72,11 @@ where
         .retarget_threads(plan.threads())
 }
 
-/// The register block `(MR, NR)` and cache blocking a *plan* will execute with.
+/// Legacy KernelSet menu's register block and cache blocking for a plan.
 ///
-/// [`selected_config`] reports the kernel set's default; this reports what the
-/// plan actually gets, which can differ. Harnesses reporting block-scatter
-/// regularity must use this one, or they describe a traversal that does not
-/// happen.
+/// This preserves the legacy diagnostic API and excludes forced registered
+/// choices and explicit plan blocking. For the canonical typed configuration
+/// (including registered families), use [`crate::Plan::resolved`].
 pub fn plan_config<T>(plan: &crate::plan::Plan) -> (usize, usize, Blocking)
 where
     T: crate::element::Element,

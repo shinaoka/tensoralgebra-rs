@@ -1,8 +1,8 @@
 //! Error type.
 //!
 //! Almost everything here describes a contraction that was rejected while being
-//! *planned*, which is the only place the engine itself reports failure. The
-//! variants fall into five groups:
+//! *planned*. Typed kernel resolution may also reject execution before any
+//! computation begins. The variants fall into six groups:
 //!
 //! * **the description is internally inconsistent** — [`Error::RankMismatch`],
 //!   [`Error::LabelCountMismatch`], [`Error::ExtentMismatch`],
@@ -15,27 +15,28 @@
 //! * **the call disagrees with the plan** — [`Error::NullPointer`], when the
 //!   data cannot hold every offset the plan generates, and
 //!   [`Error::ElementOpMismatch`], when a view's conjugation differs from the
-//!   one recorded in the plan. These two are the only variants raised by
-//!   [`crate::Plan::run`] rather than by [`crate::Plan::new`], because neither
-//!   slice lengths nor the views exist until then;
+//!   one recorded in the plan. These are raised by [`crate::Plan::run`]
+//!   because neither slice lengths nor the views exist until then;
+//! * **kernel selection/configuration is invalid** — [`Error::KernelSelection`],
+//!   including dtype, CPU, registration and blocking failures. Safe execution
+//!   propagates typed resolution errors before shortcuts or numerical calls;
 //! * **there was never a contraction to reject** — [`Error::EinsumSyntax`], the
 //!   one variant raised before planning starts, by [`crate::parse_einsum`]
 //!   failing on the *notation* rather than on anything the labels mean.
 //!
 //! So a [`crate::Plan`] that exists describes a contraction that is expressible;
-//! what remains checkable at execution time is only whether the arguments are
-//! the ones it was built for.
+//! execution still checks its storage dtype's kernel resolution and whether
+//! the supplied arguments are the ones it was built for.
 
 use core::fmt;
 
 /// Everything that can go wrong when building or executing a contraction plan.
 ///
 /// Most variants are a rejected *description* of a contraction — a shape, label
-/// or stride inconsistency — caught while planning. Two are raised by
-/// [`crate::Plan::run`] instead, and only because their subject does not exist
-/// until then: [`Error::NullPointer`] for data that cannot hold the offsets the
-/// plan generates, and [`Error::ElementOpMismatch`] for arguments that do not
-/// match the plan they are given to. Nothing is reported once the engine starts
+/// or stride inconsistency — caught while planning. [`crate::Plan::run`] also
+/// checks typed kernel resolution ([`Error::KernelSelection`]), slice bounds
+/// ([`Error::NullPointer`]) and view operations ([`Error::ElementOpMismatch`]).
+/// Nothing is reported once the engine starts
 /// computing. [`Error::EinsumSyntax`] is the outlier and comes from the string
 /// convenience helper, before any of that.
 ///
@@ -44,6 +45,8 @@ use core::fmt;
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Error {
+    /// Invalid registered-kernel selection/configuration, before computation.
+    KernelSelection(tprims_gemm_kernel::SelectError),
     /// `extents.len() != strides.len()`.
     RankMismatch {
         /// Number of extents supplied.
@@ -133,11 +136,9 @@ pub enum Error {
     /// A spec handed to [`crate::parse_einsum`] is not in the notation it
     /// accepts: `"ab,bc->ac"`, exactly one `->` and one `,`.
     ///
-    /// The offending spec is deliberately not carried. Every other variant here
-    /// holds only `Copy` or `'static` data, which is what keeps `Error` cheap to
-    /// clone and usable without an allocator; a `String` for this one variant
-    /// would cost that for the whole enum. The caller still has the spec it
-    /// passed, so `reason` is the part it does not.
+    /// The offending spec is deliberately not carried: the caller still owns
+    /// it, so a static `reason` suffices. Description errors retain their small
+    /// payloads; `KernelSelection` separately carries owned kernel diagnostics.
     EinsumSyntax {
         /// Which piece of the notation was missing. A short static phrase — the
         /// set is closed and matching on it is not supported.
@@ -148,6 +149,7 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Error::KernelSelection(source) => fmt::Display::fmt(source, f),
             Error::RankMismatch { extents, strides } => {
                 write!(f, "rank mismatch: {extents} extents but {strides} strides")
             }
@@ -216,7 +218,14 @@ impl fmt::Display for Error {
 /// It survived because CI builds `--no-default-features` and building is not
 /// using: a missing impl is not a compile error until something needs it, and
 /// nothing did until `tests/traits.rs`.
-impl core::error::Error for Error {}
+impl core::error::Error for Error {
+    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+        match self {
+            Self::KernelSelection(source) => Some(source),
+            _ => None,
+        }
+    }
+}
 
 /// `Result` with this crate's [`Error`].
 pub type Result<T> = core::result::Result<T, Error>;

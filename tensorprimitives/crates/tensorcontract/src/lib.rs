@@ -301,6 +301,8 @@ regime where per-call threading loses."
 pub mod batch;
 mod buffer;
 mod driver;
+pub use driver::execute_resolved;
+mod resolve;
 use tprims_gemm_kernel::pack;
 #[cfg(feature = "std")]
 mod pool;
@@ -320,6 +322,7 @@ pub use error::{Error, Result};
 pub use kernel::{Blocking, ComplexMethod, KernelSet};
 pub use layout::Layout;
 pub use plan::{ElementOp, Operand, Plan, PlanStats};
+pub use tprims_gemm_kernel::KernelChoice;
 
 /// An immutable operand: data, layout and index labels.
 ///
@@ -524,6 +527,7 @@ impl Plan {
         T: Element,
         T::Real: KernelSet,
     {
+        resolve::validate::<T>(self)?;
         self.check_ops(a.op, b.op, c.as_ref().map(|c| c.op), d.op)?;
         self.check_bounds(
             a.data.len(),
@@ -573,6 +577,7 @@ impl Plan {
         T: Element,
         T::Real: KernelSet,
     {
+        resolve::validate::<T>(self)?;
         self.check_ops(a.op, b.op, c.as_ref().map(|c| c.op), d.op)?;
         self.check_bounds(
             a.data.len(),

@@ -121,7 +121,7 @@ use std::sync::Barrier;
 
 use crate::buffer::Panel;
 use crate::element::Element;
-use crate::kernel::{config_for_plan, Blocking, KernelSet, Ukr};
+use crate::kernel::{config_for_plan, Blocking, KernelConfig, KernelSet, Ukr};
 use crate::pack::{pack_panel, panel_len};
 use crate::plan::Plan;
 use crate::scatter::{build_block_scatter, IRREGULAR};
@@ -163,6 +163,8 @@ where
 {
     plan: &'a Plan,
     ukr: Ukr<T::Real>,
+    packers: Option<(tprims_gemm_kernel::PackFn<T>, tprims_gemm_kernel::PackFn<T>)>,
+    emitter: Option<tprims_gemm_kernel::EmitFn<T>>,
     mr: usize,
     nr: usize,
     mc: usize,
@@ -198,6 +200,62 @@ where
     d: Shared<T>,
     /// The shared packed-`B` panel: written cooperatively, read by everyone.
     bp: Shared<T::Real>,
+}
+
+// Common write-back call for the first-K and accumulation paths. Numerical
+// loops stay in the kernel layer; foreign types retain the legacy entry.
+unsafe fn emit_tile<T: Element>(
+    cx: &Ctx<'_, T>,
+    ab: *const T::Real,
+    mrem: usize,
+    nrem: usize,
+    beta: T,
+    c: *const T,
+    cr: &[i64],
+    cc: &[i64],
+    crs: i64,
+    conj_c: bool,
+    d: *mut T,
+    dr: &[i64],
+    dc: &[i64],
+    drs: i64,
+    conj_d: bool,
+) where
+    T::Real: KernelSet,
+{
+    // SAFETY: run_strip supplies the same checked live tile/scatters and
+    // initialized accumulator that the former writeback calls used.
+    if let Some(emit) = cx.emitter {
+        unsafe {
+            emit(
+                ab, cx.mr, cx.nr, mrem, nrem, cx.alpha, beta, c, cr, cc, crs, conj_c, d, dr, dc,
+                drs, conj_d,
+            )
+        }
+    } else {
+        unsafe {
+            writeback::<T>(
+                ab,
+                cx.ukr.tile_fmt,
+                cx.mr,
+                cx.nr,
+                mrem,
+                nrem,
+                cx.alpha,
+                beta,
+                c,
+                cr,
+                cc,
+                crs,
+                conj_c,
+                d,
+                dr,
+                dc,
+                drs,
+                conj_d,
+            )
+        }
+    }
 }
 
 /// Where one thread sits in the `pm x pn` partition, as far as loop 5 and the
@@ -265,6 +323,10 @@ impl BPart<'_> {
 /// * `c` must likewise be valid for reads unless `beta` is zero, in which case
 ///   it is never dereferenced and may be dangling.
 /// * `d` must not alias `a` or `b`.
+/// * Selection/configuration must be valid for T and every active width,
+///   including serial fallback. `Plan::run` validates this automatically;
+///   raw built-in callers can validate with `Plan::resolved::<T>()` and
+///   `with_threads(1)` before execution.
 pub unsafe fn execute<T>(
     plan: &Plan,
     alpha: T,
@@ -279,7 +341,49 @@ pub unsafe fn execute<T>(
 {
     // SAFETY: forwarded unchanged; `usize::MAX` imposes no cap, so the thread
     // count is the plan's, exactly as before this parameter existed.
-    unsafe { execute_capped(plan, alpha, a, b, beta, c, d, usize::MAX, None) }
+    unsafe { execute_capped(plan, alpha, a, b, beta, c, d, usize::MAX, None, None) }
+}
+
+/// Execute an already resolved built-in family with an optional host SPMD.
+/// Effective blocking uses the active grid width, not the plan's requested width.
+///
+/// # Safety
+/// All [`execute`] pointer/alias obligations apply. `rg` must be validated for
+/// `T`, the plan's conjugations, scratch ABI, and every active width (including
+/// serial fallback); its public geometry/blocking fields must remain valid.
+///
+/// # Examples
+/// ```
+/// use tensorcontract::{Layout, Operand, Plan};
+/// let l = Layout::col_major(&[2,2]);
+/// let p = Plan::new(Operand::new(&l,&[0,2]), Operand::new(&l,&[2,1]),
+///     None, Operand::new(&l,&[0,1]))?.with_threads(1);
+/// let rg = p.resolved::<f64>()?.with_threads(1)?;
+/// let a = [1.,2.,3.,4.]; let b = [5.,6.,7.,8.]; let mut d = [0.;4];
+/// // SAFETY: full checked layouts/buffers, valid resolution; beta=0 ignores C.
+/// unsafe { tensorcontract::execute_resolved(&p,&rg,None,
+///     1.,a.as_ptr(),b.as_ptr(),0.,std::ptr::null(),d.as_mut_ptr()); }
+/// assert_eq!(d, [23.,34.,31.,46.]);
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
+///
+/// A host which declines a multi-worker broadcast is retried serially with
+/// this same frozen family/policy; it never re-selects the plan default.
+pub unsafe fn execute_resolved<T: Element>(
+    plan: &Plan,
+    rg: &tprims_gemm_kernel::ResolvedGemm<T::Real>,
+    spmd: Option<&dyn crate::spmd::Spmd>,
+    alpha: T,
+    a: *const T,
+    b: *const T,
+    beta: T,
+    c: *const T,
+    d: *mut T,
+) where
+    T::Real: KernelSet,
+{
+    // SAFETY: raw pointer and descriptor obligations forwarded unchanged.
+    unsafe { execute_capped(plan, alpha, a, b, beta, c, d, usize::MAX, spmd, Some(rg)) }
 }
 
 /// The serial seam: width one, never asked to broadcast.
@@ -314,7 +418,7 @@ pub unsafe fn execute_with<T>(
     T::Real: KernelSet,
 {
     // SAFETY: forwarded unchanged.
-    unsafe { execute_capped(plan, alpha, a, b, beta, c, d, usize::MAX, Some(spmd)) }
+    unsafe { execute_capped(plan, alpha, a, b, beta, c, d, usize::MAX, Some(spmd), None) }
 }
 
 /// [`execute`], with an upper bound on the threads this call may use.
@@ -343,21 +447,39 @@ pub(crate) unsafe fn execute_capped<T>(
     d: *mut T,
     max_threads: usize,
     spmd: Option<&dyn crate::spmd::Spmd>,
+    resolution: Option<&tprims_gemm_kernel::ResolvedGemm<T::Real>>,
 ) where
     T: Element,
     T::Real: KernelSet,
 {
+    // INVARIANT: safe run/run_with validate selection (including the serial
+    // NC bound) first; raw callers promise a valid selection for this dtype.
+    let resolved = match resolution {
+        Some(rg) => Some(*rg),
+        None => crate::resolve::builtin::<T>(plan)
+            .map(|r| r.expect("raw execution requires valid kernel selection")),
+    };
     if plan.is_empty() {
         return;
     }
 
-    // `MR` is a plan-level choice, not just a kernel constant: it sets the
-    // granularity at which the output's row scatter is blocked, and so which
-    // write-back path each block takes. See `Plan::row_block`.
-    let cfg = config_for_plan::<T>(plan);
-    let cfg = match plan.blocking {
-        Some(blk) => cfg.with_blocking(blk),
-        None => cfg,
+    // Built-ins consume the plan's cached descriptor; foreign scalar types
+    // retain the original KernelSet path without a new trait bound.
+    let cfg = if let Some(rg) = resolved {
+        KernelConfig {
+            ukr: rg.family().as_ukr().expect("validated scratch ABI"),
+            blk: Blocking {
+                mc: rg.mc,
+                kc: rg.kc,
+                nc: rg.nc,
+            },
+        }
+    } else {
+        let cfg = config_for_plan::<T>(plan);
+        match plan.blocking {
+            Some(blk) => cfg.with_blocking(blk),
+            None => cfg,
+        }
     };
     let ukr = cfg.ukr;
     let (mr, nr) = (ukr.mr, ukr.nr);
@@ -368,10 +490,8 @@ pub(crate) unsafe fn execute_capped<T>(
     // again: from here on `am`/`ak`/`ptr_a` *are* the row operand, whichever
     // tensor that is. See `Plan::transposes_gemm` for why it is worth doing.
     //
-    // Note this also swaps the two pack formats, which matters only for 1m,
-    // where they differ ("1e" for rows, "1r" for columns) — and there it is
-    // exactly right, since the kernel's contract is about the row and column
-    // panels, not about which user tensor they came from.
+    // Packing formats remain fixed to kernel roles: row-A uses 1e and
+    // column-B uses 1r under 1m, whichever user tensor fills that role.
     let swap = plan.transposes_gemm(mr);
     let (ptr_a, ptr_b) = if swap { (b, a) } else { (a, b) };
     let (am, ak, conj_a) = if swap {
@@ -445,10 +565,6 @@ pub(crate) unsafe fn execute_capped<T>(
     // visible, because `MC` has a second constraint this model omits — the
     // strip of `D` that one `jr` pass revisits. See the Phase 4 report; this is
     // what the `MC`/`KC`/`NC` sweep has to settle.
-    let Blocking { mc, kc, nc } = cfg.blk;
-    let mc = mc.min(m.next_multiple_of(mr));
-    let nc = nc.min(n.next_multiple_of(nr));
-
     // Row strips are whole `MR` panels and column groups whole `NR` slivers, so
     // every thread's micro-tiles line up with the block scatter and with the
     // write-back's fast path. `Plan::partition` owns the choice of how many of
@@ -477,6 +593,22 @@ pub(crate) unsafe fn execute_capped<T>(
         }
     }
     let p = pm * pn;
+    let blocking = if let Some(rg) = resolved {
+        // INVARIANT: safe execution checked serial's maximal NC, and p >= 1.
+        let rg = rg
+            .with_threads(p)
+            .expect("validated effective-width blocking");
+        Blocking {
+            mc: rg.mc,
+            kc: rg.kc,
+            nc: rg.nc,
+        }
+    } else {
+        cfg.blk
+    };
+    let Blocking { mc, kc, nc } = blocking;
+    let mc = mc.min(m.next_multiple_of(mr));
+    let nc = nc.min(n.next_multiple_of(nr));
 
     // Panel sizes come from the kernel's declared per-k sliver widths, so a
     // method that packs more reals per element (1m's "1e", 3m's sum plane)
@@ -505,6 +637,8 @@ pub(crate) unsafe fn execute_capped<T>(
     let cx = Ctx::<T> {
         plan,
         ukr,
+        packers: resolved.map(|rg| rg.packers::<T>()),
+        emitter: resolved.map(|rg| rg.emitter::<T>()),
         mr,
         nr,
         mc,
@@ -591,7 +725,20 @@ pub(crate) unsafe fn execute_capped<T>(
         // back to spawning threads behind the host's back.
         // A width-one seam keeps the rerun serial even under a pinned
         // partition. SAFETY: forwarded unchanged from this call's contract.
-        unsafe { execute_capped(plan, alpha, a, b, beta, c, d, 1, Some(&Inline)) };
+        unsafe {
+            execute_capped(
+                plan,
+                alpha,
+                a,
+                b,
+                beta,
+                c,
+                d,
+                1,
+                Some(&Inline),
+                resolved.as_ref(),
+            )
+        };
         return;
     }
 
@@ -663,7 +810,6 @@ unsafe fn run_strip<T>(
         c_m_bs,
         conj_a,
         conj_b,
-        alpha,
         beta,
         ..
     } = *cx;
@@ -712,16 +858,29 @@ unsafe fn run_strip<T>(
                 if w1 > w0 {
                     let c0 = jc + w0 * nr;
                     let c1 = (jc + w1 * nr).min(jc + jc_len);
-                    pack_panel::<T>(
-                        bh,
-                        &bn[c0..c1],
-                        &b_n_bs[c0 / nr..c1.div_ceil(nr)],
-                        &bk[pc..pc + pc_len],
-                        nr,
-                        conj_b,
-                        ukr.b_pack,
-                        bp_ptr.add((w0 - q0) * b_sliver),
-                    );
+                    if let Some((_, pack_b)) = cx.packers {
+                        // SAFETY: same validated scatters/capacity as legacy pack_panel.
+                        pack_b(
+                            bh,
+                            &bn[c0..c1],
+                            &b_n_bs[c0 / nr..c1.div_ceil(nr)],
+                            &bk[pc..pc + pc_len],
+                            nr,
+                            conj_b,
+                            bp_ptr.add((w0 - q0) * b_sliver),
+                        );
+                    } else {
+                        pack_panel::<T>(
+                            bh,
+                            &bn[c0..c1],
+                            &b_n_bs[c0 / nr..c1.div_ceil(nr)],
+                            &bk[pc..pc + pc_len],
+                            nr,
+                            conj_b,
+                            ukr.b_pack,
+                            bp_ptr.add((w0 - q0) * b_sliver),
+                        );
+                    }
                 }
                 if let Some(bar) = bpart.bar {
                     bar.wait();
@@ -740,16 +899,29 @@ unsafe fn run_strip<T>(
                 while ic < m_hi {
                     let ic_len = mc.min(m_hi - ic);
 
-                    pack_panel::<T>(
-                        ah,
-                        &am[ic..ic + ic_len],
-                        &a_m_bs[ic / mr..(ic + ic_len).div_ceil(mr)],
-                        &ak[pc..pc + pc_len],
-                        mr,
-                        conj_a,
-                        ukr.a_pack,
-                        ap_ptr,
-                    );
+                    if let Some((pack_a, _)) = cx.packers {
+                        // SAFETY: same validated scatters/capacity as legacy pack_panel.
+                        pack_a(
+                            ah,
+                            &am[ic..ic + ic_len],
+                            &a_m_bs[ic / mr..(ic + ic_len).div_ceil(mr)],
+                            &ak[pc..pc + pc_len],
+                            mr,
+                            conj_a,
+                            ap_ptr,
+                        );
+                    } else {
+                        pack_panel::<T>(
+                            ah,
+                            &am[ic..ic + ic_len],
+                            &a_m_bs[ic / mr..(ic + ic_len).div_ceil(mr)],
+                            &ak[pc..pc + pc_len],
+                            mr,
+                            conj_a,
+                            ukr.a_pack,
+                            ap_ptr,
+                        );
+                    }
                     let a_sliver = ukr.a_per_k * pc_len;
 
                     // ---- loop 2: NR ---------------------------------------
@@ -771,14 +943,11 @@ unsafe fn run_strip<T>(
                             let d_rs = *d_m_bs.get_unchecked(i0 / mr);
                             if first_k_block {
                                 let c_rs = c_m_bs.get(i0 / mr).copied().unwrap_or(IRREGULAR);
-                                writeback::<T>(
+                                emit_tile::<T>(
+                                    cx,
                                     tile_ptr,
-                                    ukr.tile_fmt,
-                                    mr,
-                                    nr,
                                     mrem,
                                     nrem,
-                                    alpha,
                                     beta,
                                     ch,
                                     &cm[i0..i0 + mrem],
@@ -794,14 +963,11 @@ unsafe fn run_strip<T>(
                             } else {
                                 // Accumulate: C := D, beta := 1, and conjugate
                                 // the readback exactly when op_D conjugates.
-                                writeback::<T>(
+                                emit_tile::<T>(
+                                    cx,
                                     tile_ptr,
-                                    ukr.tile_fmt,
-                                    mr,
-                                    nr,
                                     mrem,
                                     nrem,
-                                    alpha,
                                     one,
                                     dh as *const T,
                                     &dm[i0..i0 + mrem],

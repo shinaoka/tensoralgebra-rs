@@ -223,6 +223,30 @@ pub type PackFn<T> = unsafe fn(
     out: *mut <T as Element>::Real,
 );
 
+/// Monomorphized write-back for one storage type and frozen tile format.
+/// Caller supplies a fully overwritten tile, valid live scatters and disjoint
+/// output. C is not read when beta is zero. All other raw writeback obligations
+/// apply, including positive live extents no larger than MR/NR.
+pub type EmitFn<T> = unsafe fn(
+    *const <T as Element>::Real,
+    usize,
+    usize,
+    usize,
+    usize,
+    T,
+    T,
+    *const T,
+    &[i64],
+    &[i64],
+    i64,
+    bool,
+    *mut T,
+    &[i64],
+    &[i64],
+    i64,
+    bool,
+);
+
 /// Immutable descriptor keyed by the arithmetic real type.
 /// Complex families are distinguished by `complex`, not by `R`.
 /// The pointer's implementation must satisfy the described unsafe contract.

@@ -23,6 +23,7 @@
 //! imaginary part as it is written, in every format.
 
 use crate::element::Element;
+use crate::family::{Layout, PackFn};
 use crate::scatter::IRREGULAR;
 use crate::PackFormat;
 
@@ -63,7 +64,48 @@ pub unsafe fn pack_panel<T: Element>(
     fmt: PackFormat,
     out: *mut T::Real,
 ) {
-    let per_k = vr * fmt.reals_per_element();
+    match fmt {
+        PackFormat::Real => pack_panel_fmt::<T, 0>(base, vscat, vbs, kscat, vr, conj, out),
+        PackFormat::Interleaved => pack_panel_fmt::<T, 1>(base, vscat, vbs, kscat, vr, conj, out),
+        PackFormat::Planar => pack_panel_fmt::<T, 2>(base, vscat, vbs, kscat, vr, conj, out),
+        PackFormat::ThreeM => pack_panel_fmt::<T, 3>(base, vscat, vbs, kscat, vr, conj, out),
+        PackFormat::OneE => pack_panel_fmt::<T, 4>(base, vscat, vbs, kscat, vr, conj, out),
+    }
+}
+
+pub(crate) fn pack_fn<T: Element>(layout: Layout) -> PackFn<T> {
+    match layout {
+        Layout::Real => pack_fmt::<T, 0>,
+        Layout::Interleaved => pack_fmt::<T, 1>,
+        Layout::Planar | Layout::OneR => pack_fmt::<T, 2>,
+        Layout::OneE => pack_fmt::<T, 4>,
+        Layout::ThreeM => pack_fmt::<T, 3>,
+    }
+}
+
+unsafe fn pack_fmt<T: Element, const F: u8>(
+    base: *const T,
+    vscat: &[i64],
+    vbs: &[i64],
+    kscat: &[i64],
+    vr: usize,
+    conj: bool,
+    out: *mut T::Real,
+) {
+    pack_panel_fmt::<T, F>(base, vscat, vbs, kscat, vr, conj, out)
+}
+
+#[inline(always)]
+unsafe fn pack_panel_fmt<T: Element, const F: u8>(
+    base: *const T,
+    vscat: &[i64],
+    vbs: &[i64],
+    kscat: &[i64],
+    vr: usize,
+    conj: bool,
+    out: *mut T::Real,
+) {
+    let per_k = vr * pack_reals(F);
     let kc = kscat.len();
     let vlen_total = vscat.len();
     let nsliv = vlen_total.div_ceil(vr);
@@ -83,11 +125,11 @@ pub unsafe fn pack_panel<T: Element>(
                 let o = dst.add(p * per_k);
                 if bs == 1 {
                     for t in 0..vr {
-                        emit::<T>(*src.add(t), o, vr, t, conj, fmt);
+                        emit_fmt::<T, F>(*src.add(t), o, vr, t, conj);
                     }
                 } else {
                     for t in 0..vr {
-                        emit::<T>(*src.offset((bs * t as i64) as isize), o, vr, t, conj, fmt);
+                        emit_fmt::<T, F>(*src.offset((bs * t as i64) as isize), o, vr, t, conj);
                     }
                 }
             }
@@ -101,10 +143,21 @@ pub unsafe fn pack_panel<T: Element>(
                     } else {
                         T::zero()
                     };
-                    emit::<T>(z, o, vr, t, conj, fmt);
+                    emit_fmt::<T, F>(z, o, vr, t, conj);
                 }
             }
         }
+    }
+}
+
+#[inline(always)]
+const fn pack_reals(fmt: u8) -> usize {
+    match fmt {
+        0 => 1,
+        1 | 2 => 2,
+        3 => 3,
+        4 => 4,
+        _ => unreachable!(),
     }
 }
 
@@ -124,35 +177,34 @@ pub unsafe fn pack_panel<T: Element>(
 ///   read, and that is why the caller zero-fills the lanes of an edge block
 ///   rather than leaving them.
 #[inline(always)]
-unsafe fn emit<T: Element>(
+unsafe fn emit_fmt<T: Element, const F: u8>(
     z: T,
     o: *mut T::Real,
     vr: usize,
     t: usize,
     conj: bool,
-    fmt: PackFormat,
 ) {
     let re = z.re();
-    match fmt {
-        PackFormat::Real => *o.add(t) = re,
-        PackFormat::Interleaved => {
+    match F {
+        0 => *o.add(t) = re,
+        1 => {
             // INVARIANT: emit's output covers vr*reals_per_element for this step.
             let im = if conj { -z.im() } else { z.im() };
             *o.add(2 * t) = re;
             *o.add(2 * t + 1) = im;
         }
-        PackFormat::Planar => {
+        2 => {
             let im = if conj { -z.im() } else { z.im() };
             *o.add(t) = re;
             *o.add(vr + t) = im;
         }
-        PackFormat::ThreeM => {
+        3 => {
             let im = if conj { -z.im() } else { z.im() };
             *o.add(t) = re;
             *o.add(vr + t) = im;
             *o.add(2 * vr + t) = re + im;
         }
-        PackFormat::OneE => {
+        4 => {
             // Real 2x2 block [[re, -im], [im, re]], stored as two real k-steps
             // of 2*vr, with the two rows of each complex lane adjacent.
             let im = if conj { -z.im() } else { z.im() };
@@ -161,6 +213,8 @@ unsafe fn emit<T: Element>(
             *o.add(2 * vr + 2 * t) = -im;
             *o.add(2 * vr + 2 * t + 1) = re;
         }
+        // INVARIANT: private emit_fmt is instantiated only by format tags 0..4.
+        _ => unreachable!("private packing format tag"),
     }
 }
 
@@ -265,6 +319,26 @@ mod tests {
 
         let onee = pack_c(&data, &[0, 1], &[0], 2, true, PackFormat::OneE);
         assert_eq!(onee, vec![1.0, -2.0, 3.0, -4.0, 2.0, 1.0, 4.0, 3.0]);
+    }
+
+    #[test]
+    fn selected_one_r_packs_like_planar() {
+        let data = [C64::new(1.0, 2.0), C64::new(3.0, 4.0)];
+        let vscat = [0, 1];
+        let vbs = build_block_scatter(&vscat, 2);
+        let mut out = [0.0; 4];
+        unsafe {
+            (pack_fn::<C64>(Layout::OneR))(
+                data.as_ptr(),
+                &vscat,
+                &vbs,
+                &[0],
+                2,
+                false,
+                out.as_mut_ptr(),
+            );
+        }
+        assert_eq!(out, [1.0, 3.0, 2.0, 4.0]);
     }
 
     #[test]

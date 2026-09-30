@@ -5,7 +5,6 @@
 
 #[cfg(test)]
 use tprims_gemm_kernel::cache;
-use tprims_gemm_kernel::env_once;
 pub use tprims_gemm_kernel::{
     Blocking, ComplexMethod, KernelConfig, PackFormat, Real, TileFormat, Ukr,
 };
@@ -131,66 +130,8 @@ pub trait KernelSet: Real + Sized {
 /// `std` there is no environment to read, so only [`KernelForce::Auto`] is ever
 /// constructed, and off x86 there is no ISA to pin, so nothing consults the
 /// answer. `not(all(std, x86))` is exactly that pair.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[cfg_attr(
-    not(all(
-        feature = "std",
-        any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")
-    )),
-    allow(dead_code)
-)]
 #[doc(hidden)]
-pub enum KernelForce {
-    /// Widest available instruction set. The default.
-    Auto,
-    /// The portable kernels in [`scalar`], whatever the CPU has.
-    Scalar,
-    /// The AVX2 + FMA kernels, on a CPU that has them.
-    Avx2,
-    /// The AVX-512 kernels, on a CPU that has them.
-    Avx512,
-    /// The AArch64 NEON kernels. Unlike the x86 arms this pins nothing the CPU
-    /// might lack — NEON is architecturally guaranteed on aarch64 — so it is
-    /// only ever a way to say "not scalar" explicitly.
-    Neon,
-}
-
-/// `TENSORCONTRACT_KERNEL=scalar|avx2|avx512|neon|auto`, read once per process.
-///
-/// An unrecognised value is [`KernelForce::Auto`], and a pinned instruction set
-/// the CPU does not have falls back to scalar rather than faulting — see
-/// `x86::selected_isa`. The names are not gated by architecture: `avx512` on an
-/// Apple machine is a request the dispatch declines, which is the same answer it
-/// gives on an AVX2-only x86 box, and keeping the parse total means a sweep
-/// script can pass the same arm list to every machine.
-#[cfg_attr(
-    not(all(
-        feature = "std",
-        any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")
-    )),
-    allow(dead_code)
-)]
-#[doc(hidden)]
-pub fn kernel_force() -> KernelForce {
-    env_once!(
-        KernelForce,
-        "TENSORCONTRACT_KERNEL",
-        KernelForce::Auto,
-        |v: &str| {
-            if v.eq_ignore_ascii_case("scalar") {
-                KernelForce::Scalar
-            } else if v.eq_ignore_ascii_case("avx2") {
-                KernelForce::Avx2
-            } else if v.eq_ignore_ascii_case("avx512") {
-                KernelForce::Avx512
-            } else if v.eq_ignore_ascii_case("neon") {
-                KernelForce::Neon
-            } else {
-                KernelForce::Auto
-            }
-        }
-    )
-}
+pub use tprims_gemm_kernel::{kernel_force, KernelForce};
 
 /// Force the portable scalar kernels regardless of CPU features.
 /// Set `TENSORCONTRACT_KERNEL=scalar` to compare against the reference path.

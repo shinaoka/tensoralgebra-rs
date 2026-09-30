@@ -124,3 +124,45 @@ pub enum Isa {
     /// AArch64 NEON.
     Neon,
 }
+
+// Moved from tprims-kernel-tensorcontract; retained legacy parser/control so
+// registry defaults and the old KernelSet dispatch share one startup fact.
+/// Legacy ISA preference for the tensorcontract family menu.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[doc(hidden)]
+pub enum KernelForce {
+    /// Widest available instruction set. The default.
+    Auto,
+    /// Portable scalar kernels, whatever the CPU has.
+    Scalar,
+    /// AVX2 + FMA, with scalar fallback when unavailable.
+    Avx2,
+    /// AVX-512, with scalar fallback when unavailable.
+    Avx512,
+    /// AArch64 NEON.
+    Neon,
+}
+
+/// `TENSORCONTRACT_KERNEL=scalar|avx2|avx512|neon|auto`, read once per process.
+/// Unknown values select Auto; unavailable pinned ISAs use scalar fallback.
+#[doc(hidden)]
+pub fn kernel_force() -> KernelForce {
+    crate::env_once!(
+        KernelForce,
+        "TENSORCONTRACT_KERNEL",
+        KernelForce::Auto,
+        |v: &str| {
+            if v.eq_ignore_ascii_case("scalar") {
+                KernelForce::Scalar
+            } else if v.eq_ignore_ascii_case("avx2") {
+                KernelForce::Avx2
+            } else if v.eq_ignore_ascii_case("avx512") {
+                KernelForce::Avx512
+            } else if v.eq_ignore_ascii_case("neon") {
+                KernelForce::Neon
+            } else {
+                KernelForce::Auto
+            }
+        }
+    )
+}

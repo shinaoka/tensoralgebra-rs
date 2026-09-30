@@ -127,3 +127,96 @@ fn width_one_seam_never_broadcasts() {
     .unwrap();
     assert_eq!(s.calls.load(Ordering::Relaxed), 0);
 }
+
+#[test]
+fn explicit_resolution_survives_host_refusal_without_reselection() {
+    use tprims_gemm_kernel::{KernelChoice, KernelFamily, ResolvedGemm, UkrFn};
+    static CALLS: AtomicUsize = AtomicUsize::new(0);
+    unsafe fn traced(k: usize, a: *const f64, b: *const f64, out: *mut f64) {
+        CALLS.fetch_add(1, Ordering::Relaxed);
+        // SAFETY: identical panel/tile ABI to the descriptor we copy below.
+        unsafe {
+            tprims_gemm_kernel::portable::real_tile::<f64, 4, 4>(k, a, b, out);
+        }
+    }
+    fn manifest() -> &'static [&'static KernelFamily<f64>] {
+        static LIST: std::sync::OnceLock<[&'static KernelFamily<f64>; 1]> =
+            std::sync::OnceLock::new();
+        LIST.get_or_init(|| {
+            // Do not recurse through the registry while this callback's
+            // OnceLock initializes: copy the immutable built-in menu directly.
+            let mut f = **tprims_gemm_kernel::portable::families_f64()
+                .iter()
+                .find(|f| f.id == "portable.f64.4x4")
+                .unwrap();
+            f.id = "test.traced.f64.4x4";
+            f.allow_auto = false;
+            f.ukr = UkrFn::Tile(traced);
+            [Box::leak(Box::new(f))]
+        })
+    }
+    // SAFETY: immutable manifest copies the validated portable 4x4 footprint,
+    // ISA and overwrite contract; traced only counts then calls that same ABI.
+    unsafe {
+        tprims_gemm_kernel::register::<f64>(manifest);
+    }
+    let (a, b) = inputs();
+    let la = Layout::col_major(&[M as i64, K as i64]);
+    let lb = Layout::col_major(&[K as i64, N as i64]);
+    let ld = Layout::col_major(&[M as i64, N as i64]);
+    let p = Plan::new(
+        Operand::new(&la, &[0, 2]),
+        Operand::new(&lb, &[2, 1]),
+        None,
+        Operand::new(&ld, &[0, 1]),
+    )
+    .unwrap()
+    .with_threads(1);
+    let rg =
+        ResolvedGemm::<f64>::resolve::<f64>(&KernelChoice::Id("test.traced.f64.4x4".into()), 4)
+            .unwrap();
+    rg.with_threads(1).unwrap();
+    let mut expected = vec![0.; M * N];
+    let mut actual = vec![0.; M * N];
+    // SAFETY: full disjoint buffers and validated matching real scratch ABI.
+    unsafe {
+        tensorcontract::execute_resolved(
+            &p,
+            &rg,
+            None,
+            1.,
+            a.as_ptr(),
+            b.as_ptr(),
+            0.,
+            std::ptr::null(),
+            expected.as_mut_ptr(),
+        );
+    }
+    CALLS.store(0, Ordering::Relaxed);
+    let host = Scoped {
+        width: 4,
+        calls: AtomicUsize::new(0),
+        last_p: AtomicUsize::new(0),
+        refuse: true,
+    };
+    // SAFETY: same valid buffers, resolution and serial bound as above.
+    unsafe {
+        tensorcontract::execute_resolved(
+            &p,
+            &rg,
+            Some(&host),
+            1.,
+            a.as_ptr(),
+            b.as_ptr(),
+            0.,
+            std::ptr::null(),
+            actual.as_mut_ptr(),
+        );
+    }
+    assert_eq!(actual, expected);
+    assert_eq!(host.calls.load(Ordering::Relaxed), 1);
+    assert!(
+        CALLS.load(Ordering::Relaxed) > 0,
+        "fallback reselected the plan's default family"
+    );
+}

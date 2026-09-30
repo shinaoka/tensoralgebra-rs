@@ -51,14 +51,14 @@ mod types;
 #[doc(hidden)]
 pub mod writeback;
 
-pub use cpu::{CpuFeatures, Isa};
+pub use cpu::{kernel_force, CpuFeatures, Isa, KernelForce};
 pub use element::{Element, Real, C32, C64};
 pub use family::*;
 pub use registry::{
     list_kernels, register, register_known_prefix, Families, KernelInfo, RealSlot, Registry,
     SelectError,
 };
-pub use resolved::{KernelChoice, ResolvedGemm};
+pub use resolved::{process_default, KernelChoice, ResolvedGemm};
 pub use scatter::IRREGULAR;
 pub use types::*;
 

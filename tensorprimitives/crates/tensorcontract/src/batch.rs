@@ -183,6 +183,7 @@ where
     // item; doing it for all of them up front converts "some outputs are written"
     // into "no outputs are written" on failure.
     for it in items.iter() {
+        crate::resolve::validate::<T>(it.plan)?;
         it.plan.check_bounds(
             it.a.data.len(),
             it.b.data.len(),
@@ -242,6 +243,7 @@ where
             cptr,
             it.d.data.as_mut_ptr(),
             1,
+            None,
             None,
         );
     }
