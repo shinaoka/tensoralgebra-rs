@@ -297,53 +297,22 @@ regime where per-call threading loses."
 // slipped through.
 #![warn(missing_debug_implementations)]
 
-/// Read one `TENSORCONTRACT_*` variable once per process, or fall back.
-///
-/// Nine switches were spelling this out by hand, and the copies had drifted:
-/// `partition_override` returned the *legacy* rule without `std` where the
-/// `std` default is the domain-aware one, so a `--no-default-features` build
-/// silently partitioned differently. Naming the default once, outside the
-/// `cfg`, makes that class of divergence unrepresentable — the two arms cannot
-/// disagree because there is only one expression.
-///
-/// The variable name stays a literal at each call site on purpose, so
-/// `grep TENSORCONTRACT_` still finds every switch in the crate.
-///
-/// `$ty` must be `Copy`; every switch is a small enum, `bool` or `usize`.
-macro_rules! env_once {
-    ($ty:ty, $var:literal, $default:expr, $parse:expr) => {{
-        #[cfg(feature = "std")]
-        {
-            use std::sync::OnceLock;
-            static ENV: OnceLock<$ty> = OnceLock::new();
-            *ENV.get_or_init(|| match std::env::var($var) {
-                Ok(v) => ($parse)(v.as_str()),
-                Err(_) => $default,
-            })
-        }
-        #[cfg(not(feature = "std"))]
-        {
-            $default
-        }
-    }};
-}
-
 #[cfg(feature = "std")]
 pub mod batch;
 mod buffer;
 mod driver;
-mod pack;
+use tprims_gemm_kernel::pack;
 #[cfg(feature = "std")]
 mod pool;
-mod writeback;
+use tprims_gemm_kernel::writeback;
 
-pub mod element;
+pub use tprims_gemm_kernel::element;
 pub mod error;
 pub mod kernel;
 pub mod layout;
 pub mod plan;
 pub mod reference;
-pub mod scatter;
+pub use tprims_gemm_kernel::scatter;
 pub mod spmd;
 
 pub use element::{Element, Real, C32, C64};

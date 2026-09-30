@@ -323,7 +323,7 @@ macro_rules! simd_kernels {
 /// whether the write-back takes its unit-stride path or its gather path. A
 /// shape 10–20% off peak that moves whole block families onto the fast path
 /// wins on any contraction that is nowhere near kernel-bound. See
-/// [`crate::Plan::row_block`].
+/// `tensorcontract::Plan::row_block`.
 macro_rules! configs {
     ($t:ty, $m:ident, $isa:literal,
      real   = [$(($rmv:literal, $rnr:literal)),+ $(,)?],

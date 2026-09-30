@@ -2,7 +2,7 @@
 //!
 //! A tensor participating in a contraction is viewed as a matrix whose rows
 //! and columns are mixed-radix multi-indices over a *class* of index labels
-//! (see [`crate::plan`]). The row scatter vector `rscat[i]` gives the element
+//! (see `tensorcontract::plan`). The row scatter vector `rscat[i]` gives the element
 //! offset of matrix row `i` relative to the tensor base; likewise `cscat[j]`
 //! for columns. Element `(i, j)` then lives at `base + rscat[i] + cscat[j]`.
 //!
@@ -25,8 +25,8 @@
 //! detail: it is the only way for a caller — the project's own benchmark
 //! harness included — to describe the traversal the engine is about to make,
 //! and to report regularity at the same granularity the engine sees. Combine
-//! with [`crate::Plan::oriented_scatters`] and
-//! [`crate::kernel::plan_config`], which give the vectors and the block sizes
+//! with `tensorcontract::Plan::oriented_scatters` and
+//! `tensorcontract::kernel::plan_config`, which give the vectors and the block sizes
 //! actually used.
 //!
 //! # Forcing the gather path
@@ -37,7 +37,7 @@
 //! block-scatter row addressing and the `alpha = 1, beta = 0` copy along with
 //! it. Results are unaffected — this exists so the fast path is an A/B switch at
 //! run time rather than a rebuild, in the same spirit as
-//! `TENSORCONTRACT_KERNEL=scalar` (see [`crate::kernel`]). Read once per
+//! `TENSORCONTRACT_KERNEL=scalar` (see `tensorcontract::kernel`). Read once per
 //! process.
 
 /// Sentinel stored in a block-scatter vector for a block whose scatter entries
@@ -54,13 +54,13 @@ pub const IRREGULAR: i64 = i64::MIN;
 ///
 /// Panics if `extents` and `strides` have different lengths — but only as a
 /// `debug_assert_eq!`, because inside the crate both always come from one
-/// [`crate::Layout`]. In a release build a *short* `strides` still panics, on
+/// `tensorcontract::Layout`. In a release build a *short* `strides` still panics, on
 /// the index rather than the assertion, while a long one has its tail silently
 /// ignored; a caller assembling the two slices separately should check the
 /// lengths itself.
 ///
 /// ```
-/// use tensorcontract::scatter::build_scatter;
+/// use tprims_gemm_kernel::scatter::build_scatter;
 ///
 /// // Two modes: extent 2 stride 1 (fastest), extent 3 stride 10.
 /// // Entry n is the element offset of the n'th index tuple.
@@ -119,7 +119,7 @@ pub fn build_scatter(extents: &[i64], strides: &[i64]) -> Vec<i64> {
 /// size of zero, and the block count below would divide by it.
 ///
 /// ```
-/// use tensorcontract::scatter::{build_block_scatter, build_scatter, IRREGULAR};
+/// use tprims_gemm_kernel::scatter::{build_block_scatter, build_scatter, IRREGULAR};
 ///
 /// let scat = build_scatter(&[2, 3], &[1, 10]);   // [0, 1, 10, 11, 20, 21]
 ///
@@ -167,7 +167,7 @@ fn run_stride(run: &[i64]) -> i64 {
 /// lives here rather than in either of them.
 ///
 /// ```
-/// use tensorcontract::scatter::{build_scatter, run_structure};
+/// use tprims_gemm_kernel::scatter::{build_scatter, run_structure};
 ///
 /// // Three maximal runs of length 2, each of stride 1.
 /// let scat = build_scatter(&[2, 3], &[1, 10]);
@@ -209,7 +209,7 @@ pub fn run_structure(scat: &[i64]) -> Option<(usize, i64)> {
 /// Exactly the fraction that reaches a strided rather than a gather traversal.
 ///
 /// ```
-/// use tensorcontract::scatter::unbroken_fraction;
+/// use tprims_gemm_kernel::scatter::unbroken_fraction;
 ///
 /// // Six entries in runs of 2. Blocks of 2 align with the runs exactly.
 /// assert_eq!(unbroken_fraction(6, 2, 2), 1.0);
@@ -235,7 +235,7 @@ pub fn unbroken_fraction(total: usize, len: usize, blk: usize) -> f64 {
 /// diagnostics and for the planar-vs-TTGT dispatch heuristic.
 ///
 /// ```
-/// use tensorcontract::scatter::{regular_fraction, IRREGULAR};
+/// use tprims_gemm_kernel::scatter::{regular_fraction, IRREGULAR};
 ///
 /// assert_eq!(regular_fraction(&[1, 1, IRREGULAR, 1]), 0.75);
 /// // A zero block stride is regular: it is how a reduction's repeated read

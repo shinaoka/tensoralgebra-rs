@@ -1011,6 +1011,8 @@ dependencies = [
  "num-complex",
  "rand",
  "rand_chacha",
+ "tprims-gemm-kernel",
+ "tprims-kernel-tensorcontract",
 ]
 
 [[package]]
@@ -1152,6 +1154,21 @@ dependencies = [
  "strided-basic",
  "tensorcontract",
  "thiserror",
+]
+
+[[package]]
+name = "tprims-gemm-kernel"
+version = "0.1.0"
+dependencies = [
+ "num-complex",
+]
+
+[[package]]
+name = "tprims-kernel-tensorcontract"
+version = "0.1.0"
+dependencies = [
+ "tensorcontract",
+ "tprims-gemm-kernel",
 ]
 
 [[package]]

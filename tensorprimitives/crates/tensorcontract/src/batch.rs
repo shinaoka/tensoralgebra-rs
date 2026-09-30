@@ -142,7 +142,7 @@ where
     T: Element + Send + Sync,
     T::Real: KernelSet,
 {
-    contract_batched_with_threads(items, crate::plan::env_threads())
+    contract_batched_with_threads(items, tprims_gemm_kernel::env_threads())
 }
 
 /// Run every item, parallelising over the batch on at most `threads` threads.

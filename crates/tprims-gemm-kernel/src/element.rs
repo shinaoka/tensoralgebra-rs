@@ -20,8 +20,8 @@ use num_complex::Complex;
 /// Implemented here for `f32`/`f64`. Downstream types (extended precision,
 /// dual numbers for forward-mode AD, `bf16`, ...) can implement this and get a
 /// correct — if unvectorised — contraction engine for free by also
-/// implementing [`crate::kernel::KernelSet`]; there is a worked example in
-/// [`crate::kernel::scalar`].
+/// implementing `tensorcontract::kernel::KernelSet`; there is a worked example in
+/// `tensorcontract::kernel::scalar`.
 ///
 /// The supertrait list is the whole arithmetic requirement, and it is
 /// deliberately short: the engine never divides and never compares for
@@ -95,7 +95,7 @@ pub trait Element: Copy + Send + Sync + fmt::Debug + PartialEq + 'static {
     /// Whether this element type carries an imaginary part.
     ///
     /// This is what decides *which* trait method supplies the kernel — real
-    /// element types never consult a [`crate::kernel::ComplexMethod`] at all.
+    /// element types never consult a [`crate::ComplexMethod`] at all.
     const IS_COMPLEX: bool;
     /// Real flops per multiply-accumulate: 2 for real, 8 for complex.
     ///

@@ -198,7 +198,7 @@ This is a representation detail, not a spec change.
   `tensorcontract::kernel::{cache, scalar, x86, aarch64, selected_config,
   selected_kernel_name, plan_config}` resolve as before via `pub use`.
 
-- [ ] **Step 1: Create the branch and record the baseline**
+- [x] **Step 1: Create the branch and record the baseline**
 
 ```bash
 cd ~/tensor4all/tprims-rs && git fetch && git checkout gemm-engine-spec && git pull
@@ -210,7 +210,7 @@ cargo test --workspace 2>&1 | grep -E "^test result" | awk '{s+=$4} END {print s
 Expected: all green; note the pass count. It must be identical after
 Step 7, because a pure move adds and removes no tests.
 
-- [ ] **Step 2: Create the crates and move files**
+- [x] **Step 2: Create the crates and move files**
 
 ```bash
 mkdir -p crates/tprims-gemm-kernel/src crates/tprims-kernel-tensorcontract/src
@@ -232,7 +232,7 @@ Keeping the rename in its own commit makes `git log --follow` reliable.
 Expected: the commit contains renames only (`git show --stat HEAD` lists
 `rename`).
 
-- [ ] **Step 3: Write `crates/tprims-gemm-kernel/Cargo.toml`**
+- [x] **Step 3: Write `crates/tprims-gemm-kernel/Cargo.toml`**
 
 ```toml
 [package]
@@ -275,7 +275,7 @@ In `tensorcontract/Cargo.toml` add `tprims-gemm-kernel = { workspace = true
 "tprims-kernel-tensorcontract/std"]`, and give
 `tprims-kernel-tensorcontract` a `std = ["tprims-gemm-kernel/std"]` feature.
 
-- [ ] **Step 4: Split `kernel/mod.rs`**
+- [x] **Step 4: Split `kernel/mod.rs`**
 
 Move these items, with their doc comments, verbatim into
 `crates/tprims-gemm-kernel/src/types.rs`:
@@ -343,7 +343,7 @@ pub use tprims_kernel_tensorcontract::aarch64;
 Below that, the existing `selected_config`, `selected_kernel_name`,
 `config_for`, `config_for_plan` and `plan_config`, unchanged.
 
-- [ ] **Step 5: Rewire imports**
+- [x] **Step 5: Rewire imports**
 
 - In `tprims-gemm-kernel/src/lib.rs`:
 
@@ -396,12 +396,12 @@ Below that, the existing `selected_config`, `selected_kernel_name`,
 - `tprims-blas/src/scalar.rs` bounds on `tensorcontract::KernelSet` and
   `tensorcontract::Element` keep working through the re-exports.
 
-- [ ] **Step 6: Build and fix until clean**
+- [x] **Step 6: Build and fix until clean**
 
 Run: `cargo build --workspace --all-targets 2>&1 | grep -E "^(error|warning)" | sort | uniq -c`
 Expected: no output. Fix only import paths and visibility; change no logic.
 
-- [ ] **Step 7: Run all tests; counts must match Step 1**
+- [x] **Step 7: Run all tests; counts must match Step 1**
 
 Run:
 ```bash
@@ -413,7 +413,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 Expected: the same total number of passed tests as Step 1, now split across
 crates. Clippy is clean.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add -A && git commit -m "Split the kernel layer into tprims-gemm-kernel and tprims-kernel-tensorcontract

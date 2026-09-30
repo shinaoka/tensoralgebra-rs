@@ -17,6 +17,8 @@ authors = ["Lukas Devos <ldevos@flatironinstitute.org>"]
 
 [dependencies]
 num-complex.workspace = true
+tprims-gemm-kernel.workspace = true
+tprims-kernel-tensorcontract.workspace = true
 
 [features]
 default = ["std"]
@@ -26,7 +28,7 @@ default = ["std"]
 # reachable in code, but it does **not** yet produce a `no_std` build -- the
 # crate has no `#![no_std]` and uses `Vec` for the scatter vectors. Treat this as
 # the seam a future `no_std` port would widen, not as a claim of one.
-std = []
+std = ["tprims-gemm-kernel/std", "tprims-kernel-tensorcontract/std"]
 
 [dev-dependencies]
 rand = "0.8"

@@ -25,6 +25,20 @@ Apache License 2.0 (`crates/tprims-core/include/dlpack/LICENSE`); the Rust
 The history of an imported file is reachable through the import merge
 commit's second parent (for example `git log 6a84228^2 -- strided-perm/src/lib.rs`).
 
+## Kernel-layer move (2026-09-30)
+
+Pure-rename commit `d5776b8` moved Lukas Devos's tensorcontract files into
+`crates/tprims-gemm-kernel` (`element`, `scatter`, `pack`, `writeback`,
+`kernel/cache`) and `crates/tprims-kernel-tensorcontract`
+(`kernel/{scalar,simd,x86,aarch64}`). The type/selection split of
+`kernel/mod.rs` retains the original bodies and relocates their tests.
+Both crates retain Lukas Devos in `authors` and copies of the imported
+MIT/Apache-2.0 license texts. `git log --follow` reaches the original files;
+no imported history was rewritten. Plain `git subtree pull` no longer
+updates these moved files: upstream changes must be reconciled explicitly.
+The kernel provider's path-only tensorcontract dev-dependency preserves
+its existing custom-scalar contraction doctest, not a runtime dependency.
+
 ## Three different uses of prior work
 
 1. **Published algorithm or documented API:** Implement independently from a paper or public operation contract. Record the paper and the important implementation choices in the module and research notes. The algorithm itself does not bring the upstream software license into independently written code. This idea/expression distinction is stated by the [U.S. Copyright Office](https://www.copyright.gov/register/tx-programs.html); local law and any patent claims are separate questions.

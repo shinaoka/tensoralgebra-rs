@@ -27,5 +27,17 @@ ownership, re-entry, trim/drop and cross-pool isolation checks. The existing
 process-default selection registry remains process-wide immutable metadata,
 not a workspace cache. Design/plan/HANDOFF diff passes `git diff --check`.
 
-Implementation is not complete. Task 1 baseline and pure-move test-count
-comparison are next; Tasks 2–12 and final performance/CI gates remain.
+Task 1 preserves all 367 passing workspace tests (including doctests) and
+all 124 tensorcontract/kernel release tests, now distributed across three
+crates. Workspace/all-targets build, std-disabled tensorcontract check,
+formatting and warning-denying rustdoc pass. Clippy 1.98.0 passes with
+`-D warnings`; the default 1.97.1 exits successfully but emits the existing
+unknown-1.98-lint warning. No lint was disabled to obtain the clean result.
+Evidence: `/home/shinaoka/tensor4all/.artifacts/gemm-engine-spec/` baseline
+and `split-*` logs. Runtime kernel dependencies point only downward; a
+path-only dev-dependency preserves the existing custom-scalar doctest.
+The private-env blocking test follows the contract crate rather than
+exposing its env helper solely for a test. No arithmetic bodies changed.
+
+Implementation is not complete. Tasks 2–12 and final performance/CI gates
+remain.

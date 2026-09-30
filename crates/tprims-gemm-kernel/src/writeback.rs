@@ -32,8 +32,8 @@
 //! vectorise.
 
 use crate::element::{Element, Real};
-use crate::kernel::TileFormat;
 use crate::scatter::IRREGULAR;
+use crate::TileFormat;
 
 /// `TENSORCONTRACT_WRITEBACK=gather` forces the general scatter loop, disabling
 /// both the block-scatter row addressing and the `alpha = 1, beta = 0` copy.
@@ -61,8 +61,8 @@ fn force_gather() -> bool {
 ///   value.
 /// * `i < mr` and `j < nr`.
 /// * The tile must be fully initialised. Kernels overwrite rather than
-///   accumulate into it (see [`crate::kernel`]), so this holds after any kernel
-///   call and does *not* hold for a freshly allocated [`crate::buffer::Panel`].
+///   accumulate into it (see `tensorcontract::kernel`), so this holds after any kernel
+///   call and does *not* hold for a freshly allocated `tensorcontract::buffer::Panel`.
 #[inline(always)]
 unsafe fn tile_value<R: Real>(
     ab: *const R,
@@ -109,7 +109,8 @@ unsafe fn tile_value<R: Real>(
 /// `ab` must hold a tile of the size implied by `fmt`, `mr` and `nr`; the
 /// scatter offsets must be in bounds for their tensors.
 #[allow(clippy::too_many_arguments)]
-pub(crate) unsafe fn writeback<T: Element>(
+#[doc(hidden)]
+pub unsafe fn writeback<T: Element>(
     ab: *const T::Real,
     fmt: TileFormat,
     mr: usize,
@@ -198,10 +199,10 @@ pub(crate) unsafe fn writeback<T: Element>(
 /// * For every `i < mrem` and `j < nrem`, `c_base.offset(c_row(i) + c_c[j])`
 ///   must be a valid readable `T` and `d_base.offset(d_row(i) + d_c[j])` a valid
 ///   writable one. These offsets come from the scatter vectors, so this is the
-///   obligation [`crate::Plan::check_bounds`] discharges once per call for the
+///   obligation `tensorcontract::Plan::check_bounds` discharges once per call for the
 ///   whole output rather than per tile.
 /// * `D` must not alias `C`, `A` or `B`. The exclusive borrow in
-///   [`crate::TensorViewMut`] is what supplies this; `Plan::run_raw` hands it to
+///   `tensorcontract::TensorViewMut` is what supplies this; `Plan::run_raw` hands it to
 ///   the caller instead.
 /// * `beta_is_zero` must equal `beta == T::zero()`. When it is true, `c_base`
 ///   and `c_row` are never read and may be dangling — that is how the no-`C`
@@ -267,7 +268,8 @@ unsafe fn writeback_rows<T: Element, CR, DR>(
 /// # Safety
 /// The scatter offsets must be in bounds for their tensors.
 #[allow(clippy::too_many_arguments)]
-pub(crate) unsafe fn scale_only<T: Element>(
+#[doc(hidden)]
+pub unsafe fn scale_only<T: Element>(
     beta: T,
     c_base: *const T,
     c_r: &[i64],

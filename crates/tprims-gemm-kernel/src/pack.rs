@@ -23,12 +23,13 @@
 //! imaginary part as it is written, in every format.
 
 use crate::element::Element;
-use crate::kernel::PackFormat;
 use crate::scatter::IRREGULAR;
+use crate::PackFormat;
 
 /// Number of `T::Real` values a packed panel needs.
 #[inline]
-pub(crate) fn panel_len(vlen: usize, vr: usize, kc: usize, fmt: PackFormat) -> usize {
+#[doc(hidden)]
+pub fn panel_len(vlen: usize, vr: usize, kc: usize, fmt: PackFormat) -> usize {
     vlen.div_ceil(vr) * vr * kc * fmt.reals_per_element()
 }
 
@@ -51,7 +52,8 @@ pub(crate) fn panel_len(vlen: usize, vr: usize, kc: usize, fmt: PackFormat) -> u
 /// `base` must be valid for reads at every `vscat[v] + kscat[p]`, and `out`
 /// valid for `panel_len(vscat.len(), vr, kscat.len(), fmt)` writes.
 #[allow(clippy::too_many_arguments)]
-pub(crate) unsafe fn pack_panel<T: Element>(
+#[doc(hidden)]
+pub unsafe fn pack_panel<T: Element>(
     base: *const T,
     vscat: &[i64],
     vbs: &[i64],
@@ -117,7 +119,7 @@ pub(crate) unsafe fn pack_panel<T: Element>(
 ///   `3 * vr + t`, four times as far as `Real`.
 /// * `t < vr`.
 /// * The whole k-step is treated as write-only. `emit` never reads what is
-///   there, which is what lets [`crate::buffer::Panel`] hand back uninitialised
+///   there, which is what lets `tensorcontract::buffer::Panel` hand back uninitialised
 ///   memory — but it also means every lane must be emitted before the panel is
 ///   read, and that is why the caller zero-fills the lanes of an edge block
 ///   rather than leaving them.

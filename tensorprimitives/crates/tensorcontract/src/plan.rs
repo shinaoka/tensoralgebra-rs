@@ -52,6 +52,8 @@
 //! claim on contiguity; `K` only affects the packing of `A` and `B`. This is a
 //! heuristic and a Phase 4 tuning knob.
 
+use tprims_gemm_kernel::env_once;
+
 use crate::error::{Error, Result};
 use crate::layout::Layout;
 use crate::scatter::{build_scatter, run_structure, unbroken_fraction};
@@ -606,7 +608,7 @@ impl Plan {
     /// amortisation guard was the other candidate and was measured and rejected:
     /// it is a trade, costing a correctly-threaded caller 10-39%.
     pub fn threads(&self) -> usize {
-        self.threads.unwrap_or_else(env_threads)
+        self.threads.unwrap_or_else(tprims_gemm_kernel::env_threads)
     }
 
     /// How execution will split the output across threads: `(pm, pn)`, the
@@ -1160,22 +1162,6 @@ fn partition_override() -> PartitionMode {
             }
         }
     )
-}
-
-/// `TENSORCONTRACT_THREADS=<n>` sets the default thread count. Read once per
-/// process. Unset means **1**: see [`Plan::threads`] for why that is the default
-/// while Phase 4 is still measuring, and note that it keeps every committed
-/// single-core number reproducible from a bare checkout.
-///
-/// Visible to the crate because the blocking model needs a thread count when it
-/// is asked for a configuration without a plan — one definition of the default,
-/// rather than two readers of one variable.
-pub(crate) fn env_threads() -> usize {
-    env_once!(usize, "TENSORCONTRACT_THREADS", 1, |v: &str| v
-        .trim()
-        .parse::<usize>()
-        .unwrap_or(1)
-        .max(1))
 }
 
 /// Collapse repeated labels within one tensor onto its diagonal, validating

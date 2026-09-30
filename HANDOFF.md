@@ -1,10 +1,14 @@
 # HANDOFF — switchable GEMM engine (issue #23)
 
 Date: 2026-09-30. Branch: `gemm-engine-spec` (pushed, no PR yet).
-State: **implementation resumed in the main session; Task 1 baseline is
-next.** On 2026-09-30 the maintainer rejected the process-global workspace
-ruling and approved pool-owned team buffers plus worker-local A/tile buffers.
-The spec and Task 8 now reflect that correction; no implementation has moved yet.
+State: **implementation resumed in the main session; Task 1 complete,
+Task 2 next.** The pure-rename commit is `d5776b8`; workspace tests remain
+367 and the combined kernel/driver release tests remain 124. Build, fmt,
+rustdoc, std-disabled check and clippy 1.98 pass. Evidence is linked from
+`docs/worklogs/2026-09-30-switchable-gemm-engine.md`.
+On 2026-09-30 the maintainer rejected the process-global workspace ruling
+and approved pool-owned team buffers plus worker-local A/tile buffers.
+The spec and Task 8 now reflect that correction.
 
 ## Read first (in this order)
 
@@ -29,8 +33,8 @@ The spec and Task 8 now reflect that correction; no implementation has moved yet
 - Execute the plan sequentially in the main session, with tests first and
   a final integrated self-review. Do not delegate unless requested. The
   superpowers skills named in the original plan are not installed here.
-- Start at Task 1, Step 1. It rebases this branch on `origin/main`; the
-  whole plan is one PR on this branch.
+- Continue at Task 2, Step 1. Task 1 rebased on `origin/main` (already
+  up to date); the whole plan remains one PR on this branch.
 - Stop after Task 12: merge on green CI plus the non-regression gate, and
   update #23. Optimization (DynamicTiles, native SIMD complex kernels,
   ports, per-node team pools, C ABI) is a separate session.
