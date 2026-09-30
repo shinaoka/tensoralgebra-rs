@@ -572,6 +572,8 @@ pub(crate) unsafe fn execute_capped<T>(
                     tile_fmt: ukr.tile_fmt,
                     b_access: BAccess::Packed,
                     kernel: UkrFn::Tile(ukr.func),
+                    inner: None,
+                    method: None,
                 },
                 cfg.blk,
             )
@@ -794,7 +796,16 @@ pub(crate) unsafe fn execute_capped<T>(
     if p == 1 {
         let mut ap = Panel::<T::Real>::new(ap_len);
         let mut tile = Panel::<T::Real>::new(fam.tile);
-        run_strip::<T>(&cx, 0, m, ap.as_mut_ptr(), tile.as_mut_ptr(), BPart::SERIAL);
+        let mut scratch = Panel::<T::Real>::new(fam.induced_scratch(kc));
+        run_strip::<T>(
+            &cx,
+            0,
+            m,
+            ap.as_mut_ptr(),
+            tile.as_mut_ptr(),
+            scratch.as_mut_ptr(),
+            BPart::SERIAL,
+        );
         return;
     }
 
@@ -826,10 +837,21 @@ pub(crate) unsafe fn execute_capped<T>(
         let hi = (((r + 1) * npanels / pm) * mr).min(cx.m);
         let mut ap = Panel::<T::Real>::new(ap_len);
         let mut tile = Panel::<T::Real>::new(cx.fam.tile);
+        let mut scratch = Panel::<T::Real>::new(cx.fam.induced_scratch(cx.kc));
         // SAFETY: `execute`'s contract covers the accesses; the strips and column
         // groups partition the output, so this thread's writes are disjoint from
         // every other thread's.
-        unsafe { run_strip::<T>(cx, lo, hi, ap.as_mut_ptr(), tile.as_mut_ptr(), bpart) };
+        unsafe {
+            run_strip::<T>(
+                cx,
+                lo,
+                hi,
+                ap.as_mut_ptr(),
+                tile.as_mut_ptr(),
+                scratch.as_mut_ptr(),
+                bpart,
+            )
+        };
     };
 
     // Pooled if asked for and if the pool can serve this width, otherwise spawn.
@@ -896,6 +918,7 @@ unsafe fn run_strip<T>(
     m_hi: usize,
     ap_ptr: *mut T::Real,
     tile_ptr: *mut T::Real,
+    scratch_ptr: *mut T::Real,
     bpart: BPart<'_>,
 ) where
     T: Element,
@@ -1088,9 +1111,20 @@ unsafe fn run_strip<T>(
                                 && *d_n_bs.get_unchecked(j0 / nr) != IRREGULAR;
 
                             match fam.kernel {
-                                UkrFn::Tile(func) => {
-                                    // SAFETY: full packed panels and tile per family contract.
-                                    unsafe { (func)(pc_len, apan, bpan, tile_ptr) };
+                                UkrFn::Tile(_) => {
+                                    // SAFETY: full packed panels and tile per
+                                    // family contract; an induced family
+                                    // scales the inner kernel's k itself.
+                                    unsafe {
+                                        tprims_gemm_kernel::induced::tile_call(
+                                            &fam,
+                                            pc_len,
+                                            apan,
+                                            bpan,
+                                            tile_ptr,
+                                            scratch_ptr,
+                                        )
+                                    };
                                 }
                                 UkrFn::Direct(func) => {
                                     // A direct tile overlaps the accumulator it

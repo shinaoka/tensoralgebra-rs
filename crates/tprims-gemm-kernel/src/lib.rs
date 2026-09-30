@@ -41,6 +41,7 @@ pub mod cache;
 mod cpu;
 pub mod element;
 mod family;
+pub mod induced;
 #[doc(hidden)]
 pub mod pack;
 pub mod portable;

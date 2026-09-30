@@ -238,6 +238,23 @@ pub struct DriverFamily<R: 'static> {
     pub b_access: BAccess,
     /// The kernel arm.
     pub kernel: UkrFn<R>,
+    /// Induced families' inner real kernel, or none.
+    pub inner: Option<&'static KernelFamily<R>>,
+    /// Complex method, or none for real storage.
+    pub method: Option<Method>,
+}
+
+impl<R: 'static> DriverFamily<R> {
+    /// Reals of scratch the tile arm needs beyond its accumulator tile: the
+    /// contiguous panels the 4m method copies planar packing into, and nothing
+    /// at all for the other arms.
+    pub fn induced_scratch(&self, kc: usize) -> usize {
+        if self.method == Some(Method::FourM) {
+            crate::induced::four_m_scratch(self.mr, self.nr, kc)
+        } else {
+            0
+        }
+    }
 }
 
 /// Monomorphized packer for one element type and layout.
@@ -318,6 +335,10 @@ pub struct KernelFamily<R: 'static> {
     pub blocks: Blocksizes,
     /// Supported operand operations.
     pub caps: Caps,
+    /// The real family this one's arithmetic is induced from, or none. Set
+    /// only for [`KernelImpl::Induced`] families; the driver scales the inner
+    /// kernel's k loop rather than calling `ukr` itself.
+    pub inner: Option<&'static KernelFamily<R>>,
     /// Whether Auto may choose this family.
     pub allow_auto: bool,
 }
@@ -402,6 +423,16 @@ impl<R: Real> KernelFamily<R> {
         if matches!(self.b_access, BAccess::Direct { .. }) && self.c_update != CUpdate::Direct {
             return fail("direct B needs a Direct kernel");
         }
+        if self.imp == KernelImpl::Induced {
+            let Some(inner) = self.inner else {
+                return fail("induced family has no inner real kernel");
+            };
+            if inner.complex.is_some() || inner.imp == KernelImpl::Induced {
+                return fail("induced family's inner kernel is not a real family");
+            }
+        } else if self.inner.is_some() {
+            return fail("only an induced family may carry an inner kernel");
+        }
         Ok(())
     }
 
@@ -452,6 +483,8 @@ impl<R: Real> KernelFamily<R> {
             tile_fmt,
             b_access: self.b_access,
             kernel: self.ukr,
+            inner: self.inner,
+            method: self.complex.map(|s| s.method),
         })
     }
 }

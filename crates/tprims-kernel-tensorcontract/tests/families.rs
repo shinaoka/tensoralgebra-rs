@@ -54,11 +54,16 @@ fn every_available_family_matches_a_packed_product_oracle() {
         for f in Registry::families::<T>(CpuFeatures::detect(), false) {
             f.validate().unwrap();
             // The oracle drives the packed-product arm directly, so it covers
-            // the scratch-tile families; a Direct family's own behaviour is
-            // pinned in `tensorcontract/tests/direct.rs`.
+            // the scratch-tile families; a Direct family's behaviour is pinned
+            // in `tensorcontract/tests/direct.rs` and an induced family's
+            // packing, arithmetic and write-back in `tests/induced.rs`, with
+            // the full driver path covered by the all-family sweeps.
             let Some(u) = f.as_ukr() else {
                 continue;
             };
+            if f.imp == KernelImpl::Induced {
+                continue;
+            }
             let (mr, nr, kc) = (f.mr, f.nr, 7);
             let make = |i: usize| {
                 T::from_parts(

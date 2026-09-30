@@ -5,8 +5,8 @@ use std::{
     sync::OnceLock,
 };
 use tprims_gemm_kernel::{
-    CpuFeatures, Families, Isa, KernelChoice, Method, Origin, Registry, ResolvedGemm, SelectError,
-    C32, C64,
+    CpuFeatures, Families, Isa, KernelChoice, KernelImpl, Method, Origin, Registry, ResolvedGemm,
+    SelectError, C32, C64,
 };
 
 #[derive(Debug, Default)]
@@ -98,7 +98,11 @@ where
         let candidates: Vec<_> = candidates
             .into_iter()
             .filter(|f| {
-                f.origin == Origin::Tensorcontract
+                // The legacy menu is the compiled KernelSet list; an induced
+                // variant of it is a different family that only an explicit id
+                // may choose.
+                f.imp != KernelImpl::Induced
+                    && f.origin == Origin::Tensorcontract
                     && f.isa == isa
                     && (!T::IS_COMPLEX || f.complex.is_some_and(|s| s.method == method))
             })

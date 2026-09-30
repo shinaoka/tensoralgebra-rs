@@ -202,6 +202,7 @@ macro_rules! families {
                 conj_a: true,
                 conj_b: true,
             },
+            inner: None,
             allow_auto: true,
         };
         static $cplx: KernelFamily<$r> = KernelFamily {

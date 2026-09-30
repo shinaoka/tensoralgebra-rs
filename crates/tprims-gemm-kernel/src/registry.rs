@@ -71,6 +71,9 @@ pub trait Families: Element + sealed::Sealed {
     /// Frozen per-storage-dtype process default, including a cached error.
     #[doc(hidden)]
     fn process_default() -> Result<&'static crate::ResolvedGemm<Self::Real>, SelectError>;
+    /// Complex families induced from every registered real family, built once.
+    #[doc(hidden)]
+    fn induced() -> &'static [&'static KernelFamily<Self::Real>];
 }
 macro_rules! families {
     ($t:ty, $r:ty, $name:literal, $builtin:path) => {
@@ -86,6 +89,21 @@ macro_rules! families {
                     .get_or_init(crate::resolved::resolve_default::<$t>)
                     .as_ref()
                     .map_err(Clone::clone)
+            }
+            fn induced() -> &'static [&'static KernelFamily<$r>] {
+                static INDUCED: std::sync::OnceLock<Vec<&'static KernelFamily<$r>>> =
+                    std::sync::OnceLock::new();
+                INDUCED.get_or_init(|| {
+                    let mut out = Vec::new();
+                    for real in Self::all_families().iter().filter(|f| f.complex.is_none()) {
+                        out.extend(
+                            [crate::induced::one_m(real), crate::induced::four_m(real)]
+                                .into_iter()
+                                .flatten(),
+                        );
+                    }
+                    out
+                })
             }
         }
     };
@@ -173,6 +191,7 @@ impl Registry {
     ) -> Vec<&'static KernelFamily<T::Real>> {
         let mut families: Vec<_> = T::all_families()
             .into_iter()
+            .chain(T::induced().iter().copied())
             .filter(|f| f.complex.is_some() == T::IS_COMPLEX)
             .filter(|f| include_unavailable || cpu.contains(f.required))
             .collect();
@@ -201,7 +220,10 @@ impl Registry {
         id: &str,
         cpu: CpuFeatures,
     ) -> Result<&'static KernelFamily<T::Real>, SelectError> {
-        let all = T::all_families();
+        let all: Vec<_> = T::all_families()
+            .into_iter()
+            .chain(T::induced().iter().copied())
+            .collect();
         if let Some(f) = all.iter().find(|f| f.id == id) {
             if all
                 .iter()

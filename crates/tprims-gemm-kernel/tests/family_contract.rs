@@ -28,6 +28,7 @@ const fn fam(mr: usize, nr: usize) -> KernelFamily<f64> {
             conj_a: true,
             conj_b: true,
         },
+        inner: None,
         allow_auto: true,
     }
 }
