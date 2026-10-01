@@ -201,9 +201,35 @@ fn run<T: Scalar>(
     let av = StridedView::new(&ad, &e.a.dims, &e.a.strides, oa as isize).expect("a");
     let bv = StridedView::new(&bd, &e.b.dims, &e.b.strides, ob as isize).expect("b");
     let mut outs = Vec::new();
-    for (tag, strategy) in [("pg", Strategy::PermuteGemm), ("tblis", Strategy::Tblis)] {
+    // `--partition dynamic:JM,JN` adds a separately labelled TBLIS row that uses
+    // the opt-in dynamic scheduler; the pg and static tblis rows are unchanged.
+    let dynamic = tprims_bench::partition::from_args();
+    let mut variants = vec![
+        ("pg".to_string(), Strategy::PermuteGemm, None),
+        ("tblis".to_string(), Strategy::Tblis, None),
+    ];
+    if dynamic.is_some() {
+        variants.push((
+            format!("tblis{}", tprims_bench::partition::suffix(dynamic)),
+            Strategy::Tblis,
+            dynamic,
+        ));
+    }
+    for (tag, strategy, partition) in variants.iter().map(|(t, s, p)| (t.as_str(), *s, *p)) {
+        let gemm = tprims_bench::partition::apply(
+            tprims_blas::GemmConfig {
+                engine: if partition.is_some() {
+                    tprims_blas::EngineChoice::Packed
+                } else {
+                    Default::default()
+                },
+                ..Default::default()
+            },
+            partition,
+        );
         let mk = || {
-            ContractPlan::<T>::new(
+            ContractPlan::<T>::new_with(
+                &gemm,
                 &cfg,
                 (&e.a.dims, &e.a.strides),
                 (&e.b.dims, &e.b.strides),

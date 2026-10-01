@@ -17,6 +17,7 @@ pgx86 = ["tprims-blas/kernel-pgx86"]
 [dependencies]
 tprims-exec = { workspace = true, features = ["strided"] }
 tprims-blas = { workspace = true }
+tprims-gemm-kernel = { workspace = true }
 tprims-linalg = { workspace = true }
 tprims-contract = { workspace = true }
 tprims-core = { workspace = true }

@@ -96,6 +96,11 @@ pub(crate) fn prepare<T: Scalar>(
     let (oc, od) = (Operand::new(&ld, &id), Operand::new(&ld, &id));
     // C is D itself (in place); beta == 0 never reads it.
     let plan = Plan::new(oa, ob, Some(oc), od)?;
+    let plan = if cfg.has_partition_request() {
+        plan.with_partition(cfg.partition, cfg.partition_opts)
+    } else {
+        plan
+    };
     let plan = match custom {
         Some(custom) => select(plan.with_threads(threads), [oa, ob, oc, od], custom)?,
         None => plan.with_kernel(cfg.kernel.clone()).map_err(as_select)?,
@@ -196,6 +201,7 @@ impl<T: Scalar> OnePlan<T> {
             kc: rg.kc,
             partition: rg.partition,
             batched: None,
+            dynamic: tensorcontract::dynamic_report(&self.plan, rg, self.width),
         }
     }
 
@@ -276,6 +282,9 @@ pub(crate) fn plan_one<T: Scalar>(
     let mut plan = Plan::new(oa, ob, Some(oc), od)?;
     if custom.is_none() {
         plan = plan.with_kernel(cfg.kernel.clone()).map_err(as_select)?;
+    }
+    if cfg.has_partition_request() {
+        plan = plan.with_partition(cfg.partition, cfg.partition_opts);
     }
     if let Some(method) = cfg.method {
         // A method the driver's planner can express goes into the plan; the

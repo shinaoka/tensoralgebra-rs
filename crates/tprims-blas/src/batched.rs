@@ -234,6 +234,7 @@ pub(crate) fn batched_impl<T: Scalar>(
     // keep their historical report.
     let report = |engine: crate::Engine,
                   rg: Option<&tprims_gemm_kernel::ResolvedGemm<T::Re>>,
+                  dynamic: Option<tensorcontract::DynamicReport>,
                   selected: Selected| crate::SelectedGemm {
         engine,
         family_id: rg.map(|rg| rg.family().id),
@@ -248,6 +249,7 @@ pub(crate) fn batched_impl<T: Scalar>(
         }),
         batched: Some(selected),
         origin: rg.map(|rg| rg.family().origin),
+        dynamic,
     };
     let (m, n, k) = (s.item.c.rows, s.item.c.cols, s.item.a.cols);
     let trivial = m == 0 || n == 0 || s.count == 0 || k == 0 || alpha == crate::scalar::zero();
@@ -260,6 +262,9 @@ pub(crate) fn batched_impl<T: Scalar>(
     } else {
         schedule::<T>(exec, &s)
     };
+    // A custom selection, or a partition request, is resolved before any
+    // empty-problem shortcut so an invalid choice is reported for empty input.
+    let custom_used = custom.is_some();
     let prepared = match (custom, strategy) {
         (Some(custom), _) => Some(crate::tblis::prepare::<T>(
             cfg,
@@ -269,14 +274,24 @@ pub(crate) fn batched_impl<T: Scalar>(
             sched.inner,
             Some(custom),
         )?),
+        (None, BatchStrategy::Tblis) if cfg.has_partition_request() => Some(
+            crate::tblis::prepare::<T>(cfg, &s, a.conj, b.conj, sched.inner, None)?,
+        ),
         _ => None,
     };
-    let custom_used = prepared.is_some();
-    let chosen = prepared.as_ref().map(|(_, rg)| rg);
+    let dyn_report = prepared
+        .as_ref()
+        .and_then(|(plan, rg)| tensorcontract::dynamic_report(plan, rg, sched.inner));
+    let chosen = prepared.as_ref().filter(|_| custom_used).map(|(_, rg)| rg);
     // Empty problems touch no pointer: an empty view's pointer and batch
     // stride are not validated by strided-view.
     if m == 0 || n == 0 || s.count == 0 {
-        return Ok(report(engine_of(strategy), chosen, selected(false)));
+        return Ok(report(
+            engine_of(strategy),
+            chosen,
+            dyn_report,
+            selected(false),
+        ));
     }
     if k == 0 || alpha == crate::scalar::zero() {
         // C = beta * C per item; A and B are not referenced. C is non-empty,
@@ -288,7 +303,12 @@ pub(crate) fn batched_impl<T: Scalar>(
                 crate::operand::scale_in_place(cp.offset(i as isize * s.sc), &s.item.c, beta)
             };
         }
-        return Ok(report(engine_of(strategy), chosen, selected(false)));
+        return Ok(report(
+            engine_of(strategy),
+            chosen,
+            dyn_report,
+            selected(false),
+        ));
     }
     // All three operands are non-empty here, so their pointers and batch
     // strides were validated at view construction.
@@ -310,6 +330,7 @@ pub(crate) fn batched_impl<T: Scalar>(
             Ok(report(
                 crate::Engine::Packed,
                 custom_used.then_some(&rg),
+                dyn_report,
                 selected,
             ))
         }
@@ -351,6 +372,7 @@ pub(crate) fn batched_impl<T: Scalar>(
             Ok(report(
                 crate::Engine::Faer,
                 None,
+                None,
                 Selected::FaerLoop {
                     outer_parallel: sched.outer.is_some(),
                 },
@@ -372,7 +394,9 @@ fn engine_of(strategy: BatchStrategy) -> crate::Engine {
 fn require_faer_loop_config(cfg: &crate::GemmConfig) -> Result<()> {
     let unsupported = match cfg.engine {
         crate::EngineChoice::Auto | crate::EngineChoice::Faer => {
-            cfg.kernel != tprims_gemm_kernel::KernelChoice::Auto || cfg.method.is_some()
+            cfg.kernel != tprims_gemm_kernel::KernelChoice::Auto
+                || cfg.method.is_some()
+                || cfg.has_partition_request()
         }
         crate::EngineChoice::PrivateGemmX86 | crate::EngineChoice::Packed => true,
     };

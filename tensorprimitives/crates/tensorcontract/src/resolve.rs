@@ -143,6 +143,37 @@ where
     if let Some(blk) = p.blocking {
         rg = rg.with_blocking(blk)?;
     }
+    apply_partition::<T>(p, rg)
+}
+
+/// Apply the plan's partition request to a resolution: validate it against the
+/// family, and for `DynamicTiles` prove the job counts and the claim counter's
+/// bound fit in `usize` for this shape (in either orientation), so nothing can
+/// overflow once execution starts.
+fn apply_partition<T: Families>(
+    p: &Plan,
+    rg: ResolvedGemm<T::Real>,
+) -> Result<ResolvedGemm<T::Real>, SelectError> {
+    let Some((policy, opts)) = p.partition else {
+        return Ok(rg);
+    };
+    let rg = rg.with_partition(policy, opts)?;
+    if let tprims_gemm_kernel::PartitionPolicy::DynamicTiles { job_m, job_n } = policy {
+        let (m, n) = (p.a_m.len(), p.b_n.len());
+        let jobs = |m: usize, n: usize| {
+            m.div_ceil(job_m)
+                .checked_mul(n.div_ceil(job_n))
+                // Every worker's terminal claim, with generous slack.
+                .and_then(|j| j.checked_add(1 << 16))
+                .filter(|&j| j < usize::MAX / 2)
+        };
+        if jobs(m, n).is_none() || jobs(n, m).is_none() {
+            return Err(SelectError::Incompatible {
+                id: rg.family().id.into(),
+                reason: "DynamicTiles job count overflows for this shape",
+            });
+        }
+    }
     Ok(rg)
 }
 
@@ -195,7 +226,7 @@ fn resolve_forced<T: Families>(
     if let Some(blk) = p.blocking {
         rg = rg.with_blocking(blk)?;
     }
-    Ok(rg)
+    apply_partition::<T>(p, rg)
 }
 
 pub(crate) fn validate<T: Element>(p: &Plan) -> crate::Result<()>

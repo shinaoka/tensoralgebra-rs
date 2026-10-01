@@ -324,6 +324,7 @@ where
             partition: tprims_gemm_kernel::PartitionPolicy::default(),
             batched: None,
             origin: None,
+            dynamic: None,
         },
         |(_, _, one)| one.report(),
     ))

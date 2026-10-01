@@ -54,6 +54,16 @@ impl TbPlan {
     > {
         self.plan.resolved::<T>()
     }
+
+    /// The dynamic assignment this plan resolved to, when its policy is
+    /// `DynamicTiles`. A contraction plan is built before an executor is
+    /// chosen, so the active width reported is the job-count cap.
+    pub(crate) fn dynamic<R: tprims_gemm_kernel::Real>(
+        &self,
+        rg: &tprims_gemm_kernel::ResolvedGemm<R>,
+    ) -> Option<tensorcontract::DynamicReport> {
+        tensorcontract::dynamic_report(&self.plan, rg, usize::MAX)
+    }
 }
 
 fn layout(dims: &[usize], strides: &[isize]) -> Result<Layout> {
@@ -131,6 +141,11 @@ pub(crate) fn plan<T: Scalar>(
     );
     let (oc, od) = (Operand::new(&yc, &lc), Operand::new(&yc, &lc));
     let plan = Plan::new(oa, ob, Some(oc), od).map_err(Error::backend)?;
+    let plan = if gemm.has_partition_request() {
+        plan.with_partition(gemm.partition, gemm.partition_opts)
+    } else {
+        plan
+    };
     let plan = match custom {
         None => plan
             .with_kernel(gemm.kernel.clone())
