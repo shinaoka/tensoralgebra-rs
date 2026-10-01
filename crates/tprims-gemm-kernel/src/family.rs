@@ -22,6 +22,14 @@ pub enum Origin {
     Gemm,
     /// Called private-gemm-x86 engine.
     PrivateGemmX86,
+    /// A downstream crate's own kernels, admitted through a caller-scoped
+    /// [`KernelCatalog`](crate::KernelCatalog); the provider reports itself.
+    External {
+        /// Providing crate.
+        crate_name: &'static str,
+        /// License of the underlying kernel implementation.
+        license: &'static str,
+    },
 }
 impl Origin {
     /// Crate providing this implementation.
@@ -30,6 +38,8 @@ impl Origin {
     /// ```
     /// use tprims_gemm_kernel::Origin;
     /// assert_eq!(Origin::Portable.crate_name(), "tprims-gemm-kernel");
+    /// let own = Origin::External { crate_name: "my-kernels", license: "Apache-2.0" };
+    /// assert_eq!((own.crate_name(), own.license()), ("my-kernels", "Apache-2.0"));
     /// ```
     pub const fn crate_name(self) -> &'static str {
         match self {
@@ -37,6 +47,7 @@ impl Origin {
             Self::Portable => "tprims-gemm-kernel",
             Self::Gemm => "tprims-kernel-gemm",
             Self::PrivateGemmX86 => "tprims-kernel-pgx86",
+            Self::External { crate_name, .. } => crate_name,
         }
     }
     /// License of the underlying kernel implementation (not the adapter).
@@ -50,6 +61,7 @@ impl Origin {
         match self {
             Self::Tensorcontract | Self::Portable => "MIT OR Apache-2.0",
             Self::Gemm | Self::PrivateGemmX86 => "MIT",
+            Self::External { license, .. } => license,
         }
     }
 }

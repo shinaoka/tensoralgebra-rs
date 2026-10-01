@@ -318,24 +318,26 @@ impl<R: Real> ResolvedGemm<R> {
         partition: PartitionPolicy,
         opts: PartitionOpts,
     ) -> Result<Self, SelectError> {
-        match partition {
-            PartitionPolicy::DynamicTiles { .. } => {
-                return Err(SelectError::NotImplemented {
-                    what: "DynamicTiles partition",
-                })
-            }
-            PartitionPolicy::StaticGrid { pm, pn } if (pm == 0) != (pn == 0) => {
-                return Err(SelectError::Incompatible {
-                    id: "StaticGrid".into(),
-                    reason: "pm and pn must both be zero (driver cost model) or both nonzero",
-                })
-            }
-            PartitionPolicy::StaticGrid { .. } => {}
-        }
+        Self::check_partition(partition)?;
         let mut rg = Self::resolve_selected::<T>(choice, effective_threads)?;
         rg.partition = partition;
         rg.opts = opts;
         Ok(rg)
+    }
+
+    fn check_partition(partition: PartitionPolicy) -> Result<(), SelectError> {
+        match partition {
+            PartitionPolicy::DynamicTiles { .. } => Err(SelectError::NotImplemented {
+                what: "DynamicTiles partition",
+            }),
+            PartitionPolicy::StaticGrid { pm, pn } if (pm == 0) != (pn == 0) => {
+                Err(SelectError::Incompatible {
+                    id: "StaticGrid".into(),
+                    reason: "pm and pn must both be zero (driver cost model) or both nonzero",
+                })
+            }
+            PartitionPolicy::StaticGrid { .. } => Ok(()),
+        }
     }
 
     fn resolve_selected<T: Families<Real = R>>(
@@ -369,6 +371,64 @@ impl<R: Real> ResolvedGemm<R> {
             }
         };
         let family = Registry::select::<T>(id, cpu)?;
+        Self::bind_family::<T>(family, effective_threads)
+    }
+
+    /// Bind a trusted handle's family for the storage dtype `T`.
+    ///
+    /// The handle is the proof of trust: it can only be minted by a
+    /// [`KernelCatalog`](crate::KernelCatalog), so no descriptor reaches this
+    /// path from safe code unchecked. Selection is not repeated here; the
+    /// caller (the planner) has already checked the handle against the
+    /// operation. Blocking is derived exactly as for an id resolution.
+    ///
+    /// # Errors
+    /// `Incompatible` for zero width or blocking arithmetic overflow, and
+    /// `CpuUnsupported` when this CPU lacks the family's requirements.
+    ///
+    /// # Examples
+    /// ```
+    /// use tprims_gemm_kernel::{KernelCatalog, PartitionOpts, PartitionPolicy, ResolvedGemm};
+    /// let catalog = KernelCatalog::<f64>::builtin();
+    /// let handle = catalog.get("portable.f64.4x4").unwrap();
+    /// let rg = ResolvedGemm::<f64>::resolve_handle::<f64>(
+    ///     &handle, 2, PartitionPolicy::default(), PartitionOpts::default())?;
+    /// assert_eq!(rg.family().id, "portable.f64.4x4");
+    /// # Ok::<(), tprims_gemm_kernel::SelectError>(())
+    /// ```
+    pub fn resolve_handle<T: Families<Real = R>>(
+        handle: &crate::KernelHandle<T>,
+        effective_threads: usize,
+        partition: PartitionPolicy,
+        opts: PartitionOpts,
+    ) -> Result<Self, SelectError> {
+        Self::check_partition(partition)?;
+        let family = handle.family();
+        let cpu = CpuFeatures::detect();
+        if !cpu.contains(family.required) {
+            return Err(SelectError::CpuUnsupported {
+                id: family.id.into(),
+                missing: cpu.missing(family.required),
+            });
+        }
+        if effective_threads == 0 {
+            return Err(SelectError::Incompatible {
+                id: family.id.into(),
+                reason: "zero effective thread width",
+            });
+        }
+        let mut rg = Self::bind_family::<T>(family, effective_threads)?;
+        rg.partition = partition;
+        rg.opts = opts;
+        Ok(rg)
+    }
+
+    /// Geometry, formats and frozen blocking policy for an already trusted,
+    /// already CPU-checked family. Shared by id and handle resolution.
+    fn bind_family<T: Families<Real = R>>(
+        family: &'static KernelFamily<R>,
+        effective_threads: usize,
+    ) -> Result<Self, SelectError> {
         let (a_layout, b_layout, tile_fmt) = family
             .complex
             .map(|s| (s.a, s.b, s.tile))
