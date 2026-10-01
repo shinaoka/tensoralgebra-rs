@@ -322,7 +322,7 @@ pub use element::{Element, Real, C32, C64};
 pub use error::{Error, Result};
 pub use kernel::{Blocking, ComplexMethod, KernelSet};
 pub use layout::Layout;
-pub use plan::{ElementOp, Operand, Plan, PlanStats};
+pub use plan::{ElementOp, Operand, Orient, PartitionMode, Plan, PlanStats, RowBlock};
 pub use select::{Chooser, KernelCandidate, OperandMeta, Selection, SelectionContext};
 use tprims_exec::{Exec, WorkspaceProvider};
 pub use tprims_kernel::KernelChoice;

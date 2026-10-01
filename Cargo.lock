@@ -1024,6 +1024,7 @@ dependencies = [
  "rand",
  "rand_chacha",
  "tensorcontract",
+ "tprims-kernel",
 ]
 
 [[package]]
@@ -1094,6 +1095,7 @@ dependencies = [
  "strided-view",
  "tensorcontract",
  "thiserror",
+ "tprims-contract-testkit",
  "tprims-exec",
  "tprims-kernel",
 ]
@@ -1130,6 +1132,7 @@ dependencies = [
  "num-complex",
  "strided-view",
  "tprims-contract-traits",
+ "tprims-kernel",
 ]
 
 [[package]]
@@ -1147,20 +1150,6 @@ dependencies = [
  "rayon",
  "strided-view",
  "tprims-exec",
-]
-
-[[package]]
-name = "tprims-custom-kernel-test"
-version = "0.1.0"
-dependencies = [
- "num-complex",
- "rayon",
- "strided-view",
- "tensorcontract",
- "tprims-blas",
- "tprims-contract",
- "tprims-exec",
- "tprims-kernel",
 ]
 
 [[package]]

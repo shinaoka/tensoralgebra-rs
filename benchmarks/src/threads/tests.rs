@@ -37,11 +37,14 @@ fn threads_flag_parses_and_rejects_zero() {
 }
 
 #[test]
-fn partition_override_is_rejected() {
-    use super::forbidden_env;
-    assert_eq!(
-        forbidden_env(env(&[("TENSORCONTRACT_PARTITION", "4x2")])),
-        Some(("TENSORCONTRACT_PARTITION".into(), "4x2".into()))
-    );
+fn every_removed_variable_is_rejected() {
+    use super::{forbidden_env, REMOVED_ENV_VARS};
+    for name in REMOVED_ENV_VARS {
+        assert_eq!(
+            forbidden_env(env(&[(name, "x")])),
+            Some((name.to_string(), "x".into())),
+            "{name}"
+        );
+    }
     assert_eq!(forbidden_env(env(&[])), None);
 }

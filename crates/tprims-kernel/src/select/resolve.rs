@@ -5,8 +5,9 @@
 use crate::{
     cache::{self, BlockModel, CacheHierarchy, PanelGeom},
     partition::{PartitionOpts, PartitionPolicy},
-    types::{env_blocking, BlockingOverride},
+    types::BlockingOverride,
     Blocking, CpuFeatures, Families, KernelFamily, Layout, Real, Registry, SelectError, TileFormat,
+    Tuning,
 };
 
 /// Family choice, validated for a concrete dtype during resolution.
@@ -29,54 +30,29 @@ pub enum KernelChoice {
     Id(String),
 }
 
-impl KernelChoice {
-    /// `TPRIMS_GEMM_KERNEL`, captured once; absent/auto means Auto.
-    ///
-    /// # Examples
-    /// ```
-    /// assert!(core::ptr::eq(tprims_kernel::KernelChoice::from_env(),
-    ///     tprims_kernel::KernelChoice::from_env()));
-    /// ```
-    pub fn from_env() -> &'static Self {
-        static CHOICE: std::sync::OnceLock<KernelChoice> = std::sync::OnceLock::new();
-        CHOICE.get_or_init(|| {
-            #[cfg(feature = "std")]
-            if let Ok(id) = std::env::var("TPRIMS_GEMM_KERNEL") {
-                if !id.eq_ignore_ascii_case("auto") {
-                    return Self::Id(id);
-                }
-            }
-            Self::Auto
-        })
-    }
-}
-
-/// Frozen process default for one storage dtype. Register providers first;
-/// later registration does not invalidate this immutable metadata cache.
-/// Selection failures are cached too. It owns no execution workspace.
+/// The legacy Auto selection: the highest-priority family that matches the
+/// complex `method` and the ISA preference of `tuning`, at an effective width,
+/// with `tuning` applied. A complex method of [`ComplexMethod::ThreeM`](crate::ComplexMethod)
+/// is eligible although it is excluded from unqualified Auto, because it was
+/// requested explicitly.
+///
+/// # Errors
+/// `Incompatible` when no available family matches.
 ///
 /// # Examples
 /// ```
-/// let a = tprims_kernel::process_default::<f64>()?;
-/// let b = tprims_kernel::process_default::<f64>()?;
-/// assert!(core::ptr::eq(a, b));
+/// use tprims_kernel::{resolve_legacy_auto, ComplexMethod, Tuning};
+/// let rg = resolve_legacy_auto::<f64>(ComplexMethod::Planar, &Tuning::default(), 1)?;
+/// assert!(rg.family().allow_auto);
 /// # Ok::<(), tprims_kernel::SelectError>(())
 /// ```
-pub fn process_default<T: Families>() -> Result<&'static ResolvedGemm<T::Real>, SelectError> {
-    T::process_default()
-}
-
-pub(crate) fn resolve_default<T: Families>() -> Result<ResolvedGemm<T::Real>, SelectError>
-where
-    T::Real: crate::RealSlot,
-{
-    let width = crate::env_threads();
-    if let KernelChoice::Id(_) = KernelChoice::from_env() {
-        return ResolvedGemm::<T::Real>::resolve::<T>(KernelChoice::from_env(), width);
-    }
+pub fn resolve_legacy_auto<T: Families>(
+    method: crate::ComplexMethod,
+    tuning: &Tuning,
+    width: usize,
+) -> Result<ResolvedGemm<T::Real>, SelectError> {
     let cpu = CpuFeatures::detect();
-    let method = crate::ComplexMethod::from_env();
-    let isa = match crate::kernel_force() {
+    let isa = match tuning.kernel_force {
         crate::KernelForce::Auto => None,
         crate::KernelForce::Avx2 if cpu.avx2 && cpu.fma => Some(crate::Isa::Avx2),
         crate::KernelForce::Avx512 if cpu.avx512f && cpu.fma => Some(crate::Isa::Avx512),
@@ -95,8 +71,8 @@ where
                     crate::ComplexMethod::OneM => s.method == crate::Method::OneM,
                     crate::ComplexMethod::ThreeM => s.method == crate::Method::ThreeM,
                 });
-            // ThreeM is excluded from unqualified Auto, but the legacy explicit
-            // COMPLEX=3m control requests it intentionally.
+            // ThreeM is excluded from unqualified Auto, but an explicit 3m
+            // request wants it.
             let eligible =
                 f.allow_auto || (T::IS_COMPLEX && method == crate::ComplexMethod::ThreeM);
             method_matches
@@ -107,7 +83,8 @@ where
             id: "auto".into(),
             reason: "no available family for legacy ISA/complex preference",
         })?;
-    ResolvedGemm::<T::Real>::resolve::<T>(&KernelChoice::Id(family.id.into()), width)
+    ResolvedGemm::<T::Real>::resolve::<T>(&KernelChoice::Id(family.id.into()), width)?
+        .with_tuning(tuning)
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -118,11 +95,11 @@ struct BlockingPolicy {
     explicit: Option<Blocking>,
 }
 impl BlockingPolicy {
-    fn snapshot() -> Self {
+    fn from_tuning(tuning: &Tuning) -> Self {
         Self {
-            model: cache::block_model(),
+            model: tuning.block_model,
             hierarchy: cache::hierarchy(),
-            overrides: env_blocking(),
+            overrides: tuning.blocking.is_set().then_some(tuning.blocking),
             explicit: None,
         }
     }
@@ -159,8 +136,8 @@ impl BlockingPolicy {
 }
 
 /// Resolved immutable family and execution geometry, with no workspace payload.
-/// Blocking environment/cache facts are captured at resolution; retargeting
-/// only recomputes against this snapshot, never reads environment variables.
+/// Blocking inputs (the model, overrides and cache facts) are captured at
+/// resolution; retargeting only recomputes against that snapshot.
 ///
 /// # Examples
 /// ```
@@ -488,10 +465,37 @@ impl<R: Real> ResolvedGemm<R> {
             effective_threads: 0,
             partition: PartitionPolicy::default(),
             opts: PartitionOpts::default(),
-            policy: BlockingPolicy::snapshot(),
-            gather: crate::writeback::force_gather(),
+            policy: BlockingPolicy::from_tuning(&Tuning::default()),
+            gather: false,
         };
         rg.with_threads(effective_threads)
+    }
+
+    /// Apply the explicit tuning inputs: the blocking model and overrides, and the
+    /// write-back mode. Blocking is recomputed at the current effective width, so
+    /// call this before [`with_blocking`](Self::with_blocking) when both are used.
+    ///
+    /// # Errors
+    /// `Incompatible` for blocking arithmetic overflow under the overrides.
+    ///
+    /// # Examples
+    /// ```
+    /// use tprims_kernel::{BlockingOverride, KernelChoice, ResolvedGemm, Tuning};
+    /// let rg = ResolvedGemm::<f64>::resolve::<f64>(&KernelChoice::Auto, 1)?;
+    /// let tuned = rg.with_tuning(&Tuning {
+    ///     blocking: BlockingOverride { kc: Some(8), ..Default::default() },
+    ///     ..Tuning::default()
+    /// })?;
+    /// assert_eq!(tuned.kc, 8);
+    /// # Ok::<(), tprims_kernel::SelectError>(())
+    /// ```
+    pub fn with_tuning(mut self, tuning: &Tuning) -> Result<Self, SelectError> {
+        let explicit = self.policy.explicit;
+        self.policy = BlockingPolicy::from_tuning(tuning);
+        self.policy.explicit = explicit;
+        self.gather = tuning.writeback_gather;
+        let width = self.effective_threads;
+        self.with_threads(width)
     }
 
     /// Override cache blocking, retaining it when the execution width changes.
@@ -516,7 +520,7 @@ impl<R: Real> ResolvedGemm<R> {
 
     /// Recompute blocking using the effective execution width, not the budget.
     /// Percentage overrides apply once to the original family/model, not to an
-    /// already scaled resolution. No selection or environment lookup occurs.
+    /// already scaled resolution. No selection occurs.
     ///
     /// # Errors
     /// Returns `Incompatible` for zero width or blocking arithmetic overflow.

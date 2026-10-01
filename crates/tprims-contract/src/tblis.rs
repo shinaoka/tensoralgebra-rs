@@ -119,9 +119,7 @@ pub(crate) fn plan<T: Scalar>(
         op(Operand::new(&yb, &lb), conj.1),
     );
     let (oc, od) = (Operand::new(&yc, &lc), Operand::new(&yc, &lc));
-    // Registering first lets a forced family id name any built provider.
-    tprims_blas::register_kernels();
-    let plan = Plan::new(oa, ob, Some(oc), od).map_err(Error::backend)?;
+    let plan = gemm.configure(Plan::new(oa, ob, Some(oc), od).map_err(Error::backend)?);
     let plan = if gemm.has_partition_request() {
         plan.with_partition(gemm.partition, gemm.partition_opts)
     } else {

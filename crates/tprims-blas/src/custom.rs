@@ -27,20 +27,8 @@ use crate::{
     Conj, EngineChoice, Error, GemmConfig, GroupedJob, MatIn, Result, Scalar, SelectedGemm,
 };
 
-/// Register the kernel providers this build has (idempotent), so a family id
-/// naming one resolves, or reports the feature to enable, when a plan is built.
-/// The BLAS entry points do this themselves; a layer that builds packed plans
-/// directly (such as `tprims-contract`) calls it first.
-///
-/// # Examples
-/// ```
-/// tprims_blas::register_kernels();
-/// assert!(tprims_blas::list_kernels::<f64>().iter().any(|k| k.id.starts_with("tc.")));
-/// ```
-pub fn register_kernels() {}
-
 /// The built-in and registered families for `T` that this CPU can run, as a
-/// caller-scoped catalog. Registers the workspace's kernel providers first.
+/// caller-scoped catalog.
 ///
 /// # Examples
 /// ```
@@ -56,8 +44,7 @@ pub fn builtin_catalog<T: Scalar>() -> KernelCatalog<T> {
 /// cannot be honoured is refused.
 fn check_config(cfg: &GemmConfig) -> Result<()> {
     match cfg.engine {
-        // `Auto` is overridden by the explicit selector, even when the process
-        // default engine is another one.
+        // `Auto` is overridden by the explicit selector.
         EngineChoice::Auto | EngineChoice::Packed => {}
         EngineChoice::Faer => {
             return Err(Error::Select(SelectError::EngineUnsupported {

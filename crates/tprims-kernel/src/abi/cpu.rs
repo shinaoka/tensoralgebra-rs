@@ -125,13 +125,15 @@ pub enum Isa {
     Neon,
 }
 
-// Moved from tprims-kernel; retained legacy parser/control so
-// registry defaults and the old KernelSet dispatch share one startup fact.
+// Moved from tprims-kernel-tensorcontract; the legacy ISA control of the
+// KernelSet menu and of the legacy Auto selection, now an explicit input
+// (`Tuning::kernel_force`) instead of a process-wide startup fact.
 /// Legacy ISA preference for the tensorcontract family menu.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[doc(hidden)]
 pub enum KernelForce {
     /// Widest available instruction set. The default.
+    #[default]
     Auto,
     /// Portable scalar kernels, whatever the CPU has.
     Scalar,
@@ -143,26 +145,21 @@ pub enum KernelForce {
     Neon,
 }
 
-/// `TENSORCONTRACT_KERNEL=scalar|avx2|avx512|neon|auto`, read once per process.
-/// Unknown values select Auto; unavailable pinned ISAs use scalar fallback.
-#[doc(hidden)]
-pub fn kernel_force() -> KernelForce {
-    crate::env_once!(
-        KernelForce,
-        "TENSORCONTRACT_KERNEL",
-        KernelForce::Auto,
-        |v: &str| {
-            if v.eq_ignore_ascii_case("scalar") {
-                KernelForce::Scalar
-            } else if v.eq_ignore_ascii_case("avx2") {
-                KernelForce::Avx2
-            } else if v.eq_ignore_ascii_case("avx512") {
-                KernelForce::Avx512
-            } else if v.eq_ignore_ascii_case("neon") {
-                KernelForce::Neon
-            } else {
-                KernelForce::Auto
-            }
-        }
-    )
+impl KernelForce {
+    /// Parse `scalar | avx2 | avx512 | neon | auto`, case-insensitively. An
+    /// unavailable pinned ISA falls back to scalar at use; `None` for any
+    /// other spelling.
+    pub fn parse(s: &str) -> Option<KernelForce> {
+        let s = s.trim();
+        [
+            ("auto", KernelForce::Auto),
+            ("scalar", KernelForce::Scalar),
+            ("avx2", KernelForce::Avx2),
+            ("avx512", KernelForce::Avx512),
+            ("neon", KernelForce::Neon),
+        ]
+        .into_iter()
+        .find(|(name, _)| s.eq_ignore_ascii_case(name))
+        .map(|(_, v)| v)
+    }
 }

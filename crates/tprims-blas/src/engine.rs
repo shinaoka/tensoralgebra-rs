@@ -62,9 +62,35 @@ pub struct GemmConfig {
     pub partition: tprims_kernel::PartitionPolicy,
     /// Options that go with [`partition`](Self::partition).
     pub partition_opts: tprims_kernel::PartitionOpts,
+    /// The packed driver's explicit tuning inputs (blocking model and
+    /// overrides, ISA preference, write-back mode); the default is the
+    /// baseline with every knob unset.
+    pub tuning: tprims_kernel::Tuning,
+    /// Row/column orientation request for [`Engine::Packed`].
+    pub orientation: tensorcontract::Orient,
+    /// Micro-tile row-block request for [`Engine::Packed`].
+    pub row_block: tensorcontract::RowBlock,
+    /// Partition rule or pinned layout for [`Engine::Packed`]; distinct from
+    /// [`partition`](Self::partition), which selects a grid or dynamic tiles.
+    pub partition_mode: tensorcontract::PartitionMode,
+    /// A forced L3 domain count for the partition rule.
+    pub l3_domains: Option<usize>,
 }
 
 impl GemmConfig {
+    /// Apply the packed driver's explicit knobs to a plan.
+    pub fn configure(&self, plan: tensorcontract::Plan) -> tensorcontract::Plan {
+        let plan = plan
+            .with_tuning(self.tuning)
+            .with_orientation(self.orientation)
+            .with_row_block(self.row_block)
+            .with_partition_mode(self.partition_mode);
+        match self.l3_domains {
+            Some(n) => plan.with_l3_domains(n),
+            None => plan,
+        }
+    }
+
     /// Whether a partition policy other than the default was requested.
     pub fn has_partition_request(&self) -> bool {
         self.partition != tprims_kernel::PartitionPolicy::default()

@@ -68,9 +68,6 @@ pub trait Families: Element + sealed::Sealed {
     /// Unfiltered family list for this element's arithmetic real type.
     #[doc(hidden)]
     fn all_families() -> Vec<&'static KernelFamily<Self::Real>>;
-    /// Frozen per-storage-dtype process default, including a cached error.
-    #[doc(hidden)]
-    fn process_default() -> Result<&'static crate::ResolvedGemm<Self::Real>, SelectError>;
     /// Complex families induced from every registered real family, built once.
     #[doc(hidden)]
     fn induced() -> &'static [&'static KernelFamily<Self::Real>];
@@ -81,14 +78,6 @@ macro_rules! families {
             const DTYPE: &'static str = $name;
             fn all_families() -> Vec<&'static KernelFamily<$r>> {
                 registered::<$r>($builtin())
-            }
-            fn process_default() -> Result<&'static crate::ResolvedGemm<$r>, SelectError> {
-                static DEFAULT: std::sync::OnceLock<Result<crate::ResolvedGemm<$r>, SelectError>> =
-                    std::sync::OnceLock::new();
-                DEFAULT
-                    .get_or_init(crate::select::resolve::resolve_default::<$t>)
-                    .as_ref()
-                    .map_err(Clone::clone)
             }
             fn induced() -> &'static [&'static KernelFamily<$r>] {
                 static INDUCED: std::sync::OnceLock<Vec<&'static KernelFamily<$r>>> =

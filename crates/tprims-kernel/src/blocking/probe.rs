@@ -164,7 +164,7 @@ impl CacheHierarchy {
     /// whole-node run does anyway; a *scattered* placement spans more domains
     /// than this reports, and the error is in the safe direction — it under-counts,
     /// so the rule falls back to the behaviour every committed number was measured
-    /// with. `TENSORCONTRACT_L3_DOMAINS` overrides it for exactly that case; see
+    /// with. [`l3_domains`]'s `forced` argument overrides it for exactly that case; see
     /// [`l3_domains`].
     ///
     /// A machine with no L3 at all has nothing shared to spread, so every core is
@@ -180,36 +180,22 @@ impl CacheHierarchy {
 
 /// How many L3 domains a `threads`-wide run spans on *this* machine.
 ///
-/// [`CacheHierarchy::l3_domains`] over [`hierarchy`], with
-/// `TENSORCONTRACT_L3_DOMAINS` overriding the derivation. The override exists
-/// because the derivation assumes compact placement: it is how a scattered
-/// cpuset (the same thread count spread one-per-domain instead of packed) can be
-/// measured against a packed one without a rebuild, and it is how the rule is
-/// exercised on a machine that has only one domain.
-///
-/// Read once per process, like every other environment switch here.
-pub fn l3_domains(threads: usize) -> usize {
-    #[cfg(feature = "std")]
-    {
-        use std::sync::OnceLock;
-        static ENV: OnceLock<Option<usize>> = OnceLock::new();
-        let forced = *ENV.get_or_init(|| {
-            std::env::var("TENSORCONTRACT_L3_DOMAINS")
-                .ok()
-                .and_then(|v| v.trim().parse::<usize>().ok())
-                .filter(|&n| n > 0)
-        });
-        if let Some(n) = forced {
-            return n.min(threads.max(1));
-        }
+/// [`CacheHierarchy::l3_domains`] over [`hierarchy`], unless `forced` overrides
+/// the derivation. The override exists because the derivation assumes compact
+/// placement: it is how a scattered cpuset (the same thread count spread
+/// one-per-domain instead of packed) can be measured against a packed one
+/// without a rebuild, and how the rule is exercised on a machine that has only
+/// one domain. A `forced` of zero is ignored.
+pub fn l3_domains(threads: usize, forced: Option<usize>) -> usize {
+    match forced.filter(|&n| n > 0) {
+        Some(n) => n.min(threads.max(1)),
+        None => hierarchy().l3_domains(threads),
     }
-    hierarchy().l3_domains(threads)
 }
 
 /// The cache hierarchy of this machine: sysfs, then `CPUID`, then [`BUILTIN`].
 ///
-/// Probed once per process and cached, the same way `env_blocking` and
-/// `orient_override` are. A probe that fails is never an error: it degrades to
+/// Probed once per process and cached (an immutable hardware fact). A probe that fails is never an error: it degrades to
 /// the next source, and the last source always succeeds.
 pub fn hierarchy() -> CacheHierarchy {
     #[cfg(feature = "std")]
@@ -576,7 +562,7 @@ pub(crate) struct SysctlCaches {
 /// behaviour for a no-L3 part, but on Apple Silicon it *over-counts*: six cores
 /// really do share 16 MiB, so a 12-thread run spans two hardware domains and
 /// this reports twelve. Nothing single-threaded can observe it — `l3_domains(1)`
-/// is 1 and D44's gate never fires — and `TENSORCONTRACT_L3_DOMAINS` expresses
+/// is 1 and D44's gate never fires — and a forced domain count expresses
 /// the physical count for anyone who threads. Which of the two is the right
 /// input to the partition rule on this topology is unmeasured, and picking one
 /// on a guess is what the override is for.

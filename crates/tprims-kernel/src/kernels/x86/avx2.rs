@@ -130,7 +130,7 @@ simd_kernels!(
 /// AVX2, which is one reason these menus can stay short.
 ///
 /// `tcbench shapes` says so quantitatively, and it costs no CPU to re-check
-/// (`TENSORCONTRACT_KERNEL=avx2 tcbench shapes`). Over the 392 corpus
+/// (`TENSORCONTRACT_KERNEL=avx2 tcbench shapes`, which tcbench parses into a pinned-ISA tuning). Over the 392 corpus
 /// case-dtype-methods, `Plan::row_block` would change shape on **26 under
 /// AVX-512 and 12 under AVX2**, and the 12 are all `f32` — it is inert in `f64`
 /// and in all three complex methods in both precisions. The sharper number is

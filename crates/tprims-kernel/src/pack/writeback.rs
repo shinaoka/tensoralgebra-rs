@@ -35,19 +35,6 @@ use crate::element::{Element, Real};
 use crate::scatter::IRREGULAR;
 use crate::TileFormat;
 
-/// `TENSORCONTRACT_WRITEBACK=gather` forces the general scatter loop, disabling
-/// both the block-scatter row addressing and the `alpha = 1, beta = 0` copy.
-///
-/// This is the write-back's counterpart to `TENSORCONTRACT_KERNEL=scalar`: it
-/// makes the fast path an A/B switch at run time rather than a rebuild, so the
-/// two arms can be measured in one session under identical conditions. Read
-/// once per process.
-pub(crate) fn force_gather() -> bool {
-    env_once!(bool, "TENSORCONTRACT_WRITEBACK", false, |v: &str| v
-        .eq_ignore_ascii_case("gather")
-        || v.eq_ignore_ascii_case("scatter"))
-}
-
 /// Read complex element `(i, j)` out of an accumulator tile.
 ///
 /// # Safety
@@ -144,28 +131,12 @@ pub unsafe fn writeback<T: Element>(
     d_rs: i64,
     conj_d: bool,
 ) {
-    // SAFETY: forwarded unchanged; the existing legacy switch is read once.
+    // SAFETY: forwarded unchanged, with the format-specialized fast paths enabled;
+    // a planner that wants the general scatter loop binds `emit_fn(fmt, true)`.
     unsafe {
         writeback_mode::<T>(
-            ab,
-            fmt,
-            mr,
-            nr,
-            mrem,
-            nrem,
-            alpha,
-            beta,
-            c_base,
-            c_r,
-            c_c,
-            c_rs,
-            conj_c,
-            d_base,
-            d_r,
-            d_c,
-            d_rs,
-            conj_d,
-            force_gather(),
+            ab, fmt, mr, nr, mrem, nrem, alpha, beta, c_base, c_r, c_c, c_rs, conj_c, d_base, d_r,
+            d_c, d_rs, conj_d, false,
         )
     }
 }

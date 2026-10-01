@@ -126,3 +126,30 @@ fn two_families_concurrently_on_one_pool() {
         }
     });
 }
+
+/// The packed driver's tuning is part of the configuration: a pinned scalar
+/// kernel and a blocking override reach the plan, and the report says so.
+#[test]
+fn explicit_tuning_reaches_the_packed_plan() {
+    let exec = Exec::serial();
+    let (sel, got) = run(
+        &exec,
+        &GemmConfig {
+            engine: EngineChoice::Packed,
+            tuning: tprims_kernel::Tuning {
+                kernel_force: tprims_kernel::KernelForce::Scalar,
+                blocking: tprims_kernel::BlockingOverride {
+                    kc: Some(4),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let (_, want) = run(&exec, &GemmConfig::default()).unwrap();
+    assert_eq!(sel.kc, 4);
+    assert!(sel.family_id.unwrap().starts_with("tc.scalar."), "{sel:?}");
+    assert_eq!(got, want);
+}

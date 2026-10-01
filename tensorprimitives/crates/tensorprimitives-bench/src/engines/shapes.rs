@@ -121,7 +121,8 @@ where
         Operand::new(&s.lb, &s.idx_b),
         None,
         Operand::new(&s.lc, &s.idx_c),
-    ) else {
+    )
+    .map(|p| crate::knobs::get().apply(p)) else {
         return;
     };
     let (m, n, k) = s.mnk();
@@ -131,7 +132,11 @@ where
         if !T::IS_COMPLEX && method != ComplexMethod::default() {
             continue;
         }
-        let menu = <T::Real as KernelSet>::row_blocks(T::IS_COMPLEX, method);
+        let menu = <T::Real as KernelSet>::row_blocks(
+            crate::knobs::get().tuning().kernel_force,
+            T::IS_COMPLEX,
+            method,
+        );
         if menu.is_empty() {
             continue;
         }

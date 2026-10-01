@@ -1,11 +1,10 @@
-//! A pinned tensorcontract partition (`TENSORCONTRACT_PARTITION`) must not
-//! widen the SPMD team beyond the `Exec`'s budget, nor make a declined
-//! broadcast spawn threads. Own test binary: tensorcontract reads the
-//! variable once per process.
+//! A pinned tensorcontract partition (`PartitionMode::Pin`) must not widen the
+//! SPMD team beyond the `Exec`'s budget, nor make a declined broadcast spawn
+//! threads. Own test binary: it counts the process's OS threads.
 
 use std::time::Duration;
 
-use tensorcontract::{Layout, Operand, Plan, TensorView, TensorViewMut};
+use tensorcontract::{Layout, Operand, PartitionMode, Plan, TensorView, TensorViewMut};
 use tprims_exec::{Exec, Pool};
 
 fn os_threads() -> usize {
@@ -28,7 +27,8 @@ fn gemm(exec: &Exec<'_>) -> Vec<f64> {
         None,
         Operand::new(&ld, &id),
     )
-    .unwrap();
+    .unwrap()
+    .with_partition_mode(PartitionMode::Pin(4, 2));
     let mut out = vec![0.0; m * n];
     plan.run_with(
         exec,
@@ -45,8 +45,6 @@ fn gemm(exec: &Exec<'_>) -> Vec<f64> {
 
 #[test]
 fn pinned_partition_respects_host_width_and_never_spawns() {
-    // SAFETY: the only test in this binary; set before any tensorcontract use.
-    std::env::set_var("TENSORCONTRACT_PARTITION", "4x2");
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
         let tp = rayon::ThreadPoolBuilder::new()

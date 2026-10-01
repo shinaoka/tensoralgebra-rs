@@ -111,7 +111,7 @@ pub mod cfg_avx512_f64 {
 /// file (A35) — the failure mode this project has now recorded four times. It is
 /// **last on the menu, not first**, because a kernel margin is not a corpus
 /// margin: `NR` also sets the `jr` loop count and the packed-`B` sliver
-/// geometry. `TENSORCONTRACT_ROWBLOCK=idx=3` is the arm that settles it.
+/// geometry. `RowBlock::Index(3)` is the arm that settles it.
 ///
 /// The 32-bit menus are the ones that matter for the write-back: the corpus
 /// rounds every stride-1 index up to a multiple of **24**, and at `L = 16` no

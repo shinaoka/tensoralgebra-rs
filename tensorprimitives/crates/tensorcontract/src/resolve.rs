@@ -48,17 +48,12 @@ impl Cache {
     }
 }
 
-pub(crate) fn default_choice() -> &'static KernelChoice {
-    KernelChoice::from_env()
-}
-
-fn legacy_isa() -> Isa {
-    use tprims_kernel::{kernel_force, KernelForce};
-    if kernel_force() == KernelForce::Scalar {
+fn legacy_isa(force: tprims_kernel::KernelForce) -> Isa {
+    if force == tprims_kernel::KernelForce::Scalar {
         return Isa::Portable;
     }
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    return match tprims_kernel::kernels::x86::selected_isa() {
+    return match tprims_kernel::kernels::x86::selected_isa(force) {
         Some(tprims_kernel::kernels::x86::Isa::Avx2) => Isa::Avx2,
         Some(tprims_kernel::kernels::x86::Isa::Avx512) => Isa::Avx512,
         None => Isa::Portable,
@@ -81,21 +76,15 @@ fn resolve<T: Families>(p: &Plan) -> Result<ResolvedGemm<T::Real>, SelectError>
 where
     T::Real: KernelSet,
 {
-    p.freeze_execution_switches();
     if let Some(forced) = &p.forced {
         return resolve_forced::<T>(p, forced);
     }
-    let choice = p.kernel.as_ref().unwrap_or_else(|| default_choice());
+    let choice = p.kernel.as_ref().unwrap_or(&KernelChoice::Auto);
     let legacy_auto = matches!(choice, KernelChoice::Auto);
-    let default = if p.kernel.is_none() && p.method.is_none() {
-        Some(tprims_kernel::process_default::<T>()?)
-    } else {
-        None
-    };
     let chosen;
     let choice = if legacy_auto {
         let method = method_kind(p.complex_method());
-        let isa = legacy_isa();
+        let isa = legacy_isa(p.tuning.kernel_force);
         let candidates = Registry::families::<T>(CpuFeatures::detect(), false);
         let candidates: Vec<_> = candidates
             .into_iter()
@@ -109,7 +98,11 @@ where
                     && (!T::IS_COMPLEX || f.complex.is_some_and(|s| s.method == method))
             })
             .collect();
-        let menu = <T::Real as KernelSet>::row_blocks(T::IS_COMPLEX, p.complex_method());
+        let menu = <T::Real as KernelSet>::row_blocks(
+            p.tuning.kernel_force,
+            T::IS_COMPLEX,
+            p.complex_method(),
+        );
         let shape = p.row_block(menu).map(|i| menu[i]);
         let family = candidates
             .iter()
@@ -125,14 +118,9 @@ where
         choice
     };
     let mut rg =
-        match default.filter(|r| matches!(choice, KernelChoice::Id(id) if id == r.family().id)) {
-            Some(r) => r.with_threads(p.threads())?,
-            None => ResolvedGemm::<T::Real>::resolve::<T>(choice, p.threads())?,
-        };
+        ResolvedGemm::<T::Real>::resolve::<T>(choice, p.threads())?.with_tuning(&p.tuning)?;
     check_family::<T>(p, &rg)?;
-    if legacy_auto
-        && tprims_kernel::blocking::block_model() == tprims_kernel::blocking::BlockModel::Legacy
-    {
+    if legacy_auto && p.tuning.block_model == tprims_kernel::blocking::BlockModel::Legacy {
         // Preserve old percentage-before-register-rounding semantics. The
         // canonical resolver above already checked override multiplication;
         // the legacy raw seed is no larger than its aligned descriptor seed.
@@ -220,7 +208,8 @@ fn resolve_forced<T: Families>(
         p.threads(),
         Default::default(),
         Default::default(),
-    )?;
+    )?
+    .with_tuning(&p.tuning)?;
     check_family::<T>(p, &rg)?;
     if let Some(blk) = p.blocking {
         rg = rg.with_blocking(blk)?;
@@ -244,7 +233,7 @@ where
             id: forced.id().into(),
             dtype: "a foreign scalar",
         }))
-    } else if let KernelChoice::Id(id) = p.kernel.as_ref().unwrap_or_else(|| default_choice()) {
+    } else if let Some(KernelChoice::Id(id)) = p.kernel.as_ref() {
         Err(crate::Error::KernelSelection(SelectError::Incompatible {
             id: id.clone(),
             reason: "registered families require a built-in storage dtype",

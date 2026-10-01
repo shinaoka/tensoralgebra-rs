@@ -148,7 +148,7 @@ fn have_avx2() -> bool {
 }
 
 /// Every ISA whose kernels this CPU can execute, widest first, **ignoring
-/// `TENSORCONTRACT_KERNEL`**.
+/// any pinned [`crate::KernelForce`]**.
 ///
 /// Dispatch uses [`selected_isa`]; this exists for the kernel-contract tests,
 /// which must check every kernel the machine can run rather than only the one
@@ -163,29 +163,16 @@ pub fn available_isas() -> &'static [Isa] {
     }
 }
 
-/// The ISA the engine will actually dispatch to, or `None` for the portable
-/// scalar path. Cached for the process, like the feature detection it wraps.
+/// The ISA the engine will dispatch to under `force`, or `None` for the portable
+/// scalar path. The feature detection it wraps is cached for the process.
 ///
-/// `TENSORCONTRACT_KERNEL` overrides the choice: `scalar` takes the portable
+/// `force` overrides the choice: `scalar` takes the portable
 /// path, `avx2` and `avx512` pin a family. A pinned family the CPU cannot run
 /// falls through to scalar rather than faulting — pinning is a testing and A/B
 /// facility, not a promise that the hardware exists.
-pub fn selected_isa() -> Option<Isa> {
-    #[cfg(feature = "std")]
-    {
-        use std::sync::OnceLock;
-        static ISA: OnceLock<Option<Isa>> = OnceLock::new();
-        *ISA.get_or_init(pick_isa)
-    }
-    #[cfg(not(feature = "std"))]
-    {
-        pick_isa()
-    }
-}
-
-fn pick_isa() -> Option<Isa> {
+pub fn selected_isa(force: crate::KernelForce) -> Option<Isa> {
     use crate::KernelForce;
-    match crate::kernel_force() {
+    match force {
         KernelForce::Scalar => None,
         KernelForce::Avx2 => have_avx2().then_some(Isa::Avx2),
         KernelForce::Avx512 => have_avx512().then_some(Isa::Avx512),
@@ -230,7 +217,7 @@ impl<T> core::fmt::Debug for IsaConfigs<T> {
 /// The five entry points the [`super::KernelSet`] impls call, per type: the
 /// default shape, the menu of row blocks, and the config at a chosen one, each
 /// resolved through [`selected_isa`]. All yield `None`/`&[]` when no vectorised
-/// ISA is available or `TENSORCONTRACT_KERNEL=scalar` is set, which sends the
+/// ISA is available or `force` is `Scalar`, which sends the
 /// caller to the portable scalar path.
 macro_rules! dispatch {
     ($t:ty, $cfg512:ident, $cfg2:ident, $sets:ident,
@@ -255,31 +242,39 @@ macro_rules! dispatch {
             }
         }
 
-        pub fn $real() -> Option<KernelConfig<$t>> {
-            let s = $sets(selected_isa()?);
+        pub fn $real(force: crate::KernelForce) -> Option<KernelConfig<$t>> {
+            let s = $sets(selected_isa(force)?);
             Some((s.real)())
         }
 
-        pub fn $cplx(method: ComplexMethod) -> Option<KernelConfig<$t>> {
-            let s = $sets(selected_isa()?);
+        pub fn $cplx(force: crate::KernelForce, method: ComplexMethod) -> Option<KernelConfig<$t>> {
+            let s = $sets(selected_isa(force)?);
             Some((s.cplx)(method))
         }
 
         /// Row blocks with a kernel, default first; empty when unavailable.
-        pub fn $rows(complex: bool, method: ComplexMethod) -> &'static [(usize, usize)] {
-            match selected_isa() {
+        pub fn $rows(
+            force: crate::KernelForce,
+            complex: bool,
+            method: ComplexMethod,
+        ) -> &'static [(usize, usize)] {
+            match selected_isa(force) {
                 Some(isa) => ($sets(isa).row_blocks)(complex, method),
                 None => &[],
             }
         }
 
-        pub fn $real_at(mr: usize) -> Option<KernelConfig<$t>> {
-            let s = $sets(selected_isa()?);
+        pub fn $real_at(force: crate::KernelForce, mr: usize) -> Option<KernelConfig<$t>> {
+            let s = $sets(selected_isa(force)?);
             (s.config_at)(false, ComplexMethod::Planar, mr)
         }
 
-        pub fn $cplx_at(method: ComplexMethod, mr: usize) -> Option<KernelConfig<$t>> {
-            let s = $sets(selected_isa()?);
+        pub fn $cplx_at(
+            force: crate::KernelForce,
+            method: ComplexMethod,
+            mr: usize,
+        ) -> Option<KernelConfig<$t>> {
+            let s = $sets(selected_isa(force)?);
             (s.config_at)(true, method, mr)
         }
     };

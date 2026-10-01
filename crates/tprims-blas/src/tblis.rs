@@ -76,7 +76,7 @@ pub(crate) fn prepare<T: Scalar>(
     );
     let (oc, od) = (Operand::new(&ld, &id), Operand::new(&ld, &id));
     // C is D itself (in place); beta == 0 never reads it.
-    let plan = Plan::new(oa, ob, Some(oc), od)?;
+    let plan = cfg.configure(Plan::new(oa, ob, Some(oc), od)?);
     let plan = if cfg.has_partition_request() {
         plan.with_partition(cfg.partition, cfg.partition_opts)
     } else {
@@ -239,7 +239,7 @@ pub(crate) fn plan_one<T: Scalar>(
         op(Operand::new(&lb, &ib), cb),
     );
     let (oc, od) = (Operand::new(&ld, &idd), Operand::new(&ld, &idd));
-    let mut plan = Plan::new(oa, ob, Some(oc), od)?;
+    let mut plan = cfg.configure(Plan::new(oa, ob, Some(oc), od)?);
     if custom.is_none() {
         plan = plan.with_kernel(cfg.kernel.clone()).map_err(as_select)?;
     }

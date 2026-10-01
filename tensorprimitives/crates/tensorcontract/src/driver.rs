@@ -754,8 +754,8 @@ pub(crate) unsafe fn execute_capped<T>(
     // each; it caps them at the panel and block counts, so a contraction with
     // three row panels and two column blocks uses six threads at most however
     // many were asked for and however much work it contains.
-    // The width is the `Exec`'s budget, not the plan's or
-    // `TENSORCONTRACT_THREADS`: threads come from the host alone.
+    // The width is the `Exec`'s budget, not the plan's: threads come from the
+    // host alone.
     let want = exec.budget();
     // An explicit grid is clamped to the width this call may use; the default
     // grid is the plan's own cost model, which already respects it.
@@ -781,7 +781,7 @@ pub(crate) unsafe fn execute_capped<T>(
         (Some((pm, pn)), None) => (pm, pn),
         (None, None) => plan.partition_with(mr, nr, want),
     };
-    // A pinned partition (`TENSORCONTRACT_PARTITION` or an explicit grid)
+    // A pinned partition (`PartitionMode::Pin` or an explicit grid)
     // ignores the thread count, so shrink it to the budget.
     if dyn_jobs.is_none() {
         while pm * pn > want {

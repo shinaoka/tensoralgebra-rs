@@ -32,13 +32,11 @@
 //! # Forcing the gather path
 //!
 //! Both packing and the output write-back take the regular path when the block
-//! scatter permits it. Setting `TENSORCONTRACT_WRITEBACK=gather` makes the
-//! write-back use the general scatter loop unconditionally, disabling the
-//! block-scatter row addressing and the `alpha = 1, beta = 0` copy along with
-//! it. Results are unaffected — this exists so the fast path is an A/B switch at
-//! run time rather than a rebuild, in the same spirit as
-//! `TENSORCONTRACT_KERNEL=scalar` (see `tensorcontract::kernel`). Read once per
-//! process.
+//! scatter permits it. `Tuning::writeback_gather` makes the write-back use the
+//! general scatter loop unconditionally, disabling the block-scatter row
+//! addressing and the `alpha = 1, beta = 0` copy along with it. Results are
+//! unaffected — this exists so the fast path is an A/B switch rather than a
+//! rebuild, in the same spirit as a pinned scalar kernel (`KernelForce::Scalar`).
 
 /// Sentinel stored in a block-scatter vector for a block whose scatter entries
 /// are *not* an arithmetic progression.

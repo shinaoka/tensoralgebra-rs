@@ -156,7 +156,8 @@ where
         Operand::new(&s.lb, &s.idx_b),
         None,
         Operand::new(&s.lc, &s.idx_c),
-    ) else {
+    )
+    .map(|p| crate::knobs::get().apply(p)) else {
         return;
     };
     let sc = plan.scatters();
@@ -166,7 +167,7 @@ where
             continue;
         }
         // The default shape, matching `TENSORCONTRACT_ROWBLOCK=base`.
-        let (mr, nr, _) = selected_config::<T>(method);
+        let (mr, nr, _) = selected_config::<T>(crate::knobs::get().tuning(), method);
         let picked = plan.transposes_gemm(mr);
         for (swap, name) in [(false, "AB"), (true, "BA")] {
             let (rows, cols, op_rows, op_cols) = arm(&sc, swap);

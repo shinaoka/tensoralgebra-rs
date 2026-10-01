@@ -25,6 +25,7 @@
 //! use core::ops::{Add, AddAssign, Div, Mul, Neg, Sub};
 //! use tensorcontract::element::{Element, Real};
 //! use tensorcontract::kernel::{scalar, ComplexMethod, KernelConfig, KernelSet};
+//! use tprims_kernel::KernelForce;
 //! use tensorcontract::{contract, Layout, TensorView, TensorViewMut};
 //!
 //! /// A stand-in for whatever you actually have: a newtype over `f64`.
@@ -67,8 +68,8 @@
 //! }
 //!
 //! impl KernelSet for Q {
-//!     fn config_real() -> KernelConfig<Q> { scalar::config_real::<Q, 4, 4>() }
-//!     fn config_cplx(m: ComplexMethod) -> KernelConfig<Q> {
+//!     fn config_real(_: KernelForce) -> KernelConfig<Q> { scalar::config_real::<Q, 4, 4>() }
+//!     fn config_cplx(_: KernelForce, m: ComplexMethod) -> KernelConfig<Q> {
 //!         scalar::config_cplx::<Q, 4, 4>(m)
 //!     }
 //! }

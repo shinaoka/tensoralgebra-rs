@@ -3,11 +3,10 @@
 use tprims_exec::{Exec, Pool};
 
 /// Thread environment variables that must agree with `--threads`.
-pub const THREAD_ENV_VARS: [&str; 4] = [
+pub const THREAD_ENV_VARS: [&str; 3] = [
     "RAYON_NUM_THREADS",
     "OMP_NUM_THREADS",
     "OPENBLAS_NUM_THREADS",
-    "TENSORCONTRACT_THREADS",
 ];
 
 /// The first variable in [`THREAD_ENV_VARS`] that is set to a value other
@@ -22,13 +21,35 @@ pub fn conflicting_env(
     })
 }
 
-/// Variables that change tensorcontract's partition and are therefore not
-/// allowed during a measured run.
-pub const FORBIDDEN_ENV_VARS: [&str; 1] = ["TENSORCONTRACT_PARTITION"];
+/// Environment variables the libraries read before tprims-rs#37 and no longer
+/// do. A benchmark that finds one set would silently measure something other
+/// than what the caller asked for, so it refuses to run: use the benchmark's
+/// own flags, or `tcbench` (which parses the `TENSORCONTRACT_*` knobs into plan
+/// configuration).
+pub const REMOVED_ENV_VARS: [&str; 18] = [
+    "TENSORCONTRACT_THREADS",
+    "TENSORCONTRACT_POOL",
+    "TENSORCONTRACT_KERNEL",
+    "TENSORCONTRACT_COMPLEX",
+    "TENSORCONTRACT_MC",
+    "TENSORCONTRACT_KC",
+    "TENSORCONTRACT_NC",
+    "TENSORCONTRACT_MC_PCT",
+    "TENSORCONTRACT_NC_PCT",
+    "TENSORCONTRACT_KC_COUPLE",
+    "TENSORCONTRACT_BLOCKMODEL",
+    "TENSORCONTRACT_L3_DOMAINS",
+    "TENSORCONTRACT_WRITEBACK",
+    "TENSORCONTRACT_ORIENT",
+    "TENSORCONTRACT_ROWBLOCK",
+    "TENSORCONTRACT_PARTITION",
+    "TPRIMS_GEMM_KERNEL",
+    "TPRIMS_GEMM_ENGINE",
+];
 
-/// The first set variable in [`FORBIDDEN_ENV_VARS`], with its value.
+/// The first set variable in [`REMOVED_ENV_VARS`], with its value.
 pub fn forbidden_env(get: impl Fn(&str) -> Option<String>) -> Option<(String, String)> {
-    FORBIDDEN_ENV_VARS
+    REMOVED_ENV_VARS
         .iter()
         .find_map(|name| get(name).map(|v| (name.to_string(), v)))
 }
@@ -69,7 +90,9 @@ impl BenchThreads {
             ));
         }
         if let Some((name, value)) = forbidden_env(|n| std::env::var(n).ok()) {
-            fail(&format!("{name}={value} is not allowed in a measured run"));
+            fail(&format!(
+                "{name}={value}: this variable was removed in tprims-rs#37 and is not read; use the benchmark's flags"
+            ));
         }
         // Accidental ambient Rayon use runs on a one-thread global pool, so it
         // cannot inflate a row; tprims paths use the borrowed pool below.

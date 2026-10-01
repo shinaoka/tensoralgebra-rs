@@ -13,9 +13,9 @@
 //! from the hardware, so that a decent choice transfers to a machine nobody
 //! measured on.
 //!
-//! It is **off by default**: `TENSORCONTRACT_BLOCKMODEL=model` opts in, and
-//! `legacy` (the default) keeps the historical constants. See
-//! [`block_model`] for why.
+//! It is **off by default**: [`BlockModel::Analytical`] opts in, and
+//! [`BlockModel::Legacy`] (the default) keeps the historical constants. Why:
+//! the `legacy` default is kept on evidence, below.
 //!
 //! # The model
 //!
@@ -102,7 +102,14 @@ use crate::{Blocking, ParseError};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 #[non_exhaustive]
 pub enum BlockModel {
-    /// The hardcoded Phase 2 constants: today's shipping behaviour.
+    /// The hardcoded Phase 2 constants: today's shipping behaviour, and the
+    /// default **on evidence**. The pending `MC`/`KC`/`NC` grid defines its arms
+    /// *relative to the derived defaults*, so changing the derivation would
+    /// silently change what that measurement means; and every performance
+    /// number in `docs/notebook/` was taken against these constants, which the
+    /// project requires be comparable through a run-time switch rather than a
+    /// build-to-build diff (A15). Flip the default only after an end-to-end A/B
+    /// in the configuration that ships (A20).
     #[default]
     Legacy,
     /// [`analytical`], driven by [`super::probe::hierarchy`].
@@ -110,7 +117,7 @@ pub enum BlockModel {
 }
 
 impl BlockModel {
-    /// Parse the `TENSORCONTRACT_BLOCKMODEL` spelling. Several synonyms are
+    /// Parse a model name. Several synonyms are
     /// accepted for each arm so that a sweep script can say `on`/`off` and a
     /// report can say `legacy`/`model`.
     pub fn parse(s: &str) -> Option<BlockModel> {
@@ -141,7 +148,7 @@ impl core::fmt::Display for BlockModel {
 }
 
 /// [`BlockModel::parse`] as the standard trait. The inherent method stays: the
-/// `TENSORCONTRACT_BLOCKMODEL` plumbing wants the `Option`, because an
+/// a caller that falls back to the default wants the `Option`, because an
 /// unrecognised value there falls back to the default rather than failing a
 /// contraction.
 impl core::str::FromStr for BlockModel {
@@ -153,25 +160,6 @@ impl core::str::FromStr for BlockModel {
             "legacy | model (also phase2, const, off; analytic, analytical, blis, on)",
         ))
     }
-}
-
-/// `TENSORCONTRACT_BLOCKMODEL=legacy|model`, read once per process.
-///
-/// **The default is `legacy`, deliberately.** Two reasons, both concrete:
-/// the pending `MC`/`KC`/`NC` grid (`scripts/phase4e-blocking.sh`) defines its
-/// arms *relative to the derived defaults*, so changing the derivation would
-/// silently change what that measurement means; and every performance number in
-/// `docs/notebook/` was taken against the hardcoded constants, which the project
-/// requires be comparable through a run-time switch rather than a
-/// build-to-build diff (A15). Flip the default only after an end-to-end A/B in
-/// the configuration that ships (A20).
-pub fn block_model() -> BlockModel {
-    env_once!(
-        BlockModel,
-        "TENSORCONTRACT_BLOCKMODEL",
-        BlockModel::Legacy,
-        |v| BlockModel::parse(v).unwrap_or_default()
-    )
 }
 
 // ---------------------------------------------------------------------------

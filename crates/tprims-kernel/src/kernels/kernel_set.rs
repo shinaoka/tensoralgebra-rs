@@ -13,7 +13,7 @@ use crate::*;
 ///
 /// `f32` and `f64` get runtime-dispatched vectorised kernels: AVX-512F if the
 /// CPU has it, else AVX2+FMA, else the portable path in [`scalar`].
-/// `TENSORCONTRACT_KERNEL` pins one (`scalar` | `avx2` | `avx512`).
+/// [`Tuning::kernel_force`](crate::Tuning) pins one (`scalar` | `avx2` | `avx512`).
 ///
 /// Any other [`Real`] type can opt in by returning the generic scalar kernels.
 /// In sketch — this is the shape of the impl, not a compiling example:
@@ -22,8 +22,8 @@ use crate::*;
 /// // `MyDual` stands for a type that already implements `Real` and `Element`;
 /// // those two impls, not this one, are the bulk of the work.
 /// impl KernelSet for MyDual {
-///     fn config_real() -> KernelConfig<Self> { scalar::config_real::<Self, 4, 4>() }
-///     fn config_cplx(m: ComplexMethod) -> KernelConfig<Self> {
+///     fn config_real(_: KernelForce) -> KernelConfig<Self> { scalar::config_real::<Self, 4, 4>() }
+///     fn config_cplx(_: KernelForce, m: ComplexMethod) -> KernelConfig<Self> {
 ///         scalar::config_cplx::<Self, 4, 4>(m)
 ///     }
 /// }
@@ -39,14 +39,18 @@ use crate::*;
 /// sets that have more than one shape to offer.
 pub trait KernelSet: Real + Sized {
     /// The kernel to use when the element type is this real type itself.
-    fn config_real() -> KernelConfig<Self>;
+    ///
+    /// `force` is the caller's ISA preference ([`Tuning::kernel_force`](crate::Tuning)); a set
+    /// with a single scalar kernel ignores it. The returned configuration is
+    /// raw: the caller applies [`KernelConfig::normalise_for`] once.
+    fn config_real(force: KernelForce) -> KernelConfig<Self>;
     /// The kernel to use when the element type is complex over this real type.
     ///
     /// Must honour `method`: the packed formats the driver produces and the
     /// tile format the write-back reads are taken from the returned [`Ukr`], so
     /// returning a planar kernel for [`ComplexMethod::ThreeM`] would not be
     /// slow, it would be wrong.
-    fn config_cplx(method: ComplexMethod) -> KernelConfig<Self>;
+    fn config_cplx(force: KernelForce, method: ComplexMethod) -> KernelConfig<Self>;
 
     /// Logical `(MR, NR)` shapes this kernel set can run, default first.
     ///
@@ -59,96 +63,92 @@ pub trait KernelSet: Real + Sized {
     /// A35, which found a measured shape the engine could not reach: `planar`
     /// `f32`/`c32` wants `32x5` and ships `32x6`, and an `MR`-keyed menu cannot
     /// hold two entries of the same height. Positions also make
-    /// `TENSORCONTRACT_ROWBLOCK=idx=<i>` mean what its name always implied.
-    fn row_blocks(complex: bool, method: ComplexMethod) -> &'static [(usize, usize)] {
-        let _ = (complex, method);
+    /// the row-block request `RowBlock::Index(i)` mean what its name always
+    /// implied.
+    fn row_blocks(
+        force: KernelForce,
+        complex: bool,
+        method: ComplexMethod,
+    ) -> &'static [(usize, usize)] {
+        let _ = (force, complex, method);
         &[]
     }
 
     /// The configuration at a menu position, or `None` past the end. Only ever
     /// called with an index into [`KernelSet::row_blocks`].
-    fn config_at(complex: bool, method: ComplexMethod, i: usize) -> Option<KernelConfig<Self>> {
-        let _ = (complex, method, i);
+    fn config_at(
+        force: KernelForce,
+        complex: bool,
+        method: ComplexMethod,
+        i: usize,
+    ) -> Option<KernelConfig<Self>> {
+        let _ = (force, complex, method, i);
         None
     }
-}
-
-/// Force the portable scalar kernels regardless of CPU features.
-/// Set `TENSORCONTRACT_KERNEL=scalar` to compare against the reference path.
-/// Only the x86 dispatch asks; off x86 every kernel is already the scalar one.
-#[cfg_attr(
-    not(all(
-        feature = "std",
-        any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")
-    )),
-    allow(dead_code)
-)]
-fn force_scalar() -> bool {
-    kernel_force() == KernelForce::Scalar
 }
 
 /// Wire one real type's [`KernelSet`] to the vectorised module when the target
 /// has one, and to [`scalar`] otherwise.
 ///
 /// The paths are `simd_isa::*`, so this is architecture-agnostic and the `#[cfg]`
-/// asks only "is there a SIMD module at all". Off both families every arm below
-/// compiles out and the scalar fallthrough is the whole body, which is why the
-/// `unreachable_code`/`dead_code` allowances are needed on some targets and not
-/// others.
+/// asks only "is there a SIMD module at all". The dispatch functions answer
+/// `None`/`&[]` when `force` selects no vectorised ISA (scalar pinned, or a
+/// pin this target cannot honour), which sends the caller to the portable
+/// scalar path. Off both families every arm below compiles out and the scalar
+/// fallthrough is the whole body, which is why the `unreachable_code` and unused
+/// allowances are needed on some targets and not others.
 macro_rules! impl_kernel_set {
     ($t:ty, $real_simd:path, $cplx_simd:path, $rows_simd:path,
      $real_at_simd:path, $cplx_at_simd:path, $mr:literal, $nr:literal) => {
         impl KernelSet for $t {
-            fn config_real() -> KernelConfig<Self> {
+            fn config_real(force: KernelForce) -> KernelConfig<Self> {
                 #[cfg(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64"))]
-                if !force_scalar() {
-                    if let Some(c) = $real_simd() {
-                        return c.normalise();
-                    }
+                if let Some(c) = $real_simd(force) {
+                    return c;
                 }
-                scalar::config_real::<$t, $mr, $nr>().normalise()
+                let _ = force;
+                scalar::config_real::<$t, $mr, $nr>()
             }
 
-            fn config_cplx(method: ComplexMethod) -> KernelConfig<Self> {
+            fn config_cplx(force: KernelForce, method: ComplexMethod) -> KernelConfig<Self> {
                 #[cfg(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64"))]
-                if !force_scalar() {
-                    if let Some(c) = $cplx_simd(method) {
-                        return c.normalise();
-                    }
+                if let Some(c) = $cplx_simd(force, method) {
+                    return c;
                 }
-                scalar::config_cplx::<$t, $mr, $nr>(method).normalise()
+                let _ = force;
+                scalar::config_cplx::<$t, $mr, $nr>(method)
             }
 
-            fn row_blocks(complex: bool, method: ComplexMethod) -> &'static [(usize, usize)] {
+            fn row_blocks(
+                force: KernelForce,
+                complex: bool,
+                method: ComplexMethod,
+            ) -> &'static [(usize, usize)] {
                 #[cfg(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64"))]
-                if !force_scalar() {
-                    return $rows_simd(complex, method);
-                }
+                return $rows_simd(force, complex, method);
                 // The portable path has one shape per method and no menu.
                 #[allow(unreachable_code)]
                 {
-                    let _ = (complex, method);
+                    let _ = (force, complex, method);
                     &[]
                 }
             }
 
             fn config_at(
+                force: KernelForce,
                 complex: bool,
                 method: ComplexMethod,
                 i: usize,
             ) -> Option<KernelConfig<Self>> {
                 #[cfg(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64"))]
-                if !force_scalar() {
-                    let c = if complex {
-                        $cplx_at_simd(method, i)
-                    } else {
-                        $real_at_simd(i)
-                    };
-                    return c.map(KernelConfig::normalise);
-                }
+                return if complex {
+                    $cplx_at_simd(force, method, i)
+                } else {
+                    $real_at_simd(force, i)
+                };
                 #[allow(unreachable_code)]
                 {
-                    let _ = (complex, method, i);
+                    let _ = (force, complex, method, i);
                     None
                 }
             }
@@ -183,16 +183,38 @@ mod tests {
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     use crate::kernels::x86;
 
+    /// The baseline tuning every test configuration is normalised with.
+    fn tuning() -> Tuning {
+        Tuning::default()
+    }
+
+    fn real<T: KernelSet>() -> KernelConfig<T> {
+        T::config_real(KernelForce::Auto).normalise_for(&tuning(), 1)
+    }
+
+    fn cplx<T: KernelSet>(m: ComplexMethod) -> KernelConfig<T> {
+        <T as KernelSet>::config_cplx(KernelForce::Auto, m).normalise_for(&tuning(), 1)
+    }
+
+    fn menu<T: KernelSet>(complex: bool, m: ComplexMethod) -> &'static [(usize, usize)] {
+        <T as KernelSet>::row_blocks(KernelForce::Auto, complex, m)
+    }
+
+    fn at<T: KernelSet>(complex: bool, m: ComplexMethod, i: usize) -> Option<KernelConfig<T>> {
+        <T as KernelSet>::config_at(KernelForce::Auto, complex, m, i)
+            .map(|c| c.normalise_for(&tuning(), 1))
+    }
+
     /// Every kernel must agree with the mathematical definition, whatever
     /// packing and tile format it uses. This is the contract the driver relies
     /// on, so it is checked directly rather than only end to end.
     fn check_real<T: KernelSet>(tol: f64) {
-        check_real_cfg::<T>(T::config_real(), tol);
-        for (i, &(mr, nr)) in T::row_blocks(false, ComplexMethod::default())
+        check_real_cfg::<T>(real::<T>(), tol);
+        for (i, &(mr, nr)) in menu::<T>(false, ComplexMethod::default())
             .iter()
             .enumerate()
         {
-            let cfg = T::config_at(false, ComplexMethod::default(), i)
+            let cfg = at::<T>(false, ComplexMethod::default(), i)
                 .unwrap_or_else(|| panic!("real menu offers {mr}x{nr} with no kernel"));
             assert_eq!(
                 (cfg.ukr.mr, cfg.ukr.nr),
@@ -304,9 +326,9 @@ mod tests {
     }
 
     fn check_cplx<T: KernelSet>(method: ComplexMethod, tol: f64) {
-        check_cplx_cfg::<T>(T::config_cplx(method), method, tol);
-        for (i, &(mr, nr)) in T::row_blocks(true, method).iter().enumerate() {
-            let cfg = T::config_at(true, method, i).unwrap_or_else(|| {
+        check_cplx_cfg::<T>(cplx::<T>(method), method, tol);
+        for (i, &(mr, nr)) in menu::<T>(true, method).iter().enumerate() {
+            let cfg = at::<T>(true, method, i).unwrap_or_else(|| {
                 panic!("{} menu offers {mr}x{nr} with no kernel", method.name())
             });
             assert_eq!(
@@ -403,8 +425,8 @@ mod tests {
     ///
     /// This is what exercises the AVX2 kernels on an AVX-512 machine under a
     /// plain `cargo test`. Without it they would be compiled and never
-    /// executed here, and the only coverage would be a `TENSORCONTRACT_KERNEL`
-    /// run someone has to remember to do.
+    /// executed here, and the only coverage would be a pinned-ISA run someone
+    /// has to remember to do.
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     fn check_isa<T: KernelSet>(s: x86::IsaConfigs<T>, tol: f64) {
         let default = {
@@ -504,7 +526,9 @@ mod tests {
                         // `normalise` is what the `KernelSet` impls apply, and
                         // it is where the register-block alignment of `mc`/`nc`
                         // that the driver's loop arithmetic relies on comes from.
-                        let c = (s.config_at)(complex, m, i).unwrap().normalise();
+                        let c = (s.config_at)(complex, m, i)
+                            .unwrap()
+                            .normalise_for(&tuning(), 1);
                         let planes = c.ukr.tile / (c.ukr.mr * c.ukr.nr);
                         assert_eq!(c.ukr.a_per_k, c.ukr.mr * c.ukr.a_pack.reals_per_element());
                         assert_eq!(c.ukr.b_per_k, c.ukr.nr * c.ukr.b_pack.reals_per_element());
@@ -537,13 +561,13 @@ mod tests {
     ///
     /// A repeated `MR` is deliberately **allowed** — that is what positional
     /// keying bought (A35), and it is the only way an `NR`-only alternate can be
-    /// on the menu at all. What it costs is that `TENSORCONTRACT_ROWBLOCK=mr=<n>`
-    /// can no longer name such an entry; `idx=<i>` is the way to reach it, which
+    /// on the menu at all. What it costs is that `RowBlock::Pin(mr)`
+    /// can no longer name such an entry; `RowBlock::Index(i)` is the way to reach it, which
     /// is what that spelling always implied.
     #[test]
     fn row_block_menus_are_well_formed() {
         fn check<T: KernelSet>(complex: bool, method: ComplexMethod, default: (usize, usize)) {
-            let menu = T::row_blocks(complex, method);
+            let menu = menu::<T>(complex, method);
             if menu.is_empty() {
                 return; // no vectorised kernels on this CPU
             }
@@ -559,18 +583,18 @@ mod tests {
         fn shape<T: KernelSet>(c: KernelConfig<T>) -> (usize, usize) {
             (c.ukr.mr, c.ukr.nr)
         }
-        check::<f64>(false, ComplexMethod::default(), shape(f64::config_real()));
-        check::<f32>(false, ComplexMethod::default(), shape(f32::config_real()));
+        check::<f64>(false, ComplexMethod::default(), shape(real::<f64>()));
+        check::<f32>(false, ComplexMethod::default(), shape(real::<f32>()));
         for m in ComplexMethod::ALL {
-            check::<f64>(true, m, shape(f64::config_cplx(m)));
-            check::<f32>(true, m, shape(f32::config_cplx(m)));
+            check::<f64>(true, m, shape(cplx::<f64>(m)));
+            check::<f32>(true, m, shape(cplx::<f32>(m)));
         }
     }
 
     #[test]
     fn panel_sizes_are_self_consistent() {
         for m in ComplexMethod::ALL {
-            let c = f64::config_cplx(m);
+            let c = cplx::<f64>(m);
             assert_eq!(c.ukr.a_per_k, c.ukr.mr * c.ukr.a_pack.reals_per_element());
             assert_eq!(c.ukr.b_per_k, c.ukr.nr * c.ukr.b_pack.reals_per_element());
             assert_eq!(c.blk.mc % c.ukr.mr, 0);
@@ -581,8 +605,8 @@ mod tests {
     #[test]
     fn one_m_packs_a_twice_as_large_as_planar() {
         // The structural cost of 1m, and the reason its MC must be smaller.
-        let planar = f64::config_cplx(ComplexMethod::Planar);
-        let onem = f64::config_cplx(ComplexMethod::OneM);
+        let planar = cplx::<f64>(ComplexMethod::Planar);
+        let onem = cplx::<f64>(ComplexMethod::OneM);
         assert_eq!(planar.ukr.a_pack.reals_per_element(), 2);
         assert_eq!(onem.ukr.a_pack.reals_per_element(), 4);
         assert_eq!(onem.ukr.b_pack, planar.ukr.b_pack, "B is 1r either way");
@@ -599,8 +623,8 @@ mod tests {
 
     #[test]
     fn three_m_does_fewer_flops() {
-        let planar = f64::config_cplx(ComplexMethod::Planar);
-        let threem = f64::config_cplx(ComplexMethod::ThreeM);
+        let planar = cplx::<f64>(ComplexMethod::Planar);
+        let threem = cplx::<f64>(ComplexMethod::ThreeM);
         // 3 planes of accumulator instead of 2, but 3 products instead of 4.
         assert_eq!(threem.ukr.tile, 3 * threem.ukr.mr * threem.ukr.nr);
         assert_eq!(planar.ukr.tile, 2 * planar.ukr.mr * planar.ukr.nr);
@@ -613,17 +637,23 @@ mod tests {
     #[test]
     fn retargeting_threads_is_stable() {
         for m in ComplexMethod::ALL {
-            let cfg = f64::config_cplx(m);
-            let again = cfg.retarget_threads(8);
-            match cache::block_model() {
-                cache::BlockModel::Legacy => assert_eq!(cfg.blk, again.blk),
-                // The model may legitimately give eight threads a narrower `nc`
-                // — they crowd each other's packed `A` out of the shared L3 —
-                // but never a different `mc` or `kc`, and a second application
-                // must be a fixed point.
-                cache::BlockModel::Analytical => {
-                    assert_eq!((cfg.blk.mc, cfg.blk.kc), (again.blk.mc, again.blk.kc));
-                    assert_eq!(again.blk, again.retarget_threads(8).blk);
+            for model in [cache::BlockModel::Legacy, cache::BlockModel::Analytical] {
+                let tuning = Tuning {
+                    block_model: model,
+                    ..Tuning::default()
+                };
+                let cfg = f64::config_cplx(KernelForce::Auto, m).normalise_for(&tuning, 1);
+                let again = cfg.retarget_threads(&tuning, 8);
+                match model {
+                    cache::BlockModel::Legacy => assert_eq!(cfg.blk, again.blk),
+                    // The model may legitimately give eight threads a narrower
+                    // `nc` — they crowd each other's packed `A` out of the
+                    // shared L3 — but never a different `mc` or `kc`, and a
+                    // second application must be a fixed point.
+                    cache::BlockModel::Analytical => {
+                        assert_eq!((cfg.blk.mc, cfg.blk.kc), (again.blk.mc, again.blk.kc));
+                        assert_eq!(again.blk, again.retarget_threads(&tuning, 8).blk);
+                    }
                 }
             }
         }

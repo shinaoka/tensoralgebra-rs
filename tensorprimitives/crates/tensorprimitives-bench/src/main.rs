@@ -17,6 +17,7 @@
 mod blas;
 mod corpus;
 mod engines;
+mod knobs;
 mod report;
 mod tblis;
 mod ttgt;
@@ -27,6 +28,10 @@ fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().collect();
     let cmd = args.get(1).map(String::as_str).unwrap_or("help");
 
+    if let Err(e) = knobs::init_from_env() {
+        eprintln!("tcbench: {e}");
+        return ExitCode::from(2);
+    }
     let opts = Options::parse(&args[2.min(args.len())..]);
 
     match cmd {

@@ -26,7 +26,8 @@ fn auto_head_matches_legacy_default() {
         .into_iter()
         .find(|f| f.allow_auto)
         .unwrap();
-    let legacy = <f64 as tprims_kernel::kernels::KernelSet>::config_real();
+    let legacy =
+        <f64 as tprims_kernel::kernels::KernelSet>::config_real(tprims_kernel::KernelForce::Auto);
     assert_eq!(
         (head.mr, head.nr),
         (legacy.ukr.mr, legacy.ukr.nr),
@@ -37,7 +38,10 @@ fn auto_head_matches_legacy_default() {
         .into_iter()
         .find(|f| f.allow_auto)
         .unwrap();
-    let clegacy = <f64 as tprims_kernel::kernels::KernelSet>::config_cplx(ComplexMethod::Planar);
+    let clegacy = <f64 as tprims_kernel::kernels::KernelSet>::config_cplx(
+        tprims_kernel::KernelForce::Auto,
+        ComplexMethod::Planar,
+    );
     assert_eq!(
         (chead.mr, chead.nr, chead.complex.unwrap().method),
         (clegacy.ukr.mr, clegacy.ukr.nr, Method::Native)

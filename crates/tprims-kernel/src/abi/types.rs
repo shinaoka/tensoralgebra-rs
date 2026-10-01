@@ -7,8 +7,8 @@
 //! wins depends on the shape, the element type and the machine — and because
 //! the whole point of the project is to be able to measure them against each
 //! other on equal footing. Select with [`ComplexMethod`], per plan via
-//! `tensorcontract::Plan::with_complex_method` or globally via the
-//! `TENSORCONTRACT_COMPLEX` environment variable (`planar` | `1m` | `3m`).
+//! `tensorcontract::Plan::with_complex_method` (`planar` | `1m` | `3m`); the
+//! default is [`ComplexMethod::Planar`].
 //!
 //! All three share the *same* index analysis, scatter machinery, five-loop
 //! driver and write-back path. They differ only in what packing emits, what
@@ -74,7 +74,7 @@ use crate::cache;
 ///
 /// The [`FromStr`](core::str::FromStr) error for [`ComplexMethod`] and
 /// [`cache::BlockModel`] — the two settings a caller ever spells out, in a
-/// `TENSORCONTRACT_*` variable, a sweep script's arm list or a CSV column. One
+/// sweep script's arm list, a benchmark flag or a CSV column. One
 /// type for both, because the failure is the same one ("that is not a spelling
 /// I know") and only the accepted list differs; and deliberately *not*
 /// `tensorcontract::Error`, which is `#[non_exhaustive]` and enumerates the ways a
@@ -144,8 +144,7 @@ impl ComplexMethod {
     ];
 
     /// Parse a method name, case- and whitespace-insensitively. Accepts the
-    /// short spellings the `TENSORCONTRACT_COMPLEX` variable takes (`planar` |
-    /// `1m` | `3m`) as well as `split`, `onem`, `threem` and `karatsuba`.
+    /// short spellings (`planar` | `1m` | `3m`) as well as `split`, `onem`, `threem` and `karatsuba`.
     pub fn parse(s: &str) -> Option<ComplexMethod> {
         match s.trim().to_ascii_lowercase().as_str() {
             "planar" | "split" => Some(ComplexMethod::Planar),
@@ -164,16 +163,6 @@ impl ComplexMethod {
             ComplexMethod::ThreeM => "3m",
         }
     }
-
-    /// The default method, from `TENSORCONTRACT_COMPLEX` or [`Self::Planar`].
-    pub fn from_env() -> ComplexMethod {
-        env_once!(
-            ComplexMethod,
-            "TENSORCONTRACT_COMPLEX",
-            ComplexMethod::Planar,
-            |v| ComplexMethod::parse(v).unwrap_or_default()
-        )
-    }
 }
 
 /// [`ComplexMethod::name`]'s spelling, which [`FromStr`](core::str::FromStr)
@@ -187,8 +176,8 @@ impl core::fmt::Display for ComplexMethod {
 }
 
 /// [`ComplexMethod::parse`] as the standard trait. The inherent method stays
-/// because the `TENSORCONTRACT_COMPLEX` plumbing wants the `Option` — it falls
-/// back to the default rather than reporting anything — and because it can be
+/// because a
+/// caller that falls back to the default rather than reporting wants the `Option`, and because it can be
 /// called where a trait method's error type would only be discarded.
 impl core::str::FromStr for ComplexMethod {
     type Err = ParseError;
@@ -320,8 +309,8 @@ impl<T> core::fmt::Debug for Ukr<T> {
 /// * `mc x kc` is the packed A block, sized for L2.
 /// * `kc x nc` is the packed B block, sized for L3.
 ///
-/// There are two derivations, chosen at run time by
-/// `TENSORCONTRACT_BLOCKMODEL` (see [`cache::block_model`]):
+/// There are two derivations, chosen by
+/// [`Tuning::block_model`]:
 /// [`Blocking::derive`], the hardcoded Phase 2 heuristic, which is the
 /// **default**; and [`Blocking::model`], the BLIS analytical model driven by
 /// cache descriptors probed from the hardware, which is what transfers to a
@@ -366,12 +355,6 @@ impl Blocking {
     /// the comparison meaningless.
     pub fn derive(real_bytes: usize, a_reals: usize, b_reals: usize) -> Blocking {
         let kc = if real_bytes <= 4 { 384 } else { 256 };
-        // A *coupled* `kc` override re-derives `mc`/`nc` against the same cache
-        // budgets at the new depth; the plain `TENSORCONTRACT_KC` override
-        // changes `kc` alone and leaves the `D` strip a `jr` pass revisits
-        // exactly as wide as it was. The item 2 grid needs both arms, because
-        // `MC` is bounded from two sides and only the pair separates them (A13).
-        let kc = env_usize("TENSORCONTRACT_KC_COUPLE").unwrap_or(kc);
         Blocking::derive_at_depth(real_bytes, a_reals, b_reals, kc)
     }
 
@@ -415,7 +398,8 @@ impl Blocking {
     /// anything new. `threads` is the count the plan will run with, and it
     /// matters only for `nc`; see [`cache::analytical`].
     ///
-    /// Off by default. See [`cache::block_model`] for the switch and why.
+    /// Off by default. See [`Tuning::block_model`] for the switch and
+    /// [`cache::BlockModel`] for why.
     pub fn model<T>(ukr: &Ukr<T>, threads: usize) -> Blocking {
         cache::analytical(
             cache::PanelGeom {
@@ -447,39 +431,41 @@ pub struct KernelConfig<T> {
 }
 
 impl<T> KernelConfig<T> {
-    /// Apply the blocking derivation in force and any environment override,
-    /// then round `mc`/`nc` to whole multiples of the register block (the
-    /// driver's loop arithmetic relies on that).
-    ///
-    /// Uses the process-default thread count, which is what a configuration
-    /// obtained without a plan (diagnostics, `selected_config`) can know.
-    /// Execution goes through [`KernelConfig::normalise_for`] with the plan's
-    /// own count instead.
-    #[doc(hidden)]
-    pub fn normalise(self) -> Self {
-        self.normalise_for(crate::env_threads())
-    }
-
-    /// [`KernelConfig::normalise`] at a known thread count.
+    /// Apply the blocking derivation and overrides of `tuning` at a known
+    /// thread count, then round `mc`/`nc` to whole multiples of the register
+    /// block (the driver's loop arithmetic relies on that).
     ///
     /// The thread count reaches the blocking *here* rather than through
     /// [`Blocking::derive`]'s arguments, which is the smallest place it can
-    /// enter: `normalise` is already on every path that produces a config, and
-    /// the [`Ukr`] it has in hand carries every other input the model needs.
-    /// Under the legacy derivation the count is ignored, so the default path is
-    /// byte-for-byte what it was.
+    /// enter: the [`Ukr`] in hand carries every other input the model needs.
+    /// Under the legacy derivation the count is ignored. Apply this once to a
+    /// raw configuration: the percentage overrides scale whatever the
+    /// derivation produced, so a second application would square them.
     #[doc(hidden)]
-    pub fn normalise_for(self, threads: usize) -> Self {
-        let mut blk = match cache::block_model() {
-            cache::BlockModel::Legacy => self.blk,
+    pub fn normalise_for(self, tuning: &Tuning, threads: usize) -> Self {
+        let mut blk = match tuning.block_model {
+            cache::BlockModel::Legacy => match tuning.kc_couple {
+                // A *coupled* `kc` re-derives `mc`/`nc` against the same cache
+                // budgets at the new depth; the plain `kc` override changes `kc`
+                // alone and leaves the `D` strip a `jr` pass revisits exactly as
+                // wide as it was. Both arms matter because `MC` is bounded from
+                // two sides and only the pair separates them (A13).
+                Some(kc) => Blocking::derive_at_depth(
+                    core::mem::size_of::<T>(),
+                    self.ukr.a_pack.reals_per_element(),
+                    self.ukr.b_pack.reals_per_element(),
+                    kc,
+                ),
+                None => self.blk,
+            },
             cache::BlockModel::Analytical => Blocking::model(&self.ukr, threads),
         };
         // Preserve legacy arithmetic and API; canonical resolution selects
         // checked multiplication and reports invalid overrides as errors.
-        if let Some(o) = env_blocking() {
+        if tuning.blocking.is_set() {
             // INVARIANT: this legacy multiplication callback always returns
             // Some, so only the pre-existing arithmetic can fail here.
-            blk = o.apply(blk, |a, b| Some(a * b)).unwrap();
+            blk = tuning.blocking.apply(blk, |a, b| Some(a * b)).unwrap();
         }
         self.with_blocking(blk)
     }
@@ -488,16 +474,15 @@ impl<T> KernelConfig<T> {
     /// force actually depends on it.
     ///
     /// A deliberate no-op under the legacy constants, and not merely as an
-    /// optimisation: `_MC_PCT`/`_NC_PCT` scale *whatever the derivation
-    /// produced*, so applying [`KernelConfig::normalise`] a second time to an
-    /// already-scaled `blk` would square the scaling and silently corrupt the
-    /// arms of the pending `MC`/`KC`/`NC` grid. The analytical path recomputes
-    /// from the model each time and so is safe to re-run.
+    /// optimisation: the percentage overrides scale *whatever the derivation
+    /// produced*, so applying [`KernelConfig::normalise_for`] a second time to
+    /// an already-scaled `blk` would square the scaling. The analytical path
+    /// recomputes from the model each time and so is safe to re-run.
     #[doc(hidden)]
-    pub fn retarget_threads(self, threads: usize) -> Self {
-        match cache::block_model() {
+    pub fn retarget_threads(self, tuning: &Tuning, threads: usize) -> Self {
+        match tuning.block_model {
             cache::BlockModel::Legacy => self,
-            cache::BlockModel::Analytical => self.normalise_for(threads),
+            cache::BlockModel::Analytical => self.normalise_for(tuning, threads),
         }
     }
 
@@ -512,16 +497,29 @@ impl<T> KernelConfig<T> {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct BlockingOverride {
-    pub(crate) mc: Option<usize>,
-    pub(crate) kc: Option<usize>,
-    pub(crate) nc: Option<usize>,
-    pub(crate) mc_pct: Option<usize>,
-    pub(crate) nc_pct: Option<usize>,
+/// Absolute and percentage overrides of the cache blocking. An absolute size
+/// replaces the derived value; a percentage scales it. An absolute size and a
+/// percentage for the same dimension are not meant to be combined.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct BlockingOverride {
+    /// Rows of the packed `A` block.
+    pub mc: Option<usize>,
+    /// Contraction depth of one pass.
+    pub kc: Option<usize>,
+    /// Columns of the packed `B` block.
+    pub nc: Option<usize>,
+    /// Percentage of the derived `mc`.
+    pub mc_pct: Option<usize>,
+    /// Percentage of the derived `nc`.
+    pub nc_pct: Option<usize>,
 }
 
 impl BlockingOverride {
+    /// Whether any override is requested.
+    pub fn is_set(&self) -> bool {
+        *self != Self::default()
+    }
+
     pub(crate) fn apply(
         self,
         mut blk: Blocking,
@@ -540,50 +538,27 @@ impl BlockingOverride {
     }
 }
 
-/// `TENSORCONTRACT_MC` / `_KC` / `_NC` override the cache blocking absolutely;
-/// `_MC_PCT` / `_NC_PCT` scale the derived value instead, and
-/// `_KC_COUPLE` (read in [`Blocking::derive`]) sets `kc` *and* re-derives
-/// `mc`/`nc` against the cache budgets at that depth. Read once per process;
-/// used for the Phase 4 parameter sweeps and to exercise every level of the
-/// loop nest on small test problems.
-pub(crate) fn env_blocking() -> Option<BlockingOverride> {
-    #[cfg(feature = "std")]
-    {
-        use std::sync::OnceLock;
-        static ENV: OnceLock<Option<BlockingOverride>> = OnceLock::new();
-        *ENV.get_or_init(|| {
-            let o = BlockingOverride {
-                mc: env_usize("TENSORCONTRACT_MC"),
-                kc: env_usize("TENSORCONTRACT_KC"),
-                nc: env_usize("TENSORCONTRACT_NC"),
-                mc_pct: env_usize("TENSORCONTRACT_MC_PCT"),
-                nc_pct: env_usize("TENSORCONTRACT_NC_PCT"),
-            };
-            (o.mc.is_some()
-                || o.kc.is_some()
-                || o.nc.is_some()
-                || o.mc_pct.is_some()
-                || o.nc_pct.is_some())
-            .then_some(o)
-        })
-    }
-    #[cfg(not(feature = "std"))]
-    {
-        None
-    }
-}
-
-/// One `usize`-valued environment variable, or `None` if unset or unparseable.
-/// Not cached: the callers that use it directly run once per configuration.
-fn env_usize(_key: &str) -> Option<usize> {
-    #[cfg(feature = "std")]
-    {
-        std::env::var(_key).ok().and_then(|v| v.parse().ok())
-    }
-    #[cfg(not(feature = "std"))]
-    {
-        None
-    }
+/// Every knob that used to be a `TENSORCONTRACT_*` environment variable inside
+/// the kernel layer, as an explicit input. `Tuning::default()` is the baseline
+/// with all of them unset.
+///
+/// Used by the typed resolver ([`ResolvedGemm::with_tuning`](crate::ResolvedGemm::with_tuning))
+/// and by the legacy `KernelSet` menu; a planner owns one and passes it down.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Tuning {
+    /// Instruction-set preference for the tensorcontract menu and the legacy
+    /// Auto selection.
+    pub kernel_force: crate::KernelForce,
+    /// Which blocking derivation is in force.
+    pub block_model: cache::BlockModel,
+    /// Absolute and percentage blocking overrides.
+    pub blocking: BlockingOverride,
+    /// A coupled `kc`: sets `kc` and re-derives `mc`/`nc` at that depth
+    /// (legacy derivation only).
+    pub kc_couple: Option<usize>,
+    /// Force the general scatter write-back instead of the format-specialized
+    /// one.
+    pub writeback_gather: bool,
 }
 
 #[cfg(test)]
@@ -600,9 +575,6 @@ mod tests {
     /// `docs/notebook/`, not a diff that slips through here.
     #[test]
     fn legacy_blocking_is_unchanged() {
-        if env_usize("TENSORCONTRACT_KC_COUPLE").is_some() {
-            return; // the sweep's coupled arm moves `kc` on purpose
-        }
         let d = |real_bytes, a, b| {
             let x = Blocking::derive(real_bytes, a, b);
             (x.mc, x.kc, x.nc)
