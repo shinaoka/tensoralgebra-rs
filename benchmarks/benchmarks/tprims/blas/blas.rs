@@ -1,9 +1,11 @@
 //! tprims-blas at an enforced thread count: gemm, batched gemm (faer loop
 //! and TBLIS-style, compared), trsm. f64 and c64.
 //!
-//! Usage: `blas --threads N [--corpus FILE] [--list]`. CSV
+//! Usage: `blas --threads N [--corpus FILE] [--engine ENGINE] [--list]`. CSV
 //! `case,variant,threads,median_ns,samples`; `CHECK` lines compare the two
-//! batched strategies. With `--corpus` only the file's `gemm_batched`
+//! batched strategies. `--engine faer|packed|pgx86` selects the matrix engine
+//! of the single-GEMM cases (default `faer`); the resolved family is printed
+//! to stderr once per case. With `--corpus` only the file's `gemm_batched`
 //! entries run (any dtype, recorded strides; `tprims_bench::corpus`), and
 //! `--list` prints their names. Environment: `BENCH_RUNS` (default 50, large
 //! cases capped), `BENCH_WARMUP` (5), `BENCH_FILTER` (substring of the
@@ -17,8 +19,8 @@ use tprims_bench::corpus::{Corpus, Dtype, Entry, GemmBatchedEntry};
 use tprims_bench::threads::BenchThreads;
 use tprims_bench::timing::{env_usize, median_ns};
 use tprims_blas::{
-    gemm, gemm_batched, gemm_grouped, trsm, BatchIn, BatchStrategy, Conj, Diag, GroupedJob, MatIn,
-    Op, Scalar, Side, Uplo,
+    gemm, gemm_batched, gemm_grouped, gemm_with, trsm, BatchIn, BatchStrategy, Conj, Diag, Engine,
+    EngineChoice, GemmConfig, GroupedJob, MatIn, Op, Scalar, Side, Uplo,
 };
 use tprims_exec::Exec;
 
@@ -27,6 +29,27 @@ struct Cfg {
     warmup: usize,
     runs: usize,
     filter: Option<String>,
+    /// Which engine the single-GEMM cases use. faer unless asked otherwise.
+    engine: EngineChoice,
+}
+
+impl Cfg {
+    /// `--engine {faer|packed|pgx86}`, default faer.
+    fn engine_from_args() -> EngineChoice {
+        let args: Vec<String> = std::env::args().collect();
+        let Some(i) = args.iter().position(|a| a == "--engine") else {
+            return EngineChoice::Faer;
+        };
+        let name = args
+            .get(i + 1)
+            .unwrap_or_else(|| panic!("--engine needs a value"));
+        match name.as_str() {
+            "faer" => EngineChoice::Faer,
+            "packed" => EngineChoice::Packed,
+            "pgx86" => EngineChoice::PrivateGemmX86,
+            other => panic!("unknown engine {other}; use faer, packed or pgx86"),
+        }
+    }
 }
 
 impl Cfg {
@@ -113,9 +136,45 @@ fn gemm_cases<T: Scalar>(cfg: &Cfg, exec: &Exec<'_>) {
         let runs = cfg.runs_for(mul_cost::<T>() * (m * n * k) as f64);
         let one = <T as Element>::one();
         let zero = <T as Element>::zero();
+        let config = GemmConfig {
+            engine: cfg.engine.clone(),
+            ..Default::default()
+        };
+        let mut reported = false;
         let ns = median_ns(cfg.warmup.min(runs), runs, || {
             let mut cv = StridedViewMut::new(&mut c, &[m, n], &[1, m as isize], 0).expect("c");
-            gemm(exec, one, MatIn::new(&av), MatIn::new(&bv), zero, &mut cv).expect("gemm");
+            match &config.engine {
+                // The default engine keeps the plain entry point, so its
+                // numbers stay comparable with earlier runs.
+                EngineChoice::Faer => {
+                    gemm(exec, one, MatIn::new(&av), MatIn::new(&bv), zero, &mut cv).expect("gemm")
+                }
+                _ => {
+                    let sel = gemm_with(
+                        exec,
+                        &config,
+                        one,
+                        MatIn::new(&av),
+                        MatIn::new(&bv),
+                        zero,
+                        &mut cv,
+                    )
+                    .expect("gemm");
+                    if !reported {
+                        reported = true;
+                        let engine = match sel.engine {
+                            Engine::Faer => "faer",
+                            Engine::PrivateGemmX86 => "pgx86",
+                            Engine::Packed => "packed",
+                            other => panic!("unexpected engine {other:?}"),
+                        };
+                        eprintln!(
+                            "engine={} case={case}: family={:?} mr={} nr={} kc={}",
+                            engine, sel.family_id, sel.mr, sel.nr, sel.kc
+                        );
+                    }
+                }
+            }
         });
         black_box(&c);
         let v = if m == n && n == k {
@@ -451,6 +510,7 @@ fn main() {
         warmup: env_usize("BENCH_WARMUP", 5),
         runs: env_usize("BENCH_RUNS", 50),
         filter: std::env::var("BENCH_FILTER").ok().filter(|f| !f.is_empty()),
+        engine: Cfg::engine_from_args(),
     };
     println!("case,variant,threads,median_ns,samples");
     if let Some(entries) = corpus {
