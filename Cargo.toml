@@ -8,7 +8,6 @@ members = [
     "crates/tprims-exec",
     "crates/tprims-core",
     "crates/tprims-blas-capi",
-    "crates/tprims-contract-capi",
     "crates/tprims-bundle",
     "crates/tprims-blas",
     "crates/tprims-linalg",
@@ -38,10 +37,10 @@ tprims-kernel-tensorcontract = { version = "0.1.0", path = "crates/tprims-kernel
 tprims-kernel-gemm = { version = "0.1.0", path = "crates/tprims-kernel-gemm", default-features = false }
 tprims-kernel-pgx86 = { version = "0.1.0", path = "crates/tprims-kernel-pgx86" }
 tensorcontract = { version = "0.1.0", path = "tensorprimitives/crates/tensorcontract" }
+tensorprimitives-tapp = { version = "0.1.0", path = "tensorprimitives/crates/tensorprimitives-tapp" }
 tprims-exec = { version = "0.1.0", path = "crates/tprims-exec" }
 tprims-core = { version = "0.1.0", path = "crates/tprims-core" }
 tprims-blas-capi = { version = "0.1.0", path = "crates/tprims-blas-capi" }
-tprims-contract-capi = { version = "0.1.0", path = "crates/tprims-contract-capi" }
 tprims-blas = { version = "0.1.0", path = "crates/tprims-blas" }
 tprims-linalg = { version = "0.1.0", path = "crates/tprims-linalg" }
 tprims-contract = { version = "0.1.0", path = "crates/tprims-contract" }

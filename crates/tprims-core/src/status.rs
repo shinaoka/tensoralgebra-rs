@@ -27,14 +27,73 @@ pub const TPRIMS_ERR_WOULD_MATERIALIZE: tprims_status = 7;
 pub const TPRIMS_ERR_NUMERICAL: tprims_status = 8;
 /// The executor has calls in flight.
 pub const TPRIMS_BUSY: tprims_status = 9;
-/// Closing a pool from one of its own workers.
+/// Destroying a pool from one of its own workers.
 pub const TPRIMS_ERR_WOULD_DEADLOCK: tprims_status = 10;
-/// The executor was closed.
-pub const TPRIMS_ERR_CLOSED: tprims_status = 11;
+// 11 was `TPRIMS_ERR_CLOSED`; an executor has no closed state any more
+// (destruction consumes the handle), so the code is retired, not reused.
 /// A panic was caught at the ABI boundary.
 pub const TPRIMS_ERR_PANIC: tprims_status = 12;
 /// Internal error.
 pub const TPRIMS_ERR_INTERNAL: tprims_status = 13;
+/// Index labels that do not describe a contraction (TAPP).
+pub const TPRIMS_ERR_LABELS: tprims_status = 14;
+/// A well-formed request this implementation declines (an unsupported
+/// precision, element operation, or index class).
+pub const TPRIMS_ERR_UNSUPPORTED: tprims_status = 15;
+
+/// A one-line description of `status` (the text behind `TAPP_explain_error`).
+pub fn describe(status: tprims_status) -> &'static str {
+    match status {
+        TPRIMS_OK => "success",
+        TPRIMS_ERR_INVALID_ARGUMENT => "null pointer, invalid handle or invalid argument",
+        TPRIMS_ERR_SHAPE => "inconsistent or overflowing extents or strides",
+        TPRIMS_ERR_DTYPE => "unsupported or mismatched data type",
+        TPRIMS_ERR_DEVICE => "unsupported device",
+        TPRIMS_ERR_READ_ONLY => "output is read-only",
+        TPRIMS_ERR_ALIASED => "output aliases an operand or overlaps itself",
+        TPRIMS_ERR_WOULD_MATERIALIZE => "the operation would copy an operand",
+        TPRIMS_ERR_NUMERICAL => "numerical failure",
+        TPRIMS_BUSY => "executor has calls in flight",
+        TPRIMS_ERR_WOULD_DEADLOCK => "executor destroyed from one of its own workers",
+        TPRIMS_ERR_PANIC => "a panic was caught at the ABI boundary",
+        TPRIMS_ERR_INTERNAL => "internal error",
+        TPRIMS_ERR_LABELS => "invalid index labels",
+        TPRIMS_ERR_UNSUPPORTED => "operation not supported by this implementation",
+        _ => "unknown error",
+    }
+}
+
+/// `TAPP_check_success`: whether `error` is [`TPRIMS_OK`]. Zero is the only
+/// value upstream TAPP fixes; every other code is provider-defined.
+#[no_mangle]
+pub extern "C" fn TAPP_check_success(error: i32) -> bool {
+    error == TPRIMS_OK
+}
+
+/// `TAPP_explain_error`: copy a description of `error` into `message`
+/// (NUL-terminated, at most `maxlen - 1` characters). Returns the untruncated
+/// length without the NUL, as `snprintf` does; `maxlen == 0` writes nothing.
+///
+/// # Safety
+///
+/// `message` is valid for `maxlen` bytes, or `maxlen` is zero.
+#[no_mangle]
+pub unsafe extern "C" fn TAPP_explain_error(
+    error: i32,
+    maxlen: usize,
+    message: *mut c_char,
+) -> usize {
+    let s = describe(error).as_bytes();
+    if !message.is_null() && maxlen > 0 {
+        let n = s.len().min(maxlen - 1);
+        // SAFETY: `n < maxlen` bytes are writable per the contract.
+        unsafe {
+            std::ptr::copy_nonoverlapping(s.as_ptr(), message as *mut u8, n);
+            *message.add(n) = 0;
+        }
+    }
+    s.len()
+}
 
 thread_local! {
     static LAST: RefCell<CString> = RefCell::new(CString::default());

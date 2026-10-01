@@ -1,17 +1,21 @@
 //! `libtprims`: one shared (`cdylib`) and static library from the selected
-//! C ABI parts (Cargo features `blas`, `contract`). Every part links into this
-//! one library, so handles created by one part (executors) are valid in all
-//! others. Headers: `crates/tprims-core/include/tprims/*.h`.
+//! C ABI parts (Cargo features `blas`, `tapp`). Every part links into this
+//! one library, so the executors of `tprims-core` (`TAPP_executor`) are valid
+//! in all others; handles of another TAPP provider cannot be mixed in. The
+//! `tapp` part is `tensorprimitives-tapp` as an `rlib`, exporting the TAPP
+//! contraction API. Headers: the pinned upstream TAPP headers
+//! `crates/tprims-core/include/tapp.h` and `tapp/*.h`, and
+//! `crates/tprims-core/include/tprims/*.h` for the extensions.
 use std::ffi::{c_char, CStr};
 
+#[cfg(feature = "tapp")]
+pub use tensorprimitives_tapp;
 #[cfg(feature = "blas")]
 pub use tprims_blas_capi;
-#[cfg(feature = "contract")]
-pub use tprims_contract_capi;
 pub use tprims_core;
 
-/// Whether the loaded library contains `part` (`"core"`, `"blas"`,
-/// `"contract"`): 1 or 0.
+/// Whether the loaded library contains `part` (`"core"`, `"blas"`, `"tapp"`):
+/// 1 or 0.
 ///
 /// # Safety
 ///
@@ -27,8 +31,8 @@ pub unsafe extern "C" fn tprims_has_part(part: *const c_char) -> i32 {
         b"core",
         #[cfg(feature = "blas")]
         tprims_blas_capi::PART.as_bytes(),
-        #[cfg(feature = "contract")]
-        tprims_contract_capi::PART.as_bytes(),
+        #[cfg(feature = "tapp")]
+        b"tapp",
     ];
     i32::from(parts.contains(&name))
 }
