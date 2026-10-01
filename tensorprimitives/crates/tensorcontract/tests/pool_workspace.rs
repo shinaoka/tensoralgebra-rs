@@ -1,29 +1,15 @@
 //! One pool is one workspace owner: every operation on it shares the storage,
 //! and no other pool can see it.
-use tensorcontract::spmd::Spmd;
 use tensorcontract::{Layout, Operand, Plan};
 use tprims_exec::{Exec, Pool};
-
-struct ExecSpmd<'a>(&'a Exec<'a>, usize);
-
-impl Spmd for ExecSpmd<'_> {
-    fn width(&self) -> usize {
-        self.1
-    }
-    fn broadcast(&self, p: usize, f: &(dyn Fn(usize) + Sync)) -> bool {
-        self.0.broadcast(p, f).is_ok()
-    }
-    fn workspace(&self) -> Option<&dyn tprims_gemm_kernel::WorkspaceProvider> {
-        self.0.workspace()
-    }
-}
 
 const M: usize = 192;
 const N: usize = 160;
 const K: usize = 128;
 
-/// One `ij,jk->ik` contraction through the host seam.
+/// One `ij,jk->ik` contraction on `width` workers of the pool.
 fn run(exec: &Exec<'_>, width: usize) {
+    let exec = exec.with_budget(width).unwrap();
     let av: Vec<f64> = (0..M * K).map(|x| (x % 11) as f64 - 5.0).collect();
     let bv: Vec<f64> = (0..K * N).map(|x| (x % 7) as f64 * 0.5).collect();
     let la = Layout::col_major(&[M as i64, K as i64]);
@@ -42,14 +28,14 @@ fn run(exec: &Exec<'_>, width: usize) {
     .with_threads(width);
     let rg = plan.resolved::<f64>().unwrap();
     let mut out = vec![0.0; M * N];
-    let host = ExecSpmd(exec, width);
     // SAFETY: the buffers are sized by their layouts and `beta` is zero, so `C`
     // is never read.
     unsafe {
         tensorcontract::execute_resolved(
             &plan,
             &rg,
-            Some(&host),
+            &exec,
+            None,
             1.0,
             av.as_ptr(),
             bv.as_ptr(),

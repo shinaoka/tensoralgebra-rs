@@ -1,17 +1,17 @@
 //! A steady-state execute must not allocate.
 //!
 //! Its own binary, because the counter is global: another test running in
-//! parallel would show up in the count. The host is width one, so the whole
+//! parallel would show up in the count. The `Exec` is serial, so the whole
 //! contraction runs on the calling thread and the measurement covers the
 //! driver's own reuse path — the leased team set, worker buffers and scatter
 //! vectors — rather than thread plumbing. A threaded host's first touch and
-//! per-thread slot reuse are pinned in `tprims-gemm-kernel/tests/workspace.rs`.
+//! per-thread slot reuse are pinned in `tprims-exec/tests/workspace.rs`.
 use std::alloc::{GlobalAlloc, Layout as AllocLayout, System};
 use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 
-use tensorcontract::spmd::Spmd;
 use tensorcontract::{driver_decisions, KernelChoice, Layout, Operand, Plan};
-use tprims_gemm_kernel::{ArenaProvider, ResolvedGemm, WorkspaceProvider};
+use tprims_exec::{ArenaProvider, Exec};
+use tprims_gemm_kernel::ResolvedGemm;
 
 static COUNT: AtomicUsize = AtomicUsize::new(0);
 static BIG: AtomicUsize = AtomicUsize::new(0);
@@ -38,23 +38,6 @@ unsafe impl GlobalAlloc for Counting {
 #[global_allocator]
 static ALLOC: Counting = Counting;
 
-/// A one-thread host that lends its own workspace.
-struct Solo {
-    workspace: ArenaProvider,
-}
-
-impl Spmd for Solo {
-    fn width(&self) -> usize {
-        1
-    }
-    fn broadcast(&self, _p: usize, _f: &(dyn Fn(usize) + Sync)) -> bool {
-        false
-    }
-    fn workspace(&self) -> Option<&dyn WorkspaceProvider> {
-        Some(&self.workspace)
-    }
-}
-
 /// One case's plan, resolution and operands, built before anything is measured.
 struct Prepared {
     plan: Plan,
@@ -62,7 +45,8 @@ struct Prepared {
     a: Vec<f64>,
     b: Vec<f64>,
     d: Vec<f64>,
-    host: Solo,
+    /// The caller-lent workspace a serial `Exec` has none of.
+    workspace: ArenaProvider,
 }
 
 impl Prepared {
@@ -93,9 +77,7 @@ impl Prepared {
             a: data(la.storage_len() as usize, 0.0),
             b: data(lb.storage_len() as usize, 1.0),
             d: vec![0.0; ld.storage_len() as usize],
-            host: Solo {
-                workspace: ArenaProvider::new(),
-            },
+            workspace: ArenaProvider::new(),
         }
     }
 
@@ -106,7 +88,8 @@ impl Prepared {
             tensorcontract::execute_resolved(
                 &self.plan,
                 &self.resolution,
-                Some(&self.host),
+                &Exec::Serial,
+                Some(&self.workspace),
                 1.5,
                 self.a.as_ptr(),
                 self.b.as_ptr(),
