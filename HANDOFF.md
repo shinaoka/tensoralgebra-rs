@@ -86,7 +86,7 @@ The spec and Task 8 now reflect that correction.
 - `KernelFamily<R>` is keyed by the real scalar, not by the element type,
   because kernels operate on `T::Real` today.
 - Workspace ownership correction: no process-global `ARENA`. Each
-  `tprims_exec::Pool` owns its provider; both blas/contract `ExecSpmd`
+  `tprims_exec::Pool` owns its provider; both blas/contract `ExecSpmd` (since removed in #37)
   adapters borrow it. `tprims-exec` may depend on the thread-free
   `tprims-gemm-kernel` contract without a cycle. A/tile buffers are
   worker-local and owner-keyed; B/team sets are leased exclusively and

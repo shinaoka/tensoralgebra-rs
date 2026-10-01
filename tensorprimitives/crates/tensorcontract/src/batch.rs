@@ -156,6 +156,12 @@ where
         return Ok(());
     }
 
+    // Width one is the plain loop, with no allocation.
+    if exec.budget() == 1 || items.len() == 1 {
+        items.iter_mut().for_each(run_item);
+        return Ok(());
+    }
+
     // Lanes of contiguous items, one per worker; at width one this is the
     // plain loop on the caller. `for_each_partition` takes `Fn`, so each item
     // sits behind its own mutex, locked exactly once and never contended: the

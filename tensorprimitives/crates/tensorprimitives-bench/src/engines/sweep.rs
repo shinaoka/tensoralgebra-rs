@@ -190,6 +190,13 @@ where
         // cannot fill the threads from one axis is exactly what a scaling run is
         // looking for and the CSV should say so without re-deriving it.
         let threads = p.threads();
+        // `run_raw` is serial since threads come only from a `tprims_exec::Exec`
+        // (#37); refuse rather than label a serial run as a threaded one. The
+        // `sweep` subcommand is deleted with this crate's port.
+        assert_eq!(
+            threads, 1,
+            "sweep no longer threads: TENSORCONTRACT_THREADS does not start threads"
+        );
         let tag = if threads == 1 {
             String::new()
         } else {
