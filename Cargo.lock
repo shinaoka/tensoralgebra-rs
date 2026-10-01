@@ -1011,6 +1011,8 @@ dependencies = [
  "num-complex",
  "rand",
  "rand_chacha",
+ "rayon",
+ "tprims-exec",
  "tprims-gemm-kernel",
  "tprims-kernel-cplx",
  "tprims-kernel-tensorcontract",
@@ -1034,7 +1036,6 @@ dependencies = [
  "tensorcontract",
  "tprims-core",
  "tprims-exec",
- "tprims-gemm-kernel",
 ]
 
 [[package]]
@@ -1173,10 +1174,7 @@ dependencies = [
  "faer",
  "rayon",
  "strided-basic",
- "tensorcontract",
  "thiserror",
- "tprims-gemm-kernel",
- "tprims-kernel-tensorcontract",
 ]
 
 [[package]]

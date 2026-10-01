@@ -1,7 +1,7 @@
 //! The five-loop driver.
 //!
-//! tprims: an [`Spmd`](crate::spmd::Spmd) seam was added here (not upstream):
-//! when a caller supplies one, its threads replace `std::thread::scope`.
+//! tprims: threads come only from a [`tprims_exec::Exec`] (not upstream); this
+//! crate spawns none, and without an `Exec` the driver runs serially.
 //!
 //! Structurally identical to BLIS's GEMM: two levels of cache blocking with a
 //! packing step at each, wrapped around a register-blocked micro-kernel. The
@@ -108,16 +108,14 @@
 //!
 //! The per-call spawn cost that used to head that list — `std::thread::scope`
 //! rather than a pool, ~20–36 µs per thread and the whole story below a megabyte
-//! (A43, D46) — now has two answers, both opt-in and both measurable against the
-//! shipped behaviour as run-time switches:
-//!
-//! * [`crate::pool`] reuses parked threads instead of spawning
-//!   (`TENSORCONTRACT_POOL=on`) — it removes the cost;
-//! * [`crate::batch`] parallelises over a *batch* of contractions, paying one
-//!   spawn set for the batch rather than one per contraction — it removes the
-//!   count.
+//! (A43, D46) — is gone: the threads of one call are the workers of the host's
+//! [`tprims_exec::Pool`], co-scheduled by [`tprims_exec::Exec::broadcast`]. For
+//! many small contractions, [`crate::batch`] parallelises over a *batch*
+//! instead of inside each contraction.
 
 use std::sync::Barrier;
+
+use tprims_exec::{Exec, WorkspaceProvider, WorkspaceReq};
 
 use crate::buffer::Panel;
 mod dynamic;
@@ -448,13 +446,28 @@ pub unsafe fn execute<T>(
     T: Element,
     T::Real: KernelSet,
 {
-    // SAFETY: forwarded unchanged; `usize::MAX` imposes no cap, so the thread
-    // count is the plan's, exactly as before this parameter existed.
-    unsafe { execute_capped(plan, alpha, a, b, beta, c, d, usize::MAX, None, None, None) }
+    // SAFETY: forwarded unchanged; the serial `Exec` is the only thread source
+    // when the caller supplies none.
+    unsafe {
+        execute_capped(
+            plan,
+            alpha,
+            a,
+            b,
+            beta,
+            c,
+            d,
+            &Exec::Serial,
+            None,
+            None,
+            None,
+        )
+    }
 }
 
-/// Execute an already resolved built-in family with an optional host SPMD.
-/// Effective blocking uses the active grid width, not the plan's requested width.
+/// Execute an already resolved built-in family on `exec`, with `workspace`
+/// (or, when `None`, the one `exec` lends). The width is `exec.budget()`;
+/// effective blocking uses the active grid width, not the plan's requested width.
 ///
 /// # Safety
 /// All `execute` pointer/alias obligations apply. `rg` must be validated for
@@ -470,18 +483,19 @@ pub unsafe fn execute<T>(
 /// let rg = p.resolved::<f64>()?.with_threads(1)?;
 /// let a = [1.,2.,3.,4.]; let b = [5.,6.,7.,8.]; let mut d = [0.;4];
 /// // SAFETY: full checked layouts/buffers, valid resolution; beta=0 ignores C.
-/// unsafe { tensorcontract::execute_resolved(&p,&rg,None,
+/// unsafe { tensorcontract::execute_resolved(&p,&rg,&tprims_exec::Exec::serial(),None,
 ///     1.,a.as_ptr(),b.as_ptr(),0.,std::ptr::null(),d.as_mut_ptr()); }
 /// assert_eq!(d, [23.,34.,31.,46.]);
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 ///
-/// A host which declines a multi-worker broadcast is retried serially with
+/// An `exec` that declines a multi-worker broadcast is retried serially with
 /// this same frozen family/policy; it never re-selects the plan default.
 pub unsafe fn execute_resolved<T: Element>(
     plan: &Plan,
     rg: &tprims_gemm_kernel::ResolvedGemm<T::Real>,
-    spmd: Option<&dyn crate::spmd::Spmd>,
+    exec: &Exec<'_>,
+    workspace: Option<&dyn WorkspaceProvider>,
     alpha: T,
     a: *const T,
     b: *const T,
@@ -501,8 +515,8 @@ pub unsafe fn execute_resolved<T: Element>(
             beta,
             c,
             d,
-            usize::MAX,
-            spmd,
+            exec,
+            workspace,
             Some(rg),
             None,
         )
@@ -519,7 +533,8 @@ pub unsafe fn execute_resolved<T: Element>(
 pub unsafe fn execute_resolved_instrumented<T: Element>(
     plan: &Plan,
     rg: &tprims_gemm_kernel::ResolvedGemm<T::Real>,
-    spmd: Option<&dyn crate::spmd::Spmd>,
+    exec: &Exec<'_>,
+    workspace: Option<&dyn WorkspaceProvider>,
     stats: &DynStats,
     alpha: T,
     a: *const T,
@@ -540,15 +555,15 @@ pub unsafe fn execute_resolved_instrumented<T: Element>(
             beta,
             c,
             d,
-            usize::MAX,
-            spmd,
+            exec,
+            workspace,
             Some(rg),
             Some(stats),
         )
     }
 }
 
-/// [`execute`] with host-supplied co-scheduled threads (tprims addition).
+/// [`execute`] on the co-scheduled threads of `exec` (tprims addition).
 ///
 /// # Safety
 ///
@@ -556,7 +571,8 @@ pub unsafe fn execute_resolved_instrumented<T: Element>(
 #[allow(clippy::too_many_arguments)] // INVARIANT: same argument set as `execute_capped`.
 pub unsafe fn execute_with<T>(
     plan: &Plan,
-    spmd: &dyn crate::spmd::Spmd,
+    exec: &Exec<'_>,
+    workspace: Option<&dyn WorkspaceProvider>,
     alpha: T,
     a: *const T,
     b: *const T,
@@ -568,30 +584,14 @@ pub unsafe fn execute_with<T>(
     T::Real: KernelSet,
 {
     // SAFETY: forwarded unchanged.
-    unsafe {
-        execute_capped(
-            plan,
-            alpha,
-            a,
-            b,
-            beta,
-            c,
-            d,
-            usize::MAX,
-            Some(spmd),
-            None,
-            None,
-        )
-    }
+    unsafe { execute_capped(plan, alpha, a, b, beta, c, d, exec, workspace, None, None) }
 }
 
-/// [`execute`], with an upper bound on the threads this call may use.
+/// [`execute`] on `exec`: its budget is the width this call may use, and its
+/// workspace (or `workspace`, when given) is where the call's buffers live.
 ///
-/// The bound exists for the batched path: parallelising over a *batch* means each
-/// contraction in it must run serially, or the two axes nest and the spawn saving
-/// the batch axis exists for is spent again inside every item. Passing 1 is how
-/// that is expressed, and it costs nothing here — the `p == 1` branch below is the
-/// pre-threading code path.
+/// Passing [`Exec::Serial`] is how a caller runs an item serially, for example
+/// when the parallel axis is a batch of items.
 ///
 /// # Safety
 ///
@@ -609,8 +609,8 @@ pub(crate) unsafe fn execute_capped<T>(
     beta: T,
     c: *const T,
     d: *mut T,
-    max_threads: usize,
-    spmd: Option<&dyn crate::spmd::Spmd>,
+    exec: &Exec<'_>,
+    workspace: Option<&dyn WorkspaceProvider>,
     resolution: Option<&tprims_gemm_kernel::ResolvedGemm<T::Real>>,
     stats: Option<&dynamic::DynStats>,
 ) where
@@ -706,7 +706,7 @@ pub(crate) unsafe fn execute_capped<T>(
         (&plan.h_a, &plan.h_b)
     };
 
-    let workspace = spmd.and_then(|s| s.workspace());
+    let workspace = workspace.or_else(|| exec.workspace());
     let m = am.len();
     let n = bn.len();
     let k = ak.len();
@@ -754,14 +754,9 @@ pub(crate) unsafe fn execute_capped<T>(
     // each; it caps them at the panel and block counts, so a contraction with
     // three row panels and two column blocks uses six threads at most however
     // many were asked for and however much work it contains.
-    // With a host-supplied `Spmd` the width is the host's, not the plan's or
-    // `TENSORCONTRACT_THREADS`.
-    let want = match spmd {
-        Some(s) => s.width(),
-        None => plan.threads(),
-    }
-    .min(max_threads)
-    .max(1);
+    // The width is the `Exec`'s budget, not the plan's or
+    // `TENSORCONTRACT_THREADS`: threads come from the host alone.
+    let want = exec.budget();
     // An explicit grid is clamped to the width this call may use; the default
     // grid is the plan's own cost model, which already respects it.
     let explicit_grid = match resolved.map(|rg| rg.partition) {
@@ -788,10 +783,9 @@ pub(crate) unsafe fn execute_capped<T>(
         (Some((pm, pn)), None) => (pm, pn),
         (None, None) => plan.partition_with(mr, nr, want),
     };
-    // A host-supplied `Spmd` promises `p <= width`; a pinned partition
-    // (`TENSORCONTRACT_PARTITION` or an explicit grid) ignores the thread
-    // count, so shrink it.
-    if dyn_jobs.is_none() && (spmd.is_some() || explicit_grid.is_some()) {
+    // A pinned partition (`TENSORCONTRACT_PARTITION` or an explicit grid)
+    // ignores the thread count, so shrink it to the budget.
+    if dyn_jobs.is_none() {
         while pm * pn > want {
             if pn > 1 {
                 pn -= 1;
@@ -857,7 +851,7 @@ pub(crate) unsafe fn execute_capped<T>(
     // What this call needs from the owner, if it has one. Everything is in
     // bytes except the element counts of the scratch vectors.
     let element = core::mem::size_of::<T::Real>();
-    let req = tprims_gemm_kernel::WorkspaceReq {
+    let req = WorkspaceReq {
         a_bytes: ap_len * element,
         tile_bytes: (fam.tile + fam.induced_scratch(kc)) * element,
         worker_scatter: 0,
@@ -998,11 +992,9 @@ pub(crate) unsafe fn execute_capped<T>(
     // the threads take no barrier at all — which `bars` being empty expresses.
 
     // One thread's whole job, as a function of its index in the `pm x pn` grid.
-    // Written once and reached two ways — from a pooled broadcast or from
-    // `std::thread::scope` — so the two arms cannot drift apart. They differ only
-    // in where the threads come from; the partition, the strips and therefore the
-    // arithmetic are identical, which is why the result stays bitwise identical to
-    // serial under either.
+    // Written once; the broadcast below runs it on the `Exec`'s workers. The
+    // partition, the strips and therefore the arithmetic are the same at every
+    // width, which is why the result stays bitwise identical to serial.
     let claim = std::sync::atomic::AtomicUsize::new(0);
     let cell = |t: usize| {
         let cx = &cx;
@@ -1039,35 +1031,20 @@ pub(crate) unsafe fn execute_capped<T>(
         });
     };
 
-    // Pooled if asked for and if the pool can serve this width, otherwise spawn.
-    // `try_broadcast` runs nothing when it declines, so this is a real either/or
-    // and never a partial execution. Off by default: see `crate::pool`.
-    if let Some(s) = spmd {
-        if s.broadcast(p, &cell) {
-            return;
-        }
-        // Declined: nothing ran, so running serially is safe, and never spawn
-        // threads behind the host's back. The caller does the work with this
-        // call's own buffers and panel, so the refusal costs no second
-        // allocation and no second lease.
-        with_buffers(&mut |ap, tile| {
-            // SAFETY: forwarded unchanged from this call's contract; a serial
-            // strip is the degenerate partition and needs no barrier.
-            unsafe { run_strip::<T>(&cx, 0, m, ap, tile, tile.add(scratch_off), BPart::SERIAL) }
-        });
+    // `broadcast` runs nothing when it declines (a serial `Exec`, a width the
+    // pool or budget cannot serve, or a caller already on the pool's workers),
+    // so this is a real either/or and never a partial execution.
+    if exec.broadcast(p, &cell).is_ok() {
         return;
     }
-
-    #[cfg(feature = "std")]
-    if crate::pool::enabled() && crate::pool::try_broadcast(p, &cell) {
-        return;
-    }
-
-    std::thread::scope(|scope| {
-        for t in 0..p {
-            let cell = &cell;
-            scope.spawn(move || cell(t));
-        }
+    // Declined: nothing ran, so running serially is safe, and no thread is ever
+    // spawned behind the host's back. The caller does the work with this call's
+    // own buffers and panel, so the refusal costs no second allocation and no
+    // second lease.
+    with_buffers(&mut |ap, tile| {
+        // SAFETY: forwarded unchanged from this call's contract; a serial strip
+        // is the degenerate partition and needs no barrier.
+        unsafe { run_strip::<T>(&cx, 0, m, ap, tile, tile.add(scratch_off), BPart::SERIAL) }
     });
 }
 

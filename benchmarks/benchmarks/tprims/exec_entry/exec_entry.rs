@@ -7,26 +7,11 @@
 use std::hint::black_box;
 
 use strided_basic::{map_into, StridedArray};
-use tensorcontract::spmd::Spmd;
 use tensorcontract::{Layout, Operand, Plan, TensorView, TensorViewMut};
 use tprims_bench::threads::BenchThreads;
 use tprims_bench::timing::{env_usize, median_ns};
 use tprims_exec::strided::run_with_exec;
 use tprims_exec::{Exec, Pool};
-
-struct ExecSpmd<'a> {
-    exec: &'a Exec<'a>,
-    width: usize,
-}
-
-impl Spmd for ExecSpmd<'_> {
-    fn width(&self) -> usize {
-        self.width
-    }
-    fn broadcast(&self, p: usize, f: &(dyn Fn(usize) + Sync)) -> bool {
-        self.exec.broadcast(p, f).is_ok()
-    }
-}
 
 struct Cfg {
     threads: usize,
@@ -146,15 +131,11 @@ fn gemm_case(cfg: &Cfg, exec: &Exec<'_>, pool: Option<&Pool<'_>>) {
         TensorViewMut::new(&mut reference, &l, &id),
     )
     .expect("reference");
-    let spmd = ExecSpmd {
-        exec,
-        width: exec.budget(),
-    };
     let mut d = vec![0.0; n * n];
     let runs = cfg.runs.min(20);
     let ns = median_ns(cfg.warmup.min(3), runs, || {
         plan.run_with(
-            &spmd,
+            exec,
             1.0,
             TensorView::new(&a, &l, &ia),
             TensorView::new(&b, &l, &ib),

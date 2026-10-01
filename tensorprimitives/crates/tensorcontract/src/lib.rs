@@ -185,17 +185,17 @@
 //! # Ok::<(), tensorcontract::Error>(())
 //! ```
 //!
-//! **Threading is off by default** — one thread unless [`Plan::with_threads`]
-//! asks otherwise. A library should not decide how many cores its caller has,
-//! and thread spawn is tens of microseconds, which dominates a small
-//! contraction outright. Any thread count gives bitwise the same result.
+//! **Threading is off by default** — [`Plan::run`] is serial. A library should
+//! not decide how many cores its caller has: threads come only from a
+//! [`tprims_exec::Exec`] the host passes to [`Plan::run_with`] (or to the raw
+//! and batched variants), and this crate spawns none. Any width gives bitwise
+//! the same result.
 //!
 #![cfg_attr(
     feature = "std",
     doc = "**Many small contractions are a batch, not a loop.** \
-[`batch::contract_batched`] parallelises over independent items, paying one set \
-of spawns for the whole batch instead of one per contraction — which is the \
-regime where per-call threading loses."
+[`batch::contract_batched`] parallelises over independent items on the host's \
+`Exec`, which is the regime where per-contraction threading loses."
 )]
 //!
 //! Cache blocking, the register block and the row/column orientation are all
@@ -308,8 +308,6 @@ pub use driver::{
 mod resolve;
 pub mod select;
 use tprims_gemm_kernel::pack;
-#[cfg(feature = "std")]
-mod pool;
 use tprims_gemm_kernel::writeback;
 
 pub use tprims_gemm_kernel::element;
@@ -319,7 +317,6 @@ pub mod layout;
 pub mod plan;
 pub mod reference;
 pub use tprims_gemm_kernel::scatter;
-pub mod spmd;
 
 pub use element::{Element, Real, C32, C64};
 pub use error::{Error, Result};
@@ -327,6 +324,7 @@ pub use kernel::{Blocking, ComplexMethod, KernelSet};
 pub use layout::Layout;
 pub use plan::{ElementOp, Operand, Plan, PlanStats};
 pub use select::{Chooser, KernelCandidate, OperandMeta, Selection, SelectionContext};
+use tprims_exec::{Exec, WorkspaceProvider};
 pub use tprims_gemm_kernel::KernelChoice;
 
 /// An immutable operand: data, layout and index labels.
@@ -561,16 +559,16 @@ impl Plan {
         Ok(())
     }
 
-    /// [`Plan::run`] on threads supplied by the host through
-    /// [`Spmd`](spmd::Spmd) (tprims addition): the thread count is
-    /// `spmd.width()`, and no thread is spawned by this crate.
+    /// [`Plan::run`] on the threads of `exec` (tprims addition): the width is
+    /// `exec.budget()` and the buffers live in `exec`'s workspace when it lends
+    /// one. No thread is spawned by this crate.
     ///
     /// # Errors
     ///
     /// As [`Plan::run`].
     pub fn run_with<T>(
         &self,
-        spmd: &dyn spmd::Spmd,
+        exec: &Exec<'_>,
         alpha: T,
         a: TensorView<'_, T>,
         b: TensorView<'_, T>,
@@ -600,7 +598,8 @@ impl Plan {
         unsafe {
             driver::execute_with(
                 self,
-                spmd,
+                exec,
+                None,
                 alpha,
                 a.data.as_ptr(),
                 b.data.as_ptr(),
@@ -649,7 +648,8 @@ impl Plan {
         driver::execute(self, alpha, a, b, beta, c, d)
     }
 
-    /// [`Plan::run_raw`] on host-supplied threads (tprims addition).
+    /// [`Plan::run_raw`] on the threads of `exec` (tprims addition), with the
+    /// buffers in `workspace` or, when `None`, in the one `exec` lends.
     ///
     /// # Safety
     ///
@@ -657,7 +657,8 @@ impl Plan {
     #[allow(clippy::too_many_arguments)] // INVARIANT: `run_raw`'s arguments plus the seam.
     pub unsafe fn run_raw_with<T>(
         &self,
-        spmd: &dyn spmd::Spmd,
+        exec: &Exec<'_>,
+        workspace: Option<&dyn WorkspaceProvider>,
         alpha: T,
         a: *const T,
         b: *const T,
@@ -669,7 +670,7 @@ impl Plan {
         T::Real: KernelSet,
     {
         // SAFETY: the caller upholds `run_raw`'s contract.
-        unsafe { driver::execute_with(self, spmd, alpha, a, b, beta, c, d) }
+        unsafe { driver::execute_with(self, exec, workspace, alpha, a, b, beta, c, d) }
     }
 
     /// Each operand's element-wise op must be the one the plan was built with.

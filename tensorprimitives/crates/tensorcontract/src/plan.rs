@@ -324,8 +324,6 @@ impl Plan {
         let _ = orient_override();
         let _ = row_block_override();
         let _ = partition_override();
-        #[cfg(feature = "std")]
-        let _ = crate::pool::enabled();
     }
 
     /// Select a registered family, or restore automatic selection.
@@ -701,7 +699,10 @@ impl Plan {
         self
     }
 
-    /// Execute on `n` threads.
+    /// Plan for `n` threads: the width the family's blocking is resolved for
+    /// and [`Plan::partition`] reports. Execution threads come only from the
+    /// [`tprims_exec::Exec`] passed to `run_with` (width = its budget), and a
+    /// plan run without one is serial whatever `n` is.
     ///
     /// Parallelism is a 2-D partition of the output, `ceil(M / MR)` row panels
     /// by `ceil(N / NR)` column blocks, so it is capped at their product — see
@@ -729,24 +730,10 @@ impl Plan {
         self
     }
 
-    /// The thread count this plan will execute with.
+    /// The thread count this plan is resolved and partitioned for (see
+    /// [`Plan::with_threads`]); it is not an execution width.
     ///
     /// Defaults to `TENSORCONTRACT_THREADS`, and to **1** if that is unset.
-    ///
-    /// Single-threaded-by-default is now a **measured** decision rather than a
-    /// placeholder (D46). Threads are spawned per `execute` call at ~20–36 µs
-    /// each, which below about a megabyte makes 64 threads **1.2–10x slower than
-    /// serial**; and the optimal thread count walks 4 → 8 → 16 → 32 → 64 across
-    /// 0.25 → 64 MiB, so any *fixed* non-1 default is wrong at every size but one.
-    /// Keeping it at 1 also keeps every single-core number in `docs/notebook/`
-    /// reproducible from a bare checkout.
-    ///
-    /// What would change it: a thread pool that removes the per-call spawn cost
-    /// outright. One exists behind `TENSORCONTRACT_POOL=on` and is **not** a
-    /// default candidate — it is worth up to 11.6x on Zen2 and up to 2.5x
-    /// *slower* on Ice Lake, so it is measured and does not transfer. An
-    /// amortisation guard was the other candidate and was measured and rejected:
-    /// it is a trade, costing a correctly-threaded caller 10-39%.
     pub fn threads(&self) -> usize {
         self.threads.unwrap_or_else(tprims_gemm_kernel::env_threads)
     }

@@ -19,8 +19,6 @@ strided-basic = { workspace = true, optional = true }
 
 [dev-dependencies]
 faer = { workspace = true }
-tensorcontract = { workspace = true }
-tprims-kernel-tensorcontract = { workspace = true }
 
 [lints]
 workspace = true

@@ -5,9 +5,8 @@
 //!
 //! One `Plan` is built per call for the item shape; items run either spread
 //! over the pool (each serial, width-one seam) or one after another, each on
-//! the pool's co-scheduled threads through the `Spmd` seam.
+//! the pool's co-scheduled threads through `Exec::broadcast`.
 use strided_view::StridedViewMut;
-use tensorcontract::spmd::Spmd;
 use tensorcontract::{Layout, Operand, Plan};
 use tprims_exec::Exec;
 
@@ -15,26 +14,6 @@ use crate::batched::{Batch, Schedule, Selected};
 use crate::gemm::{SendConst, SendMut};
 use crate::operand::Mat2;
 use crate::{Conj, Error, Result, Scalar};
-
-/// `Spmd` on an `Exec`: co-scheduled threads come from the borrowed pool.
-pub(crate) struct ExecSpmd<'a> {
-    pub exec: &'a Exec<'a>,
-    pub width: usize,
-    /// Storage this operation's threads share: the pool's own when it has one.
-    pub workspace: Option<&'a dyn tprims_gemm_kernel::WorkspaceProvider>,
-}
-
-impl Spmd for ExecSpmd<'_> {
-    fn width(&self) -> usize {
-        self.width
-    }
-    fn broadcast(&self, p: usize, f: &(dyn Fn(usize) + Sync)) -> bool {
-        self.exec.broadcast(p, f).is_ok()
-    }
-    fn workspace(&self) -> Option<&dyn tprims_gemm_kernel::WorkspaceProvider> {
-        self.workspace
-    }
-}
 
 /// A selection failure is the caller's engine choice and keeps its own type;
 /// anything else is a contraction error.
@@ -130,7 +109,7 @@ pub(crate) fn run<T: Scalar>(
     plan: Plan,
     rg: tprims_gemm_kernel::ResolvedGemm<T::Re>,
 ) -> Result<(Selected, tprims_gemm_kernel::ResolvedGemm<T::Re>)> {
-    let item = |i: usize, spmd: &dyn Spmd| {
+    let item = |i: usize, exec: &Exec<'_>| {
         let (a, b, c) = (a, b, c);
         let i = i as isize;
         // SAFETY: the plan's scatters address exactly the validated item
@@ -140,7 +119,8 @@ pub(crate) fn run<T: Scalar>(
         unsafe {
             let d = c.0.offset(i * s.sc);
             plan.run_raw_with(
-                spmd,
+                exec,
+                None,
                 alpha,
                 a.0.offset(i * s.sa),
                 b.0.offset(i * s.sb),
@@ -153,22 +133,13 @@ pub(crate) fn run<T: Scalar>(
     match sched.outer {
         Some(k) => {
             let lanes = exec.with_budget(k).unwrap_or(*exec);
-            let serial = ExecSpmd {
-                exec: &Exec::Serial,
-                width: 1,
-                workspace: None,
-            };
-            lanes.for_each_partition(s.count, &|i| item(i, &serial));
+            lanes.for_each_partition(s.count, &|i| item(i, &Exec::Serial));
         }
         None => {
             // Each item is one co-scheduled SPMD broadcast of its own.
-            let spmd = ExecSpmd {
-                exec,
-                width: sched.inner,
-                workspace: exec.workspace(),
-            };
+            let inner = exec.with_budget(sched.inner).unwrap_or(*exec);
             for i in 0..s.count {
-                item(i, &spmd);
+                item(i, &inner);
             }
         }
     }
@@ -221,24 +192,12 @@ impl<T: Scalar> OnePlan<T> {
         beta: T,
         d: *mut T,
     ) {
-        let spmd = ExecSpmd {
-            exec,
-            width: self.width,
-            workspace: exec.workspace(),
-        };
+        let exec = exec.with_budget(self.width).unwrap_or(*exec);
         // SAFETY: the caller's contract; `C` is `D`, which is this driver's
         // in-place form, and the plan was built from the same layouts.
         unsafe {
             tensorcontract::execute_resolved(
-                &self.plan,
-                &self.rg,
-                Some(&spmd),
-                alpha,
-                a,
-                b,
-                beta,
-                d,
-                d,
+                &self.plan, &self.rg, &exec, None, alpha, a, b, beta, d, d,
             )
         };
     }

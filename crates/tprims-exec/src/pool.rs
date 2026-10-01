@@ -1,6 +1,6 @@
+use crate::ArenaProvider;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
-use crate::ArenaProvider;
 
 /// A Rayon pool lent by the host for the lifetime `'p`.
 ///

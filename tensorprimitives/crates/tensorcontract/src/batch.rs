@@ -1,34 +1,13 @@
 //! Many independent contractions, with the **batch** as the parallel axis.
 //!
-//! # The measured argument for this existing at all
-//!
-//! Threads are spawned per [`Plan::run`] call. At ~20–36 µs each that is the whole
-//! story below about a megabyte: 64 threads make a 0.22 ms contraction take 2.2 ms
-//! (A43, D46). The crate-internal thread pool removes that cost where it
-//! transfers. This one removes the *count* instead: parallelising over a batch of `n`
-//! contractions pays **one** spawn set for the whole batch instead of `n` of them,
-//! and Phase 1 named many small repeated contractions as this project's real
-//! headroom, so it is the regime that matters most.
-//!
-//! # Why `rayon` would fit here, having been refuted for the inner path
-//!
-//! The intra-contraction path is SPMD-with-barriers, and a `rayon` task that blocks
-//! on a barrier inside a bounded pool deadlocks — the `pool` module's documentation
-//! has the argument. **The batch axis has no barriers.** Items are wholly
-//! independent, so plain fork-join is the right shape and `rayon` genuinely fits it.
-//!
-//! It is still not used, for a smaller reason than the inner path's: fork-join over
-//! disjoint `&mut` chunks is [`std::thread::scope`] and ten lines, the crate already
-//! owns a pool that can be extended to this axis, and a dependency in the hot path
-//! is something this project has declined at every other opportunity. Recorded so
-//! the next person does not re-derive it: the objection to `rayon` here is
-//! *unnecessary*, not *unsound*.
+//! Parallelising over a batch of `n` contractions needs no barrier: items are
+//! wholly independent, so the work is plain fork-join over the host's
+//! [`Exec`], and this crate spawns no thread of its own.
 //!
 //! # What this does not do
 //!
-//! * **The batch axis is the only parallel axis.** Each item runs serially however
-//!   many threads its own plan asks for, because nesting the two would spend the
-//!   spawn saving again inside every item.
+//! * **The batch axis is the only parallel axis.** Each item runs serially
+//!   however wide the `Exec` is, so the two axes never nest.
 //! * **The split is static and contiguous**, by item count. Balancing it by
 //!   estimated work is the obvious refinement and is deliberately not guessed at:
 //!   D47 measured that block-scatter load imbalance does not cost on the dense
@@ -37,9 +16,10 @@
 //!   where a dynamic claim over the batch belongs, and it is what TBLIS uses a
 //!   dynamic atomic-claim scheduler for while keeping static partitioning for
 //!   dense (part 15). Same division, reached independently.
-//! * **Nothing is pooled here yet.** The batch pays one `std::thread::scope` per
-//!   call, which is the whole win against one per item; routing this axis through
-//!   the internal thread pool as well would remove that last spawn set too.
+
+use std::sync::Mutex;
+
+use tprims_exec::Exec;
 
 use crate::element::Element;
 use crate::error::Result;
@@ -78,11 +58,29 @@ pub struct BatchItem<'a, T> {
     pub d: TensorViewMut<'a, T>,
 }
 
-/// Run every item, parallelising over the batch at the ambient thread count
-/// (`TENSORCONTRACT_THREADS`, default 1).
+/// Run every item, parallelising over the batch on at most `exec.budget()`
+/// threads of `exec` (serially on [`Exec::Serial`]).
 ///
-/// See [`contract_batched_with_threads`] for the contract; this is that with the
-/// default.
+/// # Ordering and results
+///
+/// Items are independent, so the batch imposes no order between them and the
+/// result of each is **bitwise identical to running it alone** — each item runs on
+/// exactly one thread, through the same serial path
+/// [`Plan::run`](crate::plan::Plan::run) takes. The batch axis adds no reduction
+/// and no accumulation, so there is nothing for a width to change.
+///
+/// # All or nothing
+///
+/// Every item's bounds are checked against its plan's scatter vectors **before any
+/// item runs**, so a batch containing one bad item writes to no output at all. That
+/// is a stronger guarantee than looping over [`Plan::run`] gives, and it is the
+/// reason to prefer this even when serial: a partially executed batch leaves the
+/// caller unable to say which outputs are valid.
+///
+/// # Threads
+///
+/// The budget bounds the *batch* axis, and the items themselves run serially. It
+/// is further capped by the item count: the lanes are `min(budget, items)`.
 ///
 /// ```
 /// use tensorcontract::batch::{contract_batched, BatchItem};
@@ -131,50 +129,13 @@ pub struct BatchItem<'a, T> {
 ///     },
 /// ];
 ///
-/// contract_batched(&mut items).unwrap();
+/// contract_batched(&mut items, &tprims_exec::Exec::serial()).unwrap();
 /// drop(items);                       // release the borrows on d0 / d1
 ///
 /// assert_eq!(d0, a0);                // multiplying by the identity
 /// assert_eq!(d1, a1);
 /// ```
-pub fn contract_batched<T>(items: &mut [BatchItem<'_, T>]) -> Result<()>
-where
-    T: Element + Send + Sync,
-    T::Real: KernelSet,
-{
-    contract_batched_with_threads(items, tprims_gemm_kernel::env_threads())
-}
-
-/// Run every item, parallelising over the batch on at most `threads` threads.
-///
-/// # Ordering and results
-///
-/// Items are independent, so the batch imposes no order between them and the
-/// result of each is **bitwise identical to running it alone** — each item runs on
-/// exactly one thread, through the same serial path
-/// [`Plan::run`](crate::plan::Plan::run) takes at one thread. The batch axis adds
-/// no reduction and no accumulation, so there is nothing for a thread count to
-/// change.
-///
-/// # All or nothing
-///
-/// Every item's bounds are checked against its plan's scatter vectors **before any
-/// item runs**, so a batch containing one bad item writes to no output at all. That
-/// is a stronger guarantee than looping over [`Plan::run`] gives, and it is the
-/// reason to prefer this even at one thread: a partially executed batch leaves the
-/// caller unable to say which outputs are valid.
-///
-/// # Threads
-///
-/// `threads` bounds the *batch* axis, and the items themselves run serially — see
-/// the module documentation. It is further capped by the item count (spawning more
-/// threads than there is work for is the mistake this whole area exists to avoid).
-/// The spawn cost amortises over the whole batch here, not over one item, which
-/// is exactly why the batch axis is the good one.
-pub fn contract_batched_with_threads<T>(
-    items: &mut [BatchItem<'_, T>],
-    threads: usize,
-) -> Result<()>
+pub fn contract_batched<T>(items: &mut [BatchItem<'_, T>], exec: &Exec<'_>) -> Result<()>
 where
     T: Element + Send + Sync,
     T::Real: KernelSet,
@@ -195,26 +156,14 @@ where
         return Ok(());
     }
 
-    let p = threads.max(1).min(items.len());
-
-    if p == 1 {
-        for it in items.iter_mut() {
-            run_item(it);
-        }
-        return Ok(());
-    }
-
-    // Contiguous chunks: `chunks_mut` hands each thread an exclusive slice, so
-    // disjointness is the borrow checker's conclusion rather than a comment.
-    let per = items.len().div_ceil(p);
-    std::thread::scope(|scope| {
-        for chunk in items.chunks_mut(per) {
-            scope.spawn(move || {
-                for it in chunk.iter_mut() {
-                    run_item(it);
-                }
-            });
-        }
+    // Lanes of contiguous items, one per worker; at width one this is the
+    // plain loop on the caller. `for_each_partition` takes `Fn`, so each item
+    // sits behind its own mutex, locked exactly once and never contended: the
+    // `&mut` outputs already prove the items disjoint.
+    let cells: Vec<Mutex<&mut BatchItem<'_, T>>> = items.iter_mut().map(Mutex::new).collect();
+    exec.for_each_partition(cells.len(), &|i| {
+        let mut it = cells[i].lock().unwrap_or_else(|e| e.into_inner());
+        run_item(&mut it);
     });
     Ok(())
 }
@@ -231,8 +180,9 @@ where
     };
     let beta = if it.c.is_none() { T::zero() } else { it.beta };
     // SAFETY: bounds were validated for every item before any of them ran, and
-    // `d` is an exclusive borrow so it cannot alias `a`, `b` or `c`. `1` forces the
-    // item to run serially, which is what makes the batch the only parallel axis.
+    // `d` is an exclusive borrow so it cannot alias `a`, `b` or `c`. The serial `Exec`
+    // makes the item run on its own thread, which is what makes the batch the
+    // only parallel axis.
     unsafe {
         crate::driver::execute_capped(
             it.plan,
@@ -242,7 +192,7 @@ where
             beta,
             cptr,
             it.d.data.as_mut_ptr(),
-            1,
+            &Exec::Serial,
             None,
             None,
             None,
@@ -263,6 +213,12 @@ mod tests {
     fn batched_matches_one_at_a_time_bitwise() {
         for n in [1usize, 2, 3, 7, 16] {
             for threads in [1usize, 2, 4, 8] {
+                let tp = rayon::ThreadPoolBuilder::new()
+                    .num_threads(8)
+                    .build()
+                    .unwrap();
+                let pool = tprims_exec::Pool::borrow(&tp);
+                let exec = Exec::rayon(&pool).with_budget(threads).unwrap();
                 let (m, k, nn) = (12usize, 9usize, 7usize);
                 let la = Layout::col_major(&[m as i64, k as i64]);
                 let lb = Layout::col_major(&[k as i64, nn as i64]);
@@ -312,7 +268,7 @@ mod tests {
                             d: TensorViewMut::new(d, &ld, &[0, 1]),
                         })
                         .collect();
-                    contract_batched_with_threads(&mut items, threads).unwrap();
+                    contract_batched(&mut items, &exec).unwrap();
                 }
                 assert_eq!(got, want, "n = {n}, threads = {threads}");
             }
@@ -360,7 +316,7 @@ mod tests {
                     d: TensorViewMut::new(second, &ld, &[0, 1]),
                 },
             ];
-            assert!(contract_batched_with_threads(&mut items, 4).is_err());
+            assert!(contract_batched(&mut items, &Exec::serial()).is_err());
         }
         assert!(
             d0.iter().all(|&x| x == 0.0),
@@ -372,6 +328,6 @@ mod tests {
     #[test]
     fn an_empty_batch_is_ok() {
         let mut items: Vec<BatchItem<'_, f64>> = Vec::new();
-        contract_batched_with_threads(&mut items, 8).unwrap();
+        contract_batched(&mut items, &Exec::serial()).unwrap();
     }
 }
