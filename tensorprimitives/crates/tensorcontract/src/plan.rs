@@ -303,6 +303,8 @@ pub struct Plan {
     /// Overrides the default thread count when set.
     pub(crate) threads: Option<usize>,
     pub(crate) kernel: Option<tprims_gemm_kernel::KernelChoice>,
+    /// Set by [`Plan::with_selector`]: the family a caller's selector chose.
+    pub(crate) forced: Option<crate::select::Forced>,
     pub(crate) resolved_cache: crate::resolve::Cache,
     /// The matrix shape and folded axes this plan reduced to. Public because
     /// it is the answer to "what did the index analysis actually decide", which
@@ -339,6 +341,14 @@ impl Plan {
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
     pub fn with_kernel(mut self, choice: tprims_gemm_kernel::KernelChoice) -> Result<Self> {
+        if let Some(forced) = &self.forced {
+            return Err(Error::KernelSelection(
+                tprims_gemm_kernel::SelectError::Incompatible {
+                    id: forced.id().into(),
+                    reason: "a custom selector already chose this plan's kernel",
+                },
+            ));
+        }
         if let tprims_gemm_kernel::KernelChoice::Id(id) = &choice {
             tprims_kernel_tensorcontract::register();
             let cpu = tprims_gemm_kernel::CpuFeatures::detect();
@@ -604,6 +614,7 @@ impl Plan {
             method: None,
             threads: None,
             kernel: None,
+            forced: None,
             resolved_cache: Default::default(),
             stats,
         })

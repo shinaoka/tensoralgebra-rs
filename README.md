@@ -81,13 +81,14 @@ format, the kernel-family contract and the resolution, and the providers
 | --- | --- | --- |
 | `tprims-exec` | Execution context: serial, a Rayon pool borrowed from the host (or created by a C host), host scheduling callbacks; width chosen from work; reusable scratch. No ambient global pool. | `tprims-core` |
 | `strided-*` (external, [strided-rs](https://github.com/tensor4all/strided-rs)) | Checked strided views, scalar and conjugation contracts, copy and permutation, map / reduce / fused elementwise. | `strided-capi` (planned) |
-| `tprims-gemm-kernel` | The kernel contract, with no dependencies of its own: packed formats, kernel-family descriptors, CPU masks, resolution with frozen blocking, the partition policy and the workspace provider. MIT OR Apache-2.0. | none |
+| `tprims-gemm-kernel` | The kernel contract, with no dependencies of its own: packed formats, kernel-family descriptors, CPU masks, resolution with frozen blocking, the partition policy, the workspace provider and caller-scoped catalogs of downstream kernels. MIT OR Apache-2.0. | none |
 | `tprims-kernel-tensorcontract` (imported, tensorprimitives-rs by Lukas Devos) | Lukas Devos's register-tile microkernels: scalar, AVX2, AVX-512 and NEON, with and without complex schemes. MIT OR Apache-2.0. | none |
 | `tprims-kernel-gemm` | Adapter calling the MIT-licensed `gemm-f64`/`gemm-f32` microkernels as direct-update families (feature `kernel-gemm`). MIT OR Apache-2.0. | none |
 | `tprims-kernel-pgx86` | Adapter calling the MIT-licensed `private-gemm-x86` as a matrix engine (feature `kernel-pgx86`, x86-64 only). MIT OR Apache-2.0. | none |
 | `tensorcontract` (imported, tensorprimitives-rs by Lukas Devos) | The direct contraction driver: packing traversal, the loop nest, write-back, and the `Spmd` seam it borrows a workspace through. | none |
 | `tprims-blas` | GEMM and batched GEMM (faer plus a loop over items, or TBLIS-style; compared), TRSM, later SYRK / HERK. | `tprims-blas-capi` |
 | `tprims-linalg` | LU, Cholesky, LDLᴴ, QR, SVD, symmetric / Hermitian eigendecomposition; solves on factor objects, `solve`, `lstsq`, `inv`, `det`; `batched` module. faer per item first. | `tprims-linalg-capi` (Phase 2) |
+| `tprims-custom-kernel-test` | Test-only downstream stand-in with its own packed kernels and a custom selector (see [architecture](docs/architecture.md#custom-kernels-with-a-safe-selector)); not part of the stack. | none |
 | `tprims-contract-traits` | The implementation-independent contraction interface: problem and validation, shared errors, object-safe backend / prepared-plan traits and a minimal borrowed host-execution seam; `tprims-contract` implements it, other backends can too. No executor runtime or kernel layer. | none |
 | `tprims-contract-testkit` | Test-only second backend (naive loop nest) used to prove the interface; not a production fallback. | none |
 | `tprims-contract` | Binary contraction with batch indices (`dot_general` semantics) with two strategies to compare: permute plus batched GEMM (from tenferro-rs) and TBLIS-style direct (from tensorprimitives-rs); thin permute / add / trace wrappers. | `tprims-contract-capi` |

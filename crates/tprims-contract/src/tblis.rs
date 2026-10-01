@@ -9,6 +9,7 @@ use tensorcontract::{Layout, Operand, Plan};
 use tprims_blas::{Conj, Scalar};
 use tprims_exec::{Exec, WidthPolicy};
 
+use crate::util::select_err;
 use crate::{DotGeneral, Shape};
 use crate::{Error, Result};
 
@@ -70,13 +71,30 @@ fn op(o: Operand<'_>, c: Conj) -> Operand<'_> {
     }
 }
 
-pub(crate) fn plan(
+/// A caller's catalog and selector for one plan, with the host thread budget
+/// the plan will run at. The selector is called at most once and not kept.
+pub(crate) struct Custom<'a, T: Scalar> {
+    pub catalog: &'a tprims_gemm_kernel::KernelCatalog<T>,
+    pub chooser: &'a mut tensorcontract::Chooser<'a, T>,
+    pub threads: usize,
+    pub method: Option<tprims_gemm_kernel::Method>,
+}
+
+fn backend_or_select(e: tensorcontract::Error) -> Error {
+    match e {
+        tensorcontract::Error::KernelSelection(s) => select_err(s),
+        other => Error::backend(other),
+    }
+}
+
+pub(crate) fn plan<T: Scalar>(
     cfg: &DotGeneral,
     s: &Shape,
     dims: [&[usize]; 3],
     strides: [&[isize]; 3],
     conj: (Conj, Conj),
     gemm: &tprims_blas::GemmConfig,
+    custom: Option<Custom<'_, T>>,
 ) -> Result<TbPlan> {
     let ra = dims[0].len();
     let la: Vec<i64> = (0..ra as i64).collect();
@@ -107,15 +125,51 @@ pub(crate) fn plan(
         layout(dims[2], strides[2])?,
     );
     // C is D itself (in place); beta == 0 never reads it.
-    let plan = Plan::new(
+    let (oa, ob) = (
         op(Operand::new(&ya, &la), conj.0),
         op(Operand::new(&yb, &lb), conj.1),
-        Some(Operand::new(&yc, &lc)),
-        Operand::new(&yc, &lc),
-    )
-    .map_err(Error::backend)?
-    .with_kernel(gemm.kernel.clone())
-    .map_err(Error::backend)?;
+    );
+    let (oc, od) = (Operand::new(&yc, &lc), Operand::new(&yc, &lc));
+    let plan = Plan::new(oa, ob, Some(oc), od).map_err(Error::backend)?;
+    let plan = match custom {
+        None => plan
+            .with_kernel(gemm.kernel.clone())
+            .map_err(Error::backend)?,
+        Some(custom) => {
+            let mut plan = plan;
+            match custom.method {
+                Some(tprims_gemm_kernel::Method::OneM) => {
+                    plan = plan.with_complex_method(tensorcontract::ComplexMethod::OneM);
+                }
+                Some(tprims_gemm_kernel::Method::ThreeM) => {
+                    plan = plan.with_complex_method(tensorcontract::ComplexMethod::ThreeM);
+                }
+                _ => {}
+            }
+            // Last, so the selector sees the width and method this plan uses.
+            let plan = plan
+                .with_threads(custom.threads)
+                .with_selector::<T, _>([oa, ob, oc, od], custom.catalog, custom.chooser)
+                .map_err(backend_or_select)?;
+            if let Some(method) = custom.method {
+                let rg = plan.resolved::<T>().map_err(select_err)?;
+                let family = rg.family().complex.map(|s| s.method);
+                let ok = match method {
+                    tprims_gemm_kernel::Method::Native => {
+                        family.is_none_or(|m| m == tprims_gemm_kernel::Method::Native)
+                    }
+                    other => family == Some(other),
+                };
+                if !ok {
+                    return Err(select_err(tprims_gemm_kernel::SelectError::Incompatible {
+                        id: rg.family().id.into(),
+                        reason: "family implements a different complex method",
+                    }));
+                }
+            }
+            plan
+        }
+    };
     let k: usize = cfg.lhs_contract.iter().map(|&x| dims[0][x]).product();
     let out: usize = dims[2].iter().product();
     Ok(TbPlan {

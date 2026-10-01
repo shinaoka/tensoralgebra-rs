@@ -303,6 +303,7 @@ mod buffer;
 mod driver;
 pub use driver::{driver_decisions, execute_resolved, ResolvedCall};
 mod resolve;
+pub mod select;
 use tprims_gemm_kernel::pack;
 #[cfg(feature = "std")]
 mod pool;
@@ -322,6 +323,7 @@ pub use error::{Error, Result};
 pub use kernel::{Blocking, ComplexMethod, KernelSet};
 pub use layout::Layout;
 pub use plan::{ElementOp, Operand, Plan, PlanStats};
+pub use select::{Chooser, KernelCandidate, OperandMeta, Selection, SelectionContext};
 pub use tprims_gemm_kernel::KernelChoice;
 
 /// An immutable operand: data, layout and index labels.

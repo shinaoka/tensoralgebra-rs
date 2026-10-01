@@ -39,6 +39,7 @@ macro_rules! env_once {
 
 pub mod cache;
 mod cpu;
+mod custom;
 pub mod element;
 mod family;
 pub mod induced;
@@ -55,6 +56,7 @@ pub mod workspace;
 pub mod writeback;
 
 pub use cpu::{kernel_force, CpuFeatures, Isa, KernelForce};
+pub use custom::{KernelCatalog, KernelHandle};
 pub use element::{Element, Real, C32, C64};
 pub use family::*;
 pub use partition::{PartitionOpts, PartitionPolicy};

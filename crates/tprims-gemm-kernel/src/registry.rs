@@ -382,6 +382,36 @@ pub enum SelectError {
         /// Unimplemented policy's name.
         what: &'static str,
     },
+    /// Two distinct descriptors in one caller-scoped catalog share an id.
+    DuplicateId {
+        /// The shared identifier.
+        id: String,
+    },
+    /// A selector returned a handle that its catalog did not mint.
+    ForeignHandle {
+        /// Identifier of the rejected handle.
+        id: String,
+    },
+    /// A selector returned a catalog member that was not an admissible
+    /// candidate for this operation (for example a family that cannot convey
+    /// the requested conjugation or complex method).
+    NotACandidate {
+        /// Identifier of the rejected handle.
+        id: String,
+        /// Why the family was not admissible.
+        reason: &'static str,
+    },
+    /// The catalog holds no family admissible for this operation.
+    NoCandidates {
+        /// Storage scalar required by the plan.
+        dtype: &'static str,
+    },
+    /// The caller's selector declined to choose; planning fails without a
+    /// fallback.
+    SelectorFailed {
+        /// The selector's explanation.
+        reason: String,
+    },
 }
 impl core::fmt::Display for SelectError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -393,6 +423,11 @@ impl core::fmt::Display for SelectError {
             Self::Incompatible { id, reason } => write!(f, "kernel {id}: {reason}"),
             Self::EngineUnsupported { engine, reason } => write!(f, "engine {engine}: {reason}"),
             Self::NotImplemented { what } => write!(f, "{what} is not implemented; choose an implemented policy"),
+            Self::DuplicateId { id } => write!(f, "kernel catalog holds two distinct descriptors with id {id}"),
+            Self::ForeignHandle { id } => write!(f, "kernel handle {id} was not minted by the supplied catalog; select from the offered candidates"),
+            Self::NotACandidate { id, reason } => write!(f, "kernel {id} is not an admissible candidate: {reason}"),
+            Self::NoCandidates { dtype } => write!(f, "the catalog has no kernel admissible for this {dtype} operation"),
+            Self::SelectorFailed { reason } => write!(f, "kernel selector failed: {reason}"),
         }
     }
 }

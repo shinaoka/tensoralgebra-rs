@@ -1171,6 +1171,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "tprims-custom-kernel-test"
+version = "0.1.0"
+dependencies = [
+ "num-complex",
+ "rayon",
+ "strided-view",
+ "tensorcontract",
+ "tprims-blas",
+ "tprims-contract",
+ "tprims-exec",
+ "tprims-gemm-kernel",
+]
+
+[[package]]
 name = "tprims-exec"
 version = "0.1.0"
 dependencies = [
