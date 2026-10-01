@@ -4,7 +4,7 @@
 
 * **The test suite stays green.** Correctness is never traded for speed. Every
   performance change must leave `cargo test --workspace --release` passing,
-  including under `TENSORCONTRACT_KERNEL=scalar`.
+  on every instruction set the CPU supports (the kernel-contract tests run each one).
 * **Record decisions.** Anything non-obvious — a build-vs-reuse call, a
   heuristic, a deviation from a published method — goes in `docs/notebook/` with
   its rationale.
@@ -17,8 +17,6 @@
 cargo fmt --all
 cargo clippy --workspace --all-targets    # must be warning-free
 cargo test --workspace --release
-TENSORCONTRACT_KERNEL=scalar cargo test --workspace --release
-TENSORCONTRACT_KERNEL=avx2 cargo test --workspace --release
 ```
 
 If you touched anything in the hot path, also run the cross-implementation
@@ -89,15 +87,13 @@ measurement — every rule in it cost one.
 
 ```bash
 cargo test --workspace --release                                 # includes 1000 randomised
-TENSORCONTRACT_KERNEL=scalar cargo test --workspace --release    # portable path
-TENSORCONTRACT_KERNEL=avx2 cargo test --workspace --release      # AVX2 kernels
 ```
 
-`TENSORCONTRACT_KERNEL` takes `scalar`, `avx2`, `avx512` or `auto` (the default,
-meaning the widest the CPU has). Pinning an instruction set narrower than the
-CPU's is how the AVX2 path is exercised on an AVX-512 machine; the
-kernel-contract tests in `kernel/mod.rs` additionally run *every* kernel family
-the CPU supports on every `cargo test`, whatever is selected.
+The library reads no environment variables. The kernel-contract tests run
+*every* kernel family the CPU supports on every `cargo test`, which is how the
+AVX2 path is exercised on an AVX-512 machine; pinning an instruction set for a
+whole plan is `Tuning::kernel_force` (`tcbench` parses `TENSORCONTRACT_KERNEL`
+= `scalar`, `avx2`, `avx512` or `auto` into it).
 
 The engine is checked against a brute-force oracle that shares no code with it,
 under both realistic and deliberately tiny cache blocking, so that every level of
@@ -129,7 +125,7 @@ arguments to `simd_kernels!` in `kernel/x86.rs` and a new `configs!` block, not
 a new set of kernel bodies. One body per method across all ISAs is deliberate
 (D17): a comparison between the three complex methods must not also be a
 comparison between hand-tunings, and that argument does not stop at the ISA
-boundary. Add the ISA to `x86::Isa`, give it a `TENSORCONTRACT_KERNEL` name so
+boundary. Add the ISA to `x86::Isa`, give it a `KernelForce` variant so
 it can be pinned on hardware that has something wider, and extend the AVX2/512
 grids in `examples/kernel_shapes` so its register blocks can be calibrated.
 

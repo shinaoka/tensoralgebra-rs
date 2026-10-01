@@ -38,8 +38,8 @@ Protocol`, `CPU Threading Contract`); read those sections first.
 5. **Thread counts:** every tensor-sized case at 1T and 4T in the same run;
    add 8T (one full L3 domain) where the experiment calls for it. The binary
    asserts its effective width at startup and rejects conflicting
-   `RAYON_NUM_THREADS` / `OMP_NUM_THREADS` / `OPENBLAS_NUM_THREADS` /
-   `TENSORCONTRACT_THREADS`; do not set them.
+   `RAYON_NUM_THREADS` / `OMP_NUM_THREADS` / `OPENBLAS_NUM_THREADS` and any
+   removed `TENSORCONTRACT_*` / `TPRIMS_GEMM_*` variable; do not set them.
 6. **Noise floor:** run the same binary twice on the same cores minutes apart
    (A/A) and report the spread; differences below it are not findings.
 7. **Record** beside every published table: tprims-rs commit (and tenferro-rs /

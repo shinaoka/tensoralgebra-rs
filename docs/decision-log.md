@@ -80,6 +80,16 @@ historical observations and measured results remain evidence.
 | Configuration? | **Decided:** `GemmConfig::{partition, partition_opts}` and `Plan::with_partition`; a non-default policy is a requirement of the packed driver and is refused (never ignored) by faer / `private-gemm-x86`, the faer-loop batched strategies, grouped GEMM, permute+GEMM and the elementwise pass. `DynamicTiles + align_c_lines` is rejected. Job extents are logical multiples of the selected family's MR/NR (so valid extents differ per family). | `tprims-blas/tests/dynamic_partition.rs`, `tprims-contract/tests/dynamic_partition.rs` |
 | Performance? | **Deferred (maintainer decision).** The Stage-0 need measurement and the paired 1T/4T static-vs-dynamic suite with A/A noise were skipped; opt-in only, no default change, no speed claim. `--partition dynamic:JM,JN` in `benchmarks/` (blas, contract) makes the later comparison runnable with separately labelled rows. | `benchmarks/src/partition.rs` |
 
+## 2026-10 source integration (#37), kernel consolidation (PR 2)
+
+| Question | Decision | Evidence |
+| --- | --- | --- |
+| How many kernel crates? | **Decided:** one, `tprims-kernel`. Lukas Devos's code and the project's own share MIT OR Apache-2.0, so per-origin crates are not needed; the adapters for external dependencies were deleted in PR 1. Moves are `git mv` commits, splits (`cache.rs`, `x86.rs`) are separate content commits. | [migration guide](migration-2026-10.md), integration spec section 6 |
+| Family ids? | **Decided:** `{isa}.{dtype}.{scheme}.{MR}x{NR}` from the descriptor's ISA, storage dtype, scheme and logical tile; provenance lives in `Origin`; induced ids carry `i1m`/`i4m` (`-scalar` for the scalar-menu base); a caller's families keep their own names. Priorities, tie order and `allow_auto` unchanged. | `crates/tprims-kernel/tests/snapshots/x86_64_manifest.txt`, `tests/families.rs`, `tests/induced.rs` |
+| Registration? | **Decided:** the built-in families (portable, tensorcontract menus, native complex) are present without any call, in the baseline registration order. `register` remains for explicit unsafe external manifests. | `tests/families.rs` |
+| Environment variables? | **Decided:** no library reads one. The knobs are `tprims_kernel::Tuning` and the tensorcontract `Plan` builders (mirrored on `GemmConfig`); benchmarks parse env/flags into them and reject removed variables. `TPRIMS_GEMM_ENGINE` and `default_engine()` went with it (`Auto` is faer). `PartitionMode` (rule or pin) and `PartitionPolicy` (grid or dynamic tiles) stay two builders until the PlanConfig fold in PR 3. | `crates/tprims-kernel/tests/tuning.rs`, `tensorcontract/tests/explicit_config.rs` |
+| Downstream-kernel test fixture? | **Decided:** `tprims_contract_testkit::custom_kernels` replaces the `tprims-custom-kernel-test` crate; its tests live in `tprims-blas` and `tprims-contract`. | the testkit and the two crates' `tests/custom_*` |
+
 ## Structure and ABI
 
 | Question | Present position | Evidence or next check |

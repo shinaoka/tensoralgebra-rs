@@ -188,7 +188,7 @@ keeps its existing layout until it is otherwise changed.
   `tensorprimitives-*`; Satoshi Terasaki and Hiroshi Shinaoka for `strided-*`).
 - Code moved or ported out of an imported crate into a `tprims-*` crate (for
   example tensorcontract's packing and micro-kernels into
-  `tprims-gemm-kernel`) keeps the original authors in that crate's `authors`,
+  `tprims-kernel`) keeps the original authors in that crate's `authors`,
   keeps the upstream copyright and license notice in each moved file's
   header, moves with `git mv` where possible so history follows, and names
   the original author with a `Co-authored-by:` trailer in the commit.

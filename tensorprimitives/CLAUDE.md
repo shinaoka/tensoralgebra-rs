@@ -191,7 +191,6 @@ export TBLIS_ROOT=/path/to/tblis-install
 source scripts/env.sh                    # pins everything single-threaded
 
 cargo test --workspace --release
-TENSORCONTRACT_KERNEL=scalar cargo test --workspace --release
 cargo build --release -p tensorprimitives-bench --features tblis,blas
 ```
 
@@ -340,6 +339,10 @@ The consequence for an A/B is small but real: comparing two *kernels* or two
 *complex methods* is comparing two implementations of the same contraction to
 within their rounding, not one implementation twice. It is a correctness
 statement, not a performance one — the timing methodology is unaffected.
+
+The `TENSORCONTRACT_*` variables below are parsed by `tcbench` into plan configuration (`Plan::with_tuning`,
+`with_orientation`, `with_row_block`, `with_partition_mode`, `with_l3_domains`); the library itself reads no
+environment variable, and `TENSORCONTRACT_THREADS` / `TENSORCONTRACT_POOL` no longer exist.
 
 | variable | effect |
 |---|---|

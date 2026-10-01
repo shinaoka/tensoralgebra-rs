@@ -37,7 +37,9 @@ commit's second parent (for example `git log 6a84228^2 -- strided-perm/src/lib.r
 Pure-rename commit `d5776b8` moved Lukas Devos's tensorcontract files into
 `crates/tprims-gemm-kernel` (`element`, `scatter`, `pack`, `writeback`,
 `kernel/cache`) and `crates/tprims-kernel-tensorcontract`
-(`kernel/{scalar,simd,x86,aarch64}`). The type/selection split of
+(`kernel/{scalar,simd,x86,aarch64}`); both crates were merged into
+`crates/tprims-kernel` by a pure `git mv` commit in #37, so `git log --follow`
+reaches these commits. The type/selection split of
 `kernel/mod.rs` retains the original bodies and relocates their tests.
 Both crates retain Lukas Devos in `authors` and copies of the imported
 MIT/Apache-2.0 license texts. `git log --follow` reaches the original files;
@@ -53,8 +55,8 @@ A downstream crate that supplies its own kernels through a caller-scoped
 tprims prints those strings in diagnostics (`SelectedGemm::origin`,
 `list_kernels`/`KernelCatalog::list`) and never labels them `Portable` or
 `Tensorcontract`; it does not vouch for their license or correctness, which
-is the provider's `unsafe` promise at admission. `tprims-custom-kernel-test`
-is the test stand-in: its kernels are new MIT OR Apache-2.0 code written for
+is the provider's `unsafe` promise at admission. `tprims_contract_testkit::custom_kernels` (formerly the
+`tprims-custom-kernel-test` crate) is the test stand-in: its kernels are new MIT OR Apache-2.0 code written for
 the test, and its complex family calls the project's own public reference loop
 (`portable::cplx_tile`), so no upstream kernel body is copied.
 
@@ -86,11 +88,11 @@ The [shared tensor4all provenance policy](https://github.com/tensor4all/tensor4a
 
 A crate that contains imported code states its origin, authorship and license
 in its manifest and keeps the imported license texts beside it
-(`tprims-kernel-tensorcontract`, `tensorcontract`). A crate that only *calls*
+(`tprims-kernel`, `tensorcontract`). A crate that only *calls*
 another project carries the same provenance in this file and in its header, but
 its own license is the project's (as `tprims-kernel-gemm` and
 `tprims-kernel-pgx86` were, before #37 removed them). The kernel contract crate
-(`tprims-gemm-kernel`) is project code: it was written here, from the design and
+(`tprims-kernel`) is project code: it was written here, from the design and
 the research notes, and only the *moved* kernel files carry Lukas Devos's
 authorship.
 
