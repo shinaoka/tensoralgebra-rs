@@ -10,7 +10,6 @@ package now holds only the tprims benchmarks.
 | --- | --- |
 | `exec_entry` | [exec_entry](benchmarks/tprims/exec_entry/README.md) |
 | `blas` | [blas](benchmarks/tprims/blas/README.md) |
-| `linalg` | [linalg](benchmarks/tprims/linalg/README.md) |
 | `contract` | [contract](benchmarks/tprims/contract/README.md) |
 | `capi_rust` | [C ABI comparison](c/README.md) |
 

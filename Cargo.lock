@@ -1084,7 +1084,6 @@ dependencies = [
  "tprims-core",
  "tprims-exec",
  "tprims-gemm-kernel",
- "tprims-linalg",
 ]
 
 [[package]]
@@ -1234,20 +1233,6 @@ version = "0.1.0"
 dependencies = [
  "tensorcontract",
  "tprims-gemm-kernel",
-]
-
-[[package]]
-name = "tprims-linalg"
-version = "0.1.0"
-dependencies = [
- "faer",
- "num-complex",
- "rayon",
- "strided-view",
- "tensorcontract",
- "thiserror",
- "tprims-blas",
- "tprims-exec",
 ]
 
 [[package]]

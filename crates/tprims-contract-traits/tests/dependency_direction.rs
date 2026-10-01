@@ -43,7 +43,6 @@ fn the_interface_crate_depends_on_no_implementation() {
         "tprims-core",
         "tprims-gemm-kernel",
         "tensorcontract",
-        "tprims-linalg",
         "faer",
         "rayon",
         "tenferro-rs",

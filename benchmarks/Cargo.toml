@@ -18,7 +18,6 @@ pgx86 = ["tprims-blas/kernel-pgx86"]
 tprims-exec = { workspace = true, features = ["strided"] }
 tprims-blas = { workspace = true }
 tprims-gemm-kernel = { workspace = true }
-tprims-linalg = { workspace = true }
 tprims-contract = { workspace = true }
 tprims-core = { workspace = true }
 strided-basic = { workspace = true }
@@ -33,10 +32,6 @@ serde_json = "1"
 [[bin]]
 name = "capi_rust"
 path = "benchmarks/tprims/capi_rust.rs"
-
-[[bin]]
-name = "linalg"
-path = "benchmarks/tprims/linalg/linalg.rs"
 
 [[bin]]
 name = "contract"
