@@ -1094,6 +1094,9 @@ dependencies = [
  "thiserror",
  "tprims-exec",
  "tprims-gemm-kernel",
+ "tprims-kernel-gemm",
+ "tprims-kernel-pgx86",
+ "tprims-kernel-tensorcontract",
 ]
 
 [[package]]

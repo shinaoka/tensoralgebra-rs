@@ -125,6 +125,68 @@ pub fn gemm_grouped<T: Scalar>(
     c: &mut [T],
     jobs: &[GroupedJob],
 ) -> Result<Selected> {
+    gemm_grouped_with(
+        exec,
+        &crate::GemmConfig::default(),
+        alpha,
+        a,
+        ca,
+        b,
+        cb,
+        beta,
+        c,
+        jobs,
+    )
+    .map(|sel| sel.batched.expect("the grouped report is always set"))
+}
+
+/// [`gemm_grouped`], with a configuration and a full report.
+///
+/// The grouped path computes with faer, so a configuration that asks for
+/// another engine or a named kernel is refused rather than quietly ignored.
+///
+/// # Errors
+///
+/// As [`gemm_grouped`], plus [`Error::Select`] for such a configuration.
+#[allow(clippy::too_many_arguments)] // INVARIANT: the grouped GEMM argument set.
+pub fn gemm_grouped_with<T: Scalar>(
+    exec: &Exec<'_>,
+    cfg: &crate::GemmConfig,
+    alpha: T,
+    a: &[T],
+    ca: Conj,
+    b: &[T],
+    cb: Conj,
+    beta: T,
+    c: &mut [T],
+    jobs: &[GroupedJob],
+) -> Result<crate::SelectedGemm> {
+    let unsupported = match cfg.engine {
+        crate::EngineChoice::Auto | crate::EngineChoice::Faer => {
+            cfg.kernel != tprims_gemm_kernel::KernelChoice::Auto || cfg.method.is_some()
+        }
+        crate::EngineChoice::PrivateGemmX86 | crate::EngineChoice::Packed => true,
+    };
+    if unsupported {
+        return Err(Error::Select(
+            tprims_gemm_kernel::SelectError::EngineUnsupported {
+                engine: "grouped gemm",
+                reason: "the grouped path computes with faer",
+            },
+        ));
+    }
+    let report = |selected: Selected| crate::SelectedGemm {
+        engine: crate::Engine::Faer,
+        family_id: None,
+        complex: None,
+        mr: 0,
+        nr: 0,
+        mc: 0,
+        nc: 0,
+        kc: 0,
+        partition: tprims_gemm_kernel::PartitionPolicy::default(),
+        batched: Some(selected),
+    };
     check_jobs(a, b, c, jobs)?;
     let live: Vec<(GroupedJob, GemmShape, usize)> = jobs
         .iter()
@@ -173,9 +235,9 @@ pub fn gemm_grouped<T: Scalar>(
     if widest == 1 && total > 1 && live.len() > 1 {
         let lanes = exec.with_budget(total.min(live.len())).unwrap_or(*exec);
         lanes.for_each_partition(live.len(), &|i| run(i, faer::Par::Seq));
-        return Ok(Selected::FaerLoop {
+        return Ok(report(Selected::FaerLoop {
             outer_parallel: true,
-        });
+        }));
     }
     exec.install(widest, |par: Par| {
         for (i, l) in live.iter().enumerate() {
@@ -190,7 +252,7 @@ pub fn gemm_grouped<T: Scalar>(
             );
         }
     });
-    Ok(Selected::FaerLoop {
+    Ok(report(Selected::FaerLoop {
         outer_parallel: false,
-    })
+    }))
 }

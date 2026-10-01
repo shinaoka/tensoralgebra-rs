@@ -22,6 +22,9 @@ pub enum Error {
     /// The TBLIS-style strategy rejected the problem.
     #[error(transparent)]
     Contract(#[from] tensorcontract::Error),
+    /// The chosen engine or kernel family cannot run this problem.
+    #[error(transparent)]
+    Select(#[from] tprims_gemm_kernel::SelectError),
 }
 
 /// Result alias for tprims-blas.

@@ -110,6 +110,38 @@ impl<T: Scalar> ContractPlan<T> {
         strategy: Strategy,
         flags: Flags,
     ) -> Result<Self> {
+        Self::new_with(
+            &tprims_blas::GemmConfig::default(),
+            cfg,
+            a,
+            b,
+            c,
+            conj,
+            strategy,
+            flags,
+        )
+    }
+
+    /// [`ContractPlan::new`], choosing the matrix engine and kernel.
+    ///
+    /// The choice is resolved *here*, so an unknown or unusable kernel id is an
+    /// error from this call rather than from the first contraction that runs.
+    ///
+    /// # Errors
+    ///
+    /// As [`ContractPlan::new`], plus [`Error::Backend`] when the GEMM
+    /// configuration cannot be used.
+    #[allow(clippy::too_many_arguments)] // INVARIANT: the contraction argument set.
+    pub fn new_with(
+        gemm: &tprims_blas::GemmConfig,
+        cfg: &DotGeneral,
+        a: Lay<'_>,
+        b: Lay<'_>,
+        c: Lay<'_>,
+        conj: (Conj, Conj),
+        strategy: Strategy,
+        flags: Flags,
+    ) -> Result<Self> {
         for (name, l) in [("A", &a), ("B", &b), ("C", &c)] {
             if l.0.len() != l.1.len() {
                 return Err(Error::Shape(format!(
@@ -148,22 +180,32 @@ impl<T: Scalar> ContractPlan<T> {
                 a_axes: cfg.lhs_batch.clone(),
                 b_axes: cfg.rhs_batch.clone(),
             },
-            Strategy::Tblis => Inner::Tb(Box::new(tblis::plan(cfg, &shape, dims, strides, conj)?)),
+            Strategy::Tblis => Inner::Tb(Box::new(tblis::plan(
+                cfg, &shape, dims, strides, conj, gemm,
+            )?)),
             Strategy::PermuteGemm => Inner::Pg(Box::new(permute_gemm::plan(
                 cfg,
                 &shape,
                 dims,
                 strides,
                 flags.no_materialize,
+                gemm,
             )?)),
             Strategy::Auto => {
-                let pg = permute_gemm::plan(cfg, &shape, dims, strides, false)?;
-                if pg.materialized.iter().any(|&m| m) {
-                    match tblis::plan(cfg, &shape, dims, strides, conj) {
+                // An explicit engine or kernel is a requirement, not a hint:
+                // it is met by the packed driver or it is an error. The
+                // copying permute+GEMM plan is only a fallback for the default
+                // configuration.
+                let wants_packed = gemm.kernel != tprims_blas::KernelChoice::Auto
+                    || matches!(gemm.engine, tprims_blas::EngineChoice::Packed);
+                let pg = permute_gemm::plan(cfg, &shape, dims, strides, false, gemm)?;
+                if pg.materialized.iter().any(|&m| m) || wants_packed {
+                    match tblis::plan(cfg, &shape, dims, strides, conj, gemm) {
                         Ok(tb) => Inner::Tb(Box::new(tb)),
                         // tensorcontract declined: keep the copying plan
-                        // unless copies were refused.
-                        Err(e) if flags.no_materialize => return Err(e),
+                        // unless copies were refused or the driver was asked
+                        // for.
+                        Err(e) if flags.no_materialize || wants_packed => return Err(e),
                         Err(_) => Inner::Pg(Box::new(pg)),
                     }
                 } else {
@@ -171,12 +213,77 @@ impl<T: Scalar> ContractPlan<T> {
                 }
             }
         };
-        Ok(Self {
+        let plan = Self {
             layouts: [0, 1, 2].map(|o| (dims[o].to_vec(), strides[o].to_vec())),
             conj,
             k_empty,
             inner,
             _t: std::marker::PhantomData,
+        };
+        // Resolve now: a kernel this problem cannot use is a configuration
+        // error, not something to discover inside a contraction.
+        match &plan.inner {
+            Inner::Tb(_) => {
+                plan.resolved_gemm()?;
+            }
+            Inner::Pg(_) => {
+                // The permute+GEMM arm computes with faer, so a configuration
+                // that asks for another engine or a named kernel has no arm
+                // here; saying so now beats a surprise when it runs.
+                let unsupported = gemm.kernel != tprims_blas::KernelChoice::Auto
+                    || matches!(
+                        gemm.engine,
+                        tprims_blas::EngineChoice::PrivateGemmX86
+                            | tprims_blas::EngineChoice::Packed
+                    );
+                if unsupported {
+                    return Err(Error::Backend(
+                        "the permute+GEMM strategy computes with faer; \
+                         select Strategy::Tblis for a packed engine or a named kernel"
+                            .into(),
+                    ));
+                }
+            }
+            Inner::Elementwise { .. } => {}
+        }
+        Ok(plan)
+    }
+
+    /// What the packed plan resolved to: the family, its geometry and the grid.
+    ///
+    /// `None` for the strategies that do not use the packed driver. The
+    /// resolution is the plan's own cached one, so this is a lookup, not a
+    /// re-selection.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Backend`] when a forced kernel cannot serve this contraction.
+    pub fn selected_gemm(&self) -> Result<Option<tprims_blas::SelectedGemm>> {
+        match self.inner {
+            Inner::Tb(_) => Ok(Some(self.resolved_gemm()?)),
+            _ => Ok(None),
+        }
+    }
+
+    /// The packed plan's resolution, as a report.
+    fn resolved_gemm(&self) -> Result<tprims_blas::SelectedGemm> {
+        let Inner::Tb(tb) = &self.inner else {
+            return Err(Error::Backend("not a packed plan".into()));
+        };
+        let rg = tb
+            .resolved::<T>()
+            .map_err(|e| Error::Backend(e.to_string()))?;
+        Ok(tprims_blas::SelectedGemm {
+            engine: tprims_blas::Engine::Packed,
+            family_id: Some(rg.family().id),
+            complex: rg.family().complex,
+            mr: rg.mr,
+            nr: rg.nr,
+            mc: rg.mc,
+            nc: rg.nc,
+            kc: rg.kc,
+            partition: rg.partition,
+            batched: None,
         })
     }
 

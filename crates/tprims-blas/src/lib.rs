@@ -27,6 +27,7 @@
 //! assert_eq!(c, a);
 //! ```
 mod batched;
+mod engine;
 mod error;
 mod gemm;
 mod grouped;
@@ -35,10 +36,14 @@ mod scalar;
 mod tblis;
 mod trsm;
 
-pub use batched::{gemm_batched, BatchIn, BatchStrategy, Selected};
+pub use batched::{gemm_batched, gemm_batched_with, BatchIn, BatchStrategy, Selected};
+pub use engine::{
+    default_engine, gemm_with, list_kernels, Engine, EngineChoice, GemmConfig, KernelChoice,
+    SelectedGemm,
+};
 pub use error::{Error, Result};
 pub use gemm::{gemm, GemmPolicy};
-pub use grouped::{gemm_grouped, GroupedJob};
+pub use grouped::{gemm_grouped, gemm_grouped_with, GroupedJob};
 pub use operand::{is_injective_layout, Conj, MatIn};
 pub use scalar::Scalar;
 pub use trsm::{trsm, Diag, Op, Side, Uplo};

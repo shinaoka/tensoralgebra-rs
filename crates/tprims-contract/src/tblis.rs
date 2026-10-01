@@ -43,6 +43,18 @@ pub(crate) struct TbPlan {
     workspace: tprims_gemm_kernel::ArenaProvider,
 }
 
+impl TbPlan {
+    /// The plan's cached resolution, which is what `selected_gemm` reports.
+    pub(crate) fn resolved<T: tprims_blas::Scalar>(
+        &self,
+    ) -> std::result::Result<
+        tprims_gemm_kernel::ResolvedGemm<<T as tprims_blas::Scalar>::Re>,
+        tprims_gemm_kernel::SelectError,
+    > {
+        self.plan.resolved::<T>()
+    }
+}
+
 fn layout(dims: &[usize], strides: &[isize]) -> Result<Layout> {
     let e = |x: usize| i64::try_from(x).map_err(|_| Error::Shape("extent exceeds i64".into()));
     let ext = dims.iter().map(|&d| e(d)).collect::<Result<Vec<_>>>()?;
@@ -64,6 +76,7 @@ pub(crate) fn plan(
     dims: [&[usize]; 3],
     strides: [&[isize]; 3],
     conj: (Conj, Conj),
+    gemm: &tprims_blas::GemmConfig,
 ) -> Result<TbPlan> {
     let ra = dims[0].len();
     let la: Vec<i64> = (0..ra as i64).collect();
@@ -100,6 +113,8 @@ pub(crate) fn plan(
         Some(Operand::new(&yc, &lc)),
         Operand::new(&yc, &lc),
     )
+    .map_err(|e| Error::Backend(e.to_string()))?
+    .with_kernel(gemm.kernel.clone())
     .map_err(|e| Error::Backend(e.to_string()))?;
     let k: usize = cfg.lhs_contract.iter().map(|&x| dims[0][x]).product();
     let out: usize = dims[2].iter().product();

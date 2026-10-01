@@ -168,16 +168,66 @@ pub fn gemm_batched<T: Scalar>(
     c: &mut StridedViewMut<'_, T>,
     strategy: BatchStrategy,
 ) -> Result<Selected> {
+    gemm_batched_with(
+        exec,
+        &crate::GemmConfig::default(),
+        alpha,
+        a,
+        b,
+        beta,
+        c,
+        strategy,
+    )
+    .map(|sel| sel.batched.expect("the batched report is always set"))
+}
+
+/// [`gemm_batched`], with a configuration and a full report.
+///
+/// The TBLIS-style strategy is the packed driver, so it honours
+/// [`GemmConfig::kernel`]; the faer-loop strategies compute with faer and so
+/// refuse a configuration that asks for anything else, rather than quietly
+/// ignoring it.
+///
+/// # Errors
+///
+/// As [`gemm_batched`], plus [`Error::Select`] for an unusable engine, kernel
+/// or feature.
+#[allow(clippy::too_many_arguments)] // INVARIANT: batched GEMM argument set.
+pub fn gemm_batched_with<T: Scalar>(
+    exec: &Exec<'_>,
+    cfg: &crate::GemmConfig,
+    alpha: T,
+    a: BatchIn<'_, '_, T>,
+    b: BatchIn<'_, '_, T>,
+    beta: T,
+    c: &mut StridedViewMut<'_, T>,
+    strategy: BatchStrategy,
+) -> Result<crate::SelectedGemm> {
+    if strategy != BatchStrategy::Tblis {
+        require_faer_loop_config(cfg)?;
+    }
     let s = check_batch(a.view, b.view, c)?;
     let selected = |outer_parallel| match strategy {
         BatchStrategy::Tblis => Selected::Tblis { outer_parallel },
         _ => Selected::FaerLoop { outer_parallel },
     };
+    let report = |engine: crate::Engine, family_id, selected: Selected| crate::SelectedGemm {
+        engine,
+        family_id,
+        complex: None,
+        mr: 0,
+        nr: 0,
+        mc: 0,
+        nc: 0,
+        kc: 0,
+        partition: tprims_gemm_kernel::PartitionPolicy::default(),
+        batched: Some(selected),
+    };
     let (m, n, k) = (s.item.c.rows, s.item.c.cols, s.item.a.cols);
     // Empty problems touch no pointer: an empty view's pointer and batch
     // stride are not validated by strided-view.
     if m == 0 || n == 0 || s.count == 0 {
-        return Ok(selected(false));
+        return Ok(report(engine_of(strategy), None, selected(false)));
     }
     if k == 0 || alpha == crate::scalar::zero() {
         // C = beta * C per item; A and B are not referenced. C is non-empty,
@@ -189,7 +239,7 @@ pub fn gemm_batched<T: Scalar>(
                 crate::operand::scale_in_place(cp.offset(i as isize * s.sc), &s.item.c, beta)
             };
         }
-        return Ok(selected(false));
+        return Ok(report(engine_of(strategy), None, selected(false)));
     }
     let sched = schedule::<T>(exec, &s);
     // All three operands are non-empty here, so their pointers and batch
@@ -201,7 +251,10 @@ pub fn gemm_batched<T: Scalar>(
     );
     match strategy {
         BatchStrategy::Tblis => {
-            crate::tblis::run(exec, &s, &sched, alpha, a.conj, ap, b.conj, bp, beta, cp)
+            let (selected, family_id) = crate::tblis::run(
+                exec, cfg, &s, &sched, alpha, a.conj, ap, b.conj, bp, beta, cp,
+            )?;
+            Ok(report(crate::Engine::Packed, family_id, selected))
         }
         BatchStrategy::Auto | BatchStrategy::FaerLoop => {
             let (ca, cb) = (a.conj, b.conj);
@@ -238,9 +291,41 @@ pub fn gemm_batched<T: Scalar>(
                     });
                 }
             }
-            Ok(Selected::FaerLoop {
-                outer_parallel: sched.outer.is_some(),
-            })
+            Ok(report(
+                crate::Engine::Faer,
+                None,
+                Selected::FaerLoop {
+                    outer_parallel: sched.outer.is_some(),
+                },
+            ))
         }
     }
+}
+
+/// The engine a strategy uses, for the report.
+fn engine_of(strategy: BatchStrategy) -> crate::Engine {
+    match strategy {
+        BatchStrategy::Tblis => crate::Engine::Packed,
+        _ => crate::Engine::Faer,
+    }
+}
+
+/// A faer-loop strategy computes with faer, so a configuration that asks for a
+/// different engine or a specific kernel family is refused rather than ignored.
+fn require_faer_loop_config(cfg: &crate::GemmConfig) -> Result<()> {
+    let unsupported = match cfg.engine {
+        crate::EngineChoice::Auto | crate::EngineChoice::Faer => {
+            cfg.kernel != tprims_gemm_kernel::KernelChoice::Auto || cfg.method.is_some()
+        }
+        crate::EngineChoice::PrivateGemmX86 | crate::EngineChoice::Packed => true,
+    };
+    if unsupported {
+        return Err(Error::Select(
+            tprims_gemm_kernel::SelectError::EngineUnsupported {
+                engine: "batched faer loop",
+                reason: "select BatchStrategy::Tblis for a packed engine or a named kernel",
+            },
+        ));
+    }
+    Ok(())
 }
