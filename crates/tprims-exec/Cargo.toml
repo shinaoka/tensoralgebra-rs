@@ -15,7 +15,6 @@ strided = ["dep:strided-basic", "strided-basic/parallel"]
 [dependencies]
 rayon = { workspace = true }
 thiserror = { workspace = true }
-tprims-gemm-kernel = { path = "../tprims-gemm-kernel", default-features = false }
 strided-basic = { workspace = true, optional = true }
 
 [dev-dependencies]

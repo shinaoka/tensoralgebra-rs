@@ -51,7 +51,6 @@ mod registry;
 mod resolved;
 pub mod scatter;
 mod types;
-pub mod workspace;
 #[doc(hidden)]
 pub mod writeback;
 
@@ -67,7 +66,6 @@ pub use registry::{
 pub use resolved::{process_default, KernelChoice, ResolvedGemm};
 pub use scatter::IRREGULAR;
 pub use types::*;
-pub use workspace::{ArenaProvider, PageBuf, TeamLease, TeamSet, WorkspaceProvider, WorkspaceReq};
 
 /// `TENSORCONTRACT_THREADS=<n>` sets the default thread count. Read once per
 /// process. Unset means **1**: see `tensorcontract::Plan::threads` for why that is the default

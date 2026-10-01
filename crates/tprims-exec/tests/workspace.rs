@@ -1,7 +1,7 @@
 //! Workspace ownership: no allocation for a zero requirement, page-aligned
 //! reuse, fresh buffers on re-entry, exclusive team sets, and per-worker
 //! first touch.
-use tprims_gemm_kernel::*;
+use tprims_exec::*;
 
 #[test]
 fn zero_requirement_never_allocates() {
