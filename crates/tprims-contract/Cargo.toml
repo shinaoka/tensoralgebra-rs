@@ -18,6 +18,7 @@ tprims-exec = { workspace = true, features = ["strided"] }
 tprims-gemm-kernel = { workspace = true, default-features = false }
 
 [dev-dependencies]
+tprims-contract-testkit = { workspace = true }
 num-complex = { workspace = true }
 rayon = { workspace = true }
 
