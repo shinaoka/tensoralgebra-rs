@@ -135,3 +135,54 @@ The spec and Task 8 now reflect that correction.
 - tenferro's `ext/tenferro-cpu-tprims` pins tprims at `d8e565a`, before the
   copy-aware Auto change. Bump it when tprims next changes behaviour
   tenferro should see.
+
+## State at the end of the switchable-engine session (2026-10-01)
+
+Tasks 1–12 of the plan are implemented and committed on `gemm-engine-spec`,
+which is 15 commits ahead of `main` at `690794c`. Everything that can be
+checked without a quiet host is green:
+
+- `cargo fmt --all --check`;
+- `cargo +1.98.0 clippy --workspace --all-targets -- -D warnings`;
+- `cargo test --workspace --release` (89 green test binaries);
+- `cargo test -p tprims-exec --release --no-default-features`;
+- `cargo test -p tprims-blas --release --features kernel-gemm,kernel-pgx86`;
+- the kernel crates for `wasm32-unknown-unknown` and `aarch64-apple-darwin`,
+  and `tprims-kernel-pgx86` on both (it is inert off x86-64);
+- `cargo build -p tprims-bundle --release`, and the capi crates' tests.
+
+Logs: `.artifacts/gemm-engine-spec/task12/`. (`tprims-blas` for
+`wasm32-unknown-unknown` fails inside `faer`'s `atomic-wait` dependency; that is
+pre-existing and unrelated.)
+
+## What is left before this can be merged
+
+1. **The performance gate.** It needs an *idle* host with an idle L3 domain:
+   `pinned.sh` verifies the pinned cores are idle before and after every run,
+   and this agent's own processes keep a core slightly busy, so the 4T runs
+   exhausted their retries. A complete 1T comparison of the contract corpus
+   (`BENCH_RUNS=5`) shows the reworked driver **faster**: summed medians new/old
+   are 0.973 (`pg_exec`) and 0.926 (`tblis_exec`), with planning 1.034/1.037 at
+   tens of microseconds. To finish the gate, run, on an otherwise idle host,
+   with the default `BENCH_RUNS`:
+
+   ```
+   CORPUS=benchmarks/benchmarks/tprims/corpus/tenferro-p1.json \
+     benchmarks/scripts/paired.sh <old contract> OUT-old CPUS 1 4 8
+   CORPUS=benchmarks/benchmarks/tprims/corpus/tenferro-p1.json \
+     benchmarks/scripts/paired.sh <new contract> OUT-new CPUS 1 4 8
+   CORPUS=benchmarks/benchmarks/tprims/corpus/tenferro-p1-gemm.json \
+     benchmarks/scripts/paired.sh <old blas> OUT-old-blas CPUS 1 4 8
+   CORPUS=benchmarks/benchmarks/tprims/corpus/tenferro-p1-gemm.json \
+     benchmarks/scripts/paired.sh <new blas> OUT-new-blas CPUS 1 4 8
+   ```
+
+   with an A/A repeat of each side for the noise floor, and apply the 5%
+   per-group rule to the calls-weighted times. The baseline binaries are built
+   from the merge-base `690794c` (a worktree still exists at
+   `/tmp/tprims-baseline`, target `/tmp/tprims-baseline-target`).
+
+2. **PR, CI and merge.** The branch is pushed and a PR is open for review; the
+   merge waits on the gate above and on CI. Issue #23 stays open for the
+   follow-ups the plan lists (DynamicTiles, per-node team pools, native SIMD
+   complex kernels, ports, the C ABI).
