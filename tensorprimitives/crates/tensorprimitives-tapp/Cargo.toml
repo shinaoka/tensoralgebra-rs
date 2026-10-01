@@ -20,6 +20,12 @@ crate-type = ["lib", "cdylib", "staticlib"]
 [dependencies]
 tensorcontract.workspace = true
 num-complex.workspace = true
+# tprims additions: the executor, status codes and panic boundary are shared
+# with the other parts of libtprims (tprims-core), and the executor is run
+# through the Spmd seam on tprims-exec.
+tprims-core.workspace = true
+tprims-exec.workspace = true
+tprims-gemm-kernel.workspace = true
 
 [package.metadata.docs.rs]
 all-features = true

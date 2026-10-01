@@ -143,9 +143,11 @@ enum {
  */
 
 /*
- * Computational precision. This implementation **accepts any value and
- * ignores it**, computing at the storage precision of the operands; it is
- * declared so that portable caller code compiles. Pass `TAPP_DEFAULT_PREC`.
+ * Computational precision. This implementation computes at the storage
+ * precision of the operands: `TAPP_DEFAULT_PREC` and the storage precision
+ * (F32F32_ACCUM_F32 for F32/C32, F64F64_ACCUM_F64 for F64/C64) are accepted;
+ * any other value is refused with `TAPP_ERROR_UNSUPPORTED` when the product is
+ * created, not ignored.
  *
  * Values 2 and 3 are genuinely absent from the upstream enum — complex has no
  * separate precision enumerator — rather than omitted here.
@@ -176,12 +178,22 @@ enum { TAPP_IDENTITY = 0, TAPP_CONJUGATE = 1 };
 enum {
     TAPP_SUCCESS = 0,
     TAPP_ERROR_NULL = 1,        /* null pointer, or a zero handle            */
-    TAPP_ERROR_DATATYPE = 2,    /* unsupported or mismatched element type    */
-    TAPP_ERROR_SHAPE = 3,       /* extents disagree, or an extent overflows  */
-    TAPP_ERROR_LABELS = 4,      /* index labels are inconsistent             */
-    TAPP_ERROR_UNSUPPORTED = 5, /* well-formed, not supported (see below)    */
-    TAPP_ERROR_INTERNAL = 6     /* a bug, or an allocation failure           */
+    TAPP_ERROR_SHAPE = 2,       /* extents disagree, or an extent overflows  */
+    TAPP_ERROR_DATATYPE = 3,    /* unsupported or mismatched element type    */
+    TAPP_ERROR_ALIASED = 6,     /* D overlaps A, B, itself, or C unevenly    */
+    TAPP_ERROR_BUSY = 9,        /* executor has calls in flight (destroy)    */
+    TAPP_ERROR_WOULD_DEADLOCK = 10, /* executor destroyed from its worker    */
+    TAPP_ERROR_PANIC = 12,      /* a panic was caught at the ABI boundary    */
+    TAPP_ERROR_INTERNAL = 13,   /* a bug, or an allocation failure           */
+    TAPP_ERROR_LABELS = 14,     /* index labels are inconsistent             */
+    TAPP_ERROR_UNSUPPORTED = 15 /* well-formed, not supported (see below)    */
 };
+
+/* These are the tprims `tprims_status` codes, one table for every part of
+ * libtprims (the tprims-rs workspace renumbered them when the executor and
+ * error definitions moved into tprims-core). Computational precisions:
+ * TAPP_DEFAULT_PREC (-1) or the storage precision, 0 for F32/C32 and 1 for
+ * F64/C64 (enumerators above); others are TAPP_ERROR_UNSUPPORTED. */
 
 TAPP_EXPORT bool TAPP_check_success(TAPP_error error);
 
@@ -199,7 +211,8 @@ TAPP_EXPORT size_t TAPP_explain_error(TAPP_error error, size_t maxlen, char* mes
  *
  *   - A handle argument must be either 0 or a live value from the matching
  *     `TAPP_create_*` that has not been destroyed. 0 is rejected with
- *     `TAPP_ERROR_NULL`; a stale or foreign non-zero value is undefined
+ *     `TAPP_ERROR_NULL` (except as an executor, where it is the default serial
+ *     executor); a stale or foreign non-zero value is undefined
  *     behaviour, because nothing distinguishes it from a live one.
  *   - Each handle may be destroyed once, with no other call in flight against
  *     it. Nothing here is internally synchronised.
@@ -210,6 +223,15 @@ TAPP_EXPORT size_t TAPP_explain_error(TAPP_error error, size_t maxlen, char* mes
 TAPP_EXPORT TAPP_error TAPP_create_handle(TAPP_handle* handle);
 TAPP_EXPORT TAPP_error TAPP_destroy_handle(TAPP_handle handle);
 
+/*
+ * Executors. TAPP_create_executor makes a serial one; executor 0 is the same
+ * serial executor. Parallel execution needs the tprims extension
+ * `tprims_tapp_executor_create_rayon` (<tprims/tapp_ext.h> in the tprims-rs
+ * workspace). TAPP_destroy_executor stops and joins an owned pool: TAPP_ERROR_BUSY
+ * with calls in flight and TAPP_ERROR_WOULD_DEADLOCK from one
+ * of its own workers both leave the handle live; a live handle is destroyed
+ * successfully once.
+ */
 TAPP_EXPORT TAPP_error TAPP_create_executor(TAPP_executor* exec);
 TAPP_EXPORT TAPP_error TAPP_destroy_executor(TAPP_executor exec);
 
@@ -277,7 +299,7 @@ TAPP_EXPORT TAPP_error TAPP_set_strides(TAPP_tensor_info info, const int64_t* st
  *   - mixed *storage* types across operands: this engine plans one element
  *     type per product, so all four infos must agree
  *
- * `prec` is accepted and ignored; computation happens at storage precision.
+ * `prec` must be `TAPP_DEFAULT_PREC` or the storage precision (see above).
  */
 TAPP_EXPORT TAPP_error TAPP_create_tensor_product(TAPP_tensor_product* plan,
                                                   TAPP_handle handle,

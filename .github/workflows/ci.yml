@@ -62,14 +62,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      # The C test (tests/c_abi.rs) compiles and runs a C program against the
-      # built libtprims.so; a blas-only bundle must not export contract symbols.
+      # The C test (tests/c_abi.rs) compiles and runs C and C++ programs
+      # against the built libtprims.so, one of them against the pinned upstream
+      # TAPP headers alone; a blas-only bundle must not export the TAPP
+      # contraction API (the executor symbols live in the core and stay).
       - run: cargo build -p tprims-bundle
       - run: cargo test -p tprims-bundle
       - run: |
           cargo build -p tprims-bundle --no-default-features --features blas
           nm -D --defined-only target/debug/libtprims.so | grep -q ' tprims_blas_gemm$'
-          ! nm -D --defined-only target/debug/libtprims.so | grep -q ' tprims_contract_'
+          nm -D --defined-only target/debug/libtprims.so | grep -q ' TAPP_destroy_executor$'
+          ! nm -D --defined-only target/debug/libtprims.so | grep -q ' TAPP_create_tensor_product$'
 
   msrv:
     runs-on: ubuntu-latest

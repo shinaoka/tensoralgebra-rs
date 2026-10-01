@@ -286,6 +286,7 @@ fn check_meta<R: Real>(f: &KernelFamily<R>, dtype: &str, mr: usize, nr: usize) {
         )
     );
     assert!(f.caps.scatter_pack && f.caps.conj_a && f.caps.conj_b);
+    assert_eq!(f.origin, Origin::Cplx);
     assert_eq!(f.origin.crate_name(), "tprims-kernel-cplx");
     assert_eq!(f.origin.license(), "MIT OR Apache-2.0");
     f.validate().unwrap();

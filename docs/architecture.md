@@ -47,12 +47,12 @@ The name `contract` was chosen over `tensordot` because NumPy, PyTorch and JAX `
 
 | Crate | Exposes | Header |
 | --- | --- | --- |
-| `tprims-core` | DLPack types (mirroring the upstream `dlpack.h`), `tprims_status`, thread-local last-error message, execution handles, ABI version queries | `tprims/core.h` |
+| `tprims-core` | DLPack types (mirroring the upstream `dlpack.h`), `tprims_status` (the one error-code table of the library, behind `TAPP_check_success` / `TAPP_explain_error`), thread-local last-error message, the `TAPP_executor` (`TAPP_create_executor`, `TAPP_destroy_executor`, the Rayon extension), ABI version queries | `tprims/core.h`, `tprims/tapp_ext.h` and the pinned upstream `tapp.h`, `tapp/*.h` |
 | `strided-capi` | Permute, copy, elementwise and reduce over DLPack operands | `tprims/strided.h` |
 | `tprims-blas-capi` | GEMM, batched GEMM, TRSM, SYRK/HERK | `tprims/blas.h` |
 | `tprims-linalg-capi` | Factor objects as opaque handles, solves, `lstsq`, `eigh`, batched entries | `tprims/linalg.h` |
-| `tprims-contract-capi` | Contraction plans and execution | `tprims/contract.h` |
-| `tprims-bundle` | No API. `cdylib` + `staticlib` with one feature per part; installs the selected headers, a generated umbrella `tprims/tprims.h`, and a pkg-config file | |
+| `tensorprimitives-tapp` (imported, tensorprimitives-rs; `rlib` in the bundle) | The TAPP contraction API: tensor infos, label-based products over `tensorcontract::Plan`, batched products, run on the shared executor through the `Spmd` seam | pinned upstream `tapp.h`, `tapp/*.h` |
+| `tprims-bundle` | No API. `cdylib` + `staticlib` with one feature per part (`blas`, `tapp`); installs the selected headers, a generated umbrella `tprims/tprims.h`, and a pkg-config file | |
 
 `tprims-gemm-kernel` and its providers have no C ABI: the packed format is an internal contract between the driver and the kernels.
 
@@ -99,8 +99,8 @@ The bundle's `lib.rs` names each selected crate (`pub use tprims_blas_capi;`) so
 
 ### ABI conventions
 
-- Symbols: `tprims_<part>_<operation>`; core symbols are `tprims_<object>_<operation>` (for example `tprims_exec_close`).
-- Every entry point catches panics and returns `tprims_status`; `tprims_last_error()` returns a thread-local message.
+- Symbols: `tprims_<part>_<operation>`; core symbols are `tprims_<object>_<operation>`. The contraction and executor API keeps the standard `TAPP_*` names, and tprims extensions to it are `tprims_tapp_<object>_<operation>` (for example `tprims_tapp_executor_create_rayon`).
+- Every entry point catches panics and returns `tprims_status` (a `TAPP_error` is a `tprims_status`: zero is success and the other values are provider-defined); `tprims_last_error()` returns a thread-local message.
 - `tprims_abi_version()` and `tprims_has_part("blas")` let a host check at run time what the loaded library contains. Headers carry the matching version macro.
 - One bundle pins one version of each part. Symbol versioning policy is decided before the first ABI release.
 
@@ -138,25 +138,24 @@ The DLPack header is Apache-2.0; `tprims-core` mirrors its `#[repr(C)]` layout a
 `tprims-exec` defines the Rust contract and `tprims-core` its C face. A context is one of:
 
 - **Serial:** work runs on the calling thread.
-- **Rayon pool:** a pool borrowed from the host (for example the pool of tenferro-rs) for the duration of a call, or created through `tprims_exec_rayon_create` by a C host that has none. The global Rayon pool is never used implicitly.
-- **Host callbacks:** a vtable through which a Julia, Python or C host schedules tasks on its own threads.
+- **Rayon pool:** a pool borrowed from the host (for example the pool of tenferro-rs) for the duration of a call, or created through `tprims_tapp_executor_create_rayon` by a C host that has none. The global Rayon pool is never used implicitly.
+- **Host callbacks:** a vtable through which a Julia, Python or C host schedules tasks on its own threads. Not part of the TAPP redesign; if added later it starts with barrier-free outer batches and serial inner operations, since an arbitrary task-submission callback does not guarantee SPMD co-scheduling.
+
+The C face is the standard `TAPP_executor` (`intptr_t`; the signatures are those of the pinned upstream `executor.h`) plus three extensions. See [decision-log](decision-log.md#execution) for the choice.
 
 ```c
-tprims_exec *tprims_exec_serial(void);
-tprims_exec *tprims_exec_rayon_create(size_t nthreads, const tprims_rayon_opts *opts); /* thread name, stack size, pinning hint */
-tprims_exec *tprims_exec_from_callbacks(const tprims_exec_vtable *host);
-size_t       tprims_exec_num_threads(const tprims_exec *exec);
-tprims_status tprims_exec_set_budget(tprims_exec *exec, size_t max_threads);
-tprims_status tprims_exec_close(tprims_exec *exec);   /* owned pool: joins workers; borrowed: detaches */
-void         tprims_exec_retain(tprims_exec *exec);
-void         tprims_exec_release(tprims_exec *exec);
+TAPP_error TAPP_create_executor(TAPP_executor *exec);   /* serial executor, no workers */
+TAPP_error TAPP_destroy_executor(TAPP_executor exec);   /* owned pool: stops and joins it */
+TAPP_error tprims_tapp_executor_create_rayon(TAPP_executor *out, size_t nthreads, const tprims_rayon_opts *opts); /* stack size */
+TAPP_error tprims_tapp_executor_set_budget(TAPP_executor exec, size_t budget);
+TAPP_error tprims_tapp_executor_get_threads(TAPP_executor exec, size_t *pool_size, size_t *budget);
 ```
 
-- **Lifetime:** handles are reference counted so that a host binding and several library objects can share one pool.
-- **Close of an owned pool is synchronous and joins the threads.** A pool created by `tprims_exec_rayon_create` is built with `ThreadPoolBuilder::spawn_handler`, which spawns each worker with `std::thread::Builder` and keeps its `JoinHandle`. `tprims_exec_close` marks the context closed, returns `TPRIMS_BUSY` if work is in flight, otherwise drops the pool to start shutdown and joins every handle. An exit-handler notification is not sufficient: in rayon-core 1.13 it runs inside the worker's main loop, before thread-local destructors ([probe](../experiments/pool-close/README.md)). After a successful close no tprims worker code, including TLS teardown, is running.
-- **Close of a borrowed context only detaches.** A context wrapping a host pool (the Rust `Exec::Rayon` case, or a C host's callback executor) never terminates the host's threads; close waits for tprims calls in flight on that context (or returns `TPRIMS_BUSY`) and then invalidates the handle.
-- **Edge cases.** Close called from a worker of the same pool returns `TPRIMS_ERR_WOULD_DEADLOCK` without side effects (detected with `ThreadPool::current_thread_index`). A second close is a no-op returning `TPRIMS_OK`. Calls on a closed context return `TPRIMS_ERR_CLOSED`. `release` of the last reference to an owned pool that was never closed performs the close; if that happens on a worker of the pool, the join is handed to a detached reaper thread and reported through a debug status, since joining is impossible there.
-- **Tests when implemented:** a TLS-destructor handshake with a bounded wait (as in the probe) proving close does not return early; busy, repeated and self-worker close.
+- **Default and width:** executor `0` is the default serial executor (a tprims policy). `nthreads == 0` is an error; `nthreads == 1` is a serial executor and creates no workers; the width is never inferred from `RAYON_NUM_THREADS`, `TENSORCONTRACT_THREADS` or the CPU count. The pool width is fixed at creation. The budget is positive, clamped to the pool width and snapshotted at the start of each call. A serial executor reports `pool_size == 0`, `budget == 1`. The query promises neither an active width nor an affinity.
+- **Lifetime:** the C host owns the executor; the executor owns the pool; plans do not bind an executor, so one plan runs on serial and 4T executors. There is no retain/release and no separate pool handle: bindings own the executor and keep it alive for every borrower. Sharing one executor across plans and BLAS calls shares its pool.
+- **Destruction of an owned pool is synchronous and joins the threads.** A pool created by `tprims_tapp_executor_create_rayon` is built with `ThreadPoolBuilder::spawn_handler`, which spawns each worker with `std::thread::Builder` and keeps its `JoinHandle`. `TAPP_destroy_executor` returns `TPRIMS_ERR_WOULD_DEADLOCK` from a worker of the same pool and `TPRIMS_BUSY` if calls are in flight (the handle stays live in both cases and the caller may retry); otherwise it drops the pool to start shutdown, joins every handle and frees the executor. An exit-handler notification is not sufficient: in rayon-core 1.13 it runs inside the worker's main loop, before thread-local destructors ([probe](../experiments/pool-close/README.md)). After a successful destroy no tprims worker code, including TLS teardown, is running. A failed creation joins the workers it had started. Destroying the default executor `0` succeeds as a no-op. A live handle is destroyed successfully once: double destruction and stale or foreign handles are unsupported, and the caller synchronizes destruction with the start of new calls (BUSY detection does not make a race between raw-handle use and destruction safe).
+- **Borrowed pools** (the Rust `Exec::Rayon` case) are governed by Rust lifetimes; tprims never stops the host's threads, and a Rust host shares one `Pool` wrapper per `ThreadPool`, because the SPMD gate belongs to the wrapper.
+- **Tests:** a TLS-destructor handshake with a bounded wait proving destroy does not return early; busy, self-worker and failed-creation cases; bounded-time nested and concurrent SPMD on one executor.
 - **Thread budget:** one budget controls batch-level and inner-matrix parallelism so nested parallelism does not oversubscribe.
 - **Scratch:** operations expose scratch-size queries; a context can own reusable per-worker scratch.
 
@@ -174,7 +173,7 @@ Implemented in Phase 1a as `crates/tprims-exec` (`install`, `for_each_partition`
 
 **Three widths, kept distinct.**
 
-- *Budget* `b`: the most threads a kernel may occupy, set by the host (`tprims_exec_set_budget`, never above the pool size). tprims never creates threads beyond the pool; there is no scoped-thread fallback.
+- *Budget* `b`: the most threads a kernel may occupy, set by the host (`tprims_tapp_executor_set_budget`, never above the pool size). tprims never creates threads beyond the pool; there is no scoped-thread fallback.
 - *Active width* `k`: the number of workers doing arithmetic, chosen from the work, `k ≤ b`.
 - *Dispatch width* `d`: the number of workers woken. It sets the entry cost. For Rayon `ThreadPool::broadcast`, `d` is always the whole pool, whatever `k` is: on a fixed 18-worker pool, a broadcast with one active worker costs as much as one with 18 (about 165 µs from idle, [measurement](../experiments/rayon-entry/README.md#active-width-on-a-fixed-pool)).
 
@@ -377,7 +376,7 @@ Phase 1 puts being usable as the tenferro-rs CPU backend first. It also builds a
 | 1c | `tprims-contract`: permute plus batched GEMM (ported from tenferro) and TBLIS-style direct (ported from tensorprimitives-rs); batch dimensions, conjugation, `alpha`/`beta`. | Both strategies agree with a reference; comparison recorded on a predeclared corpus. |
 | 1d | `tprims-linalg`: faer per item plus batched loops, covering the tenferro CPU linear algebra operations (Cholesky, triangular solve, LU and full-pivot LU families with solves, QR and Householder operations, SVD, eigh, and nonsymmetric eig as a faer wrapper). | tenferro's linear algebra and AD rule tests pass, including nonsymmetric `eig` cases. |
 | 1e | tenferro-rs integration behind a `cpu-tprims` feature: `dot_general`, grouped / batched GEMM, then linear algebra. An operation table maps each tenferro CPU op to tprims or to the existing tenferro backend as an explicit fallback. | A/B correctness against the current backend for every op routed to tprims; fallback ops pass tenferro's suite unchanged with the feature on; a same-run performance gate. |
-| 1f | C ABI slice: `tprims-core` (DLPack types, status, `tprims_exec` create / borrow / close), `tprims-blas-capi` (GEMM, batched GEMM), `tprims-contract-capi`, and `tprims-bundle` with those features. A C benchmark harness. | From C: per-call fixed cost of a small GEMM and contraction against direct Rust, zero copy verified for strided and column-major DLPack inputs, pool create / use / close, cross-part handles, recorded under the experiment protocol. |
+| 1f | C ABI slice: `tprims-core` (DLPack types, status, `TAPP_executor` create / destroy), `tprims-blas-capi` (GEMM, batched GEMM), the contraction ABI (first `tprims-contract-capi`, replaced by TAPP through `tensorprimitives-tapp` in [#26](https://github.com/tensor4all/tprims-rs/issues/26)), and `tprims-bundle` with those features. A C benchmark harness. | From C: per-call fixed cost of a small GEMM and contraction against direct Rust, zero copy verified for strided and column-major DLPack inputs, pool create / use / close, cross-part handles, recorded under the experiment protocol. |
 | 2 | Full C ABI: `tprims-linalg-capi` with factor handles, `strided-capi`, host-callback executors, capability queries. Build and call from a real C program on Linux, macOS and Windows. | ABI conventions and pool close verified on all three platforms. |
 | 3 | Replace faer paths or add specialized small-batch kernels only where measured; SVD and eigensolver accuracy requirements before any native solver. | Each replacement passes the correctness suite and a performance gate. |
 

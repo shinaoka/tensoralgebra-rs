@@ -49,8 +49,15 @@ fn gemm_through_the_abi_writes_the_callers_memory() {
     let mut c = make(vec![f64::NAN; 4], &[2, 2], &[1, 2]);
     let cptr = c.data.as_ptr();
     let (alpha, beta) = (1.0f64, 0.0f64);
-    let e = unsafe { tprims_exec_rayon_create(2, std::ptr::null()) };
-    for exec in [tprims_exec_serial(), e] {
+    let mut e = 0;
+    assert_eq!(
+        unsafe { tprims_tapp_executor_create_rayon(&mut e, 2, std::ptr::null()) },
+        TPRIMS_OK
+    );
+    let mut serial = 0;
+    assert_eq!(unsafe { TAPP_create_executor(&mut serial) }, TPRIMS_OK);
+    // Executor 0 is the default serial executor.
+    for exec in [0, serial, e] {
         let st = unsafe {
             tprims_blas_gemm(
                 exec,
@@ -68,8 +75,8 @@ fn gemm_through_the_abi_writes_the_callers_memory() {
         assert_eq!(c.data, vec![35., 44., 44., 56.]);
         assert_eq!(c.data.as_ptr(), cptr);
     }
-    assert_eq!(tprims_exec_close(e), TPRIMS_OK);
-    tprims_exec_release(e);
+    assert_eq!(unsafe { TAPP_destroy_executor(e) }, TPRIMS_OK);
+    assert_eq!(unsafe { TAPP_destroy_executor(serial) }, TPRIMS_OK);
 }
 
 #[test]
@@ -77,7 +84,7 @@ fn abi_errors_are_statuses() {
     let mut a = make(vec![0.; 4], &[2, 2], &[1, 2]);
     let mut c = make(vec![0.; 4], &[2, 2], &[1, 2]);
     let one = 1.0f64;
-    let ex = tprims_exec_serial();
+    let ex = 0;
     let call = |a: &mut DLTensor, c: &mut DLTensor, cflags: u64, alpha: *const c_void| unsafe {
         tprims_blas_gemm(
             ex,
@@ -109,24 +116,6 @@ fn abi_errors_are_statuses() {
     c.dl.dtype.bits = 32;
     assert_eq!(call(&mut a.dl, &mut c.dl, 0, al), TPRIMS_ERR_DTYPE);
     c.dl.dtype.bits = 64;
-    // Closed executor.
-    let e = unsafe { tprims_exec_rayon_create(1, std::ptr::null()) };
-    assert_eq!(tprims_exec_close(e), TPRIMS_OK);
-    let st = unsafe {
-        tprims_blas_gemm(
-            e,
-            al,
-            tprims_tensor_borrow_raw(&mut a.dl, 0),
-            0,
-            tprims_tensor_borrow_raw(&mut a.dl, 0),
-            0,
-            al,
-            tprims_tensor_borrow_raw(&mut c.dl, 0),
-        )
-    };
-    assert_eq!(st, TPRIMS_ERR_CLOSED);
-    tprims_exec_release(e);
-    tprims_exec_release(ex);
 }
 
 #[test]
@@ -137,7 +126,7 @@ fn batched_gemm_reports_what_ran() {
     let mut b = make(data, &[n, n, nb], &[1, n, n * n]);
     let mut c = make(vec![0.; (n * n * nb) as usize], &[n, n, nb], &[1, n, n * n]);
     let (one, zero) = (1.0f64, 0.0f64);
-    let ex = tprims_exec_serial();
+    let ex = 0;
     for (strategy, want) in [(1, 0), (2, 2)] {
         let mut sel = -9;
         let st = unsafe {
@@ -158,5 +147,4 @@ fn batched_gemm_reports_what_ran() {
         // item 2: [[8,10],[9,11]] squared (column-major [8,9,10,11])
         assert_eq!(&c.data[8..12], &[154., 171., 190., 211.]);
     }
-    tprims_exec_release(ex);
 }

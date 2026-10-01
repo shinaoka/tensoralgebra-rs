@@ -12,14 +12,14 @@ name = "tprims"
 crate-type = ["cdylib", "staticlib", "rlib"]
 
 [features]
-default = ["blas", "contract"]
+default = ["blas", "tapp"]
 blas = ["dep:tprims-blas-capi"]
-contract = ["dep:tprims-contract-capi"]
+tapp = ["dep:tensorprimitives-tapp"]
 
 [dependencies]
 tprims-core = { workspace = true }
 tprims-blas-capi = { workspace = true, optional = true }
-tprims-contract-capi = { workspace = true, optional = true }
+tensorprimitives-tapp = { workspace = true, optional = true }
 
 [lints]
 workspace = true

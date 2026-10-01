@@ -1,10 +1,7 @@
 //! Regressions from the Phase 1f review.
 use std::ffi::c_void;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::Duration;
 
 use tprims_core::dlpack::*;
-use tprims_core::exec::*;
 use tprims_core::status::*;
 use tprims_core::tensor::{
     layout, tprims_tensor_borrow_raw, tprims_tensor_borrow_versioned, DType,
@@ -67,51 +64,4 @@ fn unsupported_dlpack_major_version_is_not_borrowed() {
     assert!(!unsafe { tprims_tensor_borrow_versioned(&mut m) }
         .view
         .is_null());
-}
-
-#[test]
-fn concurrent_closes_both_return_after_workers_are_joined() {
-    static DROPPED: AtomicUsize = AtomicUsize::new(0);
-    struct Guard;
-    impl Drop for Guard {
-        fn drop(&mut self) {
-            std::thread::sleep(Duration::from_millis(100));
-            DROPPED.fetch_add(1, Ordering::SeqCst);
-        }
-    }
-    thread_local! { static G: std::cell::RefCell<Option<Guard>> = const { std::cell::RefCell::new(None) }; }
-    let e = unsafe { tprims_exec_rayon_create(2, std::ptr::null()) };
-    exec_ref(e)
-        .unwrap()
-        .with(|x| {
-            x.broadcast(2, &|_| G.with(|g| *g.borrow_mut() = Some(Guard)))
-                .unwrap();
-            Ok(())
-        })
-        .unwrap();
-    let p = e as usize;
-    let closers: Vec<_> = (0..2)
-        .map(|_| {
-            std::thread::spawn(move || {
-                // A close racing another close may see BUSY; it retries. No
-                // close may report OK before the workers are joined.
-                loop {
-                    let st = tprims_exec_close(p as *mut tprims_exec);
-                    if st != TPRIMS_BUSY {
-                        return (st, DROPPED.load(Ordering::SeqCst));
-                    }
-                    std::thread::yield_now();
-                }
-            })
-        })
-        .collect();
-    for c in closers {
-        let (st, dropped) = c.join().unwrap();
-        assert_eq!(st, TPRIMS_OK);
-        assert_eq!(
-            dropped, 2,
-            "a close returned before the workers were joined"
-        );
-    }
-    tprims_exec_release(e);
 }

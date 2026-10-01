@@ -1033,6 +1033,9 @@ version = "0.1.0"
 dependencies = [
  "num-complex",
  "tensorcontract",
+ "tprims-core",
+ "tprims-exec",
+ "tprims-gemm-kernel",
 ]
 
 [[package]]
@@ -1114,8 +1117,8 @@ dependencies = [
 name = "tprims-bundle"
 version = "0.1.0"
 dependencies = [
+ "tensorprimitives-tapp",
  "tprims-blas-capi",
- "tprims-contract-capi",
  "tprims-core",
 ]
 
@@ -1134,16 +1137,6 @@ dependencies = [
  "tprims-contract-traits",
  "tprims-exec",
  "tprims-gemm-kernel",
-]
-
-[[package]]
-name = "tprims-contract-capi"
-version = "0.1.0"
-dependencies = [
- "num-complex",
- "tprims-blas",
- "tprims-contract",
- "tprims-core",
 ]
 
 [[package]]

@@ -23,7 +23,8 @@ use std::slice;
 
 use num_complex::Complex;
 
-use common::{explain_status, TAPP_DEFAULT_PREC};
+use common::explain_status;
+use tensorprimitives_tapp::TAPP_DEFAULT_PREC;
 use tensorprimitives_tapp::TAPP_ERROR_UNSUPPORTED;
 
 /// The upstream header, transcribed. Types follow `tapp/*.h`: every handle is
@@ -397,18 +398,25 @@ fn enumerator_values_match_the_upstream_headers() {
     assert_eq!(TAPP_IDENTITY, 0);
     assert_eq!(TAPP_CONJUGATE, 1);
     assert_eq!(TAPP_DEFAULT_PREC, -1);
+    assert_eq!(TAPP_F32F32_ACCUM_F32, 0);
+    assert_eq!(TAPP_F64F64_ACCUM_F64, 1);
     // `TAPP_error` is only specified at zero: upstream `error.h` declares
     // `typedef int TAPP_error` and no enumerators, so the non-zero codes below
     // are this implementation's own and a portable caller must go through
-    // `TAPP_check_success`. Pinned so they stay stable for callers that do
-    // depend on them.
+    // `TAPP_check_success`. They are the `tprims_status` codes of `tprims-core`
+    // (one table for every part of libtprims), pinned here so they stay stable
+    // for callers that do depend on them.
     assert_eq!(TAPP_SUCCESS, 0);
     assert_eq!(TAPP_ERROR_NULL, 1);
-    assert_eq!(TAPP_ERROR_DATATYPE, 2);
-    assert_eq!(TAPP_ERROR_SHAPE, 3);
-    assert_eq!(TAPP_ERROR_LABELS, 4);
-    assert_eq!(TAPP_ERROR_UNSUPPORTED, 5);
-    assert_eq!(TAPP_ERROR_INTERNAL, 6);
+    assert_eq!(TAPP_ERROR_SHAPE, 2);
+    assert_eq!(TAPP_ERROR_DATATYPE, 3);
+    assert_eq!(TAPP_ERROR_ALIASED, 6);
+    assert_eq!(TAPP_ERROR_BUSY, 9);
+    assert_eq!(TAPP_ERROR_WOULD_DEADLOCK, 10);
+    assert_eq!(TAPP_ERROR_PANIC, 12);
+    assert_eq!(TAPP_ERROR_INTERNAL, 13);
+    assert_eq!(TAPP_ERROR_LABELS, 14);
+    assert_eq!(TAPP_ERROR_UNSUPPORTED, 15);
 }
 
 // ------------------------------------------------------------------- data layout

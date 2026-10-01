@@ -1,3 +1,4 @@
+//! The executor lifecycle through the TAPP/tprims C entry points.
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -5,32 +6,119 @@ use std::time::Duration;
 use tprims_core::exec::*;
 use tprims_core::status::*;
 
-#[test]
-fn serial_handle_and_basic_queries() {
-    let e = tprims_exec_serial();
-    assert_eq!(tprims_exec_num_threads(e), 1);
-    assert_eq!(tprims_exec_close(e), TPRIMS_OK);
-    tprims_exec_release(e);
+fn create_rayon(n: usize) -> TAPP_executor {
+    let mut e = 0;
+    let st = unsafe { tprims_tapp_executor_create_rayon(&mut e, n, std::ptr::null()) };
+    assert_eq!(st, TPRIMS_OK);
+    assert_ne!(e, 0);
+    e
+}
+
+fn threads(e: TAPP_executor) -> (usize, usize) {
+    let (mut p, mut b) = (99, 99);
     assert_eq!(
-        tprims_exec_close(std::ptr::null_mut()),
+        unsafe { tprims_tapp_executor_get_threads(e, &mut p, &mut b) },
+        TPRIMS_OK
+    );
+    (p, b)
+}
+
+#[test]
+fn serial_executor_has_no_pool() {
+    let mut e = 0;
+    assert_eq!(unsafe { TAPP_create_executor(&mut e) }, TPRIMS_OK);
+    assert_ne!(e, 0);
+    assert_eq!(threads(e), (0, 1));
+    assert!(unsafe { executor_ref(e) }.unwrap().pool_stats().is_none());
+    // A serial executor accepts a budget and stays at one.
+    assert_eq!(unsafe { tprims_tapp_executor_set_budget(e, 8) }, TPRIMS_OK);
+    assert_eq!(threads(e), (0, 1));
+    assert_eq!(unsafe { TAPP_destroy_executor(e) }, TPRIMS_OK);
+}
+
+#[test]
+fn zero_is_the_default_serial_executor() {
+    assert_eq!(threads(0), (0, 1));
+    assert_eq!(unsafe { TAPP_destroy_executor(0) }, TPRIMS_OK);
+    assert_eq!(
+        unsafe { TAPP_destroy_executor(0) },
+        TPRIMS_OK,
+        "a no-op, repeatedly"
+    );
+    let width = unsafe { with_executor(0, |x| Ok(x.install(4, |p| p.threads()))) }.unwrap();
+    assert_eq!(width, 1);
+}
+
+#[test]
+fn one_thread_is_serial_and_zero_threads_is_an_error() {
+    let e = create_rayon(1);
+    assert_eq!(threads(e), (0, 1), "nthreads == 1 creates no workers");
+    assert!(unsafe { executor_ref(e) }.unwrap().pool_stats().is_none());
+    assert_eq!(unsafe { TAPP_destroy_executor(e) }, TPRIMS_OK);
+
+    let mut out = 7;
+    assert_eq!(
+        unsafe { tprims_tapp_executor_create_rayon(&mut out, 0, std::ptr::null()) },
+        TPRIMS_ERR_INVALID_ARGUMENT
+    );
+    assert_eq!(out, 7, "failed creation leaves the out-parameter alone");
+    assert_eq!(
+        unsafe { tprims_tapp_executor_create_rayon(std::ptr::null_mut(), 2, std::ptr::null()) },
+        TPRIMS_ERR_INVALID_ARGUMENT
+    );
+    assert_eq!(
+        unsafe { TAPP_create_executor(std::ptr::null_mut()) },
         TPRIMS_ERR_INVALID_ARGUMENT
     );
 }
 
 #[test]
-fn owned_pool_runs_budgets_and_closes_synchronously() {
-    let e = unsafe { tprims_exec_rayon_create(3, std::ptr::null()) };
-    assert!(!e.is_null());
-    assert_eq!(tprims_exec_num_threads(e), 3);
-    assert_eq!(tprims_exec_set_budget(e, 2), TPRIMS_OK);
-    assert_eq!(tprims_exec_num_threads(e), 2);
-    assert_eq!(tprims_exec_set_budget(e, 0), TPRIMS_ERR_INVALID_ARGUMENT);
-    let h = exec_ref(e).unwrap();
-    let ran = h.with(|x| Ok(x.install(2, |p| p.threads()))).unwrap();
-    assert_eq!(ran, 2);
+fn width_ignores_the_environment() {
+    std::env::set_var("RAYON_NUM_THREADS", "7");
+    std::env::set_var("TENSORCONTRACT_THREADS", "5");
+    let e = create_rayon(3);
+    assert_eq!(threads(e), (3, 3));
+    assert_eq!(unsafe { TAPP_destroy_executor(e) }, TPRIMS_OK);
+    std::env::remove_var("RAYON_NUM_THREADS");
+    std::env::remove_var("TENSORCONTRACT_THREADS");
+}
 
-    // TLS-destructor handshake: every worker drops a guard in its TLS when it
-    // exits; close must not return before all of them ran.
+#[test]
+fn budget_is_positive_clamped_and_snapshotted_per_call() {
+    let e = create_rayon(3);
+    assert_eq!(unsafe { tprims_tapp_executor_set_budget(e, 2) }, TPRIMS_OK);
+    assert_eq!(threads(e), (3, 2));
+    assert_eq!(unsafe { tprims_tapp_executor_set_budget(e, 99) }, TPRIMS_OK);
+    assert_eq!(threads(e), (3, 3), "clamped to the pool width");
+    assert_eq!(
+        unsafe { tprims_tapp_executor_set_budget(e, 0) },
+        TPRIMS_ERR_INVALID_ARGUMENT
+    );
+    assert_eq!(threads(e), (3, 3));
+    // Null out-parameters are allowed.
+    assert_eq!(
+        unsafe { tprims_tapp_executor_get_threads(e, std::ptr::null_mut(), std::ptr::null_mut()) },
+        TPRIMS_OK
+    );
+
+    // A budget change during a call does not affect that call.
+    unsafe { tprims_tapp_executor_set_budget(e, 2) };
+    let seen = unsafe {
+        with_executor(e, |x| {
+            let before = x.budget();
+            tprims_tapp_executor_set_budget(e, 3);
+            Ok((before, x.budget()))
+        })
+    }
+    .unwrap();
+    assert_eq!(seen, (2, 2));
+    assert_eq!(threads(e), (3, 3));
+    assert_eq!(unsafe { TAPP_destroy_executor(e) }, TPRIMS_OK);
+}
+
+#[test]
+fn destroy_joins_workers_and_waits_for_tls_teardown() {
+    let e = create_rayon(3);
     static DROPPED: AtomicUsize = AtomicUsize::new(0);
     struct Guard;
     impl Drop for Guard {
@@ -40,60 +128,62 @@ fn owned_pool_runs_budgets_and_closes_synchronously() {
         }
     }
     thread_local! { static G: std::cell::RefCell<Option<Guard>> = const { std::cell::RefCell::new(None) }; }
-    h.with(|x| {
-        x.broadcast(2, &|_| G.with(|g| *g.borrow_mut() = Some(Guard)))
-            .unwrap();
-        Ok(())
-    })
+    unsafe {
+        with_executor(e, |x| {
+            x.broadcast(2, &|_| G.with(|g| *g.borrow_mut() = Some(Guard)))
+                .unwrap();
+            Ok(())
+        })
+    }
     .unwrap();
-    let exec_width = 3; // pool size; broadcast wakes all, but only width 2 set guards
-    let _ = exec_width;
-    assert_eq!(tprims_exec_close(e), TPRIMS_OK);
+    assert_eq!(unsafe { TAPP_destroy_executor(e) }, TPRIMS_OK);
     assert_eq!(
         DROPPED.load(Ordering::SeqCst),
         2,
-        "close returned before worker TLS teardown"
+        "destroy returned before worker TLS teardown"
     );
-    assert_eq!(tprims_exec_close(e), TPRIMS_OK, "second close is a no-op");
-    assert_eq!(h.with(|_| Ok(())).unwrap_err().status, TPRIMS_ERR_CLOSED);
-    assert_eq!(tprims_exec_num_threads(e), 0);
-    tprims_exec_release(e);
 }
 
 #[test]
-fn busy_and_self_worker_close() {
-    let e = unsafe { tprims_exec_rayon_create(2, std::ptr::null()) };
-    let h = exec_ref(e).unwrap();
+fn busy_and_self_worker_destroy_leave_the_handle_live() {
+    let e = create_rayon(2);
     let inside = Arc::new(AtomicBool::new(false));
     let release = Arc::new(AtomicBool::new(false));
-    let ptr = e as usize;
     let (i2, r2) = (inside.clone(), release.clone());
+    let ptr = e as usize;
     let t = std::thread::spawn(move || {
-        let h = exec_ref(ptr as *mut tprims_exec).unwrap();
-        h.with(|_| {
-            i2.store(true, Ordering::SeqCst);
-            while !r2.load(Ordering::SeqCst) {
-                std::thread::yield_now();
-            }
-            Ok(())
-        })
+        unsafe {
+            with_executor(ptr as TAPP_executor, |_| {
+                i2.store(true, Ordering::SeqCst);
+                while !r2.load(Ordering::SeqCst) {
+                    std::thread::yield_now();
+                }
+                Ok(())
+            })
+        }
         .unwrap();
     });
     while !inside.load(Ordering::SeqCst) {
         std::thread::yield_now();
     }
-    assert_eq!(tprims_exec_close(e), TPRIMS_BUSY);
+    assert_eq!(unsafe { TAPP_destroy_executor(e) }, TPRIMS_BUSY);
+    assert!(!unsafe { std::ffi::CStr::from_ptr(tprims_last_error()) }
+        .to_bytes()
+        .is_empty());
     release.store(true, Ordering::SeqCst);
     t.join().unwrap();
-    // From a worker of the pool itself.
-    let st = h
-        .with(|x| Ok(x.install(2, move |_| tprims_exec_close(ptr as *mut tprims_exec))))
-        .unwrap();
+
+    // From a worker of the pool itself (the call is also in flight).
+    let st = unsafe {
+        with_executor(e, |x| {
+            Ok(x.install(2, move |_| TAPP_destroy_executor(ptr as TAPP_executor)))
+        })
+    }
+    .unwrap();
     assert_eq!(st, TPRIMS_ERR_WOULD_DEADLOCK);
-    assert_eq!(tprims_exec_close(e), TPRIMS_OK);
-    tprims_exec_retain(e);
-    tprims_exec_release(e);
-    tprims_exec_release(e);
+    // Both refusals left the handle usable, and it can now be destroyed once.
+    assert_eq!(threads(e), (2, 2));
+    assert_eq!(unsafe { TAPP_destroy_executor(e) }, TPRIMS_OK);
 }
 
 #[test]
@@ -105,7 +195,10 @@ fn last_error_and_panics() {
         .unwrap()
         .to_string();
     assert_eq!(msg, "bad shape");
+    let prev = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
     let st = ffi(|| panic!("boom"));
+    std::panic::set_hook(prev);
     assert_eq!(st, TPRIMS_ERR_PANIC);
     let msg = unsafe { std::ffi::CStr::from_ptr(tprims_last_error()) }
         .to_str()
@@ -113,4 +206,30 @@ fn last_error_and_panics() {
         .to_string();
     assert!(msg.contains("boom"));
     assert_eq!(ffi(|| Ok(())), TPRIMS_OK);
+}
+
+#[test]
+fn tapp_error_helpers() {
+    assert!(TAPP_check_success(0));
+    assert!(!TAPP_check_success(TPRIMS_BUSY));
+    let n = unsafe { TAPP_explain_error(TPRIMS_BUSY, 0, std::ptr::null_mut()) };
+    assert!(n > 0);
+    let mut buf = vec![0 as std::ffi::c_char; n + 1];
+    assert_eq!(
+        unsafe { TAPP_explain_error(TPRIMS_BUSY, buf.len(), buf.as_mut_ptr()) },
+        n
+    );
+    assert_eq!(
+        unsafe { std::ffi::CStr::from_ptr(buf.as_ptr()) }
+            .to_bytes()
+            .len(),
+        n
+    );
+    // Truncation keeps the NUL.
+    let mut small = [0x7f as std::ffi::c_char; 4];
+    assert_eq!(
+        unsafe { TAPP_explain_error(TPRIMS_BUSY, 4, small.as_mut_ptr()) },
+        n
+    );
+    assert_eq!(small[3], 0);
 }

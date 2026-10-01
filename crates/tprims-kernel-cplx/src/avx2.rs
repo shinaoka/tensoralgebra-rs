@@ -89,10 +89,7 @@ native_tile!(
     _mm256_set_ps(0.0, -0.0, 0.0, -0.0, 0.0, -0.0, 0.0, -0.0)
 );
 
-const ORIGIN: Origin = Origin::External {
-    crate_name: "tprims-kernel-cplx",
-    license: "MIT OR Apache-2.0",
-};
+const ORIGIN: Origin = Origin::Cplx;
 
 macro_rules! family {
     ($r:ty, $id:literal, $mr:literal, $tile:ident, $mc:expr, $kc:expr, $nc:expr) => {
