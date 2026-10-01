@@ -2,6 +2,16 @@
 
 Dated 2026-09-29. A source link supports the observation; the proposed response remains a hypothesis until an experiment records evidence. Structural decisions (naming, packaging, ABI shape) are marked **Decided** when the maintainer has chosen them; they can still be revisited before the first release.
 
+## 2026-10-01 native interleaved SIMD complex families ([#30](https://github.com/tensor4all/tprims-rs/issues/30))
+
+| Question | Ruling | Evidence or next check |
+| --- | --- | --- |
+| Implement despite no Stage-0 need measurement? | **Decided by the maintainer:** implement the c32/c64 AVX2+FMA native interleaved families as opt-in whatever Stage 0 shows; the compute/packing/write-back share measurement is skipped, so **no benefit is claimed**. | Maintainer decision, 2026-10-01. |
+| Reuse an upstream tile entry or write intrinsics? | **Decided: independent intrinsics** (`tprims-kernel-cplx`). `gemm-c64`/`gemm-c32` 0.19.0 keep `mod microkernel` private; `private-gemm-x86` 0.1.20 exposes `call_microkernel`/`millikernel_*` with a custom register/parameter ABI whose tail, overwrite and bounds behaviour is not a `TileUkrFn`. Recorded in [provenance](provenance.md). | Registry sources read 2026-10-01. |
+| Geometry and contract? | c64 4x4 (`cplx.avx2.c64.native.4x4`), c32 8x4 (`cplx.avx2.c32.native.8x4`): two vectors of A per column, four columns, eight accumulator registers; signed swap once per A vector; `ScratchTile`, `Packed` B, whole-tile overwrite (also `kc == 0`), unaligned accesses, exact footprints. Blocking seeds are conservative and untuned. Release assembly: 16 FMAs per k step, no `ymm` stack spills. | `tprims-kernel-cplx/tests/tile.rs` (guard-page footprints, NaN-poisoned tile, mutation-checked sign), `tensorcontract/tests/cplx_native.rs`. |
+| Selection? | **Not Auto-eligible**, no default priority change; selected by id through the packed engine (`gemm_with`, TBLIS batched GEMM) and the TBLIS contraction path; refused at plan creation without AVX2+FMA. `tprims-blas` registers the crate always (it adds no dependency beyond the kernel contract). `tprims_blas::register_kernels` is new so `tprims-contract` plans registered ids too (a forced id from any provider failed there as unknown before). | `tprims-blas/tests/cplx_native.rs`, `tprims-contract/tests/cplx_native.rs`. |
+| Performance? | **Open (deferred):** the paired 1T/4T comparison, A/A noise and fair-comparison protocol are not run; there is no performance claim and no promotion. Hardware executed here: x86-64 with AVX2+FMA only; other ISAs are not tested. | Run the issue's protocol before any priority change. |
+
 ## 2026-10-01 neutral contraction interface (#31)
 
 | Question | Ruling | Evidence or next check |

@@ -85,6 +85,7 @@ format, the kernel-family contract and the resolution, and the providers
 | `tprims-kernel-tensorcontract` (imported, tensorprimitives-rs by Lukas Devos) | Lukas Devos's register-tile microkernels: scalar, AVX2, AVX-512 and NEON, with and without complex schemes. MIT OR Apache-2.0. | none |
 | `tprims-kernel-gemm` | Adapter calling the MIT-licensed `gemm-f64`/`gemm-f32` microkernels as direct-update families (feature `kernel-gemm`). MIT OR Apache-2.0. | none |
 | `tprims-kernel-pgx86` | Adapter calling the MIT-licensed `private-gemm-x86` as a matrix engine (feature `kernel-pgx86`, x86-64 only). MIT OR Apache-2.0. | none |
+| `tprims-kernel-cplx` | Native interleaved complex microkernel families for the packed driver (AVX2+FMA c32 8x4 and c64 4x4), project-owned intrinsics, opt-in by id and never Auto-eligible ([#30](https://github.com/tensor4all/tprims-rs/issues/30)). MIT OR Apache-2.0. | none |
 | `tensorcontract` (imported, tensorprimitives-rs by Lukas Devos) | The direct contraction driver: packing traversal, the loop nest, write-back, and the `Spmd` seam it borrows a workspace through. | none |
 | `tprims-blas` | GEMM and batched GEMM (faer plus a loop over items, or TBLIS-style; compared), TRSM, later SYRK / HERK. | `tprims-blas-capi` |
 | `tprims-linalg` | LU, Cholesky, LDLᴴ, QR, SVD, symmetric / Hermitian eigendecomposition; solves on factor objects, `solve`, `lstsq`, `inv`, `det`; `batched` module. faer per item first. | `tprims-linalg-capi` (Phase 2) |

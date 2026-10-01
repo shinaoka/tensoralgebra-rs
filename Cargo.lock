@@ -1012,6 +1012,7 @@ dependencies = [
  "rand",
  "rand_chacha",
  "tprims-gemm-kernel",
+ "tprims-kernel-cplx",
  "tprims-kernel-gemm",
  "tprims-kernel-tensorcontract",
 ]
@@ -1094,6 +1095,7 @@ dependencies = [
  "thiserror",
  "tprims-exec",
  "tprims-gemm-kernel",
+ "tprims-kernel-cplx",
  "tprims-kernel-gemm",
  "tprims-kernel-pgx86",
  "tprims-kernel-tensorcontract",
