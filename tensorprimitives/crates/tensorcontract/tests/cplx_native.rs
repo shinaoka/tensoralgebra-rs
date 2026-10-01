@@ -1,4 +1,4 @@
-//! The native interleaved AVX2+FMA complex families (`tprims-kernel-cplx`,
+//! The native interleaved AVX2+FMA complex families (`tprims-kernel`,
 //! issue #30) through the real planner and driver: arithmetic, all
 //! conjugations, orientation, alpha/beta, `C == D`, strides (including negative
 //! ones and offsets), genuine block-scatter contraction with batch labels,
@@ -12,13 +12,12 @@ use tensorcontract::kernel::KernelSet;
 use tensorcontract::plan::{ElementOp, Operand};
 use tensorcontract::reference::{contract_reference, RefOperand};
 use tensorcontract::{Blocking, KernelChoice, Layout, Plan, C32, C64};
-use tprims_gemm_kernel::Families;
+use tprims_kernel::Families;
 
 fn cplx_ids<T: Element + Families>() -> Vec<&'static str> {
-    tprims_kernel_cplx::register();
     let ids: Vec<_> = all_families::<T>()
         .into_iter()
-        .filter(|id| id.starts_with("cplx."))
+        .filter(|id| id.starts_with("avx2.") && id.contains(".native."))
         .collect();
     #[cfg(target_arch = "x86_64")]
     if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
@@ -551,7 +550,6 @@ fn one_family_is_bitwise_identical_across_worker_counts() {
 
 #[test]
 fn the_default_selection_does_not_change() {
-    tprims_kernel_cplx::register();
     let l = Layout::col_major(&[9, 9]);
     let plan = |t: usize| {
         Plan::new(
@@ -564,31 +562,28 @@ fn the_default_selection_does_not_change() {
         .with_threads(t)
     };
     for t in [1, 4] {
-        assert!(!plan(t)
-            .resolved::<C64>()
-            .unwrap()
-            .family()
-            .id
-            .starts_with("cplx."));
-        assert!(!plan(t)
-            .resolved::<C32>()
-            .unwrap()
-            .family()
-            .id
-            .starts_with("cplx."));
+        for id in [
+            plan(t).resolved::<C64>().unwrap().family().id,
+            plan(t).resolved::<C32>().unwrap().family().id,
+        ] {
+            assert!(
+                !(id.starts_with("avx2.") && id.contains(".native.")),
+                "{id}"
+            );
+        }
     }
     // An explicit id is honoured, or refused at plan creation on a host
     // without the instructions: never silently replaced.
-    let r = plan(1).with_kernel(KernelChoice::Id("cplx.avx2.c64.native.4x4".into()));
+    let r = plan(1).with_kernel(KernelChoice::Id("avx2.c64.native.4x4".into()));
     match r {
         Ok(p) => {
             assert_eq!(
                 p.resolved::<C64>().unwrap().family().id,
-                "cplx.avx2.c64.native.4x4"
+                "avx2.c64.native.4x4"
             )
         }
         Err(_) => assert!(all_families::<C64>()
             .iter()
-            .all(|id| !id.starts_with("cplx."))),
+            .all(|id| !(id.starts_with("avx2.") && id.contains(".native.")))),
     }
 }

@@ -4,7 +4,7 @@
 use tprims_blas::{Conj, EngineChoice, GemmConfig};
 use tprims_contract::{ContractPlan, DotGeneral, Error, Flags, Selected, Strategy};
 use tprims_exec::{Exec, Pool};
-use tprims_gemm_kernel::{KernelChoice, PartitionOpts, PartitionPolicy, SelectError};
+use tprims_kernel::{KernelChoice, PartitionOpts, PartitionPolicy, SelectError};
 
 mod common;
 use common::{out_dims, T};
@@ -21,7 +21,7 @@ fn copying_case() -> (DotGeneral, Vec<usize>, Vec<usize>) {
 fn dyn_cfg(job_m: usize, job_n: usize) -> GemmConfig {
     GemmConfig {
         engine: EngineChoice::Packed,
-        kernel: KernelChoice::Id("portable.f64.4x4".into()),
+        kernel: KernelChoice::Id("ref.f64.real.4x4".into()),
         partition: PartitionPolicy::DynamicTiles { job_m, job_n },
         ..Default::default()
     }
@@ -75,7 +75,7 @@ fn a_non_fusable_contraction_runs_dynamically_and_reports_the_policy() {
     let stat = plan(
         &GemmConfig {
             engine: EngineChoice::Packed,
-            kernel: KernelChoice::Id("portable.f64.4x4".into()),
+            kernel: KernelChoice::Id("ref.f64.real.4x4".into()),
             ..Default::default()
         },
         Strategy::Auto,

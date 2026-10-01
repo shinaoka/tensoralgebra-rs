@@ -8,7 +8,7 @@ use tensorcontract::element::Element;
 use tensorcontract::kernel::KernelSet;
 use tensorcontract::plan::Operand;
 use tensorcontract::{KernelChoice, Layout, Plan};
-use tprims_gemm_kernel::{Families, SelectError};
+use tprims_kernel::{Families, SelectError};
 
 fn run_family<T>(id: &'static str)
 where

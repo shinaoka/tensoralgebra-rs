@@ -7,7 +7,7 @@ use tprims_blas::{
     Error, GemmConfig, GroupedJob, MatIn,
 };
 use tprims_exec::{Exec, Pool};
-use tprims_gemm_kernel::{KernelChoice, PartitionOpts, PartitionPolicy, SelectError};
+use tprims_kernel::{KernelChoice, PartitionOpts, PartitionPolicy, SelectError};
 
 fn ints(len: usize, seed: usize) -> Vec<f64> {
     (0..len)
@@ -18,7 +18,7 @@ fn ints(len: usize, seed: usize) -> Vec<f64> {
 fn dynamic(job_m: usize, job_n: usize) -> GemmConfig {
     GemmConfig {
         engine: EngineChoice::Packed,
-        kernel: KernelChoice::Id("portable.f64.4x4".into()),
+        kernel: KernelChoice::Id("ref.f64.real.4x4".into()),
         partition: PartitionPolicy::DynamicTiles { job_m, job_n },
         ..Default::default()
     }
@@ -26,7 +26,7 @@ fn dynamic(job_m: usize, job_n: usize) -> GemmConfig {
 fn packed() -> GemmConfig {
     GemmConfig {
         engine: EngineChoice::Packed,
-        kernel: KernelChoice::Id("portable.f64.4x4".into()),
+        kernel: KernelChoice::Id("ref.f64.real.4x4".into()),
         ..Default::default()
     }
 }
@@ -124,12 +124,6 @@ fn other_engines_and_strategies_refuse_a_partition_policy() {
         };
         for shape in [(20, 20, 20), (0, 4, 4)] {
             let (r, _) = gemm(&exec, &cfg, shape, 1.0);
-            // `Auto` resolves to faer unless the environment chose packed.
-            if tprims_blas::default_engine() == tprims_blas::Engine::Packed
-                && engine == EngineChoice::Auto
-            {
-                continue;
-            }
             assert!(
                 matches!(r, Err(Error::Select(SelectError::EngineUnsupported { .. }))),
                 "{engine:?} {shape:?}: {r:?}"

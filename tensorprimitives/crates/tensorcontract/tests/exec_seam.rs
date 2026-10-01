@@ -91,13 +91,13 @@ fn width_one_never_broadcasts_whatever_the_plan_asks_for() {
 
 #[test]
 fn explicit_resolution_survives_a_refused_broadcast_without_reselection() {
-    use tprims_gemm_kernel::{KernelChoice, KernelFamily, ResolvedGemm, UkrFn};
+    use tprims_kernel::{KernelChoice, KernelFamily, ResolvedGemm, UkrFn};
     static CALLS: AtomicUsize = AtomicUsize::new(0);
     unsafe fn traced(k: usize, a: *const f64, b: *const f64, out: *mut f64) {
         CALLS.fetch_add(1, Ordering::Relaxed);
         // SAFETY: identical panel/tile ABI to the descriptor we copy below.
         unsafe {
-            tprims_gemm_kernel::portable::real_tile::<f64, 4, 4>(k, a, b, out);
+            tprims_kernel::portable::real_tile::<f64, 4, 4>(k, a, b, out);
         }
     }
     fn manifest() -> &'static [&'static KernelFamily<f64>] {
@@ -106,9 +106,9 @@ fn explicit_resolution_survives_a_refused_broadcast_without_reselection() {
         LIST.get_or_init(|| {
             // Do not recurse through the registry while this callback's
             // OnceLock initializes: copy the immutable built-in menu directly.
-            let mut f = **tprims_gemm_kernel::portable::families_f64()
+            let mut f = **tprims_kernel::portable::families_f64()
                 .iter()
-                .find(|f| f.id == "portable.f64.4x4")
+                .find(|f| f.id == "ref.f64.real.4x4")
                 .unwrap();
             f.id = "test.traced.f64.4x4";
             f.allow_auto = false;
@@ -119,7 +119,7 @@ fn explicit_resolution_survives_a_refused_broadcast_without_reselection() {
     // SAFETY: immutable manifest copies the validated portable 4x4 footprint,
     // ISA and overwrite contract; traced only counts then calls that same ABI.
     unsafe {
-        tprims_gemm_kernel::register::<f64>(manifest);
+        tprims_kernel::register::<f64>(manifest);
     }
     let (a, b) = inputs();
     let la = Layout::col_major(&[M as i64, K as i64]);

@@ -191,7 +191,6 @@ export TBLIS_ROOT=/path/to/tblis-install
 source scripts/env.sh                    # pins everything single-threaded
 
 cargo test --workspace --release
-TENSORCONTRACT_KERNEL=scalar cargo test --workspace --release
 cargo build --release -p tensorprimitives-bench --features tblis,blas
 ```
 
@@ -341,11 +340,14 @@ The consequence for an A/B is small but real: comparing two *kernels* or two
 within their rounding, not one implementation twice. It is a correctness
 statement, not a performance one — the timing methodology is unaffected.
 
+The `TENSORCONTRACT_*` variables below are parsed by `tcbench` into plan configuration (`Plan::with_tuning`,
+`with_orientation`, `with_row_block`, `with_partition_mode`, `with_l3_domains`); the library itself reads no
+environment variable, and `TENSORCONTRACT_THREADS` / `TENSORCONTRACT_POOL` no longer exist.
+
 | variable | effect |
 |---|---|
 | `TENSORCONTRACT_COMPLEX` | `planar` (default) \| `1m` \| `3m`. **`3m` is not bitwise identical** to the other two |
 | `TENSORCONTRACT_KERNEL` | `auto` (default) \| `scalar` \| `avx2` \| `avx512` \| `neon`: pin the instruction set. A pinned ISA the CPU lacks falls back to scalar, so `avx2` is how the AVX2 kernels get exercised on an AVX-512 machine. **Not bitwise identical across arms** |
-| `TENSORCONTRACT_THREADS` | planning-width hint only (default **1**); it no longer starts threads. Execution threads come from the `tprims_exec::Exec` passed to `Plan::run_with`, and the tests sweep widths through a shared pool |
 | `TENSORCONTRACT_PARTITION` | `domain` (**default** since D44) \| `legacy`: which partition *rule*; or `m` \| `n` \| `<pm>x<pn>` to pin it outright. `domain` gates `Plan::partition`'s `panels >= p` early return on the L3 domain count — a measured no-op on 392 of 392 cases where one L3 serves the thread set, 1.133 corpus geomean at 64 Zen2 threads where sixteen do. `legacy` is the ungated rule, which is what every threaded number committed before 2026-08-04 was measured with |
 | `TENSORCONTRACT_L3_DOMAINS` | override how many L3 domains the thread set is taken to span. The derivation assumes compact placement (A37); this exercises the other case without a rebuild |
 | `TENSORCONTRACT_BLOCKMODEL` | `legacy` (default) \| `model`: the analytical cache model instead of the hardcoded constants. `legacy` is the default **on evidence** — the model loses in 11 of 12 columns on a foreign machine (A33) |

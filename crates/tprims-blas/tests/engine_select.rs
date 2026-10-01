@@ -2,11 +2,10 @@
 //! engine must report the family it used, and an unusable choice must say why.
 use strided_view::{StridedView, StridedViewMut};
 use tprims_blas::{
-    default_engine, gemm_with, list_kernels, Engine, EngineChoice, Error, GemmConfig, MatIn,
-    SelectedGemm,
+    gemm_with, list_kernels, Engine, EngineChoice, Error, GemmConfig, MatIn, SelectedGemm,
 };
 use tprims_exec::{Exec, Pool};
-use tprims_gemm_kernel::KernelChoice;
+use tprims_kernel::KernelChoice;
 
 /// Integer-valued operands, so the engines' sums agree exactly.
 const M: usize = 37;
@@ -64,12 +63,12 @@ fn a_forced_kernel_is_used_and_reported() {
     let exec = Exec::serial();
     let cfg = GemmConfig {
         engine: EngineChoice::Packed,
-        kernel: KernelChoice::Id("portable.f64.4x4".into()),
+        kernel: KernelChoice::Id("ref.f64.real.4x4".into()),
         ..Default::default()
     };
     let (sel, _) = run(&exec, &cfg).unwrap();
-    assert_eq!(sel.family_id, Some("portable.f64.4x4"));
-    assert!(sel.to_json().contains("\"family_id\":\"portable.f64.4x4\""));
+    assert_eq!(sel.family_id, Some("ref.f64.real.4x4"));
+    assert!(sel.to_json().contains("\"family_id\":\"ref.f64.real.4x4\""));
 }
 
 #[test]
@@ -84,20 +83,18 @@ fn an_unknown_kernel_id_is_a_selection_error() {
     assert!(
         matches!(
             err,
-            Error::Select(tprims_gemm_kernel::SelectError::UnknownId { .. })
+            Error::Select(tprims_kernel::SelectError::UnknownId { .. })
         ),
         "{err:?}"
     );
 }
 
-/// The process default is faer unless the environment chose otherwise at
-/// startup, and the engine list registers what this build has.
+/// The built-in families are listed without any registration step.
 #[test]
-fn default_engine_and_kernel_list_are_available() {
-    let _ = default_engine();
+fn the_kernel_list_is_available() {
     let kernels = list_kernels::<f64>();
-    assert!(kernels.iter().any(|k| k.id.starts_with("tc.")));
-    assert!(kernels.iter().any(|k| k.id == "portable.f64.4x4"));
+    assert!(kernels.iter().any(|k| k.id == "ref.f64.real-scalar.4x4"));
+    assert!(kernels.iter().any(|k| k.id == "ref.f64.real.4x4"));
 }
 
 /// Two families, two threads, one pool: the workspace is leased per call, so
@@ -112,7 +109,7 @@ fn two_families_concurrently_on_one_pool() {
     let exec = Exec::rayon(&pool);
     let reference = run(&Exec::serial(), &GemmConfig::default()).unwrap().1;
     std::thread::scope(|s| {
-        for id in ["portable.f64.4x4", "tc.scalar.f64.4x4"] {
+        for id in ["ref.f64.real.4x4", "ref.f64.real-scalar.4x4"] {
             let (exec, reference) = (&exec, &reference);
             s.spawn(move || {
                 for _ in 0..20 {
@@ -128,4 +125,34 @@ fn two_families_concurrently_on_one_pool() {
             });
         }
     });
+}
+
+/// The packed driver's tuning is part of the configuration: a pinned scalar
+/// kernel and a blocking override reach the plan, and the report says so.
+#[test]
+fn explicit_tuning_reaches_the_packed_plan() {
+    let exec = Exec::serial();
+    let (sel, got) = run(
+        &exec,
+        &GemmConfig {
+            engine: EngineChoice::Packed,
+            tuning: tprims_kernel::Tuning {
+                kernel_force: tprims_kernel::KernelForce::Scalar,
+                blocking: tprims_kernel::BlockingOverride {
+                    kc: Some(4),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let (_, want) = run(&exec, &GemmConfig::default()).unwrap();
+    assert_eq!(sel.kc, 4);
+    assert!(
+        sel.family_id.unwrap().starts_with("ref.f64.real-scalar."),
+        "{sel:?}"
+    );
+    assert_eq!(got, want);
 }

@@ -39,8 +39,7 @@ flowchart TB
     CT["<b>tprims-contract</b><br/>Binary contraction<br/>permute + batched GEMM<br/>or TBLIS direct"]
     BL["<b>tprims-blas</b><br/>GEMM, batched GEMM, TRSM<br/>faer + loop or TBLIS"]
     TC["<b>tensorcontract</b><br/>packing, loop nest,<br/>write-back, driver"]
-    GK["<b>tprims-gemm-kernel</b><br/>contract, resolution,<br/>partition"]
-    KT["<b>tprims-kernel-tensorcontract</b><br/>(Lukas Devos's kernels)"]
+    GK["<b>tprims-kernel</b><br/>family contract, registry, packing,<br/>blocking, project-owned kernels<br/>(Lukas Devos's microkernels)"]
     TR["<b>tprims-contract-traits</b><br/>Backend + plan traits,<br/>problem, errors, host seam"]
     FA["faer"]
     ST["<b>strided-rs</b> (external)<br/>views, permutation, copies"]
@@ -50,8 +49,6 @@ flowchart TB
     CT -->|"direct tensor path"| TC
     BL -->|"TBLIS batched GEMM"| TC
     TC --> GK
-    TC --> KT
-    KT --> GK
     CT --> ST
     CT --> TR
     TR --> ST
@@ -63,26 +60,26 @@ flowchart TB
     classDef base fill:#edf0f4,stroke:#536477,color:#233244
     class CT,TR tensor
     class BL,TC matrix
-    class GK,KT base
+    class GK base
     class FA,ST,EX base
 ```
 
-The kernel layer is its own crate set: `tprims-gemm-kernel` owns the packed
-format, the kernel-family contract and the resolution, and the providers
-(`tprims-kernel-tensorcontract`, `tprims-kernel-cplx`) supply kernels.
+The kernel layer is one crate, `tprims-kernel`: the packed format, the
+kernel-family contract and its registry, resolution with frozen blocking, packing
+and write-back, cache blocking, and every project-owned microkernel family
+(Lukas Devos's tensorcontract kernels, the portable reference kernels and the
+native complex kernels). Family ids are `{isa}.{dtype}.{scheme}.{MR}x{NR}`
+([migration guide](docs/migration-2026-10.md)).
 
 | Crate | Owns | C ABI crate |
 | --- | --- | --- |
 | `tprims-exec` | Execution context: serial, a Rayon pool borrowed from the host (or created and joined through the C API by a C host); width chosen from work; the workspace provider (reusable, pool-owned scratch). No ambient global pool. | `tprims-core` |
 | `strided-*` (external, [strided-rs](https://github.com/tensor4all/strided-rs)) | Checked strided views, scalar and conjugation contracts, copy and permutation, map / reduce / fused elementwise. | `strided-capi` (planned) |
-| `tprims-gemm-kernel` | The kernel contract, with no dependencies of its own: packed formats, kernel-family descriptors, CPU masks, resolution with frozen blocking, the partition policy and caller-scoped catalogs of downstream kernels. MIT OR Apache-2.0. | none |
-| `tprims-kernel-tensorcontract` (imported, tensorprimitives-rs by Lukas Devos) | Lukas Devos's register-tile microkernels: scalar, AVX2, AVX-512 and NEON, with and without complex schemes. MIT OR Apache-2.0. | none |
+| `tprims-kernel` | The kernel crate: packed formats, kernel-family descriptors, CPU masks, the registry and resolution with frozen blocking, the partition policy, caller-scoped catalogs of downstream kernels, packing, scatter and write-back, cache blocking, and the microkernel families (Lukas Devos's scalar, AVX2, AVX-512 and NEON register-tile kernels, the portable reference kernels, and project-owned native interleaved complex kernels, [#30](https://github.com/tensor4all/tprims-rs/issues/30), opt-in and never Auto-eligible). MIT OR Apache-2.0. | none |
 | `tensorcontract` (imported, tensorprimitives-rs by Lukas Devos) | The direct contraction driver: packing traversal, the loop nest, write-back; its threads and workspace come from a `tprims_exec::Exec`. | `tensorprimitives-tapp` (imported): the [TAPP](https://arxiv.org/abs/2601.07827) contraction C API |
-| `tprims-kernel-cplx` | Native interleaved complex microkernel families for the packed driver (AVX2+FMA c32 8x4 and c64 4x4), project-owned intrinsics, opt-in by id and never Auto-eligible ([#30](https://github.com/tensor4all/tprims-rs/issues/30)). MIT OR Apache-2.0. | none |
 | `tprims-blas` | GEMM and batched GEMM (faer plus a loop over items, or TBLIS-style; compared), TRSM, later SYRK / HERK. Rust API only. | none |
-| `tprims-custom-kernel-test` | Test-only downstream stand-in with its own packed kernels and a custom selector (see [architecture](docs/architecture.md#custom-kernels-with-a-safe-selector)); not part of the stack. | none |
 | `tprims-contract-traits` | The implementation-independent contraction interface: problem and validation, shared errors, object-safe backend / prepared-plan traits and a minimal borrowed host-execution seam; `tprims-contract` implements it, other backends can too. No executor runtime or kernel layer. | none |
-| `tprims-contract-testkit` | Test-only second backend (naive loop nest) used to prove the interface; not a production fallback. | none |
+| `tprims-contract-testkit` | Test-only second backend (naive loop nest) used to prove the interface, plus the downstream-kernel fixture (`custom_kernels`: its own packed kernels for the custom-selector tests; see [architecture](docs/architecture.md#custom-kernels-with-a-safe-selector)); not a production fallback. | none |
 | `tprims-contract` | Binary contraction with batch indices (`dot_general` semantics) with two strategies to compare: permute plus batched GEMM (from tenferro-rs) and TBLIS-style direct (from tensorprimitives-rs); thin permute / add / trace wrappers. Rust API only; C callers contract through TAPP. | none |
 
 A Rust user who prefers short paths can rename on import, for example

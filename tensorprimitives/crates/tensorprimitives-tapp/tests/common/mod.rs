@@ -21,7 +21,6 @@ use std::ffi::{c_void, CStr};
 use std::os::raw::{c_char, c_int};
 
 use tensorcontract::element::{Element, Real};
-use tensorcontract::kernel::ComplexMethod;
 use tensorcontract::layout::Layout;
 use tensorcontract::plan::ElementOp;
 use tensorcontract::reference::{contract_reference, RefOperand};
@@ -54,20 +53,14 @@ impl Dtype for num_complex::Complex<f64> {
 }
 
 /// Relative-error budget for a whole output buffer, matching the engine's own
-/// suite: 3m's error bound is relative to `|Ar||Br| + |Ai||Bi|` rather than to
-/// the complex magnitudes, which is the documented price of its 25% flop
-/// saving, so the budget widens when `TENSORCONTRACT_COMPLEX=3m` is in force
-/// rather than pretending the method is something it is not.
+/// suite. The TAPP path always runs the default (planar) complex method, whose
+/// error bound is the ordinary one; 3m, whose bound is relative to
+/// `|Ar||Br| + |Ai||Bi|`, is not reachable through the C ABI.
 pub fn tol<T: Dtype>() -> f64 {
-    let base = if core::mem::size_of::<T::Real>() == 4 {
+    if core::mem::size_of::<T::Real>() == 4 {
         2e-4
     } else {
         1e-11
-    };
-    if T::IS_COMPLEX && ComplexMethod::from_env() == ComplexMethod::ThreeM {
-        base * 100.0
-    } else {
-        base
     }
 }
 

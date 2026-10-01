@@ -35,7 +35,7 @@ struct Cfg {
     engine: EngineChoice,
     /// `--partition dynamic:JM,JN`: the opt-in dynamic scheduler of the packed
     /// engine; `None` keeps the static grid and every row label unchanged.
-    partition: Option<tprims_gemm_kernel::PartitionPolicy>,
+    partition: Option<tprims_kernel::PartitionPolicy>,
 }
 
 impl Cfg {

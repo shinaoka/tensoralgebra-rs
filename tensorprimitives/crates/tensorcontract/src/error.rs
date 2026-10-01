@@ -46,7 +46,7 @@ use core::fmt;
 #[non_exhaustive]
 pub enum Error {
     /// Invalid registered-kernel selection/configuration, before computation.
-    KernelSelection(tprims_gemm_kernel::SelectError),
+    KernelSelection(tprims_kernel::SelectError),
     /// `extents.len() != strides.len()`.
     RankMismatch {
         /// Number of extents supplied.
@@ -213,7 +213,7 @@ impl fmt::Display for Error {
 /// `Cargo.toml` — no `#![no_std]`, and `Vec` in the scatter vectors), so the
 /// trait was always reachable and only the impl was withheld. The cost fell on
 /// exactly the callers the feature is *for*, the ones turning it off to be rid of
-/// the `TENSORCONTRACT_*` reads.
+/// the removed environment reads.
 ///
 /// It survived because CI builds `--no-default-features` and building is not
 /// using: a missing impl is not a compile error until something needs it, and

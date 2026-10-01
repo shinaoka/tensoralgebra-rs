@@ -248,8 +248,8 @@ Audit hints:
   run. The harness builds the `Exec` from the requested count (`Exec::Serial`
   for 1T, a bounded four-worker pool borrowed through `Exec` for 4T), asserts
   the effective width at startup, and fails when `RAYON_NUM_THREADS`,
-  `OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS` or `TENSORCONTRACT_THREADS`
-  conflict with it. A four-thread time that is not faster than the one-thread
+  `OMP_NUM_THREADS` or `OPENBLAS_NUM_THREADS` conflict with it, or when any
+  removed `TENSORCONTRACT_*` / `TPRIMS_GEMM_*` variable is set (nothing reads them). A four-thread time that is not faster than the one-thread
   time for a tensor-sized case is a finding, even when the one-thread row
   matches the reference. A `--threads 1` flag that left an ambient pool
   running multi-threaded once produced a 7x wrong one-thread row in

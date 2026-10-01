@@ -149,10 +149,13 @@ identical and cannot be: `TENSORCONTRACT_KERNEL`, because the scalar path's
 `TENSORCONTRACT_COMPLEX=3m`, which computes three products where planar computes
 four.
 
+The `TENSORCONTRACT_*` variables below are parsed by `tcbench` into plan configuration (`Plan::with_tuning`,
+`with_orientation`, `with_row_block`, `with_partition_mode`, `with_l3_domains`); the library itself reads no
+environment variable, and `TENSORCONTRACT_THREADS` / `TENSORCONTRACT_POOL` no longer exist.
+
 | variable | effect |
 |---|---|
 | `TENSORCONTRACT_COMPLEX` | `planar` (default) \| `1m` \| `3m` — the complex method. `3m` is **not bitwise identical** to the other two, see above |
-| `TENSORCONTRACT_THREADS` | planning-width hint only (default **1**): it no longer starts threads. Execution threads come from the `tprims_exec::Exec` passed to `Plan::run_with`; a plan run without one is serial |
 | `TENSORCONTRACT_KERNEL` | `auto` (default) \| `scalar` \| `avx2` \| `avx512` \| `neon` — pin the instruction set. A pinned ISA the CPU lacks falls back to scalar. **Not bitwise identical across arms**, see above |
 | `TENSORCONTRACT_PARTITION` | `domain` (default) \| `legacy` — which rule apportions threads over the output; or `m` \| `n` \| `<pm>x<pn>` to pin it |
 | `TENSORCONTRACT_BLOCKMODEL` | `legacy` (default) \| `model` — cache blocking from probed cache descriptors instead of hardcoded constants. `legacy` is the default on evidence |

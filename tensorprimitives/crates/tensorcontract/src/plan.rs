@@ -52,8 +52,6 @@
 //! claim on contiguity; `K` only affects the packing of `A` and `B`. This is a
 //! heuristic and a Phase 4 tuning knob.
 
-use tprims_gemm_kernel::env_once;
-
 use crate::error::{Error, Result};
 use crate::layout::Layout;
 use crate::scatter::{build_scatter, run_structure, unbroken_fraction};
@@ -302,14 +300,21 @@ pub struct Plan {
     pub(crate) method: Option<crate::kernel::ComplexMethod>,
     /// Overrides the default thread count when set.
     pub(crate) threads: Option<usize>,
-    pub(crate) kernel: Option<tprims_gemm_kernel::KernelChoice>,
+    pub(crate) kernel: Option<tprims_kernel::KernelChoice>,
     /// Set by [`Plan::with_selector`]: the family a caller's selector chose.
     pub(crate) forced: Option<crate::select::Forced>,
     /// Partition policy requested by [`Plan::with_partition`].
-    pub(crate) partition: Option<(
-        tprims_gemm_kernel::PartitionPolicy,
-        tprims_gemm_kernel::PartitionOpts,
-    )>,
+    pub(crate) partition: Option<(tprims_kernel::PartitionPolicy, tprims_kernel::PartitionOpts)>,
+    /// The kernel layer's explicit tuning inputs (see [`Plan::with_tuning`]).
+    pub(crate) tuning: tprims_kernel::Tuning,
+    /// Orientation request (see [`Plan::with_orientation`]).
+    pub(crate) orient: Orient,
+    /// Row-block request (see [`Plan::with_row_block`]).
+    pub(crate) row_block_mode: RowBlock,
+    /// Partition rule or pin (see [`Plan::with_partition_mode`]).
+    pub(crate) partition_mode: PartitionMode,
+    /// Forced L3 domain count (see [`Plan::with_l3_domains`]).
+    pub(crate) l3_domains: Option<usize>,
     pub(crate) resolved_cache: crate::resolve::Cache,
     /// The matrix shape and folded axes this plan reduced to. Public because
     /// it is the answer to "what did the index analysis actually decide", which
@@ -318,12 +323,56 @@ pub struct Plan {
 }
 
 impl Plan {
-    pub(crate) fn freeze_execution_switches(&self) {
-        // These are process-constant startup choices, not workspace caches.
-        // Force initialization during typed planning, before raw execution.
-        let _ = orient_override();
-        let _ = row_block_override();
-        let _ = partition_override();
+    /// Explicit kernel-layer tuning: the ISA preference of the legacy menu, the
+    /// blocking model and overrides, a coupled `kc` and the write-back mode. The
+    /// default is the baseline with every knob unset.
+    #[must_use]
+    pub fn with_tuning(mut self, tuning: tprims_kernel::Tuning) -> Self {
+        self.tuning = tuning;
+        self.resolved_cache = Default::default();
+        self
+    }
+
+    /// The plan's tuning inputs.
+    pub fn tuning(&self) -> &tprims_kernel::Tuning {
+        &self.tuning
+    }
+
+    /// Pin or rule the row/column orientation (default [`Orient::Rule`]).
+    /// Affects role orientation only, never correctness.
+    #[must_use]
+    pub fn with_orientation(mut self, orient: Orient) -> Self {
+        self.orient = orient;
+        self.resolved_cache = Default::default();
+        self
+    }
+
+    /// Request a micro-tile row block (default [`RowBlock::Auto`]).
+    #[must_use]
+    pub fn with_row_block(mut self, row_block: RowBlock) -> Self {
+        self.row_block_mode = row_block;
+        self.resolved_cache = Default::default();
+        self
+    }
+
+    /// Choose the partition rule, or pin the layout outright (default
+    /// [`PartitionMode::Domain`]). Distinct from [`Plan::with_partition`], which
+    /// selects the packed driver's grid or dynamic tiles.
+    #[must_use]
+    pub fn with_partition_mode(mut self, mode: PartitionMode) -> Self {
+        self.partition_mode = mode;
+        self.resolved_cache = Default::default();
+        self
+    }
+
+    /// Take the number of L3 domains the thread set spans as `n` instead of
+    /// deriving it from the probed cache hierarchy (the derivation assumes
+    /// compact placement).
+    #[must_use]
+    pub fn with_l3_domains(mut self, n: usize) -> Self {
+        self.l3_domains = Some(n);
+        self.resolved_cache = Default::default();
+        self
     }
 
     /// Select a registered family, or restore automatic selection.
@@ -339,30 +388,29 @@ impl Plan {
     /// let l = Layout::col_major(&[2, 2]);
     /// let p = Plan::new(Operand::new(&l, &[0,2]), Operand::new(&l, &[2,1]),
     ///     None, Operand::new(&l, &[0,1]))?;
-    /// let p = p.with_kernel(KernelChoice::Id("portable.f64.4x4".into()))?;
-    /// assert_eq!(p.resolved::<f64>()?.family().id, "portable.f64.4x4");
+    /// let p = p.with_kernel(KernelChoice::Id("ref.f64.real.4x4".into()))?;
+    /// assert_eq!(p.resolved::<f64>()?.family().id, "ref.f64.real.4x4");
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
-    pub fn with_kernel(mut self, choice: tprims_gemm_kernel::KernelChoice) -> Result<Self> {
+    pub fn with_kernel(mut self, choice: tprims_kernel::KernelChoice) -> Result<Self> {
         if let Some(forced) = &self.forced {
             return Err(Error::KernelSelection(
-                tprims_gemm_kernel::SelectError::Incompatible {
+                tprims_kernel::SelectError::Incompatible {
                     id: forced.id().into(),
                     reason: "a custom selector already chose this plan's kernel",
                 },
             ));
         }
-        if let tprims_gemm_kernel::KernelChoice::Id(id) = &choice {
-            tprims_kernel_tensorcontract::register();
-            let cpu = tprims_gemm_kernel::CpuFeatures::detect();
+        if let tprims_kernel::KernelChoice::Id(id) = &choice {
+            let cpu = tprims_kernel::CpuFeatures::detect();
             let mut failure = None;
             macro_rules! check {
                 ($t:ty) => {
-                    match tprims_gemm_kernel::Registry::select::<$t>(id, cpu) {
+                    match tprims_kernel::Registry::select::<$t>(id, cpu) {
                         Ok(_) => {
                             failure = None;
                         }
-                        Err(tprims_gemm_kernel::SelectError::DtypeMismatch { .. }) => {}
+                        Err(tprims_kernel::SelectError::DtypeMismatch { .. }) => {}
                         Err(e) => {
                             failure = Some(e);
                         }
@@ -401,12 +449,9 @@ impl Plan {
     /// assert!(core::ptr::eq(first.family(), p.resolved::<f64>()?.family()));
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
-    pub fn resolved<T: tprims_gemm_kernel::Families>(
+    pub fn resolved<T: tprims_kernel::Families>(
         &self,
-    ) -> core::result::Result<
-        tprims_gemm_kernel::ResolvedGemm<T::Real>,
-        tprims_gemm_kernel::SelectError,
-    >
+    ) -> core::result::Result<tprims_kernel::ResolvedGemm<T::Real>, tprims_kernel::SelectError>
     where
         T::Real: crate::KernelSet,
     {
@@ -619,6 +664,11 @@ impl Plan {
             kernel: None,
             forced: None,
             partition: None,
+            tuning: Default::default(),
+            orient: Orient::default(),
+            row_block_mode: RowBlock::default(),
+            partition_mode: PartitionMode::default(),
+            l3_domains: None,
             resolved_cache: Default::default(),
             stats,
         })
@@ -627,10 +677,8 @@ impl Plan {
     /// Choose how complex arithmetic is induced from real micro-kernels.
     ///
     /// Ignored for real element types. Without this, the plan uses
-    /// [`ComplexMethod::from_env`], i.e. `TENSORCONTRACT_COMPLEX` if set and
-    /// [`ComplexMethod::Planar`] otherwise.
+    /// [`ComplexMethod::Planar`].
     ///
-    /// [`ComplexMethod::from_env`]: crate::kernel::ComplexMethod::from_env
     /// [`ComplexMethod::Planar`]: crate::kernel::ComplexMethod::Planar
     ///
     /// ```
@@ -656,8 +704,7 @@ impl Plan {
 
     /// The complex method this plan will execute with.
     pub fn complex_method(&self) -> crate::kernel::ComplexMethod {
-        self.method
-            .unwrap_or_else(crate::kernel::ComplexMethod::from_env)
+        self.method.unwrap_or_default()
     }
 
     /// Override the cache blocking parameters this plan executes with.
@@ -685,14 +732,14 @@ impl Plan {
     /// Job extents are logical rows/columns of the *oriented* GEMM (the row
     /// role may be either user operand, see [`Plan::transposes_gemm`]).
     ///
-    /// [`PartitionPolicy`]: tprims_gemm_kernel::PartitionPolicy
-    /// [`PartitionPolicy::StaticGrid`]: tprims_gemm_kernel::PartitionPolicy::StaticGrid
-    /// [`PartitionPolicy::DynamicTiles`]: tprims_gemm_kernel::PartitionPolicy::DynamicTiles
+    /// [`PartitionPolicy`]: tprims_kernel::PartitionPolicy
+    /// [`PartitionPolicy::StaticGrid`]: tprims_kernel::PartitionPolicy::StaticGrid
+    /// [`PartitionPolicy::DynamicTiles`]: tprims_kernel::PartitionPolicy::DynamicTiles
     #[must_use]
     pub fn with_partition(
         mut self,
-        policy: tprims_gemm_kernel::PartitionPolicy,
-        opts: tprims_gemm_kernel::PartitionOpts,
+        policy: tprims_kernel::PartitionPolicy,
+        opts: tprims_kernel::PartitionOpts,
     ) -> Self {
         self.partition = Some((policy, opts));
         self.resolved_cache = Default::default();
@@ -733,9 +780,9 @@ impl Plan {
     /// The thread count this plan is resolved and partitioned for (see
     /// [`Plan::with_threads`]); it is not an execution width.
     ///
-    /// Defaults to `TENSORCONTRACT_THREADS`, and to **1** if that is unset.
+    /// Defaults to **1**.
     pub fn threads(&self) -> usize {
-        self.threads.unwrap_or_else(tprims_gemm_kernel::env_threads)
+        self.threads.unwrap_or(1)
     }
 
     /// How execution will split the output across threads: `(pm, pn)`, the
@@ -779,7 +826,7 @@ impl Plan {
     /// more than one domain, the column axis can fill the threads by itself, and
     /// the contraction is shallow. `columns_beat_rows` is that predicate, kept
     /// pure so its truth table can be pinned by a test on any machine.
-    /// `TENSORCONTRACT_PARTITION` selects `domain` (the default, D44) or
+    /// [`Plan::with_partition_mode`] selects `domain` (the default, D44) or
     /// `legacy`, or pins the layout outright.
     ///
     /// The derivation of `PACK_WEIGHT`, the three gate conditions and what each
@@ -809,7 +856,7 @@ impl Plan {
         let blocks = cols.div_ceil(nr.max(1)).max(1);
         let p = threads.max(1);
 
-        let domain_aware = match partition_override() {
+        let domain_aware = match self.partition_mode {
             PartitionMode::Rule => false,
             PartitionMode::Domain => true,
             PartitionMode::Rows => return (p.min(panels), 1),
@@ -825,7 +872,7 @@ impl Plan {
         // panel to be what limits it — then, and only then, the axes swap.
         if panels >= p {
             let domains = if domain_aware {
-                crate::kernel::cache::l3_domains(p)
+                crate::kernel::cache::l3_domains(p, self.l3_domains)
             } else {
                 1
             };
@@ -929,13 +976,13 @@ impl Plan {
     /// of the plan alone — hence the `mr` argument.
     ///
     /// This is a **tier-2** answer: stable signature, tuning-output value.
-    /// `TENSORCONTRACT_ORIENT=none` disables the swap and `=swap` forces it;
-    /// neither affects correctness. The mirror-family table the rule was derived
+    /// [`Plan::with_orientation`] can disable the swap or force it; neither
+    /// affects correctness. The mirror-family table the rule was derived
     /// from, the scoring against both forced arms of all 392 corpus
     /// case-dtype-methods, and the 21 cases still on the slower arm are in
     /// `docs/notebook/` — the write-back chapter, Phase 4.1d.
     pub fn transposes_gemm(&self, mr: usize) -> bool {
-        match orient_override() {
+        match self.orient {
             Orient::Rule => self.transposes_gemm_rule(mr),
             Orient::Force(v) => v,
             Orient::Legacy => self.transposes_gemm_legacy(mr),
@@ -944,11 +991,8 @@ impl Plan {
 
     /// [`Plan::transposes_gemm`]'s rule with no environment override.
     ///
-    /// Separate so the unit tests can assert what the *rule* decides even when a
-    /// measurement session has pinned the arm. Testing through the override
-    /// instead means `TENSORCONTRACT_ORIENT=swap` turns every orientation
-    /// assertion into a tautology, which is the trap
-    /// `legacy_blocking_is_unchanged` already guards against by hand.
+    /// Separate so the unit tests can assert what the *rule* decides even for a
+    /// plan whose orientation is pinned.
     fn transposes_gemm_rule(&self, mr: usize) -> bool {
         // A row block lands inside one run when the rows are unit-stride and
         // the run is at least `MR` long.
@@ -974,8 +1018,8 @@ impl Plan {
     }
 
     /// The Phase 4.1 orientation rule, kept reachable as
-    /// `TENSORCONTRACT_ORIENT=legacy` so that the current one can be measured
-    /// against it as a runtime A/B rather than a diff between two builds (A15).
+    /// `Orient::Legacy` so that the current one can be measured
+    /// against it as an A/B rather than a diff between two builds (A15).
     ///
     /// Swap only when `D`'s column direction is strictly more contiguous than
     /// its row direction *and* the swap leaves the row block unbroken. The
@@ -995,8 +1039,8 @@ impl Plan {
     /// Choose the micro-tile row block `MR` from a menu of shapes the kernel
     /// set actually has, ordered fastest-in-isolation first.
     ///
-    /// Returns `None` for "use the menu's default", which is also what an
-    /// unrecognised or absent `TENSORCONTRACT_ROWBLOCK` gives.
+    /// Returns `None` for "use the menu's default", which is also what
+    /// `RowBlock::Base` gives.
     ///
     /// # Why `MR` is not just a kernel-tuning constant
     ///
@@ -1049,7 +1093,7 @@ impl Plan {
     /// score alike and the earlier one wins, which keeps the measured default in
     /// front.
     pub fn row_block(&self, menu: &[(usize, usize)]) -> Option<usize> {
-        match row_block_override() {
+        match self.row_block_mode {
             RowBlock::Base => None,
             RowBlock::Auto => self.preferred_row_block(menu),
             RowBlock::Pin(mr) => menu.iter().position(|&(m, _)| m == mr),
@@ -1110,12 +1154,13 @@ impl Plan {
     }
 }
 
-/// What `TENSORCONTRACT_ORIENT` asked for. Without `std` there is no
-/// environment to read, so only `Rule` is ever constructed.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[cfg_attr(not(feature = "std"), allow(dead_code))]
-enum Orient {
-    /// [`Plan::transposes_gemm`]'s rule.
+/// How the contraction is oriented into a matrix product: which operand plays
+/// the GEMM row role. Orientation never changes the result, only which
+/// register tile shape suits the output strides.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Orient {
+    /// [`Plan::transposes_gemm`]'s rule. The default.
+    #[default]
     Rule,
     /// A pinned arm, for forced-arm measurement of both.
     Force(bool),
@@ -1123,26 +1168,32 @@ enum Orient {
     Legacy,
 }
 
-/// `TENSORCONTRACT_ORIENT=none|swap|legacy` pins the row/column orientation
-/// instead of deriving it from `D`'s strides. Read once per process; for
-/// measurement only, and none of it affects correctness.
-fn orient_override() -> Orient {
-    env_once!(Orient, "TENSORCONTRACT_ORIENT", Orient::Rule, |v| match v {
-        "none" | "ab" => Orient::Force(false),
-        "swap" | "ba" => Orient::Force(true),
-        "legacy" | "phase41" => Orient::Legacy,
-        _ => Orient::Rule,
-    })
+impl Orient {
+    /// Parse `rule | none | ab | swap | ba | legacy | phase41`
+    /// (case-insensitively); `None` for any other spelling.
+    pub fn parse(s: &str) -> Option<Orient> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "rule" | "auto" => Some(Orient::Rule),
+            "none" | "ab" => Some(Orient::Force(false)),
+            "swap" | "ba" => Some(Orient::Force(true)),
+            "legacy" | "phase41" => Some(Orient::Legacy),
+            _ => None,
+        }
+    }
 }
 
-/// What `TENSORCONTRACT_ROWBLOCK` asked for. Without `std` there is no
-/// environment to read, so only `Auto` is ever constructed.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[cfg_attr(not(feature = "std"), allow(dead_code))]
-enum RowBlock {
+/// Which micro-tile row block a plan asks for.
+///
+/// The default is `Auto`; `Base` pins the Phase 3 shape, which is what the rule
+/// was measured against. Both arms stay reachable so the comparison can be
+/// repeated in one session rather than as a diff between two builds (A15), and
+/// `Index` re-runs the whole grid the rule was derived from.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum RowBlock {
     /// The kernel set's default shape — the Phase 3 choice.
     Base,
-    /// [`Plan::row_block`]'s rule.
+    /// [`Plan::row_block`]'s rule. The default.
+    #[default]
     Auto,
     /// A specific logical `MR`, where the kernel set has one.
     Pin(usize),
@@ -1152,36 +1203,22 @@ enum RowBlock {
     Index(usize),
 }
 
-/// `TENSORCONTRACT_ROWBLOCK=base|auto|mr=<n>|idx=<i>` selects the micro-tile
-/// row block. Read once per process.
-///
-/// The default is `auto`; `base` pins the Phase 3 shape, which is what the rule
-/// was measured against. Both arms stay reachable at run time so the comparison
-/// can be repeated in one session rather than as a diff between two builds
-/// (A15), and `idx=<i>` re-runs the whole grid the rule was derived from.
-fn row_block_override() -> RowBlock {
-    env_once!(
-        RowBlock,
-        "TENSORCONTRACT_ROWBLOCK",
-        RowBlock::Auto,
-        |v: &str| {
-            let v = v.trim().to_ascii_lowercase();
-            match v.as_str() {
-                "auto" => RowBlock::Auto,
-                "base" | "default" => RowBlock::Base,
-                _ => {
-                    let parse = |p: &str| v.strip_prefix(p)?.parse::<usize>().ok();
-                    if let Some(n) = parse("mr=") {
-                        RowBlock::Pin(n)
-                    } else if let Some(i) = parse("idx=") {
-                        RowBlock::Index(i)
-                    } else {
-                        RowBlock::Base
-                    }
-                }
+impl RowBlock {
+    /// Parse `base | default | auto | mr=<n> | idx=<i>` (case-insensitively);
+    /// `None` for any other spelling.
+    pub fn parse(s: &str) -> Option<RowBlock> {
+        let v = s.trim().to_ascii_lowercase();
+        match v.as_str() {
+            "auto" => Some(RowBlock::Auto),
+            "base" | "default" => Some(RowBlock::Base),
+            _ => {
+                let num = |p: &str| v.strip_prefix(p)?.parse::<usize>().ok();
+                num("mr=")
+                    .map(RowBlock::Pin)
+                    .or_else(|| num("idx=").map(RowBlock::Index))
             }
         }
-    )
+    }
 }
 
 /// The depth below which a contraction is bandwidth-bound enough for the
@@ -1225,26 +1262,25 @@ fn columns_beat_rows(blocks: usize, k: usize, p: usize, domains: usize) -> bool 
     domains > 1 && blocks >= p && k <= BANDWIDTH_BOUND_K
 }
 
-/// What `TENSORCONTRACT_PARTITION` asked for. Without `std` there is no
-/// environment to read, so only `Rule` is ever constructed.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[cfg_attr(not(feature = "std"), allow(dead_code))]
-enum PartitionMode {
+/// The partition rule, or a pinned layout. Every partition gives bitwise
+/// identical results.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum PartitionMode {
     /// [`Plan::partition`]'s rule with the `panels >= p` early return
-    /// unconditional. No longer the default (D44); reachable as
-    /// `TENSORCONTRACT_PARTITION=legacy`, because every threaded number
-    /// committed before 2026-08-04 was measured with it and reproducing one
-    /// means asking for it by name.
+    /// unconditional (`legacy`). Every threaded number committed before
+    /// 2026-08-04 was measured with it, so reproducing one means asking for it
+    /// by name.
     Rule,
     /// The same rule with the early return **gated on the L3 domain count**, so
     /// a thread set that spans several L3s takes the column axis on shallow
     /// contractions wide enough to afford it. **The default** (D44), and a no-op
     /// on any machine where one L3 serves the thread set. See
-    /// [`Plan::partition`] and [`columns_beat_rows`].
+    /// [`Plan::partition`] and `columns_beat_rows`.
+    #[default]
     Domain,
     /// One-dimensional over the oriented `M` direction — the partition Phase 4
     /// item 4 shipped, kept reachable so the 2-D rule can be measured against
-    /// it as a run-time A/B rather than a diff between two builds.
+    /// it as an A/B rather than a diff between two builds.
     Rows,
     /// One-dimensional over the oriented `N` direction, which is the other
     /// extreme and the one that duplicates the packed `A` block the most.
@@ -1254,41 +1290,25 @@ enum PartitionMode {
     Pin(usize, usize),
 }
 
-/// `TENSORCONTRACT_PARTITION=legacy|domain|m|n|<pm>x<pn>` selects the partition
-/// rule, or pins the layout outright instead of deriving it from the shape.
-/// `domain` (**the default since D44**) and `legacy` are *rules*; `m`, `n` and
-/// `<pm>x<pn>` are pins. `legacy` names the ungated pre-2026-08-04 rule, which is
-/// what every threaded number committed before that date was measured with. Read
-/// once per process; for measurement only, and none of it affects correctness —
-/// every partition gives bitwise identical results.
-fn partition_override() -> PartitionMode {
-    // Unset means the domain-aware rule (D44), on both arms of the `std` cfg --
-    // `env_once!` names the default once so they cannot drift. It returned the
-    // legacy rule without `std` until 0.1.0, which silently gave such a build the
-    // pre-D44 partition. `legacy` is how the pre-2026-08-04 behaviour is asked
-    // for by name, and it is what every threaded number committed before that
-    // date was measured with.
-    env_once!(
-        PartitionMode,
-        "TENSORCONTRACT_PARTITION",
-        PartitionMode::Domain,
-        |v: &str| {
-            let v = v.trim().to_ascii_lowercase();
-            match v.as_str() {
-                "m" | "rows" | "1d" => PartitionMode::Rows,
-                "n" | "cols" => PartitionMode::Cols,
-                "domain" | "domains" => PartitionMode::Domain,
-                "legacy" | "rule" => PartitionMode::Rule,
-                _ => match v.split_once('x') {
-                    Some((pm, pn)) => match (pm.parse::<usize>(), pn.parse::<usize>()) {
-                        (Ok(pm), Ok(pn)) => PartitionMode::Pin(pm.max(1), pn.max(1)),
-                        _ => PartitionMode::Rule,
-                    },
-                    None => PartitionMode::Rule,
-                },
+impl PartitionMode {
+    /// Parse `legacy | rule | domain | domains | m | rows | 1d | n | cols |
+    /// <pm>x<pn>` (case-insensitively); `None` for any other spelling.
+    pub fn parse(s: &str) -> Option<PartitionMode> {
+        let v = s.trim().to_ascii_lowercase();
+        match v.as_str() {
+            "m" | "rows" | "1d" => Some(PartitionMode::Rows),
+            "n" | "cols" => Some(PartitionMode::Cols),
+            "domain" | "domains" => Some(PartitionMode::Domain),
+            "legacy" | "rule" => Some(PartitionMode::Rule),
+            _ => {
+                let (pm, pn) = v.split_once('x')?;
+                Some(PartitionMode::Pin(
+                    pm.parse::<usize>().ok()?.max(1),
+                    pn.parse::<usize>().ok()?.max(1),
+                ))
             }
         }
-    )
+    }
 }
 
 /// Collapse repeated labels within one tensor onto its diagonal, validating
@@ -1691,21 +1711,6 @@ mod tests {
     /// every expectation below is about *which shape* is picked, and an index
     /// would make them say that less clearly while also going stale whenever an
     /// entry is inserted. `NR` is a placeholder here because the rule does not
-    /// The row-block rule reads the *effective* orientation, via
-    /// [`Plan::row_block_score`] -> [`Plan::transposes_gemm`], and it is right to
-    /// -- the shape it should pick genuinely depends on which direction ends up
-    /// in the row role. So pinning the orientation for a measurement changes the
-    /// correct answer here, and the expected values below are the ones for the
-    /// rule's own choice.
-    ///
-    /// Returns true when a session has pinned the arm, in which case the caller
-    /// skips. Preferred over asserting nothing: an assertion that silently
-    /// becomes a tautology under a switch is the trap
-    /// `legacy_blocking_is_unchanged` guards against by hand.
-    fn orientation_is_pinned() -> bool {
-        !matches!(orient_override(), Orient::Rule)
-    }
-
     /// read it; `row_block_may_reach_an_nr_only_alternate` is the test that does.
     fn pick(p: &Plan, mrs: &[usize]) -> Option<usize> {
         let menu: Vec<(usize, usize)> = mrs.iter().map(|&mr| (mr, 6)).collect();
@@ -1714,9 +1719,6 @@ mod tests {
 
     #[test]
     fn row_block_scores_follow_the_output_runs() {
-        if orientation_is_pinned() {
-            return;
-        }
         let p = run24_plan();
         assert_eq!(p.stats.m, 96, "two unfolded M axes");
         assert_eq!(p.row_block_score(24), 1.0);
@@ -1727,9 +1729,6 @@ mod tests {
 
     #[test]
     fn row_block_picks_a_shape_that_tiles_the_run() {
-        if orientation_is_pinned() {
-            return;
-        }
         let p = run24_plan();
         // `c64` planar's menu: the default straddles a third of its blocks,
         // the first alternate none, so the rule moves. This is the case worth
@@ -1775,9 +1774,6 @@ mod tests {
 
     #[test]
     fn row_block_may_change_the_orientation() {
-        if orientation_is_pinned() {
-            return;
-        }
         // Until Phase 4.1d a shape change was forbidden from flipping the
         // orientation, because the orientation rule of the day picked the wrong
         // arm on one family and the shape change would hand it the decision.
@@ -1791,9 +1787,6 @@ mod tests {
 
     #[test]
     fn row_block_leaves_a_deep_contraction_alone() {
-        if orientation_is_pinned() {
-            return;
-        }
         // Same output structure, but `k` large enough that the write-back is
         // amortised: the shape change would cost and buy nothing.
         let d = Layout::new(vec![24, 4, 8], vec![1, 200, 4000]).unwrap();

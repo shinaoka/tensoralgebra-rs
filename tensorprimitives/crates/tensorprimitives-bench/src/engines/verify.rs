@@ -95,7 +95,9 @@ where
         Operand::new(&s.lb, &s.idx_b),
         None,
         Operand::new(&s.lc, &s.idx_c),
-    ) {
+    )
+    .map(|p| crate::knobs::get().apply(p))
+    {
         Ok(p) => p,
         Err(e) => {
             t.row(vec![

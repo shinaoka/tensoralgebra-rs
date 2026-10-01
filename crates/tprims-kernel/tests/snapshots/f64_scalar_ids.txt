@@ -1,0 +1,4 @@
+ref.f64.real-scalar.4x4
+ref.f64.real.4x4
+ref.f64.direct.4x4
+ref.f64.direct-b.4x4

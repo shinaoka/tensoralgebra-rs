@@ -82,7 +82,9 @@ where
         Operand::new(&s.lb, &s.idx_b),
         None,
         Operand::new(&s.lc, &s.idx_c),
-    ) {
+    )
+    .map(|p| crate::knobs::get().apply(p))
+    {
         Ok(p) => p,
         Err(e) => {
             eprintln!("{} [{}]: planning failed: {e}", s.case.name, T::NAME);
@@ -205,7 +207,7 @@ where
         };
         let notes = format!(
             "{} {mr}x{nr} {orient} {}x{}x{} {tag}{}",
-            selected_kernel_name::<T>(method),
+            selected_kernel_name::<T>(crate::knobs::get().tuning(), method),
             blk.mc,
             blk.kc,
             blk.nc,

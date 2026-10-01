@@ -20,7 +20,6 @@ workflow checks everything and publishes nothing; see
 cargo test --workspace --release
 cargo clippy --workspace --all-targets
 cargo fmt --all --check
-TENSORCONTRACT_KERNEL=scalar cargo test --workspace --release
 ```
 
 CI covers all of this plus the eleven cross-compilation targets, the three C link

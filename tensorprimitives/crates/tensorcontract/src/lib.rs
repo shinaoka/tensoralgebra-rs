@@ -307,25 +307,25 @@ pub use driver::{
 };
 mod resolve;
 pub mod select;
-use tprims_gemm_kernel::pack;
-use tprims_gemm_kernel::writeback;
+use tprims_kernel::pack;
+use tprims_kernel::writeback;
 
-pub use tprims_gemm_kernel::element;
+pub use tprims_kernel::abi::element;
 pub mod error;
 pub mod kernel;
 pub mod layout;
 pub mod plan;
 pub mod reference;
-pub use tprims_gemm_kernel::scatter;
+pub use tprims_kernel::scatter;
 
 pub use element::{Element, Real, C32, C64};
 pub use error::{Error, Result};
 pub use kernel::{Blocking, ComplexMethod, KernelSet};
 pub use layout::Layout;
-pub use plan::{ElementOp, Operand, Plan, PlanStats};
+pub use plan::{ElementOp, Operand, Orient, PartitionMode, Plan, PlanStats, RowBlock};
 pub use select::{Chooser, KernelCandidate, OperandMeta, Selection, SelectionContext};
 use tprims_exec::{Exec, WorkspaceProvider};
-pub use tprims_gemm_kernel::KernelChoice;
+pub use tprims_kernel::KernelChoice;
 
 /// An immutable operand: data, layout and index labels.
 ///

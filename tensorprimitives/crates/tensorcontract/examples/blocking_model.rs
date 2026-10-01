@@ -19,6 +19,7 @@
 
 use tensorcontract::kernel::cache::{self, CacheLevel};
 use tensorcontract::kernel::{Blocking, ComplexMethod, KernelConfig, KernelSet, Ukr};
+use tprims_kernel::KernelForce;
 
 fn main() {
     let h = cache::hierarchy();
@@ -46,7 +47,6 @@ fn main() {
         h.l2.map(|l| h.cores_sharing(&l)).unwrap_or(0),
         h.l3.map(|l| h.cores_sharing(&l)).unwrap_or(0),
     );
-    println!("  blocking in force: {}", cache::block_model().name());
     println!();
 
     for threads in [1usize, 8] {
@@ -73,9 +73,9 @@ fn main() {
 /// One dtype and method: the shipped blocking and the model's, side by side.
 fn row<T: KernelSet>(dtype: &str, method: Option<ComplexMethod>, threads: usize) {
     let (cfg, a_reals, b_reals) = match method {
-        None => (T::config_real(), 1, 1),
+        None => (T::config_real(KernelForce::Auto), 1, 1),
         Some(m) => {
-            let c = T::config_cplx(m);
+            let c = T::config_cplx(KernelForce::Auto, m);
             let (a, b) = (
                 c.ukr.a_pack.reals_per_element(),
                 c.ukr.b_pack.reals_per_element(),
@@ -85,9 +85,8 @@ fn row<T: KernelSet>(dtype: &str, method: Option<ComplexMethod>, threads: usize)
     };
     let ukr = cfg.ukr;
     let real_bytes = core::mem::size_of::<T>();
-    // Recompute both arms explicitly rather than trusting whichever one the
-    // environment has selected, so the table is the same whatever
-    // `TENSORCONTRACT_BLOCKMODEL` says.
+    // Recompute both arms explicitly, so the table does not depend on which
+    // derivation a plan would use.
     let legacy = rounded(ukr, Blocking::derive(real_bytes, a_reals, b_reals));
     let model = rounded(ukr, Blocking::model(&ukr, threads));
     let kib = |b: usize| b / 1024;

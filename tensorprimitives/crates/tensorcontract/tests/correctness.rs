@@ -17,11 +17,12 @@ use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 
 use tensorcontract::element::{Element, Real};
-use tensorcontract::kernel::{Blocking, ComplexMethod, KernelSet};
+use tensorcontract::kernel::{Blocking, ComplexMethod, KernelSet, Tuning};
 use tensorcontract::plan::{ElementOp, Operand};
 use tensorcontract::reference::{contract_reference, RefOperand};
 use tensorcontract::{Layout, Plan};
 use tprims_exec::{Exec, Pool};
+use tprims_kernel::KernelForce;
 
 /// One pool for every thread-count sweep, wide enough for the widest of them,
 /// so each run takes a budget of it instead of building threads.
@@ -40,20 +41,6 @@ fn sweep_pool() -> &'static Pool<'static> {
 }
 
 // ---------------------------------------------------------------- utilities
-
-/// Whether a session has pinned the row/column orientation with
-/// `TENSORCONTRACT_ORIENT`.
-///
-/// Several assertions below are *preconditions* rather than the thing under
-/// test: they check that a case really does take the swapped path, or that a
-/// given axis really is the row axis, so that the test cannot quietly stop
-/// testing anything. Pinning the arm makes those preconditions false by
-/// construction while leaving the numerical result they guard perfectly valid,
-/// so they are skipped and the rest of the test still runs. Same shape as the
-/// `TENSORCONTRACT_PARTITION` guard in `thread_partition_rule`.
-fn orientation_is_pinned() -> bool {
-    std::env::var_os("TENSORCONTRACT_ORIENT").is_some()
-}
 
 fn sample<T: Element>(rng: &mut ChaCha8Rng) -> T {
     let re = T::Real::from_f64(rng.gen_range(-1.0..1.0));
@@ -383,16 +370,16 @@ where
     T::Real: KernelSet,
 {
     let ukr = if T::IS_COMPLEX {
-        <T::Real as KernelSet>::config_cplx(method).ukr
+        <T::Real as KernelSet>::config_cplx(KernelForce::Auto, method).ukr
     } else {
-        <T::Real as KernelSet>::config_real().ukr
+        <T::Real as KernelSet>::config_real(KernelForce::Auto).ukr
     };
     Blocking::model(&ukr, threads)
 }
 
 /// Run the oracle against the analytical model's blocking.
 ///
-/// The model ships **off** (`TENSORCONTRACT_BLOCKMODEL=model` opts in), so
+/// The model ships **off** (`Tuning::block_model` opts in), so
 /// nothing else in this suite exercises the numbers it derives — and they are a
 /// different regime from the constants, not a nudge: a `kc` two to eight times
 /// shallower, an `mc` four to six times wider, an `nc` in the tens of thousands
@@ -532,14 +519,12 @@ where
         // The point of the row-major variant is that it takes the swapped
         // path; if the heuristic stops firing here the test still passes but
         // has quietly stopped testing anything.
-        let (mr, ..) = tensorcontract::kernel::selected_config::<T>(method);
-        if !orientation_is_pinned() {
-            assert_eq!(
-                plan.transposes_gemm(mr),
-                row_major_d,
-                "row_major_d={row_major_d} should decide the orientation at mr={mr}"
-            );
-        }
+        let (mr, ..) = tensorcontract::kernel::selected_config::<T>(&Tuning::default(), method);
+        assert_eq!(
+            plan.transposes_gemm(mr),
+            row_major_d,
+            "row_major_d={row_major_d} should decide the orientation at mr={mr}"
+        );
 
         unsafe {
             plan.run_raw::<T>(
@@ -826,8 +811,8 @@ fn conjugation_matrix_is_consistent() {
 /// they demand, and each extra demand is *guarded* by the regime in which it is
 /// meaningful, because `MR` and `NR` differ by dtype, by complex method, and
 /// between the AVX-512 and the portable kernels — a shape that is two row panels
-/// deep in `f32` is seven in `c64` 3m and fourteen under
-/// `TENSORCONTRACT_KERNEL=scalar`, so a bare literal here would be asserting the
+/// deep in `f32` is seven in `c64` 3m and fourteen with a
+/// pinned scalar kernel, so a bare literal here would be asserting the
 /// register block rather than the rule.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Split {
@@ -918,23 +903,16 @@ fn threaded_case<T>(
             pm <= panels && pn <= blocks,
             "{what}: partition exceeds the panel/block counts, so some thread gets nothing"
         );
-        // Everything else here is about the *rule*, and a *pinned*
-        // `TENSORCONTRACT_PARTITION` deliberately overrides the rule and the
-        // thread count both, so it is skipped for those. `domain` is a rule and
-        // not a pin, so it keeps every assertion below except the one it exists
-        // to change. The two assertions above and the bitwise comparison are
-        // never skipped: running the whole suite under a pinned partition is a
-        // cheap way to test an arm no shape would otherwise reach.
-        // Unset is the domain-aware rule since D44; `legacy` asks for the old
-        // one by name. Both are rules and keep every assertion below except the
-        // one the gate exists to change.
-        let mode = std::env::var("TENSORCONTRACT_PARTITION").unwrap_or_default();
-        let domain_aware = mode.is_empty() || mode == "domain";
+        // Everything else here is about the *rule*; the two assertions above
+        // and the bitwise comparison are the ones a pinned partition would also
+        // have to satisfy.
+        // The default is the domain-aware rule since D44, so the answer below may
+        // be 1-D in either direction.
         // Which direction is the *row* axis is exactly what the orientation
         // switch changes, so `panels`/`blocks` below refer to the other axis
         // when it is pinned and none of these shape assertions mean what they
         // say. The bitwise-identity check above is unaffected and has run.
-        if (domain_aware || mode == "legacy") && !orientation_is_pinned() {
+        {
             assert!(
                 pm * pn <= p,
                 "{what}: partition oversubscribes the thread count"
@@ -951,11 +929,7 @@ fn threaded_case<T>(
                 // **1-D in one direction or the other, never a grid**, since a
                 // grid in this regime would mean the gate had leaked into the
                 // cost model.
-                let want: &[(usize, usize)] = if domain_aware {
-                    &[(p, 1), (1, p)]
-                } else {
-                    &[(p, 1)]
-                };
+                let want: &[(usize, usize)] = &[(p, 1), (1, p)];
                 assert!(
                     want.contains(&(pm, pn)),
                     "{what}: the row axis alone fills the threads, so this must stay 1-D \
@@ -1218,15 +1192,6 @@ fn threaded_clamps_below_one_cell_per_thread() {
 /// paths — see [`Split`] for why that matters.
 #[test]
 fn thread_partition_rule() {
-    if std::env::var_os("TENSORCONTRACT_PARTITION").is_some() || orientation_is_pinned() {
-        // The rule is pinned away, or replaced by the domain-aware one; either
-        // way there is nothing of *this* rule to check. The domain-aware gate is
-        // a pure function and is pinned exhaustively by
-        // `plan::tests::domain_gate_needs_all_three_conditions`, which needs no
-        // particular machine — this test's shapes are all shallow enough to trip
-        // it, so it could not double as a check on the gate anyway.
-        return;
-    }
     // A col-major `m x n` output with `m >= MR` keeps the row role with `M`, so
     // the panel and block counts are exactly `m/MR` and `n/NR`.
     //
@@ -1237,7 +1202,10 @@ fn thread_partition_rule() {
     // `case(40, 40, 8)` would answer `1x8` on a chiplet CI runner and `8x1` on
     // a one-L3-per-socket one, and the test would be a machine detector.
     let case = |panels: usize, blocks: usize, p: usize| -> (usize, usize) {
-        let (mr, nr, _) = tensorcontract::kernel::selected_config::<f64>(ComplexMethod::Planar);
+        let (mr, nr, _) = tensorcontract::kernel::selected_config::<f64>(
+            &Tuning::default(),
+            ComplexMethod::Planar,
+        );
         let (m, n, k) = ((panels * mr) as i64, (blocks * nr) as i64, 128);
         let la = Layout::col_major(&[m, k]);
         let lb = Layout::col_major(&[k, n]);

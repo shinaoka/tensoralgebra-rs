@@ -1,11 +1,11 @@
 //! The native interleaved complex families through the TBLIS-style contraction
 //! path (`Strategy::Tblis`): a contraction whose operands cannot fuse, forced
-//! onto `cplx.avx2.c64.native.4x4`, reported, and equal to the reference.
+//! onto `avx2.c64.native.4x4`, reported, and equal to the reference.
 use num_complex::Complex64;
 use tprims_blas::{Conj, Engine, GemmConfig};
 use tprims_contract::{ContractPlan, DotGeneral, Flags, Strategy};
 use tprims_exec::Exec;
-use tprims_gemm_kernel::KernelChoice;
+use tprims_kernel::KernelChoice;
 
 mod common;
 use common::{out_dims, reference, T};
@@ -33,7 +33,7 @@ fn a_tblis_contraction_runs_the_native_family_and_matches_the_reference() {
     let od = out_dims(&cfg, &a.dims, &b.dims);
     let c0 = T::<Complex64>::new(&od, 3);
     let gemm = GemmConfig {
-        kernel: KernelChoice::Id("cplx.avx2.c64.native.4x4".into()),
+        kernel: KernelChoice::Id("avx2.c64.native.4x4".into()),
         ..Default::default()
     };
     let plan = ContractPlan::<Complex64>::new_with(
@@ -58,7 +58,7 @@ fn a_tblis_contraction_runs_the_native_family_and_matches_the_reference() {
     let plan = plan.unwrap();
     let sel = plan.selected_gemm().unwrap().expect("packed plan");
     assert_eq!(sel.engine, Engine::Packed);
-    assert_eq!(sel.family_id, Some("cplx.avx2.c64.native.4x4"));
+    assert_eq!(sel.family_id, Some("avx2.c64.native.4x4"));
     let (alpha, beta) = (Complex64::new(0.8, -0.3), Complex64::new(0.4, 0.2));
     let mut c = c0.clone();
     plan.execute(

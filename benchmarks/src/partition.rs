@@ -5,7 +5,7 @@
 //! protocol; this flag only makes the two separately selectable and their rows
 //! separately identifiable. Absent, every benchmark behaves exactly as before.
 use tprims_blas::GemmConfig;
-use tprims_gemm_kernel::PartitionPolicy;
+use tprims_kernel::PartitionPolicy;
 
 /// The requested policy, or `None` for the default (static) behaviour.
 ///

@@ -3,7 +3,7 @@
 //! one there rather than inside a contraction.
 use tprims_blas::{Conj, Engine, GemmConfig, Scalar};
 use tprims_contract::{ContractPlan, DotGeneral, Error, Flags, Strategy};
-use tprims_gemm_kernel::KernelChoice;
+use tprims_kernel::KernelChoice;
 
 mod common;
 use common::{out_dims, T};
@@ -50,7 +50,7 @@ fn a_contract_plan_resolves_and_reports_its_kernel() {
 
     // A forced family is the one reported.
     let forced = GemmConfig {
-        kernel: KernelChoice::Id("portable.f64.4x4".into()),
+        kernel: KernelChoice::Id("ref.f64.real.4x4".into()),
         ..Default::default()
     };
     assert_eq!(
@@ -60,7 +60,7 @@ fn a_contract_plan_resolves_and_reports_its_kernel() {
             .unwrap()
             .unwrap()
             .family_id,
-        Some("portable.f64.4x4")
+        Some("ref.f64.real.4x4")
     );
 
     // An id that does not exist fails at creation, not at execution, and the

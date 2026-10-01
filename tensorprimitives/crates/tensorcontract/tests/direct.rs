@@ -7,10 +7,10 @@ use tensorcontract::element::Element;
 use tensorcontract::plan::{ElementOp, Operand};
 use tensorcontract::reference::{contract_reference, RefOperand};
 use tensorcontract::{KernelChoice, Layout, Plan};
-use tprims_gemm_kernel::{CpuFeatures, Registry, SelectError, C64};
+use tprims_kernel::{CpuFeatures, Registry, SelectError, C64};
 
-const DIRECT: &str = "portable.f64.4x4.direct";
-const DIRECT_B: &str = "portable.f64.4x4.direct-b";
+const DIRECT: &str = "ref.f64.direct.4x4";
+const DIRECT_B: &str = "ref.f64.direct-b.4x4";
 
 /// The guard is `!complex && !conj_c && !conj_d && (beta == 0 || C is D)`, and
 /// it has to hold in *both* directions: when it allows the direct write and
@@ -157,25 +157,24 @@ fn direct_b_plan_has_zero_b_workspace() {
 /// `!T::IS_COMPLEX` term unreachable-by-construction rather than untested.
 #[test]
 fn complex_storage_cannot_reach_a_real_direct_family() {
-    tprims_kernel_tensorcontract::register();
     assert!(matches!(
         Registry::select::<C64>(DIRECT, CpuFeatures::detect()),
         Err(SelectError::DtypeMismatch { .. })
     ));
     assert!(matches!(
-        Registry::select::<C64>("portable.f64.4x4", CpuFeatures::detect()),
+        Registry::select::<C64>("ref.f64.real.4x4", CpuFeatures::detect()),
         Err(SelectError::DtypeMismatch { .. })
     ));
     // And the descriptor itself refuses a complex scheme with a Direct kernel.
-    let mut f = **tprims_gemm_kernel::portable::families_f64()
+    let mut f = **tprims_kernel::portable::families_f64()
         .iter()
         .find(|f| f.id == DIRECT)
         .unwrap();
-    f.complex = Some(tprims_gemm_kernel::ComplexScheme {
-        method: tprims_gemm_kernel::Method::Native,
-        a: tprims_gemm_kernel::Layout::Planar,
-        b: tprims_gemm_kernel::Layout::Planar,
-        tile: tprims_gemm_kernel::TileFormat::Planar,
+    f.complex = Some(tprims_kernel::ComplexScheme {
+        method: tprims_kernel::Method::Native,
+        a: tprims_kernel::Layout::Planar,
+        b: tprims_kernel::Layout::Planar,
+        tile: tprims_kernel::TileFormat::Planar,
     });
     f.a_per_k = 8;
     f.b_per_k = 8;

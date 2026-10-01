@@ -233,7 +233,7 @@ pub(crate) fn batched_impl<T: Scalar>(
     // A custom selection reports the family it chose; the built-in strategies
     // keep their historical report.
     let report = |engine: crate::Engine,
-                  rg: Option<&tprims_gemm_kernel::ResolvedGemm<T::Re>>,
+                  rg: Option<&tprims_kernel::ResolvedGemm<T::Re>>,
                   dynamic: Option<tensorcontract::DynamicReport>,
                   selected: Selected| crate::SelectedGemm {
         engine,
@@ -244,9 +244,7 @@ pub(crate) fn batched_impl<T: Scalar>(
         mc: rg.map_or(0, |rg| rg.mc),
         nc: rg.map_or(0, |rg| rg.nc),
         kc: rg.map_or(0, |rg| rg.kc),
-        partition: rg.map_or(tprims_gemm_kernel::PartitionPolicy::default(), |rg| {
-            rg.partition
-        }),
+        partition: rg.map_or(tprims_kernel::PartitionPolicy::default(), |rg| rg.partition),
         batched: Some(selected),
         origin: rg.map(|rg| rg.family().origin),
         dynamic,
@@ -394,7 +392,7 @@ fn engine_of(strategy: BatchStrategy) -> crate::Engine {
 fn require_faer_loop_config(cfg: &crate::GemmConfig) -> Result<()> {
     let unsupported = match cfg.engine {
         crate::EngineChoice::Auto | crate::EngineChoice::Faer => {
-            cfg.kernel != tprims_gemm_kernel::KernelChoice::Auto
+            cfg.kernel != tprims_kernel::KernelChoice::Auto
                 || cfg.method.is_some()
                 || cfg.has_partition_request()
         }
@@ -402,7 +400,7 @@ fn require_faer_loop_config(cfg: &crate::GemmConfig) -> Result<()> {
     };
     if unsupported {
         return Err(Error::Select(
-            tprims_gemm_kernel::SelectError::EngineUnsupported {
+            tprims_kernel::SelectError::EngineUnsupported {
                 engine: "batched faer loop",
                 reason: "select BatchStrategy::Tblis for a packed engine or a named kernel",
             },

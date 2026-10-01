@@ -1,0 +1,10 @@
+avx512.f64.real.24x8
+avx512.f64.real.16x8
+avx512.f64.real.8x8
+avx2.f64.real.8x6
+avx2.f64.real.12x4
+avx2.f64.real.4x8
+ref.f64.real-scalar.4x4
+ref.f64.real.4x4
+ref.f64.direct.4x4
+ref.f64.direct-b.4x4

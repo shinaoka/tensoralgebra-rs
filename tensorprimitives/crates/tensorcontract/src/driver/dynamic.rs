@@ -92,23 +92,23 @@ pub struct DynamicReport {
 /// # Examples
 /// ```
 /// use tensorcontract::{dynamic_report, Layout, Operand, Plan};
-/// use tprims_gemm_kernel::{KernelChoice, PartitionOpts, PartitionPolicy, ResolvedGemm};
+/// use tprims_kernel::{KernelChoice, PartitionOpts, PartitionPolicy, ResolvedGemm};
 /// let l = Layout::col_major(&[64, 64]);
 /// let p = Plan::new(Operand::new(&l, &[0, 2]), Operand::new(&l, &[2, 1]), None,
 ///     Operand::new(&l, &[0, 1]))?;
 /// let rg = ResolvedGemm::<f64>::resolve_with::<f64>(
-///     &KernelChoice::Id("portable.f64.4x4".into()), 4,
+///     &KernelChoice::Id("ref.f64.real.4x4".into()), 4,
 ///     PartitionPolicy::DynamicTiles { job_m: 16, job_n: 16 }, PartitionOpts::default())?;
 /// let r = dynamic_report(&p, &rg, 4).unwrap();
 /// assert_eq!((r.row_bands, r.active_width), (4, 4));
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
-pub fn dynamic_report<R: tprims_gemm_kernel::Real>(
+pub fn dynamic_report<R: tprims_kernel::Real>(
     plan: &crate::Plan,
-    rg: &tprims_gemm_kernel::ResolvedGemm<R>,
+    rg: &tprims_kernel::ResolvedGemm<R>,
     width: usize,
 ) -> Option<DynamicReport> {
-    let tprims_gemm_kernel::PartitionPolicy::DynamicTiles { job_m, job_n } = rg.partition else {
+    let tprims_kernel::PartitionPolicy::DynamicTiles { job_m, job_n } = rg.partition else {
         return None;
     };
     let (m, n) = if plan.transposes_gemm(rg.mr) {

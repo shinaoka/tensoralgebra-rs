@@ -23,7 +23,9 @@ fn run(exec: &Exec<'_>, width: usize) {
         Operand::new(&ld, &id),
     )
     .unwrap()
-    .with_kernel(tensorcontract::KernelChoice::Id("tc.scalar.f64.4x4".into()))
+    .with_kernel(tensorcontract::KernelChoice::Id(
+        "ref.f64.real-scalar.4x4".into(),
+    ))
     .unwrap()
     .with_threads(width);
     let rg = plan.resolved::<f64>().unwrap();
@@ -48,7 +50,6 @@ fn run(exec: &Exec<'_>, width: usize) {
 
 #[test]
 fn one_pool_lends_one_workspace_and_two_pools_never_share() {
-    tprims_kernel_tensorcontract::register();
     let tp = rayon::ThreadPoolBuilder::new()
         .num_threads(4)
         .build()

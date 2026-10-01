@@ -118,7 +118,7 @@ pub(crate) unsafe fn scale<T: Scalar>(origin: *mut T, dims: &[usize], strides: &
 }
 
 /// A kernel-selection failure as the interface error, keeping the typed
-/// [`SelectError`](tprims_gemm_kernel::SelectError) as the downcastable source.
-pub(crate) fn select_err(e: tprims_gemm_kernel::SelectError) -> crate::Error {
+/// [`SelectError`](tprims_kernel::SelectError) as the downcastable source.
+pub(crate) fn select_err(e: tprims_kernel::SelectError) -> crate::Error {
     crate::Error::backend(e)
 }

@@ -19,7 +19,7 @@ Every crate is a part that can be depended on alone. There is no umbrella crate 
 The dependency graph is acyclic and layered: execution context at the bottom, then strided kernels and the GEMM microkernel, then BLAS-like operations, then dense linear algebra, then contraction.
 
 - A lower part never learns about a higher one.
-- A part depends on the narrowest lower contract it needs. `tprims-contract` depends on the packed-kernel contract of `tprims-gemm-kernel`, not only on public GEMM, because that is what direct contraction actually requires.
+- A part depends on the narrowest lower contract it needs. `tprims-contract` depends on the packed-kernel contract of `tprims-kernel`, not only on public GEMM, because that is what direct contraction actually requires.
 
 ## 3. Split only at a real boundary
 

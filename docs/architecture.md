@@ -29,15 +29,12 @@ The full statement and rationale are in [design principles](design-principles.md
 | --- | --- | --- |
 | `tprims-exec` | Execution context: serial, a Rayon pool borrowed from the host (or owned, for a C host), width chosen from work, kernel-level entry, SPMD `broadcast`, and the workspace provider (`ArenaProvider`, `WorkspaceReq`, `TeamLease`: pool-owned, reusable scratch); `strided::run_with_exec` bridges strided-rs kernels (feature `strided`). Planned: host scheduling callbacks, scratch queries. | rayon; strided-basic (optional) |
 | `strided-traits`, `strided-view`, `strided-perm`, `strided-basic` (external, strided-rs) | Checked borrowed strided views, scalar and conjugation contracts; copy, permutation and elementwise kernels. | none in tprims |
-| `tprims-gemm-kernel` | The kernel contract: packed formats, kernel-family descriptors, CPU masks and validation, resolution with a frozen blocking policy, the partition policy, and caller-scoped `KernelCatalog`/`KernelHandle` for downstream kernels. No executor and no ambient state. | none in tprims |
-| `tprims-kernel-tensorcontract` (imported, tensorprimitives-rs) | Lukas Devos's scalar, AVX2, AVX-512 and NEON register-tile microkernels, with and without complex schemes, behind the family contract. | `tprims-gemm-kernel` |
-| `tprims-kernel-cplx` | Project-owned AVX2+FMA native interleaved complex tile kernels and their descriptors (`cplx.avx2.c64.native.4x4`, `cplx.avx2.c32.native.8x4`): `Method::Native`, interleaved A/B panels and tile, `ScratchTile`, `BAccess::Packed`, no `allow_auto`. Registered by `tprims-blas`, selectable through `KernelChoice::Id` on the packed engine and the TBLIS contraction path. | `tprims-gemm-kernel` |
-| `tensorcontract` (imported, tensorprimitives-rs) | The direct contraction driver: packing traversal, the loop nest, write-back; its threads and workspace come from a `tprims_exec::Exec`. It consumes resolved families rather than choosing kernels. | `tprims-gemm-kernel` |
-| `tprims-blas` | GEMM and batched GEMM with two engines (faer, the packed driver) and a selectable kernel family, `SelectedGemm` reporting what ran, TRSM; later SYRK/HERK and further BLAS-like operations. | faer, `tensorcontract`, `tprims-gemm-kernel`, `strided-view`, `tprims-exec` |
-| `tprims-custom-kernel-test` | Test-only downstream stand-in: its own tiny packed kernels, admitted through a `KernelCatalog` and selected with a captured selector, without editing tprims or calling the global `register`. Not part of the stack; `publish = false`. | `tprims-gemm-kernel` (dev: `tprims-blas`, `tprims-contract`, `tprims-exec`, `tensorcontract`) |
+| `tprims-kernel` | The kernel crate (one crate for all project-owned kernels): packed formats, kernel-family descriptors, CPU masks and validation, the registry with deterministic built-in families, resolution with a frozen blocking policy (explicit `Tuning` inputs, no environment reads), the partition policy, caller-scoped `KernelCatalog`/`KernelHandle` for downstream kernels, packing, scatter and write-back, cache blocking (`blocking::{probe,model}`), and the microkernel families: Lukas Devos's scalar, AVX2, AVX-512 and NEON register-tile kernels (`kernels::{reference,x86,aarch64}`), the portable reference kernels and the native interleaved complex kernels (`avx2.c64.native.4x4`, `avx2.c32.native.8x4`: `Method::Native`, no `allow_auto`). Ids: `{isa}.{dtype}.{scheme}.{MR}x{NR}`. No executor and no ambient state. | none in tprims |
+| `tensorcontract` (imported, tensorprimitives-rs) | The direct contraction driver: packing traversal, the loop nest, write-back; its threads and workspace come from a `tprims_exec::Exec`. It consumes resolved families rather than choosing kernels. | `tprims-kernel` |
+| `tprims-blas` | GEMM and batched GEMM with two engines (faer, the packed driver) and a selectable kernel family, `SelectedGemm` reporting what ran, TRSM; later SYRK/HERK and further BLAS-like operations. | faer, `tensorcontract`, `tprims-kernel`, `strided-view`, `tprims-exec` |
 | `tprims-contract-traits` | The implementation-independent contraction interface: `Problem` / `DotGeneral` / `Layout`, the canonical validation, the shared `Error` (source-preserving `Backend`), the object-safe `ContractionBackend<T>` / `PreparedContraction<T>` traits and the minimal borrowed `HostExecution` seam (budget, `install`, barrier-free `for_each_partition`, co-scheduled `broadcast`). No executor runtime, kernel layer, faer or tenferro. | `strided-view` |
 | `tprims-contract-testkit` | Test-only second backend (naive loop nest) proving the interface is implementable from the interface crate alone. Not a production fallback; never published or selected by default. | `tprims-contract-traits`, `strided-view` |
-| `tprims-contract` | Binary contraction with free, contracted and batch indices (`dot_general` semantics): one plan API over two strategies, permute plus batched GEMM and TBLIS-style direct packing with bounded scatter. Thin permute / add wrappers. Needs matrix GEMM only; it does not depend on `tprims-linalg`. | `tprims-blas`, `tensorcontract`, `tprims-contract-traits`, `tprims-gemm-kernel`, `strided-basic`, `strided-view`, `tprims-exec` |
+| `tprims-contract` | Binary contraction with free, contracted and batch indices (`dot_general` semantics): one plan API over two strategies, permute plus batched GEMM and TBLIS-style direct packing with bounded scatter. Thin permute / add wrappers. Needs matrix GEMM only; it does not depend on `tprims-linalg`. | `tprims-blas`, `tensorcontract`, `tprims-contract-traits`, `tprims-kernel`, `strided-basic`, `strided-view`, `tprims-exec` |
 
 The name `contract` was chosen over `tensordot` because NumPy, PyTorch and JAX `tensordot` has no batch indices; the operation here does, as in cuTENSOR's `cutensorContract`.
 
@@ -50,7 +47,7 @@ The name `contract` was chosen over `tensordot` because NumPy, PyTorch and JAX `
 | `tensorprimitives-tapp` (imported, tensorprimitives-rs; `rlib` in the bundle) | The TAPP contraction API: tensor infos, label-based products over `tensorcontract::Plan`, batched products, run on the shared executor through `Exec` | pinned upstream `tapp.h`, `tapp/*.h` |
 | `tprims-bundle` | No API. `cdylib` + `staticlib` with one feature per part (`blas`, `tapp`); installs the selected headers, a generated umbrella `tprims/tprims.h`, and a pkg-config file | |
 
-`tprims-gemm-kernel` and its providers have no C ABI: the packed format is an internal contract between the driver and the kernels.
+`tprims-kernel` has no C ABI: the packed format is an internal contract between the driver and the kernels.
 
 ### Dependency rules
 
@@ -332,7 +329,7 @@ downstream kernels report `Origin::External { crate_name, license }`.
 The issue's paired 1T/4T tensor-sized benchmark protocol (with A/A noise runs)
 was **deferred** for this slice, by maintainer decision; correctness, compile-fail,
 selector-call-count, steady-state-allocation and concurrency tests are in
-`crates/tprims-custom-kernel-test`. Nothing here claims that a custom selector
+`tprims_contract_testkit::custom_kernels`. Nothing here claims that a custom selector
 speeds anything up.
 
 ## Two contraction strategies
@@ -342,7 +339,7 @@ speeds anything up.
 | Strategy | Source | Idea |
 | --- | --- | --- |
 | Permute plus batched GEMM | tenferro-rs `dot_general` (`tenferro-cpu/src/dot_runtime.rs`, `gemm/`), MIT OR Apache-2.0 | Fold compatible strides into a batched matrix view without copying when possible; otherwise materialize operands through `strided-perm`, then call `tprims-blas` batched GEMM. |
-| TBLIS-style direct | tensorprimitives-rs `tensorcontract` by Lukas Devos, MIT OR Apache-2.0 | Pack tensor panels with general strides directly into the `tprims-gemm-kernel` format, run the microkernels, and scatter bounded output tiles. No full operand transpose. [Matthews, TBLIS](https://arxiv.org/abs/1607.00291). |
+| TBLIS-style direct | tensorprimitives-rs `tensorcontract` by Lukas Devos, MIT OR Apache-2.0 | Pack tensor panels with general strides directly into the `tprims-kernel` format, run the microkernels, and scatter bounded output tiles. No full operand transpose. [Matthews, TBLIS](https://arxiv.org/abs/1607.00291). |
 
 A plan validates free-left, contracted, free-right and batch indices, output shape and aliasing, then selects a strategy. Planning may fold contiguous dimensions and reorder logical traversal without changing user-visible index order. The comparison reports end-to-end time, bytes moved and scratch, for tiny contractions where entry dominates and for large ones where packing and cache behavior dominate.
 

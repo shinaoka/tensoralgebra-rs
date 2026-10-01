@@ -19,7 +19,7 @@
 use strided_view::StridedViewMut;
 pub use tensorcontract::{KernelCandidate, OperandMeta, SelectionContext};
 use tprims_exec::Exec;
-pub use tprims_gemm_kernel::{KernelCatalog, KernelHandle, SelectError};
+pub use tprims_kernel::{KernelCatalog, KernelHandle, SelectError};
 
 use crate::batched::{batched_impl, BatchIn, BatchStrategy};
 use crate::tblis::Custom;
@@ -27,30 +27,15 @@ use crate::{
     Conj, EngineChoice, Error, GemmConfig, GroupedJob, MatIn, Result, Scalar, SelectedGemm,
 };
 
-/// Register the kernel providers this build has (idempotent), so a family id
-/// naming one resolves, or reports the feature to enable, when a plan is built.
-/// The BLAS entry points do this themselves; a layer that builds packed plans
-/// directly (such as `tprims-contract`) calls it first.
-///
-/// # Examples
-/// ```
-/// tprims_blas::register_kernels();
-/// assert!(tprims_blas::list_kernels::<f64>().iter().any(|k| k.id.starts_with("tc.")));
-/// ```
-pub fn register_kernels() {
-    crate::engine::register_built();
-}
-
 /// The built-in and registered families for `T` that this CPU can run, as a
-/// caller-scoped catalog. Registers the workspace's kernel providers first.
+/// caller-scoped catalog.
 ///
 /// # Examples
 /// ```
 /// let catalog = tprims_blas::builtin_catalog::<f64>();
-/// assert!(catalog.get("portable.f64.4x4").is_some());
+/// assert!(catalog.get("ref.f64.real.4x4").is_some());
 /// ```
 pub fn builtin_catalog<T: Scalar>() -> KernelCatalog<T> {
-    crate::engine::register_built();
     KernelCatalog::builtin()
 }
 
@@ -59,8 +44,7 @@ pub fn builtin_catalog<T: Scalar>() -> KernelCatalog<T> {
 /// cannot be honoured is refused.
 fn check_config(cfg: &GemmConfig) -> Result<()> {
     match cfg.engine {
-        // `Auto` is overridden by the explicit selector, even when the process
-        // default engine is another one.
+        // `Auto` is overridden by the explicit selector.
         EngineChoice::Auto | EngineChoice::Packed => {}
         EngineChoice::Faer => {
             return Err(Error::Select(SelectError::EngineUnsupported {
@@ -69,7 +53,7 @@ fn check_config(cfg: &GemmConfig) -> Result<()> {
             }))
         }
     }
-    if let tprims_gemm_kernel::KernelChoice::Id(id) = &cfg.kernel {
+    if let tprims_kernel::KernelChoice::Id(id) = &cfg.kernel {
         return Err(Error::Select(SelectError::Incompatible {
             id: id.clone(),
             reason: "a forced kernel id and a custom selector are ambiguous",
@@ -329,7 +313,7 @@ where
             mc: 0,
             nc: 0,
             kc: 0,
-            partition: tprims_gemm_kernel::PartitionPolicy::default(),
+            partition: tprims_kernel::PartitionPolicy::default(),
             batched: None,
             origin: None,
             dynamic: None,

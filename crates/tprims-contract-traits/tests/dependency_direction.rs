@@ -41,7 +41,7 @@ fn the_interface_crate_depends_on_no_implementation() {
         "tprims-blas",
         "tprims-exec",
         "tprims-core",
-        "tprims-gemm-kernel",
+        "tprims-kernel",
         "tensorcontract",
         "faer",
         "rayon",

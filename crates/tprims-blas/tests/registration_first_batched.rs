@@ -1,14 +1,14 @@
 //! Regression: a forced kernel id must resolve on the batched TBLIS path with
 //! no earlier call having registered the providers. This binary holds exactly
 //! one test, so nothing else can register first.
-// The cplx families exist only on x86_64 (`tprims-kernel-cplx` is empty elsewhere), so
+// The cplx families exist only on x86_64 (`tprims-kernel` is empty elsewhere), so
 // off x86_64 there is no provider whose registration order could be tested.
 #![cfg(target_arch = "x86_64")]
 use num_complex::Complex;
 use strided_view::{StridedView, StridedViewMut};
 use tprims_blas::{gemm_batched_with, BatchIn, BatchStrategy, GemmConfig};
 use tprims_exec::Exec;
-use tprims_gemm_kernel::KernelChoice;
+use tprims_kernel::KernelChoice;
 
 #[test]
 fn batched_tblis_resolves_an_id_before_anything_registered_providers() {
@@ -25,7 +25,7 @@ fn batched_tblis_resolves_an_id_before_anything_registered_providers() {
     // batched path resolved it before registering. A host without AVX2+FMA
     // answers CpuUnsupported, which is also proof the id was known.
     let cfg = GemmConfig {
-        kernel: KernelChoice::Id("cplx.avx2.c64.native.4x4".into()),
+        kernel: KernelChoice::Id("avx2.c64.native.4x4".into()),
         ..Default::default()
     };
     let r = gemm_batched_with(
@@ -45,9 +45,7 @@ fn batched_tblis_resolves_an_id_before_anything_registered_providers() {
                 .iter()
                 .all(|z| (z.re - 4.0).abs() < 1e-12 && (z.im + 3.0).abs() < 1e-12));
         }
-        Err(tprims_blas::Error::Select(tprims_gemm_kernel::SelectError::CpuUnsupported {
-            ..
-        })) => {}
+        Err(tprims_blas::Error::Select(tprims_kernel::SelectError::CpuUnsupported { .. })) => {}
         Err(e) => panic!("the id must resolve on the batched path: {e:?}"),
     }
 }

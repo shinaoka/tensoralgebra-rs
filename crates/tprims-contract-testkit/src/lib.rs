@@ -10,6 +10,8 @@
 //! It copies nothing, so it never materializes; it splits the output range
 //! over the host's barrier-free partitions.
 
+pub mod custom_kernels;
+
 use std::ops::{Add, Mul};
 
 use num_complex::Complex;
