@@ -298,7 +298,7 @@ fn validation_errors_are_typed_and_nothing_is_written() {
             strategy,
             Flags::default(),
         );
-        assert_eq!(e.err(), Some(Error::AliasedOutput), "{strategy:?}");
+        assert!(matches!(e, Err(Error::AliasedOutput)), "{strategy:?}");
         let plan = ContractPlan::<f64>::new(
             &cfg,
             (&a.dims, &a.strides),

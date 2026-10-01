@@ -1128,6 +1128,7 @@ dependencies = [
  "tensorcontract",
  "thiserror",
  "tprims-blas",
+ "tprims-contract-traits",
  "tprims-exec",
  "tprims-gemm-kernel",
 ]

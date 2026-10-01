@@ -13,6 +13,7 @@ strided-view = { workspace = true }
 tensorcontract = { workspace = true }
 thiserror = { workspace = true }
 tprims-blas = { workspace = true }
+tprims-contract-traits = { workspace = true }
 tprims-exec = { workspace = true, features = ["strided"] }
 tprims-gemm-kernel = { workspace = true, default-features = false }
 

@@ -42,15 +42,16 @@
 //! plan.execute(&Exec::serial(), 1.0, &av, &bv, 0.0, &mut cv).unwrap();
 //! assert_eq!(c, a);
 //! ```
-mod config;
-mod error;
+mod backend;
+mod host;
 mod permute_gemm;
 mod plan;
 mod tblis;
 mod util;
 mod wrappers;
 
-pub use config::{DotGeneral, Shape};
-pub use error::{Error, Result};
+pub use backend::TprimsBackend;
+pub use host::ExecHost;
 pub use plan::{ContractPlan, Flags, Selected, Strategy};
+pub use tprims_contract_traits::{DotGeneral, Error, Result, Shape};
 pub use wrappers::{add, permute};

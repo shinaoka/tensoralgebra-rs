@@ -9,7 +9,7 @@ use tensorcontract::{Layout, Operand, Plan};
 use tprims_blas::{Conj, Scalar};
 use tprims_exec::{Exec, WidthPolicy};
 
-use crate::config::{DotGeneral, Shape};
+use crate::{DotGeneral, Shape};
 use crate::{Error, Result};
 
 struct ExecSpmd<'a> {
@@ -59,7 +59,7 @@ fn layout(dims: &[usize], strides: &[isize]) -> Result<Layout> {
     let e = |x: usize| i64::try_from(x).map_err(|_| Error::Shape("extent exceeds i64".into()));
     let ext = dims.iter().map(|&d| e(d)).collect::<Result<Vec<_>>>()?;
     let st = strides.iter().map(|&s| s as i64).collect();
-    Layout::new(ext, st).map_err(|e| Error::Backend(e.to_string()))
+    Layout::new(ext, st).map_err(Error::backend)
 }
 
 fn op(o: Operand<'_>, c: Conj) -> Operand<'_> {
@@ -113,9 +113,9 @@ pub(crate) fn plan(
         Some(Operand::new(&yc, &lc)),
         Operand::new(&yc, &lc),
     )
-    .map_err(|e| Error::Backend(e.to_string()))?
+    .map_err(Error::backend)?
     .with_kernel(gemm.kernel.clone())
-    .map_err(|e| Error::Backend(e.to_string()))?;
+    .map_err(Error::backend)?;
     let k: usize = cfg.lhs_contract.iter().map(|&x| dims[0][x]).product();
     let out: usize = dims[2].iter().product();
     Ok(TbPlan {
