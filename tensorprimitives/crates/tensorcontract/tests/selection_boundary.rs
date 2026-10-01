@@ -13,7 +13,7 @@ fn builders_invalidate_cached_geometry_and_preserve_explicit_blocks() {
         Operand::new(&l, &[0, 1]),
     )
     .unwrap()
-    .with_kernel(KernelChoice::Id("portable.f64.4x4".into()))
+    .with_kernel(KernelChoice::Id("ref.f64.real.4x4".into()))
     .unwrap();
     let first = p.resolved::<f64>().unwrap();
     let changed = p
@@ -78,7 +78,7 @@ fn safe_empty_execution_rejects_wrong_dtype_and_preserves_source() {
         Operand::new(&l, &[0, 1]),
     )
     .unwrap()
-    .with_kernel(KernelChoice::Id("portable.c64.native.4x4".into()))
+    .with_kernel(KernelChoice::Id("ref.c64.native.4x4".into()))
     .unwrap();
     let mut d = [];
     let err = p

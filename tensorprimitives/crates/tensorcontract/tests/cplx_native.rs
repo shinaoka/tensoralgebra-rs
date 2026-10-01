@@ -17,7 +17,7 @@ use tprims_kernel::Families;
 fn cplx_ids<T: Element + Families>() -> Vec<&'static str> {
     let ids: Vec<_> = all_families::<T>()
         .into_iter()
-        .filter(|id| id.starts_with("cplx."))
+        .filter(|id| id.starts_with("avx2.") && id.contains(".native."))
         .collect();
     #[cfg(target_arch = "x86_64")]
     if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
@@ -562,31 +562,28 @@ fn the_default_selection_does_not_change() {
         .with_threads(t)
     };
     for t in [1, 4] {
-        assert!(!plan(t)
-            .resolved::<C64>()
-            .unwrap()
-            .family()
-            .id
-            .starts_with("cplx."));
-        assert!(!plan(t)
-            .resolved::<C32>()
-            .unwrap()
-            .family()
-            .id
-            .starts_with("cplx."));
+        for id in [
+            plan(t).resolved::<C64>().unwrap().family().id,
+            plan(t).resolved::<C32>().unwrap().family().id,
+        ] {
+            assert!(
+                !(id.starts_with("avx2.") && id.contains(".native.")),
+                "{id}"
+            );
+        }
     }
     // An explicit id is honoured, or refused at plan creation on a host
     // without the instructions: never silently replaced.
-    let r = plan(1).with_kernel(KernelChoice::Id("cplx.avx2.c64.native.4x4".into()));
+    let r = plan(1).with_kernel(KernelChoice::Id("avx2.c64.native.4x4".into()));
     match r {
         Ok(p) => {
             assert_eq!(
                 p.resolved::<C64>().unwrap().family().id,
-                "cplx.avx2.c64.native.4x4"
+                "avx2.c64.native.4x4"
             )
         }
         Err(_) => assert!(all_families::<C64>()
             .iter()
-            .all(|id| !id.starts_with("cplx."))),
+            .all(|id| !(id.starts_with("avx2.") && id.contains(".native.")))),
     }
 }

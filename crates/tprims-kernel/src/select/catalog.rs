@@ -174,10 +174,10 @@ impl<T: Families> KernelHandle<T> {
 /// ```
 /// use tprims_kernel::KernelCatalog;
 /// let catalog = KernelCatalog::<f64>::builtin();
-/// assert!(catalog.handles().any(|h| h.id() == "portable.f64.4x4"));
+/// assert!(catalog.handles().any(|h| h.id() == "ref.f64.real.4x4"));
 /// // A handle belongs to the catalog that minted it.
 /// let other = KernelCatalog::<f64>::builtin();
-/// let h = catalog.get("portable.f64.4x4").unwrap();
+/// let h = catalog.get("ref.f64.real.4x4").unwrap();
 /// assert!(catalog.contains(&h) && !other.contains(&h));
 /// ```
 pub struct KernelCatalog<T: Families> {

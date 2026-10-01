@@ -2,9 +2,9 @@ use tprims_kernel::{KernelChoice, Layout, ResolvedGemm, SelectError, TileFormat,
 
 #[test]
 fn explicit_portable_family_freezes_geometry_and_formats() {
-    let rg = ResolvedGemm::<f64>::resolve::<f64>(&KernelChoice::Id("portable.f64.4x4".into()), 1)
+    let rg = ResolvedGemm::<f64>::resolve::<f64>(&KernelChoice::Id("ref.f64.real.4x4".into()), 1)
         .unwrap();
-    assert_eq!(rg.family().id, "portable.f64.4x4");
+    assert_eq!(rg.family().id, "ref.f64.real.4x4");
     assert_eq!(
         (rg.mr, rg.nr, rg.a_per_k, rg.b_per_k, rg.tile_bound),
         (4, 4, 4, 4, 16)
@@ -21,9 +21,9 @@ fn explicit_portable_family_freezes_geometry_and_formats() {
 #[test]
 fn portable_native_complex_freezes_interleaved_geometry() {
     // Forced: Auto picks the widest built-in family of the machine.
-    let id = KernelChoice::Id("portable.c64.native.4x4".into());
+    let id = KernelChoice::Id("ref.c64.native.4x4".into());
     let auto = ResolvedGemm::<f64>::resolve::<C64>(&id, 1).unwrap();
-    assert_eq!(auto.family().id, "portable.c64.native.4x4");
+    assert_eq!(auto.family().id, "ref.c64.native.4x4");
     assert_eq!(
         (auto.a_layout, auto.b_layout, auto.tile_fmt),
         (
@@ -42,7 +42,7 @@ fn resolution_returns_typed_selection_errors() {
         Err(SelectError::UnknownId { .. })
     ));
     assert!(matches!(
-        ResolvedGemm::<f64>::resolve::<f64>(&KernelChoice::Id("portable.c64.native.4x4".into()), 1),
+        ResolvedGemm::<f64>::resolve::<f64>(&KernelChoice::Id("ref.c64.native.4x4".into()), 1),
         Err(SelectError::DtypeMismatch { .. })
     ));
 }

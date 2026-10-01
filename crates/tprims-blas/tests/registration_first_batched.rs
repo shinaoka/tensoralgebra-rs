@@ -25,7 +25,7 @@ fn batched_tblis_resolves_an_id_before_anything_registered_providers() {
     // batched path resolved it before registering. A host without AVX2+FMA
     // answers CpuUnsupported, which is also proof the id was known.
     let cfg = GemmConfig {
-        kernel: KernelChoice::Id("cplx.avx2.c64.native.4x4".into()),
+        kernel: KernelChoice::Id("avx2.c64.native.4x4".into()),
         ..Default::default()
     };
     let r = gemm_batched_with(

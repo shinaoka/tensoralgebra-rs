@@ -160,7 +160,7 @@ fn c64_tile_is_correct_overwrites_and_reads_exactly_its_footprint() {
     }
     check(
         tprims_kernel::kernels::cplx::families_f64()[0],
-        "cplx.avx2.c64.native.4x4",
+        "avx2.c64.native.4x4",
     );
 }
 
@@ -172,7 +172,7 @@ fn c32_tile_is_correct_overwrites_and_reads_exactly_its_footprint() {
     }
     check(
         tprims_kernel::kernels::cplx::families_f32()[0],
-        "cplx.avx2.c32.native.8x4",
+        "avx2.c32.native.8x4",
     );
 }
 
@@ -229,7 +229,7 @@ fn family_metadata_and_isa_gating() {
     }
     // A CPU without AVX2/FMA is refused at selection, never called.
     {
-        let id = "cplx.avx2.c64.native.4x4";
+        let id = "avx2.c64.native.4x4";
         let masked = CpuFeatures {
             avx2: false,
             ..CpuFeatures::detect()
@@ -252,18 +252,18 @@ fn family_metadata_and_isa_gating() {
         assert_eq!(info.available_on_this_cpu, avx2_fma());
     }
     assert!(matches!(
-        Registry::select::<C32>("cplx.avx2.c32.native.8x4", CpuFeatures::NONE),
+        Registry::select::<C32>("avx2.c32.native.8x4", CpuFeatures::NONE),
         Err(SelectError::CpuUnsupported { .. })
     ));
     // A c64 id is not a c32 family.
     assert!(matches!(
-        Registry::select::<C32>("cplx.avx2.c64.native.4x4", CpuFeatures::detect()),
+        Registry::select::<C32>("avx2.c64.native.4x4", CpuFeatures::detect()),
         Err(SelectError::DtypeMismatch { .. })
     ));
 }
 
 fn check_meta<R: Real>(f: &KernelFamily<R>, dtype: &str, mr: usize, nr: usize) {
-    assert!(f.id.starts_with("cplx.avx2.") && f.id.contains(dtype));
+    assert!(f.id.starts_with("avx2.") && f.id.contains(".native.") && f.id.contains(dtype));
     assert_eq!((f.mr, f.nr), (mr, nr));
     assert!(!f.allow_auto, "opt-in only");
     assert_eq!(f.isa, Isa::Avx2);
@@ -296,10 +296,10 @@ fn auto_never_selects_these_families() {
         .into_iter()
         .find(|f| f.allow_auto)
         .unwrap();
-    assert!(!head64.id.starts_with("cplx."));
+    assert!(!(head64.id.starts_with("avx2.") && head64.id.contains(".native.")));
     let head32 = Registry::families::<C32>(cpu, false)
         .into_iter()
         .find(|f| f.allow_auto)
         .unwrap();
-    assert!(!head32.id.starts_with("cplx."));
+    assert!(!(head32.id.starts_with("avx2.") && head32.id.contains(".native.")));
 }

@@ -8,7 +8,7 @@ use tprims_kernel::{
 };
 
 fn tuned(t: Tuning) -> ResolvedGemm<f64> {
-    ResolvedGemm::<f64>::resolve::<f64>(&KernelChoice::Id("portable.f64.4x4".into()), 1)
+    ResolvedGemm::<f64>::resolve::<f64>(&KernelChoice::Id("ref.f64.real.4x4".into()), 1)
         .unwrap()
         .with_tuning(&t)
         .unwrap()

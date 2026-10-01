@@ -14,7 +14,7 @@ fn a_forced_id_resolves_on_the_tblis_contraction_path_first_thing() {
     let (a_dims, b_dims, c_dims) = ([3usize, 4], [4usize, 5], [3usize, 5]);
     let (sa, sb, sc) = ([1isize, 3], [1isize, 4], [1isize, 3]);
     let gemm = GemmConfig {
-        kernel: KernelChoice::Id("cplx.avx2.c64.native.4x4".into()),
+        kernel: KernelChoice::Id("avx2.c64.native.4x4".into()),
         ..Default::default()
     };
     let plan = ContractPlan::<Complex64>::new_with(
@@ -32,7 +32,7 @@ fn a_forced_id_resolves_on_the_tblis_contraction_path_first_thing() {
     match plan {
         Ok(p) => assert_eq!(
             p.selected_gemm().unwrap().unwrap().family_id,
-            Some("cplx.avx2.c64.native.4x4")
+            Some("avx2.c64.native.4x4")
         ),
         Err(e) => assert!(!format!("{e:?}").contains("UnknownId"), "{e:?}"),
     }

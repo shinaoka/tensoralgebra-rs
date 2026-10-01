@@ -15,9 +15,9 @@ use crate::{
 /// # Examples
 /// ```
 /// use tprims_kernel::{KernelChoice, ResolvedGemm};
-/// let choice = KernelChoice::Id("portable.f64.4x4".into());
+/// let choice = KernelChoice::Id("ref.f64.real.4x4".into());
 /// let rg = ResolvedGemm::<f64>::resolve::<f64>(&choice, 1)?;
-/// assert_eq!(rg.family().id, "portable.f64.4x4");
+/// assert_eq!(rg.family().id, "ref.f64.real.4x4");
 /// # Ok::<(), tprims_kernel::SelectError>(())
 /// ```
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -206,7 +206,7 @@ impl<R: Real> ResolvedGemm<R> {
     /// ```
     /// use tprims_kernel::{KernelChoice, ResolvedGemm};
     /// let rg = ResolvedGemm::<f64>::resolve::<f64>(
-    ///     &KernelChoice::Id("portable.f64.4x4".into()), 1)?;
+    ///     &KernelChoice::Id("ref.f64.real.4x4".into()), 1)?;
     /// let (pack_a, _) = rg.packers::<f64>();
     /// let input = [1., 2., 3., 4.];
     /// let mut output = [0.; 4];
@@ -229,7 +229,7 @@ impl<R: Real> ResolvedGemm<R> {
     /// ```
     /// use tprims_kernel::{KernelChoice, ResolvedGemm};
     /// let rg = ResolvedGemm::<f64>::resolve::<f64>(
-    ///     &KernelChoice::Id("portable.f64.4x4".into()), 1)?;
+    ///     &KernelChoice::Id("ref.f64.real.4x4".into()), 1)?;
     /// let emit = rg.emitter::<f64>();
     /// let tile = [2.; 16];
     /// let mut output = [99.];
@@ -315,7 +315,7 @@ impl<R: Real> ResolvedGemm<R> {
     /// # Examples
     /// ```
     /// use tprims_kernel::{KernelChoice, PartitionOpts, PartitionPolicy, ResolvedGemm};
-    /// let rg = ResolvedGemm::<f64>::resolve::<f64>(&KernelChoice::Id("portable.f64.4x4".into()), 2)?;
+    /// let rg = ResolvedGemm::<f64>::resolve::<f64>(&KernelChoice::Id("ref.f64.real.4x4".into()), 2)?;
     /// let dynamic = PartitionPolicy::DynamicTiles { job_m: 8, job_n: 16 };
     /// assert_eq!(rg.with_partition(dynamic, PartitionOpts::default())?.partition, dynamic);
     /// assert!(rg.with_partition(
@@ -410,10 +410,10 @@ impl<R: Real> ResolvedGemm<R> {
     /// ```
     /// use tprims_kernel::{KernelCatalog, PartitionOpts, PartitionPolicy, ResolvedGemm};
     /// let catalog = KernelCatalog::<f64>::builtin();
-    /// let handle = catalog.get("portable.f64.4x4").unwrap();
+    /// let handle = catalog.get("ref.f64.real.4x4").unwrap();
     /// let rg = ResolvedGemm::<f64>::resolve_handle::<f64>(
     ///     &handle, 2, PartitionPolicy::default(), PartitionOpts::default())?;
-    /// assert_eq!(rg.family().id, "portable.f64.4x4");
+    /// assert_eq!(rg.family().id, "ref.f64.real.4x4");
     /// # Ok::<(), tprims_kernel::SelectError>(())
     /// ```
     pub fn resolve_handle<T: Families<Real = R>>(

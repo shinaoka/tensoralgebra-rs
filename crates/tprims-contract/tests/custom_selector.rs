@@ -184,7 +184,7 @@ fn incompatible_strategies_engines_and_choices_are_typed_errors() {
         SelectError::EngineUnsupported { .. }
     ));
     let forced = GemmConfig {
-        kernel: tprims_kernel::KernelChoice::Id("portable.f64.4x4".into()),
+        kernel: tprims_kernel::KernelChoice::Id("ref.f64.real.4x4".into()),
         ..Default::default()
     };
     assert!(matches!(
@@ -317,6 +317,6 @@ fn a_selected_plan_is_bound_to_its_storage_dtype() {
     );
     // A forced id after the selector is ambiguous.
     assert!(plan
-        .with_kernel(tensorcontract::KernelChoice::Id("portable.f64.4x4".into()))
+        .with_kernel(tensorcontract::KernelChoice::Id("ref.f64.real.4x4".into()))
         .is_err());
 }

@@ -24,10 +24,31 @@
 
 use crate::*;
 
-/// `{base}.{suffix}`, retained for the process lifetime like every other
-/// registered id. Called once per family by the registry's cache.
-fn induced_id(base: &str, suffix: &str) -> &'static str {
-    Box::leak(format!("{base}.{suffix}").into_boxed_str())
+/// The id of the complex family induced from `real`, retained for the process
+/// lifetime like every other registered id. Called once per family by the
+/// registry's cache.
+///
+/// A built-in real family named `{isa}.{rdtype}.{real|real-scalar}.{MR}x{NR}`
+/// induces `{isa}.{cdtype}.{kind}[-scalar].{mr}x{nr}` with the induced family's
+/// logical tile (`kind` is `i1m` or `i4m`; the `-scalar` suffix carries the
+/// base implementation, which keeps the portable and the scalar-menu bases
+/// apart). Any other base (a caller's family, whose id is its own opaque
+/// name) keeps the `{base}.{suffix}` spelling.
+fn induced_id(real: &KernelFamily<impl Real>, kind: &str, suffix: &str, mr: usize) -> &'static str {
+    let parts: Vec<&str> = real.id.split('.').collect();
+    let id = match (real.origin, parts.as_slice()) {
+        (Origin::External { .. }, _) => format!("{}.{suffix}", real.id),
+        (_, [isa, dtype, base @ ("real" | "real-scalar"), _]) if dtype.starts_with('f') => {
+            let scalar = if *base == "real-scalar" {
+                "-scalar"
+            } else {
+                ""
+            };
+            format!("{isa}.c{}.{kind}{scalar}.{mr}x{}", &dtype[1..], real.nr)
+        }
+        _ => format!("{}.{suffix}", real.id),
+    };
+    Box::leak(id.into_boxed_str())
 }
 
 /// The 1m-derived descriptor for a real family, or `None` when it cannot be
@@ -39,7 +60,7 @@ fn induced_id(base: &str, suffix: &str) -> &'static str {
 /// use tprims_kernel::{induced, KernelImpl, portable};
 /// let real = portable::families_f64()[0];
 /// let one_m = induced::one_m(real).unwrap();
-/// assert_eq!(one_m.id, "portable.f64.4x4.1m-induced");
+/// assert_eq!(one_m.id, "ref.c64.i1m.2x4");
 /// assert_eq!((one_m.imp, one_m.mr), (KernelImpl::Induced, real.mr / 2));
 /// assert!(induced::one_m(portable::families_f64()[2]).is_none()); // direct
 /// ```
@@ -52,7 +73,7 @@ pub fn one_m<R: Real>(real: &'static KernelFamily<R>) -> Option<&'static KernelF
     }
     let mr = real.mr / 2;
     let f = KernelFamily {
-        id: induced_id(real.id, "1m-induced"),
+        id: induced_id(real, "i1m", "1m-induced", mr),
         imp: KernelImpl::Induced,
         priority: real.priority.saturating_sub(100),
         complex: Some(ComplexScheme {
@@ -90,7 +111,7 @@ pub fn four_m<R: Real>(real: &'static KernelFamily<R>) -> Option<&'static Kernel
         return None;
     };
     let f = KernelFamily {
-        id: induced_id(real.id, "4m-induced"),
+        id: induced_id(real, "i4m", "4m-induced", real.mr),
         imp: KernelImpl::Induced,
         priority: real.priority.saturating_sub(100),
         complex: Some(ComplexScheme {

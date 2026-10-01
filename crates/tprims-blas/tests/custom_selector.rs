@@ -381,7 +381,7 @@ fn an_incompatible_engine_or_a_forced_id_is_refused_not_ignored() {
         "{r:?}"
     );
     let cfg = GemmConfig {
-        kernel: KernelChoice::Id("portable.f64.4x4".into()),
+        kernel: KernelChoice::Id("ref.f64.real.4x4".into()),
         ..Default::default()
     };
     let (r, _) = tiny(&cfg, &cat, (6, 6, 6), |_, _| unreachable!(), 1.0);
@@ -405,14 +405,14 @@ fn a_builtin_fallback_is_explicit() {
             // Prefer a built-in kernel when asked to; the report says so.
             Ok(cands
                 .iter()
-                .find(|c| c.handle.id() == "portable.f64.4x4")
+                .find(|c| c.handle.id() == "ref.f64.real.4x4")
                 .unwrap()
                 .handle)
         },
         1.0,
     );
     let report = r.unwrap();
-    assert_eq!(report.family_id, Some("portable.f64.4x4"));
+    assert_eq!(report.family_id, Some("ref.f64.real.4x4"));
     assert_eq!(report.origin, Some(tprims_kernel::Origin::Portable));
 }
 

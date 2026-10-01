@@ -136,7 +136,7 @@ fn union_reexpresses_handles_and_detects_conflicts() {
     let h = both.get("own.f64.2x2").unwrap();
     assert!(both.contains(&h));
     assert!(!own.contains(&h), "union mints fresh handles");
-    assert!(both.get("portable.f64.4x4").is_some());
+    assert!(both.get("ref.f64.real.4x4").is_some());
     // The same descriptor in both catalogs is shared, a distinct one is an alias.
     assert_eq!(own.union(&admit(&OK[1..]).unwrap()).unwrap().len(), 2);
     assert!(matches!(

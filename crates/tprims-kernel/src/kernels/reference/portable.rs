@@ -254,10 +254,10 @@ families!(
     DIRECT32,
     DIRECT_B32,
     families_f32,
-    "portable.f32.4x4",
-    "portable.c32.native.4x4",
-    "portable.f32.4x4.direct",
-    "portable.f32.4x4.direct-b"
+    "ref.f32.real.4x4",
+    "ref.c32.native.4x4",
+    "ref.f32.direct.4x4",
+    "ref.f32.direct-b.4x4"
 );
 families!(
     f64,
@@ -266,8 +266,8 @@ families!(
     DIRECT64,
     DIRECT_B64,
     families_f64,
-    "portable.f64.4x4",
-    "portable.c64.native.4x4",
-    "portable.f64.4x4.direct",
-    "portable.f64.4x4.direct-b"
+    "ref.f64.real.4x4",
+    "ref.c64.native.4x4",
+    "ref.f64.direct.4x4",
+    "ref.f64.direct-b.4x4"
 );

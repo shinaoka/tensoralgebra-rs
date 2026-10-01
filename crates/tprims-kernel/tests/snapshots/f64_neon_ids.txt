@@ -1,8 +1,8 @@
-tc.neon.f64.16x3
-tc.neon.f64.4x8
-tc.neon.f64.8x6
-tc.neon.f64.6x8
-tc.scalar.f64.4x4
-portable.f64.4x4
-portable.f64.4x4.direct
-portable.f64.4x4.direct-b
+neon.f64.real.16x3
+neon.f64.real.4x8
+neon.f64.real.8x6
+neon.f64.real.6x8
+ref.f64.real-scalar.4x4
+ref.f64.real.4x4
+ref.f64.direct.4x4
+ref.f64.direct-b.4x4

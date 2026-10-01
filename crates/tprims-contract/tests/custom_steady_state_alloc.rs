@@ -94,7 +94,7 @@ fn custom_selection_adds_no_steady_state_allocation() {
     // The same plan with the equivalent *built-in* geometry by id.
     let builtin = ContractPlan::<f64>::new_with(
         &GemmConfig {
-            kernel: KernelChoice::Id("portable.f64.4x4".into()),
+            kernel: KernelChoice::Id("ref.f64.real.4x4".into()),
             ..Default::default()
         },
         &cfg,

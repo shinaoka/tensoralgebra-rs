@@ -13,10 +13,10 @@ const SHAPE: Shape = Shape {
 #[test]
 fn every_width_is_bitwise_identical_to_width_one() {
     for id in [
-        "tc.scalar.f64.4x4",
-        "portable.f64.4x4",
-        "portable.f64.4x4.direct",
-        "portable.f64.4x4.direct-b",
+        "ref.f64.real-scalar.4x4",
+        "ref.f64.real.4x4",
+        "ref.f64.direct.4x4",
+        "ref.f64.direct-b.4x4",
     ] {
         let base = run_with_width::<f64>(id, 1, SHAPE, false);
         for w in [2usize, 3, 4, 8] {
@@ -33,9 +33,9 @@ fn every_width_is_bitwise_identical_to_width_one() {
 
 #[test]
 fn aligned_c_lines_are_bitwise_identical_too() {
-    let base = run_with_width::<f64>("portable.f64.4x4", 1, SHAPE, true);
+    let base = run_with_width::<f64>("ref.f64.real.4x4", 1, SHAPE, true);
     for w in [2usize, 4, 8] {
-        let got = run_with_width::<f64>("portable.f64.4x4", w, SHAPE, true);
+        let got = run_with_width::<f64>("ref.f64.real.4x4", w, SHAPE, true);
         assert!(
             base.iter()
                 .zip(&got)
@@ -44,8 +44,8 @@ fn aligned_c_lines_are_bitwise_identical_too() {
         );
     }
     // Alignment must not change the answer either, only the boundaries.
-    let unaligned = run_with_width::<f64>("portable.f64.4x4", 4, SHAPE, false);
-    let aligned = run_with_width::<f64>("portable.f64.4x4", 4, SHAPE, true);
+    let unaligned = run_with_width::<f64>("ref.f64.real.4x4", 4, SHAPE, false);
+    let aligned = run_with_width::<f64>("ref.f64.real.4x4", 4, SHAPE, true);
     assert!(unaligned
         .iter()
         .zip(&aligned)

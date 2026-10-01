@@ -23,7 +23,9 @@ fn run(exec: &Exec<'_>, width: usize) {
         Operand::new(&ld, &id),
     )
     .unwrap()
-    .with_kernel(tensorcontract::KernelChoice::Id("tc.scalar.f64.4x4".into()))
+    .with_kernel(tensorcontract::KernelChoice::Id(
+        "ref.f64.real-scalar.4x4".into(),
+    ))
     .unwrap()
     .with_threads(width);
     let rg = plan.resolved::<f64>().unwrap();

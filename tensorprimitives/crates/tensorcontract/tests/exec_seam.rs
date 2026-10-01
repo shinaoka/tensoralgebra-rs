@@ -108,7 +108,7 @@ fn explicit_resolution_survives_a_refused_broadcast_without_reselection() {
             // OnceLock initializes: copy the immutable built-in menu directly.
             let mut f = **tprims_kernel::portable::families_f64()
                 .iter()
-                .find(|f| f.id == "portable.f64.4x4")
+                .find(|f| f.id == "ref.f64.real.4x4")
                 .unwrap();
             f.id = "test.traced.f64.4x4";
             f.allow_auto = false;

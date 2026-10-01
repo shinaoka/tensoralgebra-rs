@@ -388,8 +388,8 @@ impl Plan {
     /// let l = Layout::col_major(&[2, 2]);
     /// let p = Plan::new(Operand::new(&l, &[0,2]), Operand::new(&l, &[2,1]),
     ///     None, Operand::new(&l, &[0,1]))?;
-    /// let p = p.with_kernel(KernelChoice::Id("portable.f64.4x4".into()))?;
-    /// assert_eq!(p.resolved::<f64>()?.family().id, "portable.f64.4x4");
+    /// let p = p.with_kernel(KernelChoice::Id("ref.f64.real.4x4".into()))?;
+    /// assert_eq!(p.resolved::<f64>()?.family().id, "ref.f64.real.4x4");
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
     pub fn with_kernel(mut self, choice: tprims_kernel::KernelChoice) -> Result<Self> {

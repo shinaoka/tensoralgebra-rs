@@ -4,26 +4,26 @@ use tprims_kernel::*;
 #[test]
 fn portable_families_validate_and_have_ids() {
     let real = Registry::families::<f64>(CpuFeatures::NONE, false);
-    assert!(real.iter().any(|f| f.id == "portable.f64.4x4"));
+    assert!(real.iter().any(|f| f.id == "ref.f64.real.4x4"));
     for f in real {
         f.validate().unwrap();
     }
     let complex = Registry::families::<Complex<f64>>(CpuFeatures::NONE, false);
-    assert!(complex.iter().any(|f| f.id == "portable.c64.native.4x4"));
+    assert!(complex.iter().any(|f| f.id == "ref.c64.native.4x4"));
     for f in complex {
         f.validate().unwrap();
     }
     assert!(list_kernels::<f32>()
         .iter()
-        .any(|f| f.id == "portable.f32.4x4"));
+        .any(|f| f.id == "ref.f32.real.4x4"));
     assert!(list_kernels::<Complex<f32>>()
         .iter()
-        .any(|f| f.id == "portable.c32.native.4x4"));
+        .any(|f| f.id == "ref.c32.native.4x4"));
 }
 
 #[test]
 fn portable_native_complex_tile_matches_naive() {
-    let f = Registry::select::<Complex<f64>>("portable.c64.native.4x4", CpuFeatures::NONE).unwrap();
+    let f = Registry::select::<Complex<f64>>("ref.c64.native.4x4", CpuFeatures::NONE).unwrap();
     let UkrFn::Tile(ukr) = f.ukr else { panic!() };
     for kc in [0, 1, 7] {
         let a: Vec<f64> = (0..kc * 8)

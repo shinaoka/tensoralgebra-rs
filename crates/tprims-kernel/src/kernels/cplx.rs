@@ -1,7 +1,7 @@
 //! Native interleaved complex microkernel families for the packed driver
 //! (issue #30). Opt-in only: no family here is `allow_auto`, so the default
-//! selection is unchanged; select one by id (`cplx.avx2.c64.native.4x4`,
-//! `cplx.avx2.c32.native.8x4`) through `KernelChoice::Id`.
+//! selection is unchanged; select one by id (`avx2.c64.native.4x4`,
+//! `avx2.c32.native.8x4`) through `KernelChoice::Id`.
 //!
 //! Project-owned code, MIT OR Apache-2.0, written from the arithmetic
 //! `Cr += Ar*Br - Ai*Bi; Ci += Ai*Br + Ar*Bi` with FMA (the interleaved

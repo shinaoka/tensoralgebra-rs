@@ -231,7 +231,7 @@ fn dynamic(job_m: usize, job_n: usize) -> Option<PartitionPolicy> {
     Some(PartitionPolicy::DynamicTiles { job_m, job_n })
 }
 
-const F64: &str = "portable.f64.4x4";
+const F64: &str = "ref.f64.real.4x4";
 
 /// Dynamic equals static equals serial, bitwise, at every width.
 fn assert_bitwise<T>(id: &str, s: Spec, job: (usize, usize))
@@ -269,12 +269,12 @@ fn every_dtype_family_and_orientation_matches_bitwise() {
     let mut s = Spec::new(26, 38, 21);
     for row_major in [false, true] {
         s.row_major_d = row_major;
-        assert_bitwise::<f32>("portable.f32.4x4", s, (8, 8));
+        assert_bitwise::<f32>("ref.f32.real.4x4", s, (8, 8));
         assert_bitwise::<f64>(F64, s, (8, 12));
-        assert_bitwise::<C32>("portable.c32.native.4x4", s, (8, 8));
-        assert_bitwise::<C64>("portable.c64.native.4x4", s, (4, 16));
-        assert_bitwise::<C64>("portable.f64.4x4.1m-induced", s, (8, 8));
-        assert_bitwise::<C64>("portable.f64.4x4.4m-induced", s, (8, 8));
+        assert_bitwise::<C32>("ref.c32.native.4x4", s, (8, 8));
+        assert_bitwise::<C64>("ref.c64.native.4x4", s, (4, 16));
+        assert_bitwise::<C64>("ref.c64.i1m.2x4", s, (8, 8));
+        assert_bitwise::<C64>("ref.c64.i4m.4x4", s, (8, 8));
     }
 }
 
@@ -307,7 +307,7 @@ fn operations_strides_batches_and_aliasing_are_preserved() {
     ];
     for s in cases {
         assert_bitwise::<f64>(F64, s, (8, 8));
-        assert_bitwise::<C64>("portable.c64.native.4x4", s, (8, 8));
+        assert_bitwise::<C64>("ref.c64.native.4x4", s, (8, 8));
     }
 }
 
@@ -353,13 +353,7 @@ fn results_match_the_reference_oracle() {
         tensorcontract::ElementOp::Identity,
     )
     .unwrap();
-    let got = run::<C64>(
-        "portable.c64.native.4x4",
-        &s,
-        dynamic(8, 8),
-        &Team::new(4),
-        None,
-    );
+    let got = run::<C64>("ref.c64.native.4x4", &s, dynamic(8, 8), &Team::new(4), None);
     let err: f64 = got
         .iter()
         .zip(&want)
@@ -557,7 +551,7 @@ fn width_one_runs_on_the_caller_without_claims_and_a_refusal_runs_serially() {
 
 #[test]
 fn direct_c_and_direct_b_families_run_in_both_assignment_modes() {
-    for id in ["portable.f64.4x4.direct", "portable.f64.4x4.direct-b"] {
+    for id in ["ref.f64.direct.4x4", "ref.f64.direct-b.4x4"] {
         for (s, job, width) in [
             (Spec::new(32, 70, 45), (8, 8), 2),
             (Spec::new(32, 70, 45), (8, 8), 8),
@@ -615,9 +609,9 @@ fn direct_b_allocates_no_b_buffer_and_packs_no_slivers() {
     let stats = DynStats::new(4);
     let mut team = Team::new(4);
     team.ws = Some(ArenaProvider::new());
-    let serial = run::<f64>("portable.f64.4x4.direct-b", &s, None, &Team::new(1), None);
+    let serial = run::<f64>("ref.f64.direct-b.4x4", &s, None, &Team::new(1), None);
     let got = run::<f64>(
-        "portable.f64.4x4.direct-b",
+        "ref.f64.direct-b.4x4",
         &s,
         dynamic(8, 8),
         &team,
@@ -749,7 +743,7 @@ mod skew {
         LIST.get_or_init(|| {
             let mut f = **tprims_kernel::portable::families_f64()
                 .iter()
-                .find(|f| f.id == "portable.f64.4x4")
+                .find(|f| f.id == "ref.f64.real.4x4")
                 .unwrap();
             f.id = "test.skew.f64.4x4";
             f.allow_auto = false;
@@ -773,7 +767,7 @@ mod skew {
             },
             ..Spec::new(64, 64, 32)
         };
-        let serial = run::<f64>("portable.f64.4x4", &s, None, &Team::new(1), None);
+        let serial = run::<f64>("ref.f64.real.4x4", &s, None, &Team::new(1), None);
         let stats = DynStats::new(4);
         let team = Team::new(4);
         let got = run::<f64>("test.skew.f64.4x4", &s, dynamic(8, 8), &team, Some(&stats));

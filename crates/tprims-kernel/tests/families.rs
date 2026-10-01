@@ -5,7 +5,9 @@ fn every_tc_family_validates_and_ids_are_unique() {
     fn check<T: Families>() {
         let mut ids = std::collections::BTreeSet::new();
         let all = Registry::families::<T>(CpuFeatures::NONE, true);
-        assert!(all.iter().any(|f| f.id.starts_with("tc.")));
+        assert!(all
+            .iter()
+            .any(|f| f.origin == tprims_kernel::Origin::Tensorcontract));
         for f in all {
             f.validate().unwrap_or_else(|e| panic!("{e}"));
             assert!(ids.insert(f.id), "duplicate id {}", f.id);
@@ -203,5 +205,37 @@ fn cpu_mask_and_complex_method_metadata() {
         let all = Registry::families::<f64>(CpuFeatures::NONE, true);
         assert!(all.iter().any(|f| f.isa == Isa::Avx512));
         assert!(all.iter().any(|f| f.isa == Isa::Avx2));
+    }
+}
+
+/// The complete built-in manifest of an x86 target, in Auto order, for all four
+/// storage dtypes (CPU-unavailable families included, so the list is the same
+/// on every x86-64 machine). Ids, ordering and injectivity are pinned here;
+/// any change is a deliberate one.
+#[cfg(target_arch = "x86_64")]
+#[test]
+fn x86_64_manifest_snapshot() {
+    fn lines<T: Families>(name: &str, out: &mut Vec<String>) {
+        out.extend(
+            list_kernels::<T>()
+                .into_iter()
+                .map(|k| format!("{name} {}", k.id)),
+        );
+    }
+    let mut got = Vec::new();
+    lines::<f32>("f32", &mut got);
+    lines::<f64>("f64", &mut got);
+    lines::<C32>("c32", &mut got);
+    lines::<C64>("c64", &mut got);
+    assert_eq!(
+        got.join("\n"),
+        include_str!("snapshots/x86_64_manifest.txt").trim_end(),
+        "update the manifest deliberately, with docs/migration-2026-10.md"
+    );
+    // Injective per dtype.
+    for dtype in ["f32", "f64", "c32", "c64"] {
+        let ids: Vec<_> = got.iter().filter(|l| l.starts_with(dtype)).collect();
+        let set: std::collections::BTreeSet<_> = ids.iter().collect();
+        assert_eq!(ids.len(), set.len(), "{dtype}: duplicate ids");
     }
 }

@@ -107,7 +107,7 @@ const SHAPE: (usize, usize, usize) = (300, 300, 300);
 fn steady_state_execute_allocates_nothing() {
     let (m, n, k) = SHAPE;
 
-    let mut prepared = Prepared::new("tc.scalar.f64.4x4", m, n, k);
+    let mut prepared = Prepared::new("ref.f64.real-scalar.4x4", m, n, k);
     prepared.run();
     let before = COUNT.load(Relaxed);
     prepared.run();
@@ -120,7 +120,7 @@ fn steady_state_execute_allocates_nothing() {
 
     // A direct-B family must not ask for a B-sized buffer even on its first run:
     // the only large allocation allowed there is the packed A block.
-    let mut direct_b = Prepared::new("portable.f64.4x4.direct-b", m, n, k);
+    let mut direct_b = Prepared::new("ref.f64.direct-b.4x4", m, n, k);
     let decisions = driver_decisions(
         &direct_b.plan,
         &direct_b.resolution,

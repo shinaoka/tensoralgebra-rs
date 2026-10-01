@@ -120,21 +120,21 @@ macro_rules! gemm_case {
 gemm_case!(
     c64_gemm_by_id_matches_faer,
     C64,
-    "cplx.avx2.c64.native.4x4",
+    "avx2.c64.native.4x4",
     1e-12
 );
 gemm_case!(
     c32_gemm_by_id_matches_faer,
     C32,
-    "cplx.avx2.c32.native.8x4",
+    "avx2.c32.native.8x4",
     2e-4
 );
 
 #[test]
 fn the_families_are_listed_and_the_default_is_unchanged() {
     for (id, info) in [
-        ("cplx.avx2.c64.native.4x4", list_kernels::<C64>()),
-        ("cplx.avx2.c32.native.8x4", list_kernels::<C32>()),
+        ("avx2.c64.native.4x4", list_kernels::<C64>()),
+        ("avx2.c32.native.8x4", list_kernels::<C32>()),
     ] {
         if !cfg!(target_arch = "x86_64") {
             // `tprims-kernel` compiles to empty family lists elsewhere.
@@ -167,7 +167,8 @@ fn the_families_are_listed_and_the_default_is_unchanged() {
             &mut cv,
         )
         .unwrap();
-        assert!(!sel.family_id.unwrap().starts_with("cplx."));
+        let id = sel.family_id.unwrap();
+        assert!(!(id.starts_with("avx2.") && id.contains(".native.")));
     }
 }
 
@@ -209,14 +210,14 @@ fn tblis_batched_gemm_runs_the_family_by_id() {
     };
     let (_, want) = run(&GemmConfig::default(), BatchStrategy::FaerLoop);
     let cfg = GemmConfig {
-        kernel: KernelChoice::Id("cplx.avx2.c64.native.4x4".into()),
+        kernel: KernelChoice::Id("avx2.c64.native.4x4".into()),
         ..Default::default()
     };
     // The built-in TBLIS strategy keeps its historical report (no family id);
     // that the forced id is consulted is shown by a wrong-dtype id failing.
     let (_, got) = run(&cfg, BatchStrategy::Tblis);
     let wrong = GemmConfig {
-        kernel: KernelChoice::Id("cplx.avx2.c32.native.8x4".into()),
+        kernel: KernelChoice::Id("avx2.c32.native.8x4".into()),
         ..Default::default()
     };
     let mut c = vec![C64::new(0.0, 0.0); m * n * nb];
@@ -276,7 +277,7 @@ fn dynamic_tiles_are_bitwise_equal_to_the_static_grid() {
     let run = |partition| {
         let cfg = GemmConfig {
             engine: EngineChoice::Packed,
-            kernel: KernelChoice::Id("cplx.avx2.c64.native.4x4".into()),
+            kernel: KernelChoice::Id("avx2.c64.native.4x4".into()),
             partition,
             ..Default::default()
         };
@@ -296,8 +297,8 @@ fn dynamic_tiles_are_bitwise_equal_to_the_static_grid() {
     };
     let (s_static, want) = run(tprims_kernel::PartitionPolicy::default());
     let (s_dyn, got) = run(tprims_kernel::PartitionPolicy::DynamicTiles { job_m: 8, job_n: 8 });
-    assert_eq!(s_static.family_id, Some("cplx.avx2.c64.native.4x4"));
-    assert_eq!(s_dyn.family_id, Some("cplx.avx2.c64.native.4x4"));
+    assert_eq!(s_static.family_id, Some("avx2.c64.native.4x4"));
+    assert_eq!(s_dyn.family_id, Some("avx2.c64.native.4x4"));
     assert_eq!(
         (s_static.mc, s_static.kc, s_static.nc),
         (s_dyn.mc, s_dyn.kc, s_dyn.nc)
@@ -309,7 +310,7 @@ fn dynamic_tiles_are_bitwise_equal_to_the_static_grid() {
     // Misaligned job extents are refused for this family's MR/NR, not rounded.
     let bad = GemmConfig {
         engine: EngineChoice::Packed,
-        kernel: KernelChoice::Id("cplx.avx2.c64.native.4x4".into()),
+        kernel: KernelChoice::Id("avx2.c64.native.4x4".into()),
         partition: tprims_kernel::PartitionPolicy::DynamicTiles { job_m: 6, job_n: 8 },
         ..Default::default()
     };

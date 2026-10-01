@@ -97,7 +97,7 @@ pub struct DynamicReport {
 /// let p = Plan::new(Operand::new(&l, &[0, 2]), Operand::new(&l, &[2, 1]), None,
 ///     Operand::new(&l, &[0, 1]))?;
 /// let rg = ResolvedGemm::<f64>::resolve_with::<f64>(
-///     &KernelChoice::Id("portable.f64.4x4".into()), 4,
+///     &KernelChoice::Id("ref.f64.real.4x4".into()), 4,
 ///     PartitionPolicy::DynamicTiles { job_m: 16, job_n: 16 }, PartitionOpts::default())?;
 /// let r = dynamic_report(&p, &rg, 4).unwrap();
 /// assert_eq!((r.row_bands, r.active_width), (4, 4));

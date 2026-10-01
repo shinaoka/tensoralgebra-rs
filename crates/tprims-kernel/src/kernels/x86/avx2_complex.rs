@@ -143,7 +143,7 @@ macro_rules! family {
 
 static C64: KernelFamily<f64> = family!(
     f64,
-    "cplx.avx2.c64.native.4x4",
+    "avx2.c64.native.4x4",
     4,
     tile_c64,
     (64, 256),
@@ -152,7 +152,7 @@ static C64: KernelFamily<f64> = family!(
 );
 static C32: KernelFamily<f32> = family!(
     f32,
-    "cplx.avx2.c32.native.8x4",
+    "avx2.c32.native.8x4",
     8,
     tile_c32,
     (64, 256),

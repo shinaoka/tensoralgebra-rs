@@ -63,12 +63,12 @@ fn a_forced_kernel_is_used_and_reported() {
     let exec = Exec::serial();
     let cfg = GemmConfig {
         engine: EngineChoice::Packed,
-        kernel: KernelChoice::Id("portable.f64.4x4".into()),
+        kernel: KernelChoice::Id("ref.f64.real.4x4".into()),
         ..Default::default()
     };
     let (sel, _) = run(&exec, &cfg).unwrap();
-    assert_eq!(sel.family_id, Some("portable.f64.4x4"));
-    assert!(sel.to_json().contains("\"family_id\":\"portable.f64.4x4\""));
+    assert_eq!(sel.family_id, Some("ref.f64.real.4x4"));
+    assert!(sel.to_json().contains("\"family_id\":\"ref.f64.real.4x4\""));
 }
 
 #[test]
@@ -93,8 +93,8 @@ fn an_unknown_kernel_id_is_a_selection_error() {
 #[test]
 fn the_kernel_list_is_available() {
     let kernels = list_kernels::<f64>();
-    assert!(kernels.iter().any(|k| k.id.starts_with("tc.")));
-    assert!(kernels.iter().any(|k| k.id == "portable.f64.4x4"));
+    assert!(kernels.iter().any(|k| k.id == "ref.f64.real-scalar.4x4"));
+    assert!(kernels.iter().any(|k| k.id == "ref.f64.real.4x4"));
 }
 
 /// Two families, two threads, one pool: the workspace is leased per call, so
@@ -109,7 +109,7 @@ fn two_families_concurrently_on_one_pool() {
     let exec = Exec::rayon(&pool);
     let reference = run(&Exec::serial(), &GemmConfig::default()).unwrap().1;
     std::thread::scope(|s| {
-        for id in ["portable.f64.4x4", "tc.scalar.f64.4x4"] {
+        for id in ["ref.f64.real.4x4", "ref.f64.real-scalar.4x4"] {
             let (exec, reference) = (&exec, &reference);
             s.spawn(move || {
                 for _ in 0..20 {
@@ -150,6 +150,9 @@ fn explicit_tuning_reaches_the_packed_plan() {
     .unwrap();
     let (_, want) = run(&exec, &GemmConfig::default()).unwrap();
     assert_eq!(sel.kc, 4);
-    assert!(sel.family_id.unwrap().starts_with("tc.scalar."), "{sel:?}");
+    assert!(
+        sel.family_id.unwrap().starts_with("ref.f64.real-scalar."),
+        "{sel:?}"
+    );
     assert_eq!(got, want);
 }

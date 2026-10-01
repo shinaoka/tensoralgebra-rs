@@ -12,20 +12,16 @@ fn induced_variants_exist_for_every_real_family() {
         if real.complex.is_some() {
             continue;
         }
-        let one_m_id = format!("{}.1m-induced", real.id);
-        let four_m_id = format!("{}.4m-induced", real.id);
         // A Direct family has no packed arm, so neither method is derivable.
         let tile_arm = matches!(real.ukr, UkrFn::Tile(_));
-        assert_eq!(
-            complex.iter().any(|id| *id == one_m_id),
-            induced::one_m(real).is_some(),
-            "{one_m_id}"
-        );
-        assert_eq!(
-            complex.iter().any(|id| *id == four_m_id),
-            tile_arm,
-            "{four_m_id}"
-        );
+        let one_m = induced::one_m(real).map(|f| f.id);
+        let four_m = induced::four_m(real).map(|f| f.id);
+        assert_eq!(four_m.is_some(), tile_arm, "{}", real.id);
+        for id in [one_m, four_m].into_iter().flatten() {
+            assert!(complex.iter().any(|c| *c == id), "{id}");
+            // Built-in bases induce `{isa}.c64.i1m|i4m[-scalar].{mr}x{nr}`.
+            assert!(id.contains(".i1m") || id.contains(".i4m"), "{id}");
+        }
     }
 }
 
@@ -41,7 +37,13 @@ fn induced_families_validate_and_are_never_auto() {
         assert!(!f.allow_auto, "{}", f.id);
         let inner = f.inner.expect("an induced family carries its inner kernel");
         assert_eq!(inner.complex, None);
-        assert!(f.id.starts_with(inner.id), "{}", f.id);
+        assert!(f.id.contains(".i1m") || f.id.contains(".i4m"), "{}", f.id);
+        assert_eq!(
+            f.id.starts_with("ref."),
+            inner.id.starts_with("ref."),
+            "{}",
+            f.id
+        );
         let method = f.complex.unwrap().method;
         match method {
             // One complex k-step is two real ones, so the tile is half as tall.
@@ -60,7 +62,7 @@ fn one_m_rejects_odd_tiles_and_direct() {
     let all = Registry::families::<f64>(CpuFeatures::NONE, true);
     let direct = all
         .iter()
-        .find(|f| f.id.ends_with(".direct"))
+        .find(|f| f.id == "ref.f64.direct.4x4")
         .expect("a direct family is registered");
     assert!(induced::one_m(direct).is_none());
     assert!(induced::four_m(direct).is_none());
@@ -90,7 +92,7 @@ fn one_m_rejects_odd_tiles_and_direct() {
 /// mistake cannot hide behind the driver's own arithmetic.
 #[test]
 fn induced_arithmetic_matches_the_complex_product() {
-    for id in ["portable.f64.4x4.1m-induced", "portable.f64.4x4.4m-induced"] {
+    for id in ["ref.c64.i1m.2x4", "ref.c64.i4m.4x4"] {
         let choice = KernelChoice::Id(id.into());
         let rg = ResolvedGemm::<f64>::resolve::<C64>(&choice, 1).unwrap();
         let f = rg.family();
@@ -164,4 +166,46 @@ fn induced_arithmetic_matches_the_complex_product() {
             }
         }
     }
+}
+
+/// A caller's family keeps its own opaque name; only the suffix is added, so
+/// third-party ids are never forced into the built-in namespace.
+#[test]
+fn induced_ids_of_an_external_base_keep_the_suffix_spelling() {
+    let mut base = *portable::families_f64()[0];
+    base.id = "my-kernels.f64.4x4";
+    base.origin = Origin::External {
+        crate_name: "my-kernels",
+        license: "Apache-2.0",
+    };
+    let base: &'static KernelFamily<f64> = Box::leak(Box::new(base));
+    assert_eq!(
+        induced::one_m(base).unwrap().id,
+        "my-kernels.f64.4x4.1m-induced"
+    );
+    assert_eq!(
+        induced::four_m(base).unwrap().id,
+        "my-kernels.f64.4x4.4m-induced"
+    );
+}
+
+/// Built-in bases name their induced families by logical geometry: 1m halves
+/// the base's rows, 4m keeps them, and the scalar menu's base is carried by a
+/// `-scalar` suffix.
+#[test]
+fn induced_ids_of_built_in_bases_follow_the_scheme() {
+    let base = |id: &str| {
+        *Registry::families::<f64>(CpuFeatures::NONE, true)
+            .iter()
+            .find(|f| f.id == id)
+            .unwrap()
+    };
+    let (portable, scalar) = (base("ref.f64.real.4x4"), base("ref.f64.real-scalar.4x4"));
+    assert_eq!(induced::one_m(portable).unwrap().id, "ref.c64.i1m.2x4");
+    assert_eq!(induced::four_m(portable).unwrap().id, "ref.c64.i4m.4x4");
+    assert_eq!(induced::one_m(scalar).unwrap().id, "ref.c64.i1m-scalar.2x4");
+    assert_eq!(
+        induced::four_m(scalar).unwrap().id,
+        "ref.c64.i4m-scalar.4x4"
+    );
 }

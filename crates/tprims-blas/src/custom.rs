@@ -33,7 +33,7 @@ use crate::{
 /// # Examples
 /// ```
 /// let catalog = tprims_blas::builtin_catalog::<f64>();
-/// assert!(catalog.get("portable.f64.4x4").is_some());
+/// assert!(catalog.get("ref.f64.real.4x4").is_some());
 /// ```
 pub fn builtin_catalog<T: Scalar>() -> KernelCatalog<T> {
     KernelCatalog::builtin()

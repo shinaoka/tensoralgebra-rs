@@ -187,7 +187,7 @@ impl SelectedGemm {
 /// # Examples
 /// ```
 /// let kernels = tprims_blas::list_kernels::<f64>();
-/// assert!(kernels.iter().any(|k| k.id.starts_with("tc.")));
+/// assert!(kernels.iter().any(|k| k.id == "ref.f64.real-scalar.4x4"));
 /// ```
 pub fn list_kernels<T: Scalar>() -> Vec<tprims_kernel::KernelInfo> {
     tprims_kernel::list_kernels::<T>()

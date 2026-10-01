@@ -26,7 +26,7 @@ fn percentage_overrides_apply_once_and_overflow_is_typed() {
     // Forced: the built-in menus are always present, so Auto is the widest
     // ISA's family and its blocking is machine-dependent.
     let mut rg =
-        ResolvedGemm::<f64>::resolve::<f64>(&KernelChoice::Id("portable.f64.4x4".into()), 1)
+        ResolvedGemm::<f64>::resolve::<f64>(&KernelChoice::Id("ref.f64.real.4x4".into()), 1)
             .unwrap();
     rg.policy = BlockingPolicy {
         model: BlockModel::Legacy,

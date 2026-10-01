@@ -18,7 +18,7 @@ fn ints(len: usize, seed: usize) -> Vec<f64> {
 fn dynamic(job_m: usize, job_n: usize) -> GemmConfig {
     GemmConfig {
         engine: EngineChoice::Packed,
-        kernel: KernelChoice::Id("portable.f64.4x4".into()),
+        kernel: KernelChoice::Id("ref.f64.real.4x4".into()),
         partition: PartitionPolicy::DynamicTiles { job_m, job_n },
         ..Default::default()
     }
@@ -26,7 +26,7 @@ fn dynamic(job_m: usize, job_n: usize) -> GemmConfig {
 fn packed() -> GemmConfig {
     GemmConfig {
         engine: EngineChoice::Packed,
-        kernel: KernelChoice::Id("portable.f64.4x4".into()),
+        kernel: KernelChoice::Id("ref.f64.real.4x4".into()),
         ..Default::default()
     }
 }

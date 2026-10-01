@@ -19,7 +19,7 @@ fn matrix_gemm_resolves_an_id_before_anything_registered_providers() {
     let mut cv = StridedViewMut::new(&mut c, &[4, 4], &[1, 4], 0).unwrap();
     let cfg = GemmConfig {
         engine: EngineChoice::Packed,
-        kernel: KernelChoice::Id("cplx.avx2.c64.native.4x4".into()),
+        kernel: KernelChoice::Id("avx2.c64.native.4x4".into()),
         ..Default::default()
     };
     let r = gemm_with(
@@ -32,7 +32,7 @@ fn matrix_gemm_resolves_an_id_before_anything_registered_providers() {
         &mut cv,
     );
     match r {
-        Ok(sel) => assert_eq!(sel.family_id, Some("cplx.avx2.c64.native.4x4")),
+        Ok(sel) => assert_eq!(sel.family_id, Some("avx2.c64.native.4x4")),
         Err(Error::Select(SelectError::CpuUnsupported { .. })) => {}
         Err(e) => panic!("the id must resolve: {e:?}"),
     }
