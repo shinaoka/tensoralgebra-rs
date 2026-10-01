@@ -187,10 +187,8 @@ impl<T: Scalar> ContractPlan<T> {
         F: FnOnce(
             &tprims_blas::SelectionContext<'_>,
             &[tprims_blas::KernelCandidate<T>],
-        ) -> std::result::Result<
-            tprims_blas::KernelHandle<T>,
-            tprims_blas::SelectError,
-        >,
+        )
+            -> std::result::Result<tprims_blas::KernelHandle<T>, tprims_blas::SelectError>,
     {
         use tprims_blas::SelectError;
         match gemm.engine {
@@ -240,17 +238,7 @@ impl<T: Scalar> ContractPlan<T> {
             threads,
             method: gemm.method,
         };
-        Self::build(
-            gemm,
-            cfg,
-            a,
-            b,
-            c,
-            conj,
-            strategy,
-            flags,
-            Some(custom),
-        )
+        Self::build(gemm, cfg, a, b, c, conj, strategy, flags, Some(custom))
     }
 
     #[allow(clippy::too_many_arguments)] // INVARIANT: the contraction argument set.

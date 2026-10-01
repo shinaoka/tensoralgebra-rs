@@ -13,6 +13,15 @@ Dated 2026-09-29. A source link supports the observation; the proposed response 
 | `Selected` vs `SelectedGemm`? | **Decided: additive.** `SelectedGemm` wraps `Selected`. Changing `Selected` would break tenferro-cpu-tprims, which is pinned to this API. | `tprims-blas/src/engine.rs`; the pinned consumer's commit is recorded in that PR |
 | No-port rule? | **Restated:** the contract calls other projects' kernels; no upstream kernel body was copied. `gemm-*` and `private-gemm-x86` are called dependencies pinned exactly, and `faer` keeps its own license. | `docs/provenance.md#the-no-port-rule-issue-23` |
 
+## 2026-10-01 custom kernels with a safe selector (issue #28)
+
+| Question | Ruling | Evidence or next check |
+| --- | --- | --- |
+| How does a downstream user bring kernels *and* a policy? | **Decided:** one `unsafe` admission (`KernelCatalog::from_static_families`) carries the provider's ABI/ISA/immutability promise; selection over the resulting opaque, dtype-typed `KernelHandle` is safe. The selector is a per-call `FnOnce` (per-group `FnMut` for grouped), runs once in planning, and is never retained. No second global registry, no `Box::leak`, no TLS cache. | `crates/tprims-custom-kernel-test/tests`, `docs/architecture.md#custom-kernels-with-a-safe-selector` |
+| Performance protocol? | **Deferred (maintainer decision, this batch).** Paired 1T/4T tensor-sized runs and A/A noise were skipped for speed of delivery; correctness, call-count, allocation and concurrency tests are in. No speed claim is made. | Re-open with the `tprims-benchmark` skill before any performance statement |
+| `SelectedGemm` provenance? | **Decided:** `SelectedGemm` gains `origin: Option<Origin>` (a report field; construct only inside tprims). If a pinned consumer builds `SelectedGemm` literally, switch to a wrapper type instead. | `tprims-blas/src/engine.rs` |
+| Grouped GEMM? | The grouped path had no packed arm; `gemm_grouped_with_selector` adds one (jobs run in sequence, one selection per non-empty job). The default grouped path still computes with faer and still refuses Packed/kernels. | `tprims-blas/src/custom.rs` |
+
 ## Structure and ABI
 
 | Question | Present position | Evidence or next check |

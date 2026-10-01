@@ -16,9 +16,15 @@ use crate::{
 };
 use core::any::Any;
 use tprims_gemm_kernel::{
-    CpuFeatures, Families, KernelCatalog, KernelHandle, Method, PartitionPolicy,
-    SelectError,
+    CpuFeatures, Families, KernelCatalog, KernelHandle, Method, PartitionPolicy, SelectError,
 };
+
+/// What a selector returns: the trusted handle it chose, or why it declined.
+pub type Selection<T> = core::result::Result<KernelHandle<T>, SelectError>;
+
+/// A selector as the planners hold it while building one plan.
+pub type Chooser<'a, T> =
+    dyn FnMut(&SelectionContext<'_>, &[KernelCandidate<T>]) -> Selection<T> + 'a;
 
 /// One operand's layout as the caller described it, borrowed from the plan's
 /// construction arguments (nothing tensor-sized is copied).
@@ -234,10 +240,10 @@ impl Plan {
     where
         T: Element + Families,
         T::Real: KernelSet,
-        F: FnOnce(&SelectionContext<'_>, &[KernelCandidate<T>]) -> core::result::Result<
-            KernelHandle<T>,
-            SelectError,
-        >,
+        F: FnOnce(
+            &SelectionContext<'_>,
+            &[KernelCandidate<T>],
+        ) -> core::result::Result<KernelHandle<T>, SelectError>,
     {
         if let Some(tprims_gemm_kernel::KernelChoice::Id(id)) = &self.kernel {
             return Err(Error::KernelSelection(SelectError::Incompatible {
@@ -268,7 +274,9 @@ impl Plan {
             is_empty: self.is_empty(),
         };
         let chosen = selector(&context, &candidates).map_err(Error::KernelSelection)?;
-        catalog.admit(&chosen, cpu).map_err(Error::KernelSelection)?;
+        catalog
+            .admit(&chosen, cpu)
+            .map_err(Error::KernelSelection)?;
         if let Some(reason) = inadmissible(&self, &chosen) {
             return Err(Error::KernelSelection(SelectError::NotACandidate {
                 id: chosen.id().into(),

@@ -13,6 +13,7 @@ members = [
     "crates/tprims-blas",
     "crates/tprims-linalg",
     "crates/tprims-contract",
+    "crates/tprims-custom-kernel-test",
     "tensorprimitives/crates/tensorcontract",
     "tensorprimitives/crates/tensorprimitives-tapp",
     "tensorprimitives/crates/tensorprimitives-bench",

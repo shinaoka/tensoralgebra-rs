@@ -51,13 +51,7 @@ fn as_select(e: tensorcontract::Error) -> Error {
 /// stored in the plan: only the chosen trusted handle is.
 pub(crate) struct Custom<'a, T: Scalar> {
     pub catalog: &'a tprims_gemm_kernel::KernelCatalog<T>,
-    pub chooser: &'a mut dyn FnMut(
-        &tensorcontract::SelectionContext<'_>,
-        &[tensorcontract::KernelCandidate<T>],
-    ) -> std::result::Result<
-        tprims_gemm_kernel::KernelHandle<T>,
-        tprims_gemm_kernel::SelectError,
-    >,
+    pub chooser: &'a mut tensorcontract::Chooser<'a, T>,
 }
 
 /// Apply the caller's selector to a plan built from `ops` (A, B, C, D).
@@ -226,7 +220,17 @@ impl<T: Scalar> OnePlan<T> {
         // SAFETY: the caller's contract; `C` is `D`, which is this driver's
         // in-place form, and the plan was built from the same layouts.
         unsafe {
-            tensorcontract::execute_resolved(&self.plan, &self.rg, Some(&spmd), alpha, a, b, beta, d, d)
+            tensorcontract::execute_resolved(
+                &self.plan,
+                &self.rg,
+                Some(&spmd),
+                alpha,
+                a,
+                b,
+                beta,
+                d,
+                d,
+            )
         };
     }
 }

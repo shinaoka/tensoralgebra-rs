@@ -29,12 +29,13 @@ The full statement and rationale are in [design principles](design-principles.md
 | --- | --- | --- |
 | `tprims-exec` | Execution context: serial, a Rayon pool borrowed from the host (or owned, for a C host), width chosen from work, kernel-level entry, SPMD `broadcast`; `strided::run_with_exec` bridges strided-rs kernels (feature `strided`). Planned: host scheduling callbacks, scratch queries. | rayon; strided-basic (optional) |
 | `strided-traits`, `strided-view`, `strided-perm`, `strided-basic` (external, strided-rs) | Checked borrowed strided views, scalar and conjugation contracts; copy, permutation and elementwise kernels. | none in tprims |
-| `tprims-gemm-kernel` | The kernel contract: packed formats, kernel-family descriptors, CPU masks and validation, resolution with a frozen blocking policy, the partition policy, and the workspace provider a host lends through `Spmd::workspace`. No executor and no ambient state. | none in tprims |
+| `tprims-gemm-kernel` | The kernel contract: packed formats, kernel-family descriptors, CPU masks and validation, resolution with a frozen blocking policy, the partition policy, the workspace provider a host lends through `Spmd::workspace`, and caller-scoped `KernelCatalog`/`KernelHandle` for downstream kernels. No executor and no ambient state. | none in tprims |
 | `tprims-kernel-tensorcontract` (imported, tensorprimitives-rs) | Lukas Devos's scalar, AVX2, AVX-512 and NEON register-tile microkernels, with and without complex schemes, behind the family contract. | `tprims-gemm-kernel` |
 | `tprims-kernel-gemm`, `tprims-kernel-pgx86` | Call-only adapters: the `gemm-f64`/`gemm-f32` microkernels as direct-update families, and `private-gemm-x86` as a matrix engine. Both behind `tprims-blas` features, pinned exactly because the upstream entry points are undocumented. | `tprims-gemm-kernel` |
 | `tensorcontract` (imported, tensorprimitives-rs) | The direct contraction driver: packing traversal, the loop nest, write-back, and the `Spmd` seam it borrows a workspace through. It consumes resolved families rather than choosing kernels. | `tprims-gemm-kernel` |
 | `tprims-blas` | GEMM and batched GEMM with three engines (faer, `private-gemm-x86`, the packed driver) and a selectable kernel family, `SelectedGemm` reporting what ran, TRSM; later SYRK/HERK and further BLAS-like operations. | faer, `tensorcontract`, `tprims-gemm-kernel`, `strided-view`, `tprims-exec` |
 | `tprims-linalg` | Dense linear algebra: factorizations, direct solves, least squares, symmetric/Hermitian and nonsymmetric eigendecomposition, factor objects, errors; `batched` module. faer per item. | faer, `tprims-blas`, `strided-view`, `tprims-exec`; `tensorcontract` only for the scalar trait that `tprims_blas::Scalar` extends, which now comes from `tprims-gemm-kernel` |
+| `tprims-custom-kernel-test` | Test-only downstream stand-in: its own tiny packed kernels, admitted through a `KernelCatalog` and selected with a captured selector, without editing tprims or calling the global `register`. Not part of the stack; `publish = false`. | `tprims-gemm-kernel` (dev: `tprims-blas`, `tprims-contract`, `tprims-exec`, `tensorcontract`) |
 | `tprims-contract` | Binary contraction with free, contracted and batch indices (`dot_general` semantics): one plan API over two strategies, permute plus batched GEMM and TBLIS-style direct packing with bounded scatter. Thin permute / add wrappers. Needs matrix GEMM only; it does not depend on `tprims-linalg`. | `tprims-blas`, `tensorcontract`, `strided-basic`, `strided-view`, `tprims-exec` |
 
 The name `contract` was chosen over `tensordot` because NumPy, PyTorch and JAX `tensordot` has no batch indices; the operation here does, as in cuTENSOR's `cutensorContract`.
@@ -239,6 +240,64 @@ a page-aligned shared B panel, scatter vectors and barriers), which one pool or
 plan owns and every operation on it reuses. A host that does not gets per-call
 buffers. Nothing is process-global, and a lease returns to the owner that issued
 it.
+
+### Custom kernels with a safe selector
+
+A downstream crate can supply its own packed microkernels *and* its own
+selection policy without editing tprims or touching the process defaults.
+
+1. **Admit once, `unsafe`.** `KernelCatalog::<T>::from_static_families(&'static
+   [&'static KernelFamily<..>])` is the single place the provider promises that
+   its code is correct: the declared panel footprints, complete tile overwrite
+   or the direct-update ABI, a truthful ISA mask, immutable state, concurrent
+   calls, and no panic or unwind (a worker lost inside a barrier-bearing region
+   deadlocks its team). It validates geometry, formats, dtype and id
+   uniqueness, then mints `KernelHandle<T>` values. The catalog is an immutable
+   caller-owned list, not a second registry; `KernelCatalog::builtin()` /
+   `tprims_blas::builtin_catalog` give a safe snapshot of the built-in families
+   and `union` combines catalogs explicitly, so a built-in fallback is a
+   handle the selector chooses, never an implicit default.
+2. **Select, safe.** `KernelHandle<T>` has private fields, is typed by the
+   storage dtype (so `c64` is not `f64`), carries its catalog's identity and
+   exposes read-only metadata only. A selector is
+   `FnOnce(&SelectionContext, &[KernelCandidate<T>]) -> Result<KernelHandle<T>, SelectError>`
+   and need not be `Send`, `Sync` or `'static`. The context is problem metadata
+   (dtype, folded M/N/K and batch, original extents/strides/labels, conjugation,
+   requested complex method, thread budget, CPU mask); each candidate carries
+   the facts that depend on *its* geometry — whether the driver swaps the
+   operands for its `MR`, whether it reads B in place, and the active width —
+   computed with the driver's own rules. Pointer-dependent facts (whether `C`
+   and `D` are one buffer, bounds) stay execution guards.
+3. **Resolve once, execute frozen.** The selection runs in planning
+   (`Plan::with_selector` in `tensorcontract`; `gemm_with_selector`,
+   `gemm_batched_with_selector`, `gemm_grouped_with_selector` in `tprims-blas`;
+   `ContractPlan::new_with_selector` in `tprims-contract`), on the caller,
+   outside registry/workspace locks and worker broadcasts, and before any
+   empty-problem shortcut. A homogeneous batch selects once; a grouped call
+   selects once per non-empty group plan; execution never calls the selector or
+   looks anything up. The plan keeps the chosen `'static` descriptor, so the
+   selector and catalog may be dropped. Membership and admissibility (CPU mask,
+   conjugation, complex method) are checked after the callback; there is no
+   implicit fallback on `Err`.
+4. **Refuse, do not ignore.** A selector needs the packed driver. An explicit
+   `Faer`/`PrivateGemmX86` engine, a forced `KernelChoice::Id`, a
+   `Strategy::PermuteGemm`, and an all-batch problem under `Strategy::Auto` are
+   typed errors; `EngineChoice::Auto` is overridden by the explicit selector.
+   `GemmConfig` keeps its value semantics: every selector entry point is a
+   separate function.
+
+Errors are `SelectError` variants (`DuplicateId`, `ForeignHandle`,
+`NotACandidate`, `NoCandidates`, `SelectorFailed`, plus the existing
+`CpuUnsupported`, `DtypeMismatch`, `Incompatible`, `EngineUnsupported`); the
+contract crate preserves the typed source in `Error::Select`. `SelectedGemm`
+reports the chosen family, its geometry and its provenance (`origin`);
+downstream kernels report `Origin::External { crate_name, license }`.
+
+The issue's paired 1T/4T tensor-sized benchmark protocol (with A/A noise runs)
+was **deferred** for this slice, by maintainer decision; correctness, compile-fail,
+selector-call-count, steady-state-allocation and concurrency tests are in
+`crates/tprims-custom-kernel-test`. Nothing here claims that a custom selector
+speeds anything up.
 
 ## Two contraction strategies
 

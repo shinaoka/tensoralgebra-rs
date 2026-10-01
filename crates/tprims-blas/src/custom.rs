@@ -17,8 +17,8 @@
 //! The performance protocol of the issue (paired 1T/4T tensor-sized runs with
 //! A/A noise) was deferred; nothing here claims a speed-up.
 use strided_view::StridedViewMut;
-use tprims_exec::Exec;
 pub use tensorcontract::{KernelCandidate, OperandMeta, SelectionContext};
+use tprims_exec::Exec;
 pub use tprims_gemm_kernel::{KernelCatalog, KernelHandle, SelectError};
 
 use crate::batched::{batched_impl, BatchIn, BatchStrategy};
@@ -90,7 +90,7 @@ fn check_config(cfg: &GemmConfig) -> Result<()> {
 ///
 /// # Examples
 /// ```
-/// use strided_view::StridedViewMut;
+/// use strided_view::{StridedView, StridedViewMut};
 /// use tprims_blas::{builtin_catalog, gemm_with_selector, GemmConfig, MatIn};
 /// let (a, b) = ([1.0, 2.0, 3.0, 4.0], [1.0, 0.0, 0.0, 1.0]);
 /// let mut c = [0.0; 4];
@@ -120,10 +120,10 @@ pub fn gemm_with_selector<T, F>(
 ) -> Result<SelectedGemm>
 where
     T: Scalar,
-    F: FnOnce(&SelectionContext<'_>, &[KernelCandidate<T>]) -> core::result::Result<
-        KernelHandle<T>,
-        SelectError,
-    >,
+    F: FnOnce(
+        &SelectionContext<'_>,
+        &[KernelCandidate<T>],
+    ) -> core::result::Result<KernelHandle<T>, SelectError>,
 {
     check_config(cfg)?;
     let s = crate::gemm::check_gemm(
@@ -198,10 +198,10 @@ pub fn gemm_batched_with_selector<T, F>(
 ) -> Result<SelectedGemm>
 where
     T: Scalar,
-    F: FnOnce(&SelectionContext<'_>, &[KernelCandidate<T>]) -> core::result::Result<
-        KernelHandle<T>,
-        SelectError,
-    >,
+    F: FnOnce(
+        &SelectionContext<'_>,
+        &[KernelCandidate<T>],
+    ) -> core::result::Result<KernelHandle<T>, SelectError>,
 {
     check_config(cfg)?;
     let mut selector = Some(selector);
@@ -254,10 +254,10 @@ pub fn gemm_grouped_with_selector<T, F>(
 ) -> Result<SelectedGemm>
 where
     T: Scalar,
-    F: FnMut(&SelectionContext<'_>, &[KernelCandidate<T>]) -> core::result::Result<
-        KernelHandle<T>,
-        SelectError,
-    >,
+    F: FnMut(
+        &SelectionContext<'_>,
+        &[KernelCandidate<T>],
+    ) -> core::result::Result<KernelHandle<T>, SelectError>,
 {
     check_config(cfg)?;
     crate::grouped::check_jobs(a, b, c, jobs)?;

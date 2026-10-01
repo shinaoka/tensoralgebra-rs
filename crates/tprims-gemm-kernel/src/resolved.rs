@@ -371,7 +371,7 @@ impl<R: Real> ResolvedGemm<R> {
             }
         };
         let family = Registry::select::<T>(id, cpu)?;
-        Self::bind_family::<T>(family, effective_threads)
+        Self::bind_family(family, effective_threads)
     }
 
     /// Bind a trusted handle's family for the storage dtype `T`.
@@ -417,7 +417,7 @@ impl<R: Real> ResolvedGemm<R> {
                 reason: "zero effective thread width",
             });
         }
-        let mut rg = Self::bind_family::<T>(family, effective_threads)?;
+        let mut rg = Self::bind_family(family, effective_threads)?;
         rg.partition = partition;
         rg.opts = opts;
         Ok(rg)
@@ -425,7 +425,7 @@ impl<R: Real> ResolvedGemm<R> {
 
     /// Geometry, formats and frozen blocking policy for an already trusted,
     /// already CPU-checked family. Shared by id and handle resolution.
-    fn bind_family<T: Families<Real = R>>(
+    fn bind_family(
         family: &'static KernelFamily<R>,
         effective_threads: usize,
     ) -> Result<Self, SelectError> {

@@ -74,13 +74,7 @@ fn op(o: Operand<'_>, c: Conj) -> Operand<'_> {
 /// the plan will run at. The selector is called at most once and not kept.
 pub(crate) struct Custom<'a, T: Scalar> {
     pub catalog: &'a tprims_gemm_kernel::KernelCatalog<T>,
-    pub chooser: &'a mut dyn FnMut(
-        &tensorcontract::SelectionContext<'_>,
-        &[tensorcontract::KernelCandidate<T>],
-    ) -> std::result::Result<
-        tprims_gemm_kernel::KernelHandle<T>,
-        tprims_gemm_kernel::SelectError,
-    >,
+    pub chooser: &'a mut tensorcontract::Chooser<'a, T>,
     pub threads: usize,
     pub method: Option<tprims_gemm_kernel::Method>,
 }

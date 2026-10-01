@@ -16,7 +16,7 @@
 
 use crate::{
     CpuFeatures, Families, Isa, KernelFamily, KernelImpl, Origin, Registry, SelectError,
-    {Blocksizes, BAccess, CPref, CUpdate, Caps, ComplexScheme},
+    {BAccess, Blocksizes, CPref, CUpdate, Caps, ComplexScheme},
 };
 use core::marker::PhantomData;
 use core::sync::atomic::{AtomicU64, Ordering};
@@ -34,12 +34,12 @@ static NEXT_CATALOG: AtomicU64 = AtomicU64::new(1);
 /// [`KernelCatalog::builtin`] and the candidate list a selector receives.
 ///
 /// A handle cannot be built from its parts in safe code:
-/// ```compile_fail
+/// ```compile_fail,E0451
 /// use tprims_gemm_kernel::KernelHandle;
 /// let h: KernelHandle<f64> = KernelHandle { family: todo!(), catalog: 0, _t: todo!() };
 /// ```
 /// and it exposes no mutable geometry:
-/// ```compile_fail
+/// ```compile_fail,E0616
 /// fn poke(mut h: tprims_gemm_kernel::KernelHandle<f64>) { h.family = todo!(); }
 /// ```
 pub struct KernelHandle<T: Families> {
@@ -162,7 +162,10 @@ impl<T: Families> core::fmt::Debug for KernelCatalog<T> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("KernelCatalog")
             .field("dtype", &T::DTYPE)
-            .field("ids", &self.families.iter().map(|k| k.id).collect::<Vec<_>>())
+            .field(
+                "ids",
+                &self.families.iter().map(|k| k.id).collect::<Vec<_>>(),
+            )
             .finish()
     }
 }
@@ -184,12 +187,10 @@ impl<T: Families> KernelCatalog<T> {
                 dtype: T::DTYPE,
             });
         }
-        family
-            .validate()
-            .map_err(|e| SelectError::Incompatible {
-                id: family.id.into(),
-                reason: e.reason,
-            })?;
+        family.validate().map_err(|e| SelectError::Incompatible {
+            id: family.id.into(),
+            reason: e.reason,
+        })?;
         if family.driver_family().is_none() {
             return Err(SelectError::Incompatible {
                 id: family.id.into(),
@@ -305,7 +306,11 @@ impl<T: Families> KernelCatalog<T> {
     }
     /// Whether `handle` was minted by this catalog.
     pub fn contains(&self, handle: &KernelHandle<T>) -> bool {
-        handle.catalog == self.id && self.families.iter().any(|f| core::ptr::eq(*f, handle.family))
+        handle.catalog == self.id
+            && self
+                .families
+                .iter()
+                .any(|f| core::ptr::eq(*f, handle.family))
     }
     /// Metadata of every admitted family, including provenance.
     pub fn list(&self) -> Vec<crate::KernelInfo> {
@@ -332,11 +337,7 @@ impl<T: Families> KernelCatalog<T> {
     /// # Errors
     /// `ForeignHandle` for a handle of another catalog, `CpuUnsupported` when
     /// the ISA mask is not met.
-    pub fn admit(
-        &self,
-        handle: &KernelHandle<T>,
-        cpu: CpuFeatures,
-    ) -> Result<(), SelectError> {
+    pub fn admit(&self, handle: &KernelHandle<T>, cpu: CpuFeatures) -> Result<(), SelectError> {
         if !self.contains(handle) {
             return Err(SelectError::ForeignHandle {
                 id: handle.id().into(),

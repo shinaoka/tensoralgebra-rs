@@ -95,7 +95,10 @@ fn admission_rejects_duplicates_bad_geometry_and_wrong_dtype() {
     // A real family cannot be admitted for complex storage.
     // SAFETY: as above.
     let err = unsafe { KernelCatalog::<C64>::from_static_families(&OK) };
-    assert!(matches!(err, Err(SelectError::DtypeMismatch { dtype: "c64", .. })));
+    assert!(matches!(
+        err,
+        Err(SelectError::DtypeMismatch { dtype: "c64", .. })
+    ));
 }
 
 #[test]
@@ -153,7 +156,10 @@ fn resolving_a_handle_matches_resolving_the_same_family_by_geometry() {
         PartitionOpts::default(),
     )
     .unwrap();
-    assert_eq!((rg.family().id, rg.mr, rg.nr, rg.effective_threads), ("own.f64.2x2", 2, 2, 3));
+    assert_eq!(
+        (rg.family().id, rg.mr, rg.nr, rg.effective_threads),
+        ("own.f64.2x2", 2, 2, 3)
+    );
     assert_eq!(rg.mc % 2, 0);
     assert!(matches!(
         ResolvedGemm::<f64>::resolve_handle::<f64>(
