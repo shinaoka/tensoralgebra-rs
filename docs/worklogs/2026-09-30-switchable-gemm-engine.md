@@ -296,6 +296,20 @@ the chosen domain slightly busy, so the 4T runs exhausted their retries
   summed medians: `pg_exec` **0.973**, `tblis_exec` **0.926**; `pg_plan` 1.034
   and `tblis_plan` 1.037 (35 µs against tens of ms of execution), whose worst
   per-case ratio is 3.15.
-* Not measured: 4T and 8T, the `blas` corpus (faer and batched TBLIS rows), the
-  A/A noise floor, and the default `BENCH_RUNS=50`. No gate verdict is claimed
-  from the partial run.
+* `contract` on a **reduced corpus** (entries 0, 8, 16, 24, 32, 40, 48, 56 of
+  `tenferro-p1.json`, written to
+  `.artifacts/gemm-engine-spec/task12/perf/tenferro-p1-subset.json`) at **4T**,
+  `BENCH_RUNS=5`, five samples per side on cores 24–31, each run
+  pinning-verified: `tblis_exec` new/old = **0.886** with per-run sums
+  0.271–0.276 against 0.305–0.309, i.e. consistently ~11% faster.
+  `pg_exec` came out at 1.066, but the *old* side's own runs span
+  0.908–1.196 (27%), a spread far larger than the difference, so the permute +
+  GEMM row is **not resolved** on this host; the changes add no per-execute work
+  there (one `GemmConfig` clone at plan creation and two cheap checks per call).
+  Planning rows: `pg_plan` 1.023, `tblis_plan` 1.049, worst case 2.3 at 4–20 µs.
+* The A/A spreads are the reason single-run comparisons at 4T are not
+  decisive: new/new summed 1.001 and 0.991 (exec rows) while old/old summed
+  1.268 for one pair.
+* Not measured: 8T, the `blas` corpus (faer and batched TBLIS rows), the default
+  `BENCH_RUNS=50`, and a properly interleaved ABBA pair. No gate verdict is
+  claimed from the partial runs.

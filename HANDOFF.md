@@ -178,7 +178,14 @@ pre-existing and unrelated.)
    ```
 
    with an A/A repeat of each side for the noise floor, and apply the 5%
-   per-group rule to the calls-weighted times. The baseline binaries are built
+   per-group rule to the calls-weighted times.
+
+   Measured so far (details in
+   `docs/worklogs/2026-09-30-switchable-gemm-engine.md`): the packed driver is
+   consistently faster — `tblis_exec` new/old 0.926 on the full corpus at 1T and
+   0.886 on an 8-case subset at 4T — while `pg_exec` (permute + GEMM, faer) is
+   not resolved here: its new/old ratio is 0.973 at 1T and 1.066 at 4T, and the
+   baseline's own run-to-run spread reaches 27% on this host. The baseline binaries are built
    from the merge-base `690794c` (a worktree still exists at
    `/tmp/tprims-baseline`, target `/tmp/tprims-baseline-target`).
 
