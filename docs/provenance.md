@@ -46,6 +46,18 @@ updates these moved files: upstream changes must be reconciled explicitly.
 The kernel provider's path-only tensorcontract dev-dependency preserves
 its existing custom-scalar contraction doctest, not a runtime dependency.
 
+### Downstream kernels (issue #28)
+
+A downstream crate that supplies its own kernels through a caller-scoped
+`KernelCatalog` reports itself as `Origin::External { crate_name, license }`.
+tprims prints those strings in diagnostics (`SelectedGemm::origin`,
+`list_kernels`/`KernelCatalog::list`) and never labels them `Portable` or
+`Tensorcontract`; it does not vouch for their license or correctness, which
+is the provider's `unsafe` promise at admission. `tprims-custom-kernel-test`
+is the test stand-in: its kernels are new MIT OR Apache-2.0 code written for
+the test, and its complex family calls the project's own public reference loop
+(`portable::cplx_tile`), so no upstream kernel body is copied.
+
 ## Three different uses of prior work
 
 1. **Published algorithm or documented API:** Implement independently from a paper or public operation contract. Record the paper and the important implementation choices in the module and research notes. The algorithm itself does not bring the upstream software license into independently written code. This idea/expression distinction is stated by the [U.S. Copyright Office](https://www.copyright.gov/register/tx-programs.html); local law and any patent claims are separate questions.

@@ -89,6 +89,10 @@ pub struct SelectedGemm {
     pub partition: tprims_gemm_kernel::PartitionPolicy,
     /// The report the batched strategies already produced, when there is one.
     pub batched: Option<crate::Selected>,
+    /// The resolved family's provenance (provider crate and license), for
+    /// [`Engine::Packed`]. A downstream kernel reports
+    /// [`Origin::External`](tprims_gemm_kernel::Origin::External).
+    pub origin: Option<tprims_gemm_kernel::Origin>,
 }
 
 impl SelectedGemm {
@@ -101,7 +105,7 @@ impl SelectedGemm {
     /// let s = SelectedGemm {
     ///     engine: Engine::Faer, family_id: None, complex: None,
     ///     mr: 0, nr: 0, mc: 0, nc: 0, kc: 0,
-    ///     partition: PartitionPolicy::default(), batched: None,
+    ///     partition: PartitionPolicy::default(), batched: None, origin: None,
     /// };
     /// assert!(s.to_json().starts_with("{\"engine\":\"Faer\""));
     /// ```
@@ -117,9 +121,17 @@ impl SelectedGemm {
             ),
             None => "null".to_string(),
         };
+        let provider = match self.origin {
+            Some(o) => format!(
+                "{{\"crate\":\"{}\",\"license\":\"{}\"}}",
+                o.crate_name(),
+                o.license()
+            ),
+            None => "null".to_string(),
+        };
         format!(
             "{{\"engine\":\"{:?}\",\"family_id\":{family},\"complex\":{complex},\
-             \"mr\":{},\"nr\":{},\"mc\":{},\"nc\":{},\"kc\":{}}}",
+             \"mr\":{},\"nr\":{},\"mc\":{},\"nc\":{},\"kc\":{},\"provider\":{provider}}}",
             self.engine, self.mr, self.nr, self.mc, self.nc, self.kc
         )
     }
@@ -331,6 +343,7 @@ pub fn gemm_with<T: Scalar>(
             kc: 0,
             partition: tprims_gemm_kernel::PartitionPolicy::default(),
             batched: None,
+            origin: None,
         });
     }
     match engine {
@@ -372,6 +385,7 @@ pub fn gemm_with<T: Scalar>(
                 kc: 0,
                 partition: tprims_gemm_kernel::PartitionPolicy::default(),
                 batched: None,
+                origin: None,
             })
         }
         Engine::PrivateGemmX86 => {
@@ -387,6 +401,7 @@ pub fn gemm_with<T: Scalar>(
                 kc: 0,
                 partition: tprims_gemm_kernel::PartitionPolicy::default(),
                 batched: None,
+                origin: None,
             })
         }
         // SAFETY: the shapes and strides were validated against the views,
@@ -407,6 +422,8 @@ pub fn gemm_with<T: Scalar>(
                 b.view.strides(),
                 beta,
                 c,
+                None,
+                true,
             )
         },
     }

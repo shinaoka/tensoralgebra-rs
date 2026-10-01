@@ -35,7 +35,7 @@ pub struct GroupedJob {
 }
 
 impl GroupedJob {
-    fn shape(&self) -> Result<GemmShape> {
+    pub(crate) fn shape(&self) -> Result<GemmShape> {
         let mat = |rows: usize, cols: usize| Mat2 {
             rows,
             cols,
@@ -66,7 +66,7 @@ fn block_fits(what: &str, offset: usize, rows: usize, cols: usize, len: usize) -
 
 /// Every job's blocks lie inside their buffers and the non-empty output
 /// blocks are pairwise disjoint.
-fn check_jobs<T>(a: &[T], b: &[T], c: &[T], jobs: &[GroupedJob]) -> Result<()> {
+pub(crate) fn check_jobs<T>(a: &[T], b: &[T], c: &[T], jobs: &[GroupedJob]) -> Result<()> {
     let mut outs = Vec::with_capacity(jobs.len());
     for j in jobs {
         j.shape()?;
@@ -186,6 +186,7 @@ pub fn gemm_grouped_with<T: Scalar>(
         kc: 0,
         partition: tprims_gemm_kernel::PartitionPolicy::default(),
         batched: Some(selected),
+        origin: None,
     };
     check_jobs(a, b, c, jobs)?;
     let live: Vec<(GroupedJob, GemmShape, usize)> = jobs
