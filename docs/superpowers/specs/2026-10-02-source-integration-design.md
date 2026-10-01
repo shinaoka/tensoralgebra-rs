@@ -1,6 +1,6 @@
 # Source integration and clean-slate crate redesign
 
-Status: **draft for review**. Date: 2026-10-02. Baseline: `origin/main` `fbc83f5`.
+Status: **accepted** (2026-10-02, after the Fable 5.1 review). Date: 2026-10-02. Baseline: `origin/main` `fbc83f5`.
 
 Audited against issue [#37](https://github.com/tensor4all/tprims-rs/issues/37)
 and the baseline source on 2026-10-02; audit record:

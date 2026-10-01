@@ -2,7 +2,7 @@
 
 Dated 2026-09-29. A source link supports the observation; the proposed response remains a hypothesis until an experiment records evidence. Structural decisions (naming, packaging, ABI shape) are marked **Decided** when the maintainer has chosen them; they can still be revisited before the first release.
 
-## 2026-10-02 source integration draft ([#37](https://github.com/tensor4all/tprims-rs/issues/37))
+## 2026-10-02 source integration ([#37](https://github.com/tensor4all/tprims-rs/issues/37))
 
 This is a future design, not the current public surface. The
 [audited Phase 1 spec](superpowers/specs/2026-10-02-source-integration-design.md)

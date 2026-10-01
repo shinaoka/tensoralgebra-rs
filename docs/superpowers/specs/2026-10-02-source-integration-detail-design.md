@@ -1,6 +1,6 @@
 # Source integration: detailed Phase 1 design
 
-Status: **draft for review**, 2026-10-02. Baseline: `fbc83f5`.
+Status: **accepted**, 2026-10-02 (after the Fable 5.1 review). Baseline: `fbc83f5`.
 Tracking issue: [#37](https://github.com/tensor4all/tprims-rs/issues/37).
 The [overview spec](2026-10-02-source-integration-design.md) owns scope,
 maintainer decisions D1–D10 and acceptance. This document fixes the concrete
