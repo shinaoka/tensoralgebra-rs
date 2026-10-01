@@ -1,5 +1,5 @@
 #define _POSIX_C_SOURCE 199309L
-/* Per-call cost through the C ABI: empty call, 8x8 GEMM, a 2x2x2 contraction
+/* Per-call cost through the C ABI: empty call, a 2x2x2 contraction
    through TAPP (TAPP_execute_product), serial and on a 4-thread pool created
    from C. Prints
    case,variant,threads,median_ns,samples (per call; each sample is the mean
@@ -53,21 +53,6 @@ int main(int argc, char **argv) {
   }
   qsort(s, SAMPLES, sizeof(double), cmp);
   printf("empty_call,c,%d,%.1f,%d\n", threads, s[SAMPLES / 2], SAMPLES);
-
-  double a[64], b[64], c[64];
-  for (int i = 0; i < 64; i++) { a[i] = (i % 7) - 3; b[i] = (i % 5) * 0.5; c[i] = 0; }
-  int64_t sh[2] = {8, 8}, st[2] = {1, 8};
-  DLTensor ta = f64t(a, 2, sh, st), tb = f64t(b, 2, sh, st), tc = f64t(c, 2, sh, st);
-  double one = 1, zero = 0;
-  for (int k = 0; k < SAMPLES; k++) {
-    double t0 = now_ns();
-    for (int i = 0; i < INNER; i++)
-      if (tprims_blas_gemm(ex, &one, tprims_tensor_borrow_raw(&ta, 0), 0, tprims_tensor_borrow_raw(&tb, 0), 0, &zero,
-                           tprims_tensor_borrow_raw(&tc, 0)) != TPRIMS_OK) { fprintf(stderr, "%s\n", tprims_last_error()); return 1; }
-    s[k] = (now_ns() - t0) / INNER;
-  }
-  qsort(s, SAMPLES, sizeof(double), cmp);
-  printf("gemm_8,c,%d,%.1f,%d\n", threads, s[SAMPLES / 2], SAMPLES);
 
   int64_t s3[3] = {2, 2, 2}, st3[3] = {1, 2, 4}, s4[4] = {2, 2, 2, 2}, st4[4] = {1, 2, 4, 8};
   double x[8], y[8], z[16];

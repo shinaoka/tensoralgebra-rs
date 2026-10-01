@@ -3,5 +3,4 @@
 #define TPRIMS_H
 #include "tprims/core.h"
 #include "tprims/tapp_ext.h"
-#include "tprims/blas.h"
 #endif

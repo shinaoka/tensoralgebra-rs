@@ -76,22 +76,21 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       # The C test (tests/c_abi.rs) compiles and runs C and C++ programs
       # against the built libtprims.so, one of them against the pinned upstream
-      # TAPP headers alone; a blas-only bundle must not export the TAPP
-      # contraction API (the executor symbols live in the core and stay).
+      # TAPP headers alone.
       - run: cargo build -p tprims-bundle
       - run: cargo test -p tprims-bundle
       # Exported symbols: ELF `nm -D` on Linux; Mach-O `nm -gU` on macOS, where
       # C names carry a leading underscore (` _name`).
       - run: |
-          cargo build -p tprims-bundle --no-default-features --features blas
           if [ "$RUNNER_OS" = macOS ]; then
             syms=$(nm -gU target/debug/libtprims.dylib | sed 's/ _/ /')
           else
             syms=$(nm -D --defined-only target/debug/libtprims.so)
           fi
-          echo "$syms" | grep -q ' tprims_blas_gemm$'
+          echo "$syms" | grep -q ' tprims_abi_version$'
           echo "$syms" | grep -q ' TAPP_destroy_executor$'
-          ! echo "$syms" | grep -q ' TAPP_create_tensor_product$'
+          echo "$syms" | grep -q ' TAPP_create_tensor_product$'
+          ! echo "$syms" | grep -q ' tprims_blas_'
 
   msrv:
     runs-on: ubuntu-latest

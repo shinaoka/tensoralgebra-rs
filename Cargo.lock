@@ -1105,20 +1105,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "tprims-blas-capi"
-version = "0.1.0"
-dependencies = [
- "num-complex",
- "tprims-blas",
- "tprims-core",
-]
-
-[[package]]
 name = "tprims-bundle"
 version = "0.1.0"
 dependencies = [
  "tensorprimitives-tapp",
- "tprims-blas-capi",
  "tprims-core",
 ]
 

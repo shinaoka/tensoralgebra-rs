@@ -5,7 +5,7 @@ use std::time::Instant;
 
 use strided_view::{StridedView, StridedViewMut};
 use tprims_bench::threads::BenchThreads;
-use tprims_blas::{gemm, Conj, MatIn};
+use tprims_blas::Conj;
 use tprims_contract::{ContractPlan, DotGeneral, Flags, Strategy};
 
 const INNER: usize = 1000;
@@ -35,16 +35,6 @@ fn main() {
             black_box(tprims_core::ABI_VERSION);
         });
         println!("empty_call,rust,{t},{ns:.1},{SAMPLES}");
-        let a: Vec<f64> = (0..64).map(|i| (i % 7) as f64 - 3.0).collect();
-        let b: Vec<f64> = (0..64).map(|i| (i % 5) as f64 * 0.5).collect();
-        let mut c = vec![0.0f64; 64];
-        let av = StridedView::new(&a, &[8, 8], &[1, 8], 0).expect("a");
-        let bv = StridedView::new(&b, &[8, 8], &[1, 8], 0).expect("b");
-        let ns = median(|| {
-            let mut cv = StridedViewMut::new(&mut c, &[8, 8], &[1, 8], 0).expect("c");
-            gemm(exec, 1.0, MatIn::new(&av), MatIn::new(&bv), 0.0, &mut cv).expect("gemm");
-        });
-        println!("gemm_8,rust,{t},{ns:.1},{SAMPLES}");
         let x: Vec<f64> = (0..8).map(|i| i as f64).collect();
         let y: Vec<f64> = (0..8).map(|i| 8.0 - i as f64).collect();
         let mut z = vec![0.0f64; 16];

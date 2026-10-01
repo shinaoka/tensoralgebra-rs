@@ -79,10 +79,10 @@ fn tprims_symbols(nm_output: &str, macho: bool) -> Vec<String> {
 
 #[test]
 fn nm_output_is_parsed_for_elf_and_macho() {
-    let elf = "0000000000012340 T tprims_abi_version\n                 U malloc\n0000000000012350 T tprims_blas_gemm\n";
+    let elf = "0000000000012340 T tprims_abi_version\n                 U malloc\n0000000000012350 T tprims_has_part\n";
     assert_eq!(
         tprims_symbols(elf, false),
-        ["tprims_abi_version", "tprims_blas_gemm"]
+        ["tprims_abi_version", "tprims_has_part"]
     );
     let macho = "0000000000003f10 T _tprims_abi_version\n0000000000003f20 T _tprims_has_part\n0000000000003f30 T _other\n";
     assert_eq!(
@@ -125,6 +125,8 @@ fn only_tprims_symbols_of_the_selected_parts_are_exported() {
         "tprims_contract_plan_create",
         "tprims_contract_plan_execute",
         "tprims_contract_plan_destroy",
+        "tprims_blas_gemm",
+        "tprims_blas_gemm_batched",
     ] {
         assert!(
             !syms.iter().any(|s| s == gone),
@@ -141,7 +143,6 @@ fn only_tprims_symbols_of_the_selected_parts_are_exported() {
         "TAPP_create_tensor_product",
         "TAPP_execute_product",
         "TAPP_execute_batched_product",
-        "tprims_blas_gemm",
         "tprims_has_part",
     ] {
         assert!(

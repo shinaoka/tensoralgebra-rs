@@ -2,7 +2,7 @@
 
 Per-call cost of `libtprims` from C against the same calls made directly
 from Rust (`tprims-bench` binary `capi_rust`): an empty call
-(`tprims_abi_version`), an 8x8 f64 GEMM, and a 2x2x2 contraction through a
+(`tprims_abi_version`) and a 2x2x2 contraction through a
 prebuilt TAPP product (`TAPP_execute_product`), each on an explicit serial
 executor (`nthreads == 1`: no workers) and on a 4-thread pool. Each sample
 is the mean of 1000 calls; the median of 101 samples is reported.
@@ -12,6 +12,10 @@ benchmarks/c/run.sh 57 57-60 /tmp/capi   # 1T cores, 4T cores, output
 ```
 
 ## Observation, 2026-09-30 (single run, not a claim; of the removed API)
+
+The 8x8 GEMM row measured `tprims_blas_gemm`, which was removed with
+`tprims-blas-capi` ([#37](https://github.com/tensor4all/tprims-rs/issues/37)); the
+benchmark no longer has that case.
 
 This table was measured with the previous C ABI (`tprims_exec*`,
 `tprims_contract_plan_execute`). `bench.c` now drives TAPP and has been

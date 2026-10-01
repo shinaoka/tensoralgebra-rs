@@ -12,13 +12,11 @@ name = "tprims"
 crate-type = ["cdylib", "staticlib", "rlib"]
 
 [features]
-default = ["blas", "tapp"]
-blas = ["dep:tprims-blas-capi"]
+default = ["tapp"]
 tapp = ["dep:tensorprimitives-tapp"]
 
 [dependencies]
 tprims-core = { workspace = true }
-tprims-blas-capi = { workspace = true, optional = true }
 tensorprimitives-tapp = { workspace = true, optional = true }
 
 [lints]
