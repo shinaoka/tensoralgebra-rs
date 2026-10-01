@@ -731,12 +731,12 @@ fn batched_product_accepts_a_null_c_array() {
 
 // ------------------------------------------------------------------ precision
 
-/// The `TAPP_prectype` argument is accepted and ignored: the coverage table
-/// says mixed precision is "accepted, computed at storage precision", so every
-/// value — including one that is not an enumerator at all — must give the same
-/// answer as `TAPP_DEFAULT_PREC`.
+/// The `TAPP_prectype` argument is honoured, not ignored: `TAPP_DEFAULT_PREC` and
+/// the precision of the storage type give the same answer, and every other value
+/// — the other precision, a low-precision enumerator, or one that is not an
+/// enumerator at all — is refused when the plan is created.
 #[test]
-fn prec_is_accepted_and_ignored() {
+fn prec_is_checked_against_the_storage_precision() {
     fn one<T: Dtype>() {
         let a = CTensor::new(&[4, 3], &[1, 4], &[I, K]);
         let b = CTensor::new(&[3, 5], &[1, 3], &[K, J]);
@@ -744,16 +744,25 @@ fn prec_is_accepted_and_ignored() {
         let av = seq::<T>(a.storage(), 251);
         let bv = seq::<T>(b.storage(), 252);
         let base = Case::plain(a, &av, b, &bv, d).check_zeroed();
-        for prec in [
-            TAPP_DEFAULT_PREC,
-            TAPP_F32F32_ACCUM_F32,
-            TAPP_F64F64_ACCUM_F64,
-            999,
-        ] {
-            let out = Case::plain(a, &av, b, &bv, d)
-                .with_prec(prec)
-                .check_zeroed();
-            assert_exact::<T>(&out, &base);
+        let single = matches!(T::TAG, TAPP_F32 | TAPP_C32);
+        let (matching, other) = if single {
+            (TAPP_F32F32_ACCUM_F32, TAPP_F64F64_ACCUM_F64)
+        } else {
+            (TAPP_F64F64_ACCUM_F64, TAPP_F32F32_ACCUM_F32)
+        };
+        let out = Case::plain(a, &av, b, &bv, d)
+            .with_prec(matching)
+            .check_zeroed();
+        assert_exact::<T>(&out, &base);
+        for prec in [other, 3, 5, 6, 999, -2] {
+            unsafe {
+                let handle = create_handle();
+                let (e, _) = Case::plain(a, &av, b, &bv, d)
+                    .with_prec(prec)
+                    .create_plan(handle);
+                assert_eq!(e, TAPP_ERROR_UNSUPPORTED, "prec {prec} for {}", T::NAME);
+                assert_eq!(TAPP_destroy_handle(handle), TAPP_SUCCESS);
+            }
         }
     }
     every_dtype!(one);

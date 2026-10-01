@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 199309L
-/* Per-call cost through the C ABI: empty call, 8x8 GEMM, 2x2x2 contraction,
-   serial and on a 4-thread pool created from C. Prints
+/* Per-call cost through the C ABI: empty call, 8x8 GEMM, a 2x2x2 contraction
+   through TAPP (TAPP_execute_product), serial and on a 4-thread pool created
+   from C. Prints
    case,variant,threads,median_ns,samples (per call; each sample is the mean
    of INNER calls). Pair with the Rust `capi_rust` bench binary. */
 #include <stdio.h>
@@ -36,9 +37,12 @@ static volatile uint32_t sink;
 
 int main(int argc, char **argv) {
   int threads = argc > 1 ? atoi(argv[1]) : 1;
-  tprims_exec *ex = threads > 1 ? tprims_exec_rayon_create((size_t)threads, NULL) : tprims_exec_serial();
-  if (!ex) { fprintf(stderr, "exec: %s\n", tprims_last_error()); return 1; }
-  printf("# threads: requested=%d exec=%zu\n", threads, tprims_exec_num_threads(ex));
+  /* threads == 1 is an explicit serial executor (no workers, no pool). */
+  TAPP_executor ex = 0;
+  if (tprims_tapp_executor_create_rayon(&ex, (size_t)threads, NULL) != TPRIMS_OK) { fprintf(stderr, "exec: %s\n", tprims_last_error()); return 1; }
+  size_t pool_size = 0, budget = 0;
+  tprims_tapp_executor_get_threads(ex, &pool_size, &budget);
+  printf("# threads: requested=%d pool=%zu budget=%zu\n", threads, pool_size, budget);
   printf("case,variant,threads,median_ns,samples\n");
   double s[SAMPLES];
 
@@ -68,28 +72,35 @@ int main(int argc, char **argv) {
   int64_t s3[3] = {2, 2, 2}, st3[3] = {1, 2, 4}, s4[4] = {2, 2, 2, 2}, st4[4] = {1, 2, 4, 8};
   double x[8], y[8], z[16];
   for (int i = 0; i < 8; i++) { x[i] = i; y[i] = 8 - i; }
-  DLTensor tx = f64t(x, 3, s3, st3), ty = f64t(y, 3, s3, st3), tz = f64t(z, 4, s4, st4);
-  size_t lc[1] = {2}, rc[1] = {0};
-  tprims_dot_general cfg = {lc, rc, 1, NULL, NULL, 0};
-  tprims_contract_plan *plan = NULL;
-  if (tprims_contract_plan_create(&cfg, tprims_tensor_borrow_raw(&tx, 0), tprims_tensor_borrow_raw(&ty, 0),
-                                  tprims_tensor_borrow_raw(&tz, 0), 0, 0, 0, 0, &plan) != TPRIMS_OK) {
+    /* z[a,b,c,d] = sum_k x[a,b,k] y[k,c,d]. */
+  TAPP_handle handle;
+  TAPP_tensor_info ix, iy, iz;
+  int64_t lx[3] = {'a', 'b', 'k'}, ly[3] = {'k', 'c', 'd'}, lz[4] = {'a', 'b', 'c', 'd'};
+  TAPP_tensor_product plan;
+  if (!TAPP_check_success(TAPP_create_handle(&handle)) ||
+      !TAPP_check_success(TAPP_create_tensor_info(&ix, TAPP_F64, 3, s3, st3)) ||
+      !TAPP_check_success(TAPP_create_tensor_info(&iy, TAPP_F64, 3, s3, st3)) ||
+      !TAPP_check_success(TAPP_create_tensor_info(&iz, TAPP_F64, 4, s4, st4)) ||
+      !TAPP_check_success(TAPP_create_tensor_product(&plan, handle, TAPP_IDENTITY, ix, lx, TAPP_IDENTITY, iy, ly,
+                                                     TAPP_IDENTITY, iz, lz, TAPP_IDENTITY, iz, lz, TAPP_DEFAULT_PREC))) {
     fprintf(stderr, "%s\n", tprims_last_error()); return 1;
   }
   for (int k = 0; k < SAMPLES; k++) {
     double t0 = now_ns();
     for (int i = 0; i < INNER; i++)
-      tprims_contract_plan_execute(plan, ex, &one, tprims_tensor_borrow_raw(&tx, 0), tprims_tensor_borrow_raw(&ty, 0), &zero,
-                                   tprims_tensor_borrow_raw(&tz, 0));
+      TAPP_execute_product(plan, ex, NULL, &one, x, y, &zero, TAPP_IN_PLACE, z);
     s[k] = (now_ns() - t0) / INNER;
   }
   qsort(s, SAMPLES, sizeof(double), cmp);
   printf("contract_2x2x2,c,%d,%.1f,%d\n", threads, s[SAMPLES / 2], SAMPLES);
-  tprims_contract_plan_destroy(plan);
+  TAPP_destroy_tensor_product(plan);
+  TAPP_destroy_tensor_info(ix);
+  TAPP_destroy_tensor_info(iy);
+  TAPP_destroy_tensor_info(iz);
+  TAPP_destroy_handle(handle);
 
   double t0 = now_ns();
-  int st_close = tprims_exec_close(ex);
-  printf("# close: status=%d %.1f us\n", st_close, (now_ns() - t0) / 1e3);
-  tprims_exec_release(ex);
+  int st_close = TAPP_destroy_executor(ex);
+  printf("# destroy: status=%d %.1f us\n", st_close, (now_ns() - t0) / 1e3);
   return 0;
 }

@@ -27,17 +27,6 @@ use tensorcontract::plan::ElementOp;
 use tensorcontract::reference::{contract_reference, RefOperand};
 use tensorprimitives_tapp::*;
 
-/// `TAPP_DEFAULT_PREC` from upstream `tapp/datatype.h`.
-///
-/// The crate exports the `TAPP_datatype` and `TAPP_element_op` enumerators but
-/// not the `TAPP_prectype` ones, so this is spelled out here rather than
-/// imported. See the report accompanying this suite.
-pub const TAPP_DEFAULT_PREC: c_int = -1;
-/// `TAPP_F32F32_ACCUM_F32` from upstream `tapp/datatype.h`.
-pub const TAPP_F32F32_ACCUM_F32: c_int = 0;
-/// `TAPP_F64F64_ACCUM_F64` from upstream `tapp/datatype.h`.
-pub const TAPP_F64F64_ACCUM_F64: c_int = 1;
-
 // ----------------------------------------------------------------- datatypes
 
 /// A storage element type together with the `TAPP_datatype` tag that names it.

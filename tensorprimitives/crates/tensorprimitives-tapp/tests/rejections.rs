@@ -556,10 +556,9 @@ fn execute_rejects_a_zero_plan_and_required_null_pointers() {
     }
 }
 
-/// A zero executor handle is accepted: this implementation keeps no per-executor
-/// state, and TAPP leaves executor creation implementation-defined. Pinned
-/// because it is a real property a C caller can rely on, not an oversight to
-/// tidy away later.
+/// A zero executor handle is the default serial executor. This is a tprims
+/// policy (the pinned headers do not say what a zero executor means), pinned
+/// because a C caller can rely on it.
 #[test]
 fn a_zero_executor_handle_is_accepted() {
     let (a, b, d) = good();
@@ -589,40 +588,23 @@ fn a_zero_executor_handle_is_accepted() {
     }
 }
 
-/// A zero `handle` argument to `TAPP_create_tensor_product` is likewise
-/// accepted, because the library handle is stateless here and the shim ignores
-/// it.
+/// A zero library `handle` is rejected by `TAPP_create_tensor_product`: the
+/// caller must supply a live handle, even though the provider keeps no state in
+/// it yet.
 #[test]
-fn a_zero_library_handle_is_accepted_by_create_tensor_product() {
+fn a_zero_library_handle_is_rejected_by_create_tensor_product() {
     let (a, b, d) = good();
     unsafe {
-        let ia = a.create_info(TAPP_C64);
-        let ib = b.create_info(TAPP_C64);
-        let id = d.create_info(TAPP_C64);
-        let mut plan = 0isize;
-        let e = TAPP_create_tensor_product(
-            &mut plan,
-            0,
-            TAPP_IDENTITY,
-            ia,
-            a.labels_ptr(),
-            TAPP_IDENTITY,
-            ib,
-            b.labels_ptr(),
-            TAPP_IDENTITY,
-            id,
-            d.labels_ptr(),
-            TAPP_IDENTITY,
-            id,
-            d.labels_ptr(),
-            TAPP_DEFAULT_PREC,
-        );
-        assert_eq!(e, TAPP_SUCCESS, "{}", explain_status(e));
-        assert_ne!(plan, 0);
-        assert_eq!(TAPP_destroy_tensor_product(plan), TAPP_SUCCESS);
-        for i in [ia, ib, id] {
-            assert_eq!(TAPP_destroy_tensor_info(i), TAPP_SUCCESS);
-        }
+        let (e, plan) = Case::plain(
+            a,
+            &seq::<C64>(a.storage(), 1),
+            b,
+            &seq::<C64>(b.storage(), 2),
+            d,
+        )
+        .create_plan(0);
+        assert_eq!(e, TAPP_ERROR_NULL, "{}", explain_status(e));
+        assert_eq!(plan, 0);
     }
 }
 
@@ -810,7 +792,8 @@ fn handles_may_be_destroyed_in_any_order() {
     }
 }
 
-/// Destroying a zero handle is an error rather than a crash. That is the *only*
+/// Destroying a zero handle is an error rather than a crash (except the default
+/// executor, whose destruction is a no-op). That is the *only*
 /// invalid handle value the ABI can detect: `TAPP_*` handles are `intptr_t`
 /// casts of `Box::into_raw`, so a non-zero value that never came from a
 /// `TAPP_create_*` call — including one that has already been destroyed — is
@@ -821,7 +804,8 @@ fn handles_may_be_destroyed_in_any_order() {
 fn destroying_a_zero_handle_reports_an_error() {
     unsafe {
         assert_eq!(TAPP_destroy_handle(0), TAPP_ERROR_NULL);
-        assert_eq!(TAPP_destroy_executor(0), TAPP_ERROR_NULL);
+        // The default executor is not a resource: destroying it is a no-op.
+        assert_eq!(TAPP_destroy_executor(0), TAPP_SUCCESS);
         assert_eq!(TAPP_destroy_tensor_info(0), TAPP_ERROR_NULL);
         assert_eq!(TAPP_destroy_tensor_product(0), TAPP_ERROR_NULL);
     }

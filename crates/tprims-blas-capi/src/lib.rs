@@ -6,7 +6,7 @@ use num_complex::Complex;
 use tprims_blas::{
     gemm, gemm_batched, BatchIn, BatchStrategy, Conj, Error, MatIn, Scalar, Selected,
 };
-use tprims_core::exec::{exec_ref, tprims_exec};
+use tprims_core::exec::{with_executor, TAPP_executor};
 use tprims_core::status::*;
 use tprims_core::tensor::{
     dtype_of, elem_size, layout, spans_overlap, tprims_tensor, view, view_mut, DType,
@@ -58,7 +58,7 @@ fn check_no_overlap(
 
 #[allow(clippy::too_many_arguments)] // INVARIANT: the GEMM argument set.
 unsafe fn gemm_t<T: Scalar>(
-    exec: *mut tprims_exec,
+    exec: TAPP_executor,
     alpha: *const c_void,
     a: tprims_tensor,
     ca: i32,
@@ -77,7 +77,8 @@ unsafe fn gemm_t<T: Scalar>(
     let (mut ai, mut bi) = (MatIn::new(&av), MatIn::new(&bv));
     ai.conj = conj(ca);
     bi.conj = conj(cb);
-    exec_ref(exec)?.with(|x| gemm(x, alpha, ai, bi, beta, &mut cv).map_err(map))
+    // SAFETY: `exec` is zero or a live handle (ABI contract).
+    unsafe { with_executor(exec, |x| gemm(x, alpha, ai, bi, beta, &mut cv).map_err(map)) }
 }
 
 macro_rules! dispatch {
@@ -98,11 +99,11 @@ macro_rules! dispatch {
 /// # Safety
 ///
 /// The DLPack contract for every operand; `alpha` and `beta` point to one
-/// element of C's dtype; `exec` is a live handle.
+/// element of C's dtype; `exec` is zero or a live `TAPP_executor` of this library.
 #[no_mangle]
 #[allow(clippy::too_many_arguments)] // INVARIANT: the C ABI of GEMM.
 pub unsafe extern "C" fn tprims_blas_gemm(
-    exec: *mut tprims_exec,
+    exec: TAPP_executor,
     alpha: *const c_void,
     a: tprims_tensor,
     conj_a: i32,
@@ -120,7 +121,7 @@ pub unsafe extern "C" fn tprims_blas_gemm(
 
 #[allow(clippy::too_many_arguments)] // INVARIANT: the batched GEMM argument set.
 unsafe fn batched_t<T: Scalar>(
-    exec: *mut tprims_exec,
+    exec: TAPP_executor,
     alpha: *const c_void,
     a: tprims_tensor,
     ca: i32,
@@ -151,8 +152,12 @@ unsafe fn batched_t<T: Scalar>(
             ))
         }
     };
-    let sel = exec_ref(exec)?
-        .with(|x| gemm_batched(x, alpha, ai, bi, beta, &mut cv, strat).map_err(map))?;
+    // SAFETY: `exec` is zero or a live handle (ABI contract).
+    let sel = unsafe {
+        with_executor(exec, |x| {
+            gemm_batched(x, alpha, ai, bi, beta, &mut cv, strat).map_err(map)
+        })
+    }?;
     if !selected.is_null() {
         let code = match sel {
             Selected::FaerLoop {
@@ -186,7 +191,7 @@ unsafe fn batched_t<T: Scalar>(
 #[no_mangle]
 #[allow(clippy::too_many_arguments)] // INVARIANT: the C ABI of batched GEMM.
 pub unsafe extern "C" fn tprims_blas_gemm_batched(
-    exec: *mut tprims_exec,
+    exec: TAPP_executor,
     alpha: *const c_void,
     a: tprims_tensor,
     conj_a: i32,

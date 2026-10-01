@@ -140,7 +140,7 @@ impl<'p> Pool<'p> {
 
 impl Pool<'static> {
     /// Take ownership of a pool, for hosts without one of their own (the C
-    /// ABI's `tprims_exec_rayon_create`). Rust hosts normally [`Pool::borrow`].
+    /// ABI's `tprims_tapp_executor_create_rayon`). Rust hosts normally [`Pool::borrow`].
     ///
     /// # Examples
     ///
