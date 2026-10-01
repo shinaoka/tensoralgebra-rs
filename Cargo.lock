@@ -1131,8 +1131,27 @@ dependencies = [
  "tensorcontract",
  "thiserror",
  "tprims-blas",
+ "tprims-contract-testkit",
+ "tprims-contract-traits",
  "tprims-exec",
  "tprims-gemm-kernel",
+]
+
+[[package]]
+name = "tprims-contract-testkit"
+version = "0.1.0"
+dependencies = [
+ "num-complex",
+ "strided-view",
+ "tprims-contract-traits",
+]
+
+[[package]]
+name = "tprims-contract-traits"
+version = "0.1.0"
+dependencies = [
+ "strided-view",
+ "thiserror",
 ]
 
 [[package]]

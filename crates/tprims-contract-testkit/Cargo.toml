@@ -1,0 +1,16 @@
+[package]
+name = "tprims-contract-testkit"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Test-only second implementation of the tprims-contract-traits interface: a naive loop-nest backend that proves the seam is implementable from the interface crate alone"
+
+[dependencies]
+num-complex = { workspace = true }
+strided-view = { workspace = true }
+tprims-contract-traits = { workspace = true }
+
+[lints]
+workspace = true
