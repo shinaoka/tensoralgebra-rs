@@ -21,8 +21,18 @@ fn nested_and_concurrent_spmd_neither_deadlock_nor_add_threads() {
     let ptr = e as usize;
     std::thread::spawn(move || {
         let live = || std::fs::read_dir("/proc/self/task").map_or(0, Iterator::count);
-        let before = live();
         let ex: TAPP_executor = ptr as TAPP_executor;
+        // A broadcast of the full width returns only once all four workers are
+        // running, so the baseline below cannot miss a worker that is still
+        // starting up.
+        unsafe {
+            with_executor(ex, |x| {
+                x.broadcast(4, &|_| {}).unwrap();
+                Ok(())
+            })
+        }
+        .unwrap();
+        let before = live();
         // Concurrent broadcasts from several callers serialize on the pool.
         let hits = Arc::new(AtomicUsize::new(0));
         let callers: Vec<_> = (0..3)
@@ -59,8 +69,18 @@ fn nested_and_concurrent_spmd_neither_deadlock_nor_add_threads() {
         // Budget smaller than the requested width is refused.
         unsafe { tprims_tapp_executor_set_budget(ex, 2) };
         let over = unsafe { with_executor(ex, |x| Ok(x.broadcast(4, &|_| {}).is_err())) }.unwrap();
-        // The three callers are joined, so only the pool's workers remain.
-        let after = live();
+        // The three callers are joined, so only the pool's workers remain. A
+        // joined thread can stay in /proc/self/task for a moment after `join`
+        // returns, so wait (bounded) for the count to settle; a thread that was
+        // really added never goes away and still fails the assertion.
+        let mut after = live();
+        for _ in 0..500 {
+            if after <= before {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+            after = live();
+        }
         tx.send((hits.load(Ordering::Relaxed), nested, over, before, after))
             .unwrap();
     });
