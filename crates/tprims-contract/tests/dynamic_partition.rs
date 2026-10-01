@@ -117,9 +117,7 @@ fn a_partition_request_selects_the_packed_driver_under_auto() {
 #[test]
 fn invalid_or_unsupported_policies_are_typed_errors_at_planning() {
     for (jm, jn) in [(0, 8), (8, 0), (6, 8), (8, 6)] {
-        let e = plan(&dyn_cfg(jm, jn), Strategy::Auto)
-            .err()
-            .expect("rejected");
+        let e = plan(&dyn_cfg(jm, jn), Strategy::Auto).expect_err("rejected");
         assert!(
             matches!(typed(&e), SelectError::Incompatible { .. }),
             "{jm}x{jn}"
@@ -131,7 +129,7 @@ fn invalid_or_unsupported_policies_are_typed_errors_at_planning() {
         },
         ..dyn_cfg(8, 8)
     };
-    let e = plan(&aligned, Strategy::Tblis).err().expect("rejected");
+    let e = plan(&aligned, Strategy::Tblis).expect_err("rejected");
     assert!(matches!(typed(&e), SelectError::Incompatible { .. }));
     // Permute+GEMM computes with faer: it cannot honour the policy.
     assert!(plan(&dyn_cfg(8, 8), Strategy::PermuteGemm).is_err());
@@ -151,7 +149,7 @@ fn invalid_or_unsupported_policies_are_typed_errors_at_planning() {
         Flags::default(),
     );
     assert!(matches!(
-        typed(&r.err().expect("rejected")),
+        typed(&r.expect_err("rejected")),
         SelectError::EngineUnsupported { .. }
     ));
 }
