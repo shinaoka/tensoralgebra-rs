@@ -130,7 +130,6 @@ pub enum Isa {
 // (`Tuning::kernel_force`) instead of a process-wide startup fact.
 /// Legacy ISA preference for the tensorcontract family menu.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-#[doc(hidden)]
 pub enum KernelForce {
     /// Widest available instruction set. The default.
     #[default]

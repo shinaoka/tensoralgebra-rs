@@ -17,6 +17,28 @@ are `tprims_kernel::kernels::{reference::scalar, x86, aarch64, KernelSet}`; the 
 The built-in families need no registration call: `register()` of the old provider crates is gone and
 `tprims_kernel::register` remains only for explicit, unsafe external manifests.
 
+## Source moves
+
+`git log --follow` cannot describe a split, so the non-trivial moves are recorded here (all in PR 2; the
+pure-rename commit is `Move the kernel crates into crates/tprims-kernel`, the splits are separate commits).
+
+| Old path | New path |
+|---|---|
+| `crates/tprims-gemm-kernel/src/cache.rs` | `crates/tprims-kernel/src/blocking/probe.rs` (hierarchy types, probes, `l3_domains`) and `blocking/model.rs` (`BlockModel`, `PanelGeom`, the analytical model) |
+| `crates/tprims-kernel-tensorcontract/src/x86.rs` | `kernels/x86/mod.rs` (ISA enum, detection, dispatch), `kernels/x86/avx2.rs`, `kernels/x86/avx512.rs` |
+| `crates/tprims-kernel-tensorcontract/src/aarch64.rs` | `kernels/aarch64/neon.rs` |
+| `crates/tprims-kernel-tensorcontract/src/lib.rs` | `kernels/kernel_set.rs` (the legacy `KernelSet` menu and its contract tests; dies with the legacy menu) |
+| `crates/tprims-kernel-tensorcontract/src/families.rs` | `kernels/mod.rs` (built-in lists, id function) |
+| `crates/tprims-kernel-tensorcontract/src/{scalar,simd}.rs` | `kernels/reference/scalar.rs`, `kernels/macros.rs` |
+| `crates/tprims-kernel-cplx/src/{lib,avx2}.rs` | `kernels/cplx.rs`, `kernels/x86/avx2_complex.rs` |
+| `crates/tprims-gemm-kernel/src/{family,types,element,cpu}.rs` | `abi/` |
+| `crates/tprims-gemm-kernel/src/{registry,resolved,custom,partition}.rs` | `select/{registry,resolve,catalog,partition}.rs` |
+| `crates/tprims-gemm-kernel/src/{pack,scatter,writeback}.rs` | `pack/` |
+| `crates/tprims-gemm-kernel/src/{portable,induced}.rs` | `kernels/reference/{portable,induced}.rs` |
+| `crates/tprims-custom-kernel-test/src/lib.rs` | `crates/tprims-contract-testkit/src/custom_kernels.rs` |
+| `crates/tprims-custom-kernel-test/tests/selector_blas.rs` | `crates/tprims-blas/tests/custom_selector.rs` |
+| `crates/tprims-custom-kernel-test/tests/{selector_contract,concurrency,steady_state_alloc}.rs` | `crates/tprims-contract/tests/custom_{selector,concurrency,steady_state_alloc}.rs` |
+
 ## Family ids
 
 Built-in ids are `{isa}.{dtype}.{scheme}.{MR}x{NR}`, from the descriptor's storage dtype and **logical**

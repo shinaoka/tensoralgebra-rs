@@ -88,7 +88,7 @@ The spec and Task 8 now reflect that correction.
 - Workspace ownership correction: no process-global `ARENA`. Each
   `tprims_exec::Pool` owns its provider; both blas/contract `ExecSpmd` (since removed in #37)
   adapters borrow it. `tprims-exec` may depend on the thread-free
-  `tprims-gemm-kernel` contract without a cycle. A/tile buffers are
+  `tprims-gemm-kernel` contract (now `tprims-kernel`, #37) without a cycle. A/tile buffers are
   worker-local and owner-keyed; B/team sets are leased exclusively and
   returned only to their originating provider, never another pool. Serial
   typed plans own their workspace rather than using a hidden global cache.

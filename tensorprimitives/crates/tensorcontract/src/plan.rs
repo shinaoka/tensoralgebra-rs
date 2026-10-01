@@ -1275,7 +1275,7 @@ pub enum PartitionMode {
     /// a thread set that spans several L3s takes the column axis on shallow
     /// contractions wide enough to afford it. **The default** (D44), and a no-op
     /// on any machine where one L3 serves the thread set. See
-    /// [`Plan::partition`] and [`columns_beat_rows`].
+    /// [`Plan::partition`] and `columns_beat_rows`.
     #[default]
     Domain,
     /// One-dimensional over the oriented `M` direction — the partition Phase 4

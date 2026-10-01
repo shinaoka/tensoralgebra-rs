@@ -18,7 +18,7 @@ fn induced_variants_exist_for_every_real_family() {
         let four_m = induced::four_m(real).map(|f| f.id);
         assert_eq!(four_m.is_some(), tile_arm, "{}", real.id);
         for id in [one_m, four_m].into_iter().flatten() {
-            assert!(complex.iter().any(|c| *c == id), "{id}");
+            assert!(complex.contains(&id), "{id}");
             // Built-in bases induce `{isa}.c64.i1m|i4m[-scalar].{mr}x{nr}`.
             assert!(id.contains(".i1m") || id.contains(".i4m"), "{id}");
         }
