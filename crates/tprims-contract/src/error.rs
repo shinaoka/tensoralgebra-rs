@@ -24,6 +24,10 @@ pub enum Error {
     /// A lower layer failed.
     #[error("{0}")]
     Backend(String),
+    /// The kernel selection (a forced id, an unusable engine or a caller's
+    /// selector) was rejected; the typed cause is preserved.
+    #[error(transparent)]
+    Select(#[from] tprims_gemm_kernel::SelectError),
 }
 
 /// Result alias for tprims-contract.

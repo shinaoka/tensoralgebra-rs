@@ -203,6 +203,25 @@ pub fn gemm_batched_with<T: Scalar>(
     c: &mut StridedViewMut<'_, T>,
     strategy: BatchStrategy,
 ) -> Result<crate::SelectedGemm> {
+    batched_impl(exec, cfg, alpha, a, b, beta, c, strategy, None)
+}
+
+/// Shared body of [`gemm_batched_with`] and the selector entrypoint. With a
+/// `custom` selection, the kernel is chosen (once, for the whole homogeneous
+/// batch) before any empty-problem shortcut, so a bad selection is reported
+/// for zero-size inputs too.
+#[allow(clippy::too_many_arguments)] // INVARIANT: batched GEMM argument set.
+pub(crate) fn batched_impl<T: Scalar>(
+    exec: &Exec<'_>,
+    cfg: &crate::GemmConfig,
+    alpha: T,
+    a: BatchIn<'_, '_, T>,
+    b: BatchIn<'_, '_, T>,
+    beta: T,
+    c: &mut StridedViewMut<'_, T>,
+    strategy: BatchStrategy,
+    custom: Option<crate::tblis::Custom<'_, T>>,
+) -> Result<crate::SelectedGemm> {
     if strategy != BatchStrategy::Tblis {
         require_faer_loop_config(cfg)?;
     }
@@ -211,23 +230,53 @@ pub fn gemm_batched_with<T: Scalar>(
         BatchStrategy::Tblis => Selected::Tblis { outer_parallel },
         _ => Selected::FaerLoop { outer_parallel },
     };
-    let report = |engine: crate::Engine, family_id, selected: Selected| crate::SelectedGemm {
+    // A custom selection reports the family it chose; the built-in strategies
+    // keep their historical report.
+    let report = |engine: crate::Engine,
+                  rg: Option<&tprims_gemm_kernel::ResolvedGemm<T::Re>>,
+                  selected: Selected| crate::SelectedGemm {
         engine,
-        family_id,
-        complex: None,
-        mr: 0,
-        nr: 0,
-        mc: 0,
-        nc: 0,
-        kc: 0,
-        partition: tprims_gemm_kernel::PartitionPolicy::default(),
+        family_id: rg.map(|rg| rg.family().id),
+        complex: rg.and_then(|rg| rg.family().complex),
+        mr: rg.map_or(0, |rg| rg.mr),
+        nr: rg.map_or(0, |rg| rg.nr),
+        mc: rg.map_or(0, |rg| rg.mc),
+        nc: rg.map_or(0, |rg| rg.nc),
+        kc: rg.map_or(0, |rg| rg.kc),
+        partition: rg.map_or(tprims_gemm_kernel::PartitionPolicy::default(), |rg| {
+            rg.partition
+        }),
         batched: Some(selected),
+        origin: rg.map(|rg| rg.family().origin),
     };
     let (m, n, k) = (s.item.c.rows, s.item.c.cols, s.item.a.cols);
+    let trivial = m == 0 || n == 0 || s.count == 0 || k == 0 || alpha == crate::scalar::zero();
+    // The selector sees the width the batch will run at.
+    let sched = if trivial {
+        Schedule {
+            outer: None,
+            inner: 1,
+        }
+    } else {
+        schedule::<T>(exec, &s)
+    };
+    let prepared = match (custom, strategy) {
+        (Some(custom), _) => Some(crate::tblis::prepare::<T>(
+            cfg,
+            &s,
+            a.conj,
+            b.conj,
+            sched.outer.unwrap_or(sched.inner),
+            Some(custom),
+        )?),
+        _ => None,
+    };
+    let custom_used = prepared.is_some();
+    let chosen = prepared.as_ref().map(|(_, rg)| rg);
     // Empty problems touch no pointer: an empty view's pointer and batch
     // stride are not validated by strided-view.
     if m == 0 || n == 0 || s.count == 0 {
-        return Ok(report(engine_of(strategy), None, selected(false)));
+        return Ok(report(engine_of(strategy), chosen, selected(false)));
     }
     if k == 0 || alpha == crate::scalar::zero() {
         // C = beta * C per item; A and B are not referenced. C is non-empty,
@@ -239,9 +288,8 @@ pub fn gemm_batched_with<T: Scalar>(
                 crate::operand::scale_in_place(cp.offset(i as isize * s.sc), &s.item.c, beta)
             };
         }
-        return Ok(report(engine_of(strategy), None, selected(false)));
+        return Ok(report(engine_of(strategy), chosen, selected(false)));
     }
-    let sched = schedule::<T>(exec, &s);
     // All three operands are non-empty here, so their pointers and batch
     // strides were validated at view construction.
     let (ap, bp, cp) = (
@@ -251,10 +299,26 @@ pub fn gemm_batched_with<T: Scalar>(
     );
     match strategy {
         BatchStrategy::Tblis => {
-            let (selected, family_id) = crate::tblis::run(
-                exec, cfg, &s, &sched, alpha, a.conj, ap, b.conj, bp, beta, cp,
-            )?;
-            Ok(report(crate::Engine::Packed, family_id, selected))
+            let (plan, rg) = match prepared {
+                Some(prepared) => prepared,
+                None => crate::tblis::prepare::<T>(
+                    cfg,
+                    &s,
+                    a.conj,
+                    b.conj,
+                    sched.outer.unwrap_or(sched.inner),
+                    None,
+                )?,
+            };
+            let (selected, rg) =
+                crate::tblis::run(exec, &s, &sched, alpha, ap, bp, beta, cp, plan, rg)?;
+            // The built-in strategy keeps its historical report: the family id
+            // only. A custom selection reports the whole resolution.
+            Ok(report(
+                crate::Engine::Packed,
+                custom_used.then_some(&rg),
+                selected,
+            ))
         }
         BatchStrategy::Auto | BatchStrategy::FaerLoop => {
             let (ca, cb) = (a.conj, b.conj);

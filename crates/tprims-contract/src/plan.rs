@@ -142,6 +142,129 @@ impl<T: Scalar> ContractPlan<T> {
         strategy: Strategy,
         flags: Flags,
     ) -> Result<Self> {
+        Self::build(gemm, cfg, a, b, c, conj, strategy, flags, None)
+    }
+
+    /// [`ContractPlan::new_with`] on the TBLIS-style packed driver, choosing the
+    /// kernel with a caller-supplied selector over a caller-supplied
+    /// [`KernelCatalog`](tprims_blas::KernelCatalog) (issue #28).
+    ///
+    /// The selector sees metadata only — the folded problem and each admissible
+    /// candidate, with the thread budget `exec` grants this problem — and
+    /// returns an opaque handle. It is called once, here, outside every lock
+    /// and worker broadcast; [`execute`](Self::execute) never calls it, and the
+    /// plan keeps only the chosen trusted handle, so the selector and catalog
+    /// may be dropped. The performance protocol of the issue was deferred.
+    ///
+    /// The selector is a requirement, not a hint, so strategies that cannot
+    /// honour it are errors rather than silent fallbacks:
+    /// [`Strategy::PermuteGemm`] (computes with faer, and copies), and
+    /// [`Strategy::Auto`] on an all-batch (elementwise) problem. `Auto` and
+    /// `Tblis` otherwise plan the packed driver; nothing is copied.
+    ///
+    /// # Errors
+    ///
+    /// As [`ContractPlan::new_with`], plus [`Error::Select`] (typed) for an
+    /// engine other than `Auto`/`Packed`, a forced kernel id alongside the
+    /// selector, an incompatible strategy, no admissible candidate, the
+    /// selector's own `Err` (unchanged) or a handle it should not have
+    /// returned. Zero-size problems are selected and validated too.
+    #[allow(clippy::too_many_arguments)] // INVARIANT: the contraction argument set.
+    pub fn new_with_selector<F>(
+        exec: &Exec<'_>,
+        gemm: &tprims_blas::GemmConfig,
+        catalog: &tprims_blas::KernelCatalog<T>,
+        selector: F,
+        cfg: &DotGeneral,
+        a: Lay<'_>,
+        b: Lay<'_>,
+        c: Lay<'_>,
+        conj: (Conj, Conj),
+        strategy: Strategy,
+        flags: Flags,
+    ) -> Result<Self>
+    where
+        F: FnOnce(
+            &tprims_blas::SelectionContext<'_>,
+            &[tprims_blas::KernelCandidate<T>],
+        ) -> std::result::Result<
+            tprims_blas::KernelHandle<T>,
+            tprims_blas::SelectError,
+        >,
+    {
+        use tprims_blas::SelectError;
+        match gemm.engine {
+            tprims_blas::EngineChoice::Auto | tprims_blas::EngineChoice::Packed => {}
+            _ => {
+                return Err(Error::Select(SelectError::EngineUnsupported {
+                    engine: "contract",
+                    reason: "a custom kernel selector needs the packed engine",
+                }));
+            }
+        }
+        if let tprims_blas::KernelChoice::Id(id) = &gemm.kernel {
+            return Err(Error::Select(SelectError::Incompatible {
+                id: id.clone(),
+                reason: "a forced kernel id and a custom selector are ambiguous",
+            }));
+        }
+        if strategy == Strategy::PermuteGemm {
+            return Err(Error::Select(SelectError::EngineUnsupported {
+                engine: "permute+GEMM",
+                reason: "the permute+GEMM strategy computes with faer; use Strategy::Tblis",
+            }));
+        }
+        let mut selector = Some(selector);
+        let mut chooser = |ctx: &tprims_blas::SelectionContext<'_>,
+                           cands: &[tprims_blas::KernelCandidate<T>]| {
+            (selector.take().expect("a single-plan selector runs once"))(ctx, cands)
+        };
+        // The width the executor will grant this problem, as `execute` will
+        // compute it, so the selector sees the real budget.
+        let k: usize = cfg
+            .lhs_contract
+            .iter()
+            .map(|&x| a.0.get(x).copied().unwrap_or(0))
+            .product();
+        let out: usize = c.0.iter().product();
+        let flops = 2.0 * out as f64 * k as f64 * if T::IS_COMPLEX_SCALAR { 4.0 } else { 1.0 };
+        let threads = exec
+            .width_for(
+                flops * tprims_blas::GemmPolicy::default().ns_per_flop,
+                &tprims_exec::WidthPolicy::default(),
+            )
+            .max(1);
+        let custom = crate::tblis::Custom {
+            catalog,
+            chooser: &mut chooser,
+            threads,
+            method: gemm.method,
+        };
+        Self::build(
+            gemm,
+            cfg,
+            a,
+            b,
+            c,
+            conj,
+            strategy,
+            flags,
+            Some(custom),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)] // INVARIANT: the contraction argument set.
+    fn build(
+        gemm: &tprims_blas::GemmConfig,
+        cfg: &DotGeneral,
+        a: Lay<'_>,
+        b: Lay<'_>,
+        c: Lay<'_>,
+        conj: (Conj, Conj),
+        strategy: Strategy,
+        flags: Flags,
+        custom: Option<crate::tblis::Custom<'_, T>>,
+    ) -> Result<Self> {
         for (name, l) in [("A", &a), ("B", &b), ("C", &c)] {
             if l.0.len() != l.1.len() {
                 return Err(Error::Shape(format!(
@@ -176,12 +299,23 @@ impl<T: Scalar> ContractPlan<T> {
         let all_batch =
             shape.lhs_free.is_empty() && shape.rhs_free.is_empty() && cfg.lhs_contract.is_empty();
         let inner = match strategy {
+            // A custom selector is a requirement: an elementwise pass has no
+            // kernel to select, so it is refused rather than ignoring it.
+            Strategy::Auto if all_batch && custom.is_some() => {
+                return Err(Error::Select(tprims_blas::SelectError::EngineUnsupported {
+                    engine: "elementwise",
+                    reason: "an all-batch problem has no kernel to select; use Strategy::Tblis",
+                }));
+            }
+            _ if custom.is_some() => Inner::Tb(Box::new(tblis::plan::<T>(
+                cfg, &shape, dims, strides, conj, gemm, custom,
+            )?)),
             Strategy::Auto | Strategy::PermuteGemm if all_batch => Inner::Elementwise {
                 a_axes: cfg.lhs_batch.clone(),
                 b_axes: cfg.rhs_batch.clone(),
             },
-            Strategy::Tblis => Inner::Tb(Box::new(tblis::plan(
-                cfg, &shape, dims, strides, conj, gemm,
+            Strategy::Tblis => Inner::Tb(Box::new(tblis::plan::<T>(
+                cfg, &shape, dims, strides, conj, gemm, None,
             )?)),
             Strategy::PermuteGemm => Inner::Pg(Box::new(permute_gemm::plan(
                 cfg,
@@ -200,7 +334,7 @@ impl<T: Scalar> ContractPlan<T> {
                     || matches!(gemm.engine, tprims_blas::EngineChoice::Packed);
                 let pg = permute_gemm::plan(cfg, &shape, dims, strides, false, gemm)?;
                 if pg.materialized.iter().any(|&m| m) || wants_packed {
-                    match tblis::plan(cfg, &shape, dims, strides, conj, gemm) {
+                    match tblis::plan::<T>(cfg, &shape, dims, strides, conj, gemm, None) {
                         Ok(tb) => Inner::Tb(Box::new(tb)),
                         // tensorcontract declined: keep the copying plan
                         // unless copies were refused or the driver was asked
@@ -284,6 +418,7 @@ impl<T: Scalar> ContractPlan<T> {
             kc: rg.kc,
             partition: rg.partition,
             batched: None,
+            origin: Some(rg.family().origin),
         })
     }
 
