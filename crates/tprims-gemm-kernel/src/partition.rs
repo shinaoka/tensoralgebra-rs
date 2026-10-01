@@ -19,12 +19,15 @@ pub enum PartitionPolicy {
         /// Column groups, or zero for the driver's cost model.
         pn: usize,
     },
-    /// Work-stealing tiles of whole register blocks. Designed (spec §6.1), not
-    /// implemented: resolution refuses it before any execution begins.
+    /// Opt-in dynamic assignment of output work to the active team: workers
+    /// atomically claim row bands (or, for short-wide problems, row-band by
+    /// column-subtile jobs) of whole register blocks. It assigns work; it does
+    /// not split K, accumulate atomically or change any arithmetic, so the result
+    /// is bitwise identical to the static and serial runs for a fixed blocking.
     DynamicTiles {
-        /// Tile rows.
+        /// Job rows: a positive multiple of the family's logical `MR`.
         job_m: usize,
-        /// Tile columns.
+        /// Job columns: a positive multiple of the family's logical `NR`.
         job_n: usize,
     },
 }
