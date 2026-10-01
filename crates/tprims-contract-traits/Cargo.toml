@@ -1,0 +1,18 @@
+[package]
+name = "tprims-contract-traits"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Implementation-independent interface of binary tensor contraction (dot_general): problem, validation, backend and prepared-plan traits, host-execution seam"
+
+[dependencies]
+strided-view = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

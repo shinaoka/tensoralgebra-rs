@@ -1143,6 +1143,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "tprims-contract-traits"
+version = "0.1.0"
+dependencies = [
+ "strided-view",
+ "thiserror",
+]
+
+[[package]]
 name = "tprims-core"
 version = "0.1.0"
 dependencies = [
