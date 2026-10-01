@@ -243,6 +243,44 @@ plan owns and every operation on it reuses. A host that does not gets per-call
 buffers. Nothing is process-global, and a lease returns to the owner that issued
 it.
 
+### Opt-in dynamic output assignment (`DynamicTiles`)
+
+`PartitionPolicy::DynamicTiles { job_m, job_n }` replaces the static
+`pm x pn` grid with dynamic claiming for the packed driver. It assigns output
+work only: K is never split, no accumulation is atomic, every tile's K slabs
+run in order, and for a fixed blocking the result is bitwise identical to the
+static and serial runs.
+
+* **Epochs.** All active workers traverse the same `(batch, NC panel, KC
+  slab)` sequence. Per epoch worker 0 resets a claim counter owned by the
+  invocation, all workers pack disjoint `NR` slivers of the shared `B` panel,
+  a *publication* barrier makes `B` and the reset visible, workers claim and
+  compute jobs, and a *completion* barrier (taken by every worker, claimed
+  work or not) frees `B` and the counter for the next epoch. A single barrier
+  cannot do both jobs. `fetch_add(Relaxed)` only makes claims unique.
+* **Assignment.** With at least as many `job_m` row bands as workers a worker
+  claims a whole band and reuses each packed `MC x KC` chunk of `A` across the
+  band's columns. Otherwise it claims `(band, column subtile)` jobs in
+  row-major order and packs `A` per job, so `A` is packed up to
+  `column jobs` times (the documented 2-D ceiling). The rule depends only on
+  validated geometry and the active width.
+* **Width.** The team is the host budget capped by the jobs that exist; width
+  one runs on the caller with no claims or barriers. A declined broadcast
+  runs nothing and the caller works serially with the same frozen family.
+* **Direct-B** keeps `b_bytes == 0` but still takes both barriers, an explicit
+  tradeoff against the static barrier-free split.
+* **Validation.** Job extents are positive multiples of the family's logical
+  MR/NR; invalid values, `DynamicTiles + align_c_lines` and job-count overflow
+  fail when the plan is resolved, for empty problems too. Never rounded.
+* **Surface.** `GemmConfig::{partition, partition_opts}` (tprims-blas, including
+  batched TBLIS and contraction plans), `Plan::with_partition` (tensorcontract).
+  `SelectedGemm::{partition, dynamic}` report the resolved policy, job extents,
+  active width and assignment. `DynStats`/`dynamic_report` are opt-in
+  instrumentation.
+
+The Stage-0 need measurement and the paired static-vs-dynamic suite were not
+run (maintainer decision); the policy stays opt-in and makes no speed claim.
+
 ### Custom kernels with a safe selector
 
 A downstream crate can supply its own packed microkernels *and* its own

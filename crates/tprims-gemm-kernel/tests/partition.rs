@@ -35,18 +35,61 @@ fn aligned_strips_round_to_the_alignment() {
     assert_eq!(strip(9, 10, 101, 8, 64).1, 101);
 }
 
-#[test]
-fn dynamic_tiles_is_not_implemented() {
-    let err = ResolvedGemm::<f64>::resolve_with::<f64>(
-        &KernelChoice::Auto,
+fn dynamic(
+    id: &str,
+    job_m: usize,
+    job_n: usize,
+    opts: PartitionOpts,
+) -> Result<ResolvedGemm<f64>, SelectError> {
+    ResolvedGemm::<f64>::resolve_with::<f64>(
+        &KernelChoice::Id(id.into()),
         4,
+        PartitionPolicy::DynamicTiles { job_m, job_n },
+        opts,
+    )
+}
+
+#[test]
+fn dynamic_tiles_resolves_for_whole_register_blocks_and_survives_retargeting() {
+    // portable.f64.4x4: logical MR = NR = 4.
+    let rg = dynamic("portable.f64.4x4", 16, 32, PartitionOpts::default()).unwrap();
+    assert_eq!(
+        rg.partition,
         PartitionPolicy::DynamicTiles {
             job_m: 16,
-            job_n: 32,
-        },
+            job_n: 32
+        }
+    );
+    assert_eq!(rg.with_threads(2).unwrap().partition, rg.partition);
+    // Complex families validate against their logical (not packed) MR/NR.
+    let c = ResolvedGemm::<f64>::resolve_with::<tprims_gemm_kernel::C64>(
+        &KernelChoice::Id("portable.c64.native.4x4".into()),
+        2,
+        PartitionPolicy::DynamicTiles { job_m: 4, job_n: 8 },
         PartitionOpts::default(),
     );
-    assert!(matches!(err, Err(SelectError::NotImplemented { .. })));
+    assert!(c.is_ok());
+}
+
+#[test]
+fn dynamic_tiles_rejects_invalid_geometry_and_line_alignment() {
+    let id = "portable.f64.4x4";
+    for (jm, jn) in [(0, 8), (8, 0), (6, 8), (8, 6), (3, 3)] {
+        assert!(
+            matches!(
+                dynamic(id, jm, jn, PartitionOpts::default()),
+                Err(SelectError::Incompatible { .. })
+            ),
+            "{jm}x{jn}"
+        );
+    }
+    let aligned = PartitionOpts {
+        align_c_lines: true,
+    };
+    assert!(matches!(
+        dynamic(id, 8, 8, aligned),
+        Err(SelectError::Incompatible { .. })
+    ));
 }
 
 #[test]

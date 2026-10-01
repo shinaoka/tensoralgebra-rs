@@ -4,7 +4,9 @@
 //! Usage: `blas --threads N [--corpus FILE] [--engine ENGINE] [--list]`. CSV
 //! `case,variant,threads,median_ns,samples`; `CHECK` lines compare the two
 //! batched strategies. `--engine faer|packed|pgx86` selects the matrix engine
-//! of the single-GEMM cases (default `faer`); the resolved family is printed
+//! of the single-GEMM cases (default `faer`); `--partition dynamic:JM,JN`
+//! (with `--engine packed`) selects the opt-in `DynamicTiles` scheduler and
+//! tags the row labels `_dynJMxJN`; the resolved family is printed
 //! to stderr once per case. With `--corpus` only the file's `gemm_batched`
 //! entries run (any dtype, recorded strides; `tprims_bench::corpus`), and
 //! `--list` prints their names. Environment: `BENCH_RUNS` (default 50, large
@@ -31,6 +33,9 @@ struct Cfg {
     filter: Option<String>,
     /// Which engine the single-GEMM cases use. faer unless asked otherwise.
     engine: EngineChoice,
+    /// `--partition dynamic:JM,JN`: the opt-in dynamic scheduler of the packed
+    /// engine; `None` keeps the static grid and every row label unchanged.
+    partition: Option<tprims_gemm_kernel::PartitionPolicy>,
 }
 
 impl Cfg {
@@ -136,10 +141,17 @@ fn gemm_cases<T: Scalar>(cfg: &Cfg, exec: &Exec<'_>) {
         let runs = cfg.runs_for(mul_cost::<T>() * (m * n * k) as f64);
         let one = <T as Element>::one();
         let zero = <T as Element>::zero();
-        let config = GemmConfig {
-            engine: cfg.engine.clone(),
-            ..Default::default()
-        };
+        assert!(
+            cfg.partition.is_none() || matches!(cfg.engine, EngineChoice::Packed),
+            "--partition applies to --engine packed"
+        );
+        let config = tprims_bench::partition::apply(
+            GemmConfig {
+                engine: cfg.engine.clone(),
+                ..Default::default()
+            },
+            cfg.partition,
+        );
         let mut reported = false;
         let ns = median_ns(cfg.warmup.min(runs), runs, || {
             let mut cv = StridedViewMut::new(&mut c, &[m, n], &[1, m as isize], 0).expect("c");
@@ -184,7 +196,11 @@ fn gemm_cases<T: Scalar>(cfg: &Cfg, exec: &Exec<'_>) {
         };
         cfg.row(
             &case,
-            &format!("{v}{}", if transposed { "_at" } else { "" }),
+            &format!(
+                "{v}{}{}",
+                if transposed { "_at" } else { "" },
+                tprims_bench::partition::suffix(cfg.partition)
+            ),
             ns,
             runs,
         );
@@ -511,6 +527,7 @@ fn main() {
         runs: env_usize("BENCH_RUNS", 50),
         filter: std::env::var("BENCH_FILTER").ok().filter(|f| !f.is_empty()),
         engine: Cfg::engine_from_args(),
+        partition: tprims_bench::partition::from_args(),
     };
     println!("case,variant,threads,median_ns,samples");
     if let Some(entries) = corpus {

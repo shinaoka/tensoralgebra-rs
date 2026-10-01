@@ -305,6 +305,11 @@ pub struct Plan {
     pub(crate) kernel: Option<tprims_gemm_kernel::KernelChoice>,
     /// Set by [`Plan::with_selector`]: the family a caller's selector chose.
     pub(crate) forced: Option<crate::select::Forced>,
+    /// Partition policy requested by [`Plan::with_partition`].
+    pub(crate) partition: Option<(
+        tprims_gemm_kernel::PartitionPolicy,
+        tprims_gemm_kernel::PartitionOpts,
+    )>,
     pub(crate) resolved_cache: crate::resolve::Cache,
     /// The matrix shape and folded axes this plan reduced to. Public because
     /// it is the answer to "what did the index analysis actually decide", which
@@ -615,6 +620,7 @@ impl Plan {
             threads: None,
             kernel: None,
             forced: None,
+            partition: None,
             resolved_cache: Default::default(),
             stats,
         })
@@ -664,6 +670,33 @@ impl Plan {
     #[must_use]
     pub fn with_blocking(mut self, blk: crate::kernel::Blocking) -> Self {
         self.blocking = Some(blk);
+        self.resolved_cache = Default::default();
+        self
+    }
+
+    /// Choose how the packed driver assigns output work to its team:
+    /// [`PartitionPolicy::StaticGrid`] (the default, with its own cost model
+    /// when `pm == pn == 0`) or the opt-in dynamic
+    /// [`PartitionPolicy::DynamicTiles`].
+    ///
+    /// The policy is validated against the resolved family when the plan is
+    /// resolved ([`Plan::resolved`], which every safe execution and the
+    /// high-level planners call first), so an invalid job extent, a job count
+    /// that overflows, or `DynamicTiles` with `align_c_lines` is a typed
+    /// `KernelSelection` error before any compute, for empty problems too.
+    /// Job extents are logical rows/columns of the *oriented* GEMM (the row
+    /// role may be either user operand, see [`Plan::transposes_gemm`]).
+    ///
+    /// [`PartitionPolicy`]: tprims_gemm_kernel::PartitionPolicy
+    /// [`PartitionPolicy::StaticGrid`]: tprims_gemm_kernel::PartitionPolicy::StaticGrid
+    /// [`PartitionPolicy::DynamicTiles`]: tprims_gemm_kernel::PartitionPolicy::DynamicTiles
+    #[must_use]
+    pub fn with_partition(
+        mut self,
+        policy: tprims_gemm_kernel::PartitionPolicy,
+        opts: tprims_gemm_kernel::PartitionOpts,
+    ) -> Self {
+        self.partition = Some((policy, opts));
         self.resolved_cache = Default::default();
         self
     }

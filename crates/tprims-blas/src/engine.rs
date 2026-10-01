@@ -59,6 +59,23 @@ pub struct GemmConfig {
     /// Complex method for [`Engine::Packed`]; `None` keeps the family's own or
     /// the process default.
     pub method: Option<tprims_gemm_kernel::Method>,
+    /// How [`Engine::Packed`] assigns output work to its team: the default
+    /// static grid (with the driver's own cost model), an explicit grid, or the
+    /// opt-in dynamic [`PartitionPolicy::DynamicTiles`](tprims_gemm_kernel::PartitionPolicy).
+    /// A non-default policy is a requirement for the packed driver: it is
+    /// refused (never ignored) by the faer and `private-gemm-x86` engines and
+    /// by the faer-loop strategies.
+    pub partition: tprims_gemm_kernel::PartitionPolicy,
+    /// Options that go with [`partition`](Self::partition).
+    pub partition_opts: tprims_gemm_kernel::PartitionOpts,
+}
+
+impl GemmConfig {
+    /// Whether a partition policy other than the default was requested.
+    pub fn has_partition_request(&self) -> bool {
+        self.partition != tprims_gemm_kernel::PartitionPolicy::default()
+            || self.partition_opts != tprims_gemm_kernel::PartitionOpts::default()
+    }
 }
 
 /// What a GEMM used, for diagnostics: the engine, the resolved family and the
@@ -93,6 +110,14 @@ pub struct SelectedGemm {
     /// [`Engine::Packed`]. A downstream kernel reports
     /// [`Origin::External`](tprims_gemm_kernel::Origin::External).
     pub origin: Option<tprims_gemm_kernel::Origin>,
+    /// For [`PartitionPolicy::DynamicTiles`](tprims_gemm_kernel::PartitionPolicy):
+    /// the job extents, the number of workers that actually run (the width
+    /// budget capped by the available jobs; for a contraction plan, which is
+    /// built before an executor is chosen, the cap alone) and the assignment
+    /// mode. `partition` above is the requested/resolved policy itself, so a
+    /// static `(pm, pn)` never stands in for dynamic geometry. `None` for any
+    /// other policy.
+    pub dynamic: Option<tensorcontract::DynamicReport>,
 }
 
 impl SelectedGemm {
@@ -105,7 +130,7 @@ impl SelectedGemm {
     /// let s = SelectedGemm {
     ///     engine: Engine::Faer, family_id: None, complex: None,
     ///     mr: 0, nr: 0, mc: 0, nc: 0, kc: 0,
-    ///     partition: PartitionPolicy::default(), batched: None, origin: None,
+    ///     partition: PartitionPolicy::default(), batched: None, origin: None, dynamic: None,
     /// };
     /// assert!(s.to_json().starts_with("{\"engine\":\"Faer\""));
     /// ```
@@ -329,10 +354,51 @@ pub fn gemm_with<T: Scalar>(
         EngineChoice::PrivateGemmX86 => Engine::PrivateGemmX86,
         EngineChoice::Packed => Engine::Packed,
     };
+    // A partition policy is a requirement of the packed driver; no other engine
+    // can honour it, so refuse rather than ignore it (also for empty problems).
+    if cfg.has_partition_request() && engine != Engine::Packed {
+        return Err(Error::Select(
+            tprims_gemm_kernel::SelectError::EngineUnsupported {
+                engine: match engine {
+                    Engine::Faer => "faer",
+                    Engine::PrivateGemmX86 => "pgx86",
+                    _ => "packed",
+                },
+                reason: "a partition policy needs the packed engine",
+            },
+        ));
+    }
     let (m, n, k) = (s.c.rows, s.c.cols, s.a.cols);
     // Every engine agrees that an empty K or a zero alpha only scales C, and
     // none of them may read A or B then.
     if m == 0 || n == 0 || k == 0 || alpha == zero() {
+        if cfg.has_partition_request() {
+            // Validate the policy against this problem's resolution before
+            // returning: invalid configuration is not excused by empty input.
+            // SAFETY: `compute == false` dereferences no operand pointer.
+            let report = unsafe {
+                crate::tblis::run_one_plan(
+                    exec,
+                    cfg,
+                    alpha,
+                    a.view.ptr(),
+                    a.conj,
+                    a.view.dims(),
+                    a.view.strides(),
+                    b.view.ptr(),
+                    b.conj,
+                    b.view.dims(),
+                    b.view.strides(),
+                    beta,
+                    c,
+                    None,
+                    false,
+                )?
+            };
+            // SAFETY: shapes validated; `c` is exclusive and injective.
+            unsafe { crate::operand::scale_in_place(c.as_mut_ptr(), &s.c, beta) };
+            return Ok(report);
+        }
         // SAFETY: shapes validated; `c` is exclusive and injective.
         unsafe { crate::operand::scale_in_place(c.as_mut_ptr(), &s.c, beta) };
         return Ok(SelectedGemm {
@@ -347,6 +413,7 @@ pub fn gemm_with<T: Scalar>(
             partition: tprims_gemm_kernel::PartitionPolicy::default(),
             batched: None,
             origin: None,
+            dynamic: None,
         });
     }
     match engine {
@@ -389,6 +456,7 @@ pub fn gemm_with<T: Scalar>(
                 partition: tprims_gemm_kernel::PartitionPolicy::default(),
                 batched: None,
                 origin: None,
+                dynamic: None,
             })
         }
         Engine::PrivateGemmX86 => {
@@ -405,6 +473,7 @@ pub fn gemm_with<T: Scalar>(
                 partition: tprims_gemm_kernel::PartitionPolicy::default(),
                 batched: None,
                 origin: None,
+                dynamic: None,
             })
         }
         // SAFETY: the shapes and strides were validated against the views,

@@ -163,7 +163,9 @@ pub fn gemm_grouped_with<T: Scalar>(
 ) -> Result<crate::SelectedGemm> {
     let unsupported = match cfg.engine {
         crate::EngineChoice::Auto | crate::EngineChoice::Faer => {
-            cfg.kernel != tprims_gemm_kernel::KernelChoice::Auto || cfg.method.is_some()
+            cfg.kernel != tprims_gemm_kernel::KernelChoice::Auto
+                || cfg.method.is_some()
+                || cfg.has_partition_request()
         }
         crate::EngineChoice::PrivateGemmX86 | crate::EngineChoice::Packed => true,
     };
@@ -187,6 +189,7 @@ pub fn gemm_grouped_with<T: Scalar>(
         partition: tprims_gemm_kernel::PartitionPolicy::default(),
         batched: Some(selected),
         origin: None,
+        dynamic: None,
     };
     check_jobs(a, b, c, jobs)?;
     let live: Vec<(GroupedJob, GemmShape, usize)> = jobs

@@ -299,8 +299,8 @@ impl<R: Real> ResolvedGemm<R> {
     ///
     /// # Errors
     /// Everything [`resolve`](Self::resolve) returns, plus
-    /// [`SelectError::NotImplemented`] for a designed-but-unbuilt policy and
-    /// [`SelectError::Incompatible`] for a half-specified grid.
+    /// [`SelectError::Incompatible`] for a half-specified grid or invalid
+    /// `DynamicTiles` geometry (see [`with_partition`](Self::with_partition)).
     ///
     /// # Examples
     /// ```
@@ -318,26 +318,69 @@ impl<R: Real> ResolvedGemm<R> {
         partition: PartitionPolicy,
         opts: PartitionOpts,
     ) -> Result<Self, SelectError> {
-        Self::check_partition(partition)?;
-        let mut rg = Self::resolve_selected::<T>(choice, effective_threads)?;
-        rg.partition = partition;
-        rg.opts = opts;
-        Ok(rg)
+        Self::resolve_selected::<T>(choice, effective_threads)?.with_partition(partition, opts)
     }
 
-    fn check_partition(partition: PartitionPolicy) -> Result<(), SelectError> {
+    /// Set the partition policy and options, validated against this family.
+    ///
+    /// `DynamicTiles` job extents are **logical** row/column counts and must be
+    /// positive multiples of the family's logical `MR`/`NR` (an induced complex
+    /// family's, not its packed real tile). Invalid values are rejected, never
+    /// rounded. `DynamicTiles` together with `align_c_lines` is rejected: MR/NR
+    /// alignment alone cannot prove cache-line separation of a general-stride
+    /// output. Whether the extents suit a particular problem (counts, offsets)
+    /// is checked by the planner that knows the shape.
+    ///
+    /// # Errors
+    /// `Incompatible` for a half-specified grid, a non-positive or non-multiple
+    /// job extent, or the unsupported option combination.
+    ///
+    /// # Examples
+    /// ```
+    /// use tprims_gemm_kernel::{KernelChoice, PartitionOpts, PartitionPolicy, ResolvedGemm};
+    /// let rg = ResolvedGemm::<f64>::resolve::<f64>(&KernelChoice::Id("portable.f64.4x4".into()), 2)?;
+    /// let dynamic = PartitionPolicy::DynamicTiles { job_m: 8, job_n: 16 };
+    /// assert_eq!(rg.with_partition(dynamic, PartitionOpts::default())?.partition, dynamic);
+    /// assert!(rg.with_partition(
+    ///     PartitionPolicy::DynamicTiles { job_m: 6, job_n: 16 }, PartitionOpts::default()).is_err());
+    /// # Ok::<(), tprims_gemm_kernel::SelectError>(())
+    /// ```
+    pub fn with_partition(
+        mut self,
+        partition: PartitionPolicy,
+        opts: PartitionOpts,
+    ) -> Result<Self, SelectError> {
+        let fail = |reason| SelectError::Incompatible {
+            id: self.family.id.into(),
+            reason,
+        };
         match partition {
-            PartitionPolicy::DynamicTiles { .. } => Err(SelectError::NotImplemented {
-                what: "DynamicTiles partition",
-            }),
+            PartitionPolicy::DynamicTiles { job_m, job_n } => {
+                if job_m == 0 || job_n == 0 {
+                    return Err(fail("DynamicTiles job extents must be positive"));
+                }
+                if job_m % self.mr != 0 || job_n % self.nr != 0 {
+                    return Err(fail(
+                        "DynamicTiles job extents must be multiples of the family's logical MR and NR",
+                    ));
+                }
+                if opts.align_c_lines {
+                    return Err(fail(
+                        "DynamicTiles does not support align_c_lines: register-block alignment cannot prove cache-line separation",
+                    ));
+                }
+            }
             PartitionPolicy::StaticGrid { pm, pn } if (pm == 0) != (pn == 0) => {
-                Err(SelectError::Incompatible {
+                return Err(SelectError::Incompatible {
                     id: "StaticGrid".into(),
                     reason: "pm and pn must both be zero (driver cost model) or both nonzero",
                 })
             }
-            PartitionPolicy::StaticGrid { .. } => Ok(()),
+            PartitionPolicy::StaticGrid { .. } => {}
         }
+        self.partition = partition;
+        self.opts = opts;
+        Ok(self)
     }
 
     fn resolve_selected<T: Families<Real = R>>(
@@ -402,7 +445,6 @@ impl<R: Real> ResolvedGemm<R> {
         partition: PartitionPolicy,
         opts: PartitionOpts,
     ) -> Result<Self, SelectError> {
-        Self::check_partition(partition)?;
         let family = handle.family();
         let cpu = CpuFeatures::detect();
         if !cpu.contains(family.required) {
@@ -417,10 +459,7 @@ impl<R: Real> ResolvedGemm<R> {
                 reason: "zero effective thread width",
             });
         }
-        let mut rg = Self::bind_family(family, effective_threads)?;
-        rg.partition = partition;
-        rg.opts = opts;
-        Ok(rg)
+        Self::bind_family(family, effective_threads)?.with_partition(partition, opts)
     }
 
     /// Geometry, formats and frozen blocking policy for an already trusted,

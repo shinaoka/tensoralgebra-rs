@@ -1083,6 +1083,7 @@ dependencies = [
  "tprims-contract",
  "tprims-core",
  "tprims-exec",
+ "tprims-gemm-kernel",
  "tprims-linalg",
 ]
 
