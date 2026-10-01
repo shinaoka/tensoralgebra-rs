@@ -580,6 +580,21 @@ Name feature-gated reference cases separately from tprims strategies.
 ## 8. Documents and assets
 
 - `tensorprimitives/docs/` (design, decisions, refuted, measurement-rules, notebook) moves to `docs/archive/tensorprimitives/`.
+- **README.md is rewritten from scratch in PR 4.** The current one describes
+  the pre-integration product: BLAS and linear algebra parts, the
+  per-part C ABI, `tensorprimitives/` and the strided `-perm`/`-kernel`
+  dependencies.
+  - **Content:** what tprims is (binary tensor contraction with explicit
+    execution and a TAPP C ABI), the crate set and dependency graph (§3),
+    a minimal Rust example (DotGeneral → Plan → execute), a minimal C/TAPP
+    example, kernel selection and IDs, build and test commands for Linux
+    and macOS, the status (Phase 1, faer still internal, Phase 2 goal), and
+    provenance/authorship (Lukas Devos) with licenses.
+  - **Interim PRs:** PRs 1–3 only remove or correct statements their own
+    deletions make false.
+  - **Checks:** the examples are compiled (README doctest or an example
+    crate), and the dependency diagram is checked against `cargo tree`
+    (REPOSITORY_RULES, Public Surface Drift).
 - Root `docs/` (architecture, decision-log, provenance, design-principles, research-map) is rewritten for the new structure. A new `docs/migration-2026-10.md` maps old paths and names to new ones for tenferro.
 - Deleted: `RELEASING.md` (crates.io/JLL/Julia procedure, obsolete by D1), `CHANGELOG.md`, `CONTRIBUTING.md`, `tensorprimitives/CLAUDE.md`.
 - Removed from the tree: **`tensorprimitives/bench-results/`** (about 2400
@@ -681,8 +696,9 @@ intermediate clients broken.
    tprims-capi, move the remaining testkit support, then remove all
    remaining tensorprimitives packages, docs/assets and the subtree. Finish
    headers, install/pkg-config, licenses and migration
-   docs. Replace all old package/feature paths in CI, AGENTS.md,
-   REPOSITORY_RULES.md, README/rustdoc/examples and bundled usage skills.
+   docs. Rewrite README.md from scratch (§8). Replace all old package/feature
+   paths in CI, AGENTS.md, REPOSITORY_RULES.md, rustdoc/examples and bundled
+   usage skills.
 
 **CI platforms.** Hosted CI runs on Linux x86_64 and macOS arm64 for every
 PR. This is a prerequisite: the matrix lands on `main` before PR 1.
