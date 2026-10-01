@@ -2,6 +2,14 @@
 
 Status: **draft for review**. Date: 2026-10-02. Baseline: `origin/main` `fbc83f5`.
 
+Audited against issue [#37](https://github.com/tensor4all/tprims-rs/issues/37)
+and the baseline source on 2026-10-02; audit record:
+[`docs/worklogs/2026-10-02-source-integration-audit.md`](../../worklogs/2026-10-02-source-integration-audit.md).
+The clarifications below preserve D1–D10. This remains a draft, not a claim
+that the implementation or Phase 2 performance gates have passed.
+The companion [detailed design](2026-10-02-source-integration-detail-design.md)
+defines data structures, call boundaries and the staged source moves.
+
 This spec records the maintainer decisions taken on 2026-10-01/02. It covers
 **Phase 1**: dissolve the `tensorprimitives/` subtree into a newly designed
 crate set and remove the parts that leave the repository. **Phase 2**
@@ -10,8 +18,9 @@ removes faer. It is summarised in §10 and gets its own spec later.
 ## 1. Goals and decisions
 
 The goal is one coherent library: each responsibility exists in exactly one
-place, every existing numerical test still passes or is ported, and nothing
-regresses in a smoke run.
+place and every numerical test of a retained feature still passes or is
+ported. A smoke run screens for gross regressions; it cannot establish
+performance parity.
 
 | # | Decision |
 |---|---|
@@ -28,7 +37,7 @@ regresses in a smoke run.
 
 ## 2. Current state (facts at `fbc83f5`)
 
-- 19 workspace members plus `benchmarks`. Lukas Devos's crates are `tensorprimitives/crates/{tensorcontract, tensorprimitives-tapp, tensorprimitives-bench}`. The kernel layer was already moved out of `tensorcontract` in #27.
+- 19 workspace members, including `benchmarks`. Lukas Devos's crates are `tensorprimitives/crates/{tensorcontract, tensorprimitives-tapp, tensorprimitives-bench}`. The kernel layer was already moved out of `tensorcontract` in #27.
 - Duplicated responsibilities:
   - **Executors and SPMD.** tensorcontract `pool.rs`/`spmd.rs`, `tprims-exec`, the `tprims-core` executor and `tprims-contract-traits::HostExecution`. `Par` is defined twice, and an identical `ExecSpmd` adapter exists three times (blas/tblis.rs, contract/tblis.rs, tapp lib.rs).
   - **Validation.** tensorcontract plan/resolve validate labels, while `DotGeneral::validate`/`validate_layouts` validate axis lists. `is_injective_layout` exists twice, and there are three overlap checks (`core::tensor::spans_overlap`, tapp `overlap`, blas-capi `check_no_overlap`).
@@ -52,19 +61,28 @@ regresses in a smoke run.
 
 ## 3. Target crate set
 
-```
-tprims-exec ← tprims-kernel ← tprims-contract ← tprims-capi
-                                   ↑
-              tprims-testkit (dev-only), tprims-bench (bench-only)
-```
+The final **normal/build dependency** graph is:
 
-The dependency direction is strict. `tprims-kernel` does not depend on `tprims-exec`.
+| Consumer | Project dependencies |
+|---|---|
+| `tprims-exec` | none; optional `strided-basic` adapter |
+| `tprims-kernel` | none; no dependency on exec, contract or capi |
+| `tprims-contract` | exec, kernel, strided-view/basic; internal faer in Phase 1 |
+| `tprims-capi` | contract, exec |
+| `tprims-testkit` | contract, strided-view; unpublished test support |
+| `tprims-bench` | contract, exec, kernel, capi, testkit as needed; unpublished |
+
+Exec and kernel are siblings; neither depends on the other. Contract joins
+kernel descriptors to exec's dtype-independent workspace. Testkit's normal
+dependency on contract and contract's **path-only dev-dependency** on testkit
+are deliberate: no production dependency on the oracle, no versioned
+publication cycle. A dependency-direction test checks the final graph.
 
 | Crate | Contents (from) | Public surface |
 |---|---|---|
 | `tprims-exec` | `tprims-exec`; tensorcontract `spmd.rs`; the workspace from gemm-kernel `workspace.rs` | `Pool`, `Exec`, `install`, `for_each_partition`, `broadcast`, `WidthPolicy`, workspace providers, `strided::run_with_exec` (feature `strided`) |
 | `tprims-kernel` | gemm-kernel; kernel-tensorcontract; kernel-cplx; portable | `KernelFamily`, `KernelCatalog`/`KernelHandle`, `KernelChoice`, `list_kernels`, `unsafe register`, `SelectError` |
-| `tprims-contract` | contract-traits; contract; tensorcontract plan/driver/dynamic/batch/select/resolve/layout/buffer | `Problem`, `Labels`, `DotGeneral`, `Plan`, `PlanConfig`, `ContractionBackend`/`BoxedPlan`, `Error`, `add`, `permute` |
+| `tprims-contract` | contract-traits; contract; tensorcontract plan/driver/dynamic/batch/select/resolve/layout/buffer/scatter/element | `Problem`, `Labels`, `DotGeneral`, `Plan`, `PlanConfig`, `ContractionBackend`/`BoxedPlan`, `Error`, `add`, `permute` |
 | `tprims-capi` | tprims-core; tensorprimitives-tapp; tprims-bundle | TAPP standard ABI, `tprims_tapp_executor_*`, DLPack, status; builds `libtprims` (cdylib/staticlib/rlib) |
 | `tprims-testkit` | tensorcontract `reference.rs`; contract-testkit; the per-test naive helpers | the reference oracle, seeded input generators, a naive second backend (`publish = false`) |
 | `tprims-bench` | `benchmarks/`; tensorprimitives-bench | contract, exec_entry, capi_rust, tcbench (TCCG corpus; TBLIS FFI behind a feature) |
@@ -81,15 +99,28 @@ Deleted crates:
 - `tprims-contract-traits` (moves into the `tprims-contract::api` module)
 
 The unused workspace dependencies `strided-perm` and `strided-kernel` are removed. The `strided-view`/`strided-basic` pin stays at the tenferro rev.
+The checked-in `strided/` import and its history are not dissolved by this
+issue. The authoritative workspace member set at the baseline is the root
+`Cargo.toml`; do not turn the imported strided directories into workspace
+members as part of this change. Package names, workspace dependencies,
+lockfile, features, test fixtures and CI commands move together.
 
 ## 4. `tprims-contract`
 
 ### 4.1 Central representation
 
-`Problem` is the single validated description of
-`D = alpha * op(A) op(B) + beta * op(C)`:
+`Problem` is the single validated metadata description of
+`D = op_D(alpha * sum_K(op_A(A) * op_B(B)) + beta * op_C(C))`:
 
-- dtype T. Extents, signed element strides and offsets for A, B, D, and optionally C. When C is absent, D is updated in place.
+- The supported storage types are f32, f64, c32 and c64, all operands of one
+  type and accumulation at storage precision. Mixed precision and foreign
+  scalar extension are not retained in Phase 1.
+- Extents, signed element strides and logical offsets for A, B, D, and
+  optionally a separate C. No tensor payload, pointer, executor, alpha or
+  beta is stored in the problem. Alpha and beta are execution arguments.
+- The C mode is explicit: overwrite (no C term), accumulate from D, or
+  accumulate from a separately described C. Omitting C never implicitly
+  changes overwrite into accumulation.
 - Axes grouped by role, exactly as the driver uses them today:
 
   | Role | Present in |
@@ -97,19 +128,41 @@ The unused workspace dependencies `strided-perm` and `strided-kernel` are remove
   | batch | A, B, D (and C) |
   | M | A, C, D |
   | N | B, C, D |
-  | K | A, B |
+  | K | A and/or B, absent from C/D; a missing operand has stride zero |
 
-  Label patterns the current driver does not support stay typed errors.
-- Per-operand conjugation for A, B, C and D, plus alpha and beta.
+  The table describes the reduced logical axes. Labels repeated within an
+  operand select a diagonal: validate equal extents, then sum their signed
+  strides with checked arithmetic. Apply this to C and D too; an output
+  diagonal writes only that diagonal. A label isolated in A or B is a
+  reduction, represented as K with zero stride in the other input. A label
+  appearing only in C/D remains `Unsupported` (TAPP case 5).
+- Per-operand conjugation for A, B, C and D. `op_D` applies to the **whole**
+  result, including the beta term. It is not just conjugation of A*B.
+- Keep the original operand metadata for execution layout matching and
+  conservative addressed-span checks, plus the normalized role metadata
+  used for planning. Fields are private; constructors return typed errors.
 
-All validation happens once, when the `Problem` is built:
+Metadata validation happens when the `Problem` is built, before scatter
+allocation, selection or a zero-size shortcut:
 
-- repeated and out-of-range axes;
+- label count/rank, repeated-label extent agreement, and DotGeneral axis
+  bounds, uniqueness and disjoint contracting/batch sets;
 - extent agreement;
-- checked size and byte products;
-- output injectivity;
-- C/D mapping agreement and partial overlap;
-- D overlapping A or B.
+- checked role products, repeated-stride sums, folding, scatter sizes,
+  signed reachable offsets, byte spans and FFI integer conversions;
+- output injectivity on the reduced logical D domain (conservative rejection
+  is documented); zero input strides and valid negative strides are allowed;
+- C and D have the same logical labels/extents, but may have different
+  orders and strides; precompute whether their mappings can be identical.
+
+Pointer-dependent validation happens on **every execution**, before any
+write: match the prepared shapes/strides/offsets, check Rust backing-slice
+bounds, and reject D/A or D/B span overlap. Separate C/D overlap is allowed
+only for identical logical address mappings; every other overlap is rejected,
+even at beta zero. Address additions are checked as well as relative spans.
+TAPP has no allocation lengths: its unsafe caller contract guarantees valid
+storage, alignment, lifetime and exclusive output access; runtime checks do
+not pretend to prove that arbitrary pointers belong to live allocations.
 
 This replaces the duplicated injectivity and overlap checks listed in §2.
 
@@ -118,34 +171,79 @@ This replaces the duplicated injectivity and overlap checks listed in §2.
 - **`Labels`.** Per-operand i64 labels, with free output order and separate C and D. Used by TAPP.
 - **`DotGeneral`.** Paired contracting and batch axes. Output order is `[lhs_free, rhs_free, batch]` and C = D. Used by Rust and tenferro.
 
+Free axes keep their original operand order; batch axes use the supplied
+paired-axis order. Repeated *axis indices* in DotGeneral are invalid, unlike
+repeated *labels* in Labels. Equivalent front ends produce the same reduced
+problem, validation categories and numerical result; the label front end
+also supports diagonals and isolated reductions that DotGeneral cannot name.
+
 Both lower to `Problem` at plan time. No front end is visible to the driver.
 
 ### 4.3 Plan
 
-`Plan::<T>::new(&problem, &PlanConfig) -> Result<Plan<T>>`.
+`Plan::<T>::new(&problem, &PlanConfig) -> Result<Plan<T>>` snapshots metadata
+and config and owns the selected kernel handle. A selector or catalog need
+not outlive construction; any required provider state must outlive the plan
+through its handle (static descriptors remain static). Plans are reusable,
+`Send + Sync`, and executable concurrently on independent outputs. No input
+payload is retained. Replanning is explicit when metadata/config changes.
 
 `PlanConfig` holds:
 
-- `kernel`: `Auto`, an id, or a selector with a catalog (#28);
-- `partition`: StaticGrid or DynamicTiles (#29);
+- `kernel`: Auto or an owned ID. The typed catalog/selector (#28) is a
+  borrowed `new_with_selector` construction argument, not a closure embedded
+  in the dtype-independent PlanConfig;
+- `partition`: optional explicit StaticGrid or DynamicTiles (#29); absence
+  allows strategy selection, with StaticGrid as the packed default;
 - `no_materialize`;
+- a positive advisory `planning_budget` (default 1), width policy and an
+  explicit cost estimate (§5.2);
 - explicit tuning (§6.4).
 
-The family is resolved once, at plan time. Execution never reselects, reads the environment or registers anything.
+On a packed plan the family is resolved once, at plan time, after built-ins
+are available. The selector runs at most once, sees the documented advisory
+planning budget, and is not retained. Execution never reselects, reads the
+environment or registers anything. It works correctly at every Exec budget;
+the planning budget is not a runtime requirement. Fixed blocking and family
+remain unchanged while scheduling and scratch requirements may adapt to the
+actual width. A non-packed plan reports no selected family.
 
 In Phase 1 the plan picks one internal strategy, using today's rule:
 
-1. **Elementwise** when every axis is batch.
-2. **faer permute+GEMM** only when it fuses every operand without a copy and neither a kernel nor a partition was requested.
-3. **Packed driver** otherwise. This is the default.
+1. Explicit kernel/selector, partition, or packed-driver tuning requests
+   select the packed driver, including for all-batch problems. A request is
+   applied or rejected at plan time; never silently ignored.
+2. Otherwise **Elementwise** when every axis is batch.
+3. Otherwise **faer permute+GEMM** only when it fuses every operand without a
+   copy and implements the full C/D/conjugation semantics. If it cannot,
+   select packed. Distinct C/D must not cause a hidden copy into D.
+4. **Packed driver** otherwise. This is the default for non-fusable layouts.
 
 Strategies live in `src/strategy/{faer.rs, elementwise.rs}`. No public enum names them; `plan.report()` only displays the choice, together with the family, blocking, partition and materialization. `strategy/faer.rs` is the only file that depends on faer. Phase 2 deletes both files.
 
-Execution:
+Execution uses `StridedView`/`StridedViewMut`. The overwrite operation is
+`execute_into(&exec, alpha, a, b, d)` and never reads previous D. The update
+operation is `execute_into_accum(&exec, alpha, a, b, beta, source, d)`, with
+an explicit accumulation source: D itself or a separate C view. Reading D
+goes through its mutable view; callers must not construct simultaneous
+immutable C and mutable D references to the same allocation. Prepared C
+metadata must match the chosen source. An unsafe raw-pointer variant serves
+TAPP, and `contract_batched` executes many items (§5.2).
 
-- `plan.execute(&exec, alpha, a, b, beta, c, d)` over `StridedView`/`StridedViewMut`;
-- an `unsafe` raw-pointer variant for the C ABI;
-- `contract_batched` for many items (§5.2).
+`no_materialize` forbids full-operand normalization and temporary-result
+copy-back. Bounded panels/tiles required by the packed driver are workspace,
+not full-tensor materialization, and remain allowed. Report these separately,
+including scratch bytes and the reason for any fallback from direct B/C.
+Direct-C uses the selected family's existing scratch fallback for separate
+C, incompatible layouts or conjugation; it never rereads beta*C for every
+KC block. Phase 1 preserves the baseline direct-C applicability rules.
+
+After validation, zero output size writes nothing; K=0 or alpha=0 reads no
+A/B payload and computes `op_D(beta * op_C(C))`; beta=0 reads no C/old D.
+An empty K role set has product 1 (outer/Hadamard/scalar cases); a K extent
+of zero has product 0. Check configuration even on these shortcuts. No
+bitwise reproducibility across families is promised; tolerances and residuals
+are dtype/method-specific, and 3m's accuracy tradeoff stays explicit opt-in.
 
 ### 4.4 Backend trait
 
@@ -159,7 +257,14 @@ They take `&Exec` directly. This removes the following #31 types:
 - `ExecHost`
 - the `TypeId` downcast
 
-`Plan<T>` implements the trait itself. The naive second backend lives in testkit.
+`Plan<T>` implements `PreparedContraction<T>`; a separate `TprimsBackend`
+factory owns PlanConfig and implements `ContractionBackend<T>::prepare`
+with common Requirements and an advisory PlanningBudget. The methods remain
+object-safe for fixed T and use the same prepared metadata, update naming,
+typed errors and reporting as the concrete API. The naive second backend
+lives in testkit and must work through this seam without private driver access.
+This is a whole-backend seam; consolidation deliberately no longer offers
+the dependency-isolated traits crate or arbitrary HostExecution callbacks.
 
 ### 4.5 Errors
 
@@ -169,11 +274,22 @@ There is one `tprims_contract::Error`, with these variants:
 - `Shape`
 - `Layout`
 - `Alias`
-- `Unsupported`
+- `Unsupported` (including an explicit would-materialize reason)
 - `Select(tprims_kernel::SelectError)`
 - `Exec(tprims_exec::ExecError)`
+- `Backend` (a typed/source-preserving foreign-backend failure)
+- `Internal` (an impossible invariant, never an input-validation catch-all)
 
-Sources are typed, never stringified. The `tensorcontract::Error`, `contract-traits::Error`, `blas::Error` and `linalg::Error` types disappear. `tprims-capi` maps `Error` to TAPP status codes in one table.
+Sources are typed, never stringified. Shape/config/layout/alias errors carry
+structured operand, axis/label and expected/actual context. Lowering label
+failures have a typed reason so the C boundary can preserve `LABELS` versus
+`SHAPE`. Preparation and input-validation failures write nothing; backend
+failures after compute starts may leave a partial output and never promise
+rollback. `is_unsupported()` preserves #31's decline-before-writing contract.
+The `tensorcontract::Error`, `contract-traits::Error`, `blas::Error` and
+`linalg::Error` types disappear. `tprims-capi` maps Error in one exhaustive
+table; FFI-only null/device/read-only/lifecycle and caught-panic statuses stay
+in capi rather than leaking into contract.
 
 ### 4.6 File layout
 
@@ -183,22 +299,59 @@ src/
   api/{problem.rs, labels.rs, dot_general.rs, validate.rs, backend.rs, error.rs}
   plan/{mod.rs, analysis.rs, orientation.rs, report.rs}   ← tensorcontract plan.rs (1850) split
   driver/{mod.rs, static_grid.rs, dynamic.rs, tile.rs}    ← tensorcontract driver.rs (1548) split
-  select.rs, resolve.rs, layout.rs, buffer.rs, batch.rs
+  select.rs, resolve.rs, layout.rs, buffer.rs, scatter.rs, batch.rs
   strategy/{faer.rs, elementwise.rs}                      ← Phase 1 only
   wrappers.rs                                             ← add, permute (strided-basic)
 ```
+
+These paths mark responsibilities, not mandatory file counts. Analysis owns
+label reduction/classification/folding; orientation owns role swaps; driver
+modules share one validated call/context and one output-update implementation.
+Cache probing and the blocking model have separate inputs and tests. Extract
+large inline tests into module-local test directories. Do not duplicate
+validation between `api/validate.rs`, layout helpers and C wrappers.
 
 ## 5. `tprims-exec` and the parallel strategy
 
 ### 5.1 Primitives
 
-- `Pool<'p>` wraps a borrowed `&rayon::ThreadPool`. There is one wrapper per pool, and it owns the SPMD gate and the entry counters.
+- `Pool<'p>` owns the SPMD gate, workspace and entry counters and borrows
+  `&'p rayon::ThreadPool`; Pool::owned stays for the C host. The host creates
+  one wrapper per raw pool and shares it across calls. This is the existing
+  coordination contract, stated in docs/examples: do not add an exclusive
+  mutable borrow, global identity registry or wrapper-deduplication machinery.
 - `Exec` is either Serial or Rayon { pool, budget }.
 - `install(k, op)`: width one runs inline; a wider region enters the pool once.
 - `for_each_partition(k, f)` is barrier-free.
-- `broadcast(width, f)` runs the whole team concurrently or nothing. It is serialized per pool and refused from a worker of the same pool.
-- Workspace: `ArenaProvider`, `TeamLease` and the rest move here from `tprims-kernel`. There is one arena per pool plus a serial arena, and no process-global state. These types are byte arenas, so `tprims-kernel` needs no executor type.
-- `strided::run_with_exec` is kept for `add`/`permute` and for the copies the Phase 1 faer strategy makes.
+- `broadcast(width, f)` runs the whole team concurrently or nothing. For
+  width > 1 it is permitted only when width == pool size and the budget
+  permits that size. It is serialized per pool and refused from a worker of
+  the same pool. Refusal happens before any callback; never clamp a barrier's
+  participant count. Width one runs inline.
+- Workspace: `ArenaProvider`, `TeamLease` and the rest move here from
+  gemm-kernel. There is one arena per Pool and a Plan-owned arena for serial
+  reuse, with no process-global data cache or global tracing buffer. Requests
+  describe bytes, alignment and barrier counts, never KernelFamily types.
+  Kernel does not construct arenas; contract owns that integration.
+- `strided::run_with_exec` is kept for `add`/`permute`. The Phase 1 faer
+  strategy does no operand/result normalization copies.
+
+Workspace leases are exclusive and returned to the issuing owner on success,
+error and unwind. Reentry uses fresh call-local storage without waiting for a
+lease the calling thread holds. Reset worker-borrow state with an RAII guard,
+not a normal-return assignment. All potentially failing allocation and
+validation precede barrier-bearing compute. Kernel callbacks used in an SPMD
+region have a documented non-panicking contract; catch_unwind around the C
+entry alone cannot release workers blocked at a barrier. No new cancellation
+API is promised in Phase 1.
+
+Keep the existing workspace lease, trim and retained-byte APIs when moving
+them. Add one configurable retained-byte limit (64 MiB default per owner),
+with oversized idle buffers dropped on return rather than rejecting valid
+work. Include scatter capacities in accounting. Trim frees idle storage and
+does not invalidate live leases. Avoid a new resource manager, cancellation
+framework, slot-count policy or C workspace-control API; temporary storage
+and typed arithmetic checks are sufficient at the existing owning seam.
 
 Deleted:
 
@@ -212,15 +365,55 @@ Deleted:
 ### 5.2 Parallel strategy
 
 1. **One source of threads.** Threads come only from `Exec`; without one, execution is serial.
-2. **Width.** It is chosen once per execution: `width = WidthPolicy(exec.budget, plan estimate)`. The estimate uses the selected family's cost per flop. The hard-coded `NS_PER_FLOP` constants (tapp and blas) are removed. Work estimated below the serial threshold never enters the pool.
-3. **Inside one contraction.** SPMD via `broadcast`, with StaticGrid by default (MR/NR-aligned pm×pn, L3-domain aware) or DynamicTiles as opt-in. In-plan batch axes stay serial inside the team in Phase 1.
+2. **Width.** It is chosen once per execution from the snapshotted Exec
+   budget, job count, plan work estimate and explicit width policy. The
+   duplicated `NS_PER_FLOP` constants move into one PlanConfig default
+   estimate (the baseline's provisional 0.05 ns per real flop); complex work
+   is counted as 8 real flops/MAC. No measured per-family cost table exists
+   yet, so one is not invented for Phase 1. Callers may supply a positive,
+   finite cost estimate. Work below the serial threshold runs inline.
+3. **Inside one contraction.** Width one is serial. A full-pool width may
+   use SPMD StaticGrid (MR/NR-aligned pm×pn) or opt-in DynamicTiles. A medium
+   width or a budget smaller than the pool uses barrier-free independent
+   output partitions with private panels, never a partial broadcast that
+   wakes the whole pool. Repartition a requested grid to the available job
+   count/budget, without extra threads and without changing the family.
+   In-plan batch axes stay serial inside each team in Phase 1. L3-domain
+   hints describe blocking; no CPU affinity/NUMA-placement guarantee is made
+   without host-provided placement information.
 4. **Many items** (`contract_batched`, `TAPP_execute_batched_product`):
    - when there are at least as many items as the width, items are split barrier-free with `for_each_partition` and each item runs serially;
    - otherwise items run in sequence, each with inner SPMD.
 
    One budget governs both levels.
-5. **Nesting.** A broadcast from a worker of the same pool is refused, and execution falls back to serial with the same family.
-6. **faer strategy (Phase 1).** It enters with `install` and runs `faer::Par::rayon(n)`. The batched faer loop from the deleted `tprims-blas` moves into `strategy/faer.rs`, so the batched GEMM corpora do not regress.
+   Validate all items **and cross-item dependencies** before dispatch:
+   no D_i may overlap D_j, A_j, B_j or C_j for i != j. Shared read-only
+   inputs are allowed; identical C_i/D_i is allowed within one item.
+   Dependent batches are rejected as Alias instead of becoming races or
+   changing meaning with the worker count. Use sorted checked byte spans
+   rather than an unbounded quadratic pair scan. A failed validation leaves
+   every output unchanged; a backend failure during compute may leave
+   some items written. A zero-item batch still validates config/executor and
+   scalar arguments, while operand arrays may be null at zero length.
+5. **Nesting.** A broadcast from a worker of the same pool is refused before
+   work starts, and execution falls back to serial with the same family.
+   Never wait for a gate from its own participant. Gate ownership is scoped
+   and unwound with the call. Cross-pool callbacks remain subject to the
+   host's synchronization contract; no cross-pool lock-tracking system is added.
+6. **faer strategy (Phase 1).** It enters with install and derives Par from
+   the granted width (Seq at width one). The batched faer loop from the
+   deleted tprims-blas moves into `strategy/faer.rs`; when outer batching
+   fans out, each inner faer call is Seq. Its corpus coverage is retained;
+   performance parity is not asserted before measurement.
+
+Report budget, active width and actual dispatch width through existing Exec
+counters and optional execution diagnostics, separately from immutable
+`plan.report()`; no mandatory per-call allocation or logging. Counter-based tests verify
+1T has no pool entry, partial budgets have no full-pool wakeup, nested calls
+terminate, concurrent full-team calls serialize, and one plan works at
+different budgets without reselecting. Invalid width requests return ExecError
+without running a partial team; public callback docs state the barrier and
+non-panicking obligations instead of promising to validate arbitrary code.
 
 ## 6. `tprims-kernel`
 
@@ -245,28 +438,58 @@ There is one crate for all project-owned kernels. Lukas Devos's code and the pro
 
 ### 6.2 Family IDs
 
-The scheme is `{isa}.{dtype}.{scheme}.{MR}x{NR}`:
+The scheme is `{isa}.{dtype}.{scheme}.{MR}x{NR}` for built-ins:
 
 | Field | Values |
 |---|---|
-| isa | `ref`, `avx2`, `avx512`, `neon` |
+| isa | `ref`, `avx2`, `avx512`, `neon`; the full required CPU-feature mask stays in the descriptor |
 | dtype | storage dtype `f32`/`f64`/`c32`/`c64` |
-| scheme | `real` for real families; for complex, `planar`, `native`, `1m`, `3m`, `4m`; `i1m`/`i4m` for induced families; `direct` for direct-C |
+| scheme | `real`/`real-scalar` for real scratch families; for complex, `planar`, `native`, `1m`, `3m`, `4m`; `i1m`/`i4m` with a base-implementation discriminator where needed; `direct`/`direct-b` for packed-B/direct-B direct-C |
 
-The complex field changes from today's real-type name: `tc.*` currently names complex families with `f64`.
+Storage dtype stays explicit. At fbc83f5 the descriptor adapter already uses
+c32/c64 for complex `tc.*` IDs; the old real-type kernel names are not the
+registered family IDs. Do not invent a f64-to-c64 rename for those descriptors.
 
 | Old | New |
 |---|---|
 | `tc.avx2.f64.8x6` | `avx2.f64.real.8x6` |
-| `tc.avx2.f64.planar.4x5` (c64) | `avx2.c64.planar.4x5` |
+| `tc.avx2.c64.planar.4x5` | `avx2.c64.planar.4x5` |
 | `cplx.avx2.c64.native.4x4` | `avx2.c64.native.4x4` |
 | `portable.c64.native.4x4` | `ref.c64.native.4x4` |
+| `portable.f64.4x4` | `ref.f64.real.4x4` |
+| `tc.scalar.f64.4x4` | `ref.f64.real-scalar.4x4` |
+| `portable.f64.4x4.direct` | `ref.f64.direct.4x4` |
+| `portable.f64.4x4.direct-b` | `ref.f64.direct-b.4x4` |
+| `portable.f64.4x4.1m-induced` | `ref.c64.i1m.2x4` |
+| `tc.scalar.f64.4x4.1m-induced` | `ref.c64.i1m-scalar.2x4` |
 
-Provenance is carried by the `Origin` metadata, not by the ID. The full ID list is pinned by a snapshot test, and resolution rejects duplicates.
+Provenance is carried by Origin metadata, not by the ID. Keep origin project
+and author distinct from the new owning crate's name. The built-in scheme
+must remain injective: two descriptors differing in packing, update mode or
+feature requirements cannot share an ID. The baseline has both portable and
+tc.scalar real 4x4 families, plus direct/direct-B variants; the scheme
+discriminators above resolve these actual collisions and carry through to
+their induced families (`i4m-scalar` analogously). MR/NR name the descriptor's
+logical complex tile, so induced 1m uses half its base real MR. Audit the full descriptor
+inventory before renaming and preserve every remaining descriptor. External catalog
+IDs remain provider-owned opaque names; do not force third-party names into
+the built-in namespace. The full per-target ID list is pinned by snapshot
+tests, resolution rejects duplicates, and the migration guide contains the
+complete old/new mapping (including induced families).
 
 ### 6.3 Selection
 
 `Auto` is unchanged in Phase 1: among CPU-available families in descending priority, it takes the first with `allow_auto`. ID selection, the catalog/selector (#28) and DynamicTiles (#29) are kept.
+
+Keep priorities, tie order and allow_auto flags from the baseline, including
+the opt-in native c32/c64 families from #30 and 3m. CPU/dtype/capability
+checks apply to forced IDs and external selections before an ISA callback is
+called. Built-ins are present deterministically without any caller registration
+step. Explicit unsafe external registration stays idempotent for the same
+manifest and rejects conflicting IDs. New plans snapshot the available catalog;
+later registration cannot mutate an existing plan. Remove environment-derived
+process-default resolution caches; immutable CPU/cache-topology probes may
+still be shared, but every plan's choices come from its explicit config.
 
 ### 6.4 Configuration instead of environment variables
 
@@ -283,14 +506,45 @@ Every `TENSORCONTRACT_*` and `TPRIMS_GEMM_*` variable is deleted. The knobs beco
 
 Benchmarks parse env/flags into `PlanConfig`.
 
+The prohibition is on **runtime library policy**: no `std::env::var`/OS env
+lookup to decide execution, selection or tuning. Cargo/build-script variables
+and benchmark-only provider setup are not library runtime configuration.
+Benchmark parsers reject invalid/removed knobs rather than silently ignoring
+them; do not reintroduce an engine env variable as an adapter.
+
+Use typed fields with documented baseline defaults. Unset optional fields
+preserve the environment-unset baseline; an explicitly set partition is
+distinguishable from the packed default. Explicit mc/kc/nc sizes and percentage
+overrides are mutually exclusive for the same dimension. Validate positivity,
+finite percentages/costs, tile alignment, checked byte footprints and supported
+method/write-back combinations. Forced ID plus selector, or conflicting
+method/row-block requests, is Config/Select before output writes. New custom
+families are not retargeted to another geometry behind the caller's back.
+Cache model overrides are inputs to one blocking calculation; reports include
+the effective values and their sources. No hidden reblocking at execute time.
+
 ## 7. `tprims-capi`, `tprims-testkit`, `tprims-bench`
 
-- **`tprims-capi`.** The ABI is unchanged from #26. The `blas` feature is gone.
+- **`tprims-capi`.** Preserve #26's TAPP/core ABI except for the explicitly
+  listed removals/restrictions in §7.1; add tprims-only config extensions.
+  The library `blas` feature is gone.
   - Headers in `include/`: the pinned upstream TAPP headers (BSD-3) and `tprims/{tprims,core,tapp_ext}.h`. Lukas Devos's second `tapp.h` is deleted.
   - `examples/c-consumer`, the pkg-config template and `install.sh` are adapted to `libtprims`.
-  - The tapp `lib.rs` (1239 lines) is split into `tensor_info.rs`, `product.rs`, `validate.rs` and `executor.rs`.
+  - The tapp `lib.rs` (1239 lines) is split by ownership: `tensor_info.rs`
+    owns info handles/getters/setters, `product.rs` owns metadata snapshots
+    and the TAPP-to-Labels bridge, `execute.rs` owns single/batch pointer
+    adaptation, and `executor.rs` owns executor lifetime. Shared status/error,
+    DLPack and handle/attribute functions have their own existing core modules.
+    The root is exports and wiring. There is no second contraction
+    `validate.rs`: role/layout/alias validation belongs to contract; capi
+    validates raw ABI arguments and maps their errors.
 - **`tprims-testkit`.**
-  - One label-based reference oracle (from `tensorcontract::reference`), used by every test that needs an oracle.
+  - One label-based reference oracle (from `tensorcontract::reference`),
+    used by tests needing a general oracle. It independently enumerates the
+    original labels, diagonals and reductions and does not call production
+    lowering/scatter/selection. Keep small known-value and algebraic tests
+    as independent checks; do not replace them with comparisons between two
+    users of the same production lowering.
   - Seeded generators (rand_chacha).
   - The naive `ContractionBackend`.
 - **`tprims-bench`.**
@@ -298,12 +552,90 @@ Benchmarks parse env/flags into `PlanConfig`.
   - `exec_entry`, `capi_rust` and `tcbench`.
   - The blas and linalg benchmarks are deleted.
 
+### 7.1 Preserved ABI and explicit C configuration
+
+"Unchanged" covers the pinned TAPP prototypes, numeric enum/status values,
+handle ownership and supported semantics from #26. The intentional ABI break
+is deletion of `tprims_blas_*` and the blas header/feature, with
+`tprims_has_part("blas") == 0`. TAPP remains present in the final default
+library; no implicit feature disables it. Keep `tprims_tensor_borrow_*`,
+DLPack structs, `tprims_last_error`, ABI-version and part-query helpers while
+making clear that standard TAPP consumes raw pointers/tensor-info metadata,
+not DLPack operands. This does not add a new DLPack contraction entry point.
+Update the umbrella header and installation manifest so neither includes or
+installs `tprims/blas.h`. Pin the final export allowlist with nm and C/C++
+consumers; no removed crate name should survive in build/install commands.
+
+Tensor products snapshot info metadata and config, hold no data pointer or
+executor and survive mutation/destruction of the original infos. Standard
+`TAPP_create_tensor_product` uses PlanConfig defaults. Non-default kernel,
+partition, blocking and no-materialize settings need a tprims-only extension:
+an opaque config handle with typed fallible setters and
+`tprims_tapp_create_tensor_product_with_config` (the standard arguments plus
+one config argument). The created product snapshots it; the config can then
+be destroyed. Keep this in `tapp_ext.h`, leave upstream headers verbatim,
+and specify/test the setter-to-PlanConfig and status mappings before PR 4
+lands. Do not pass a Rust struct or unversioned PlanConfig memory layout
+across C. Standard callers retain the default behavior.
+
+Preserve explicit executor ownership: executor 0 and TAPP_create_executor
+are serial; Rayon creation with nthreads=0 is invalid and nthreads=1 creates
+no workers. Budget updates are snapshotted once per call. BUSY or
+WOULD_DEADLOCK on destruction leave the handle live; successful destruction
+joins all workers, including TLS teardown, and failed creation joins any
+workers already started. Every exported function contains the panic boundary;
+no unwind crosses C, and thread-local error-message lifetime stays documented.
+Arbitrary/stale raw handles remain an unsafe caller-contract violation, not
+a promise that casts can validate their liveness.
+
+Preserve TAPP's C rules separately from Rust's explicit accumulation source:
+C metadata is required at product creation; null C data is allowed only at
+beta=0. Null C with beta!=0 is Unsupported, even on an empty output. Explicit
+C=D uses matching logical addresses; separate nonoverlapping C/D may have
+different layouts. Keep existing null A/B/D rules, storage-precision checks,
+op_D semantics, initialized status output and repeated-label behavior.
+The batched adapter uses contract's whole-batch preflight, including the new
+cross-item Alias rejection; this safety restriction is documented alongside
+the otherwise retained ABI.
+
+### 7.2 Benchmark baselines and features
+
+tcbench does not invoke the historical scripts to execute its Rust commands.
+Its TBLIS and BLAS/TTGT comparison code is **benchmark-only** and may remain
+behind optional `tblis`/`tblis13`, `blas` and `accelerate` features. D3 removes
+the library BLAS API, not external numerical references. The feature-free
+build links no system TBLIS/OpenBLAS. Preserve the version-dependent TBLIS
+dtype-tag self-check, provider version/build reporting and externally pinned
+provider threads. Build-script provider variables stay in the benchmark
+package. Keep the TCCG corpus, stride-stress modes and correctness commands;
+translate old method/selection knobs to explicit PlanConfig before timing.
+Name feature-gated reference cases separately from tprims strategies.
+
 ## 8. Documents and assets
 
 - `tensorprimitives/docs/` (design, decisions, refuted, measurement-rules, notebook) moves to `docs/archive/tensorprimitives/`.
 - Root `docs/` (architecture, decision-log, provenance, design-principles, research-map) is rewritten for the new structure. A new `docs/migration-2026-10.md` maps old paths and names to new ones for tenferro.
 - Deleted: `RELEASING.md` (crates.io/JLL/Julia procedure, obsolete by D1), `CHANGELOG.md`, `CONTRIBUTING.md`, `tensorprimitives/CLAUDE.md`.
-- Removed from the tree: `bench-results/` (about 2400 files) and `scripts/` (sbatch and analysis). Both stay in history. `docs/provenance.md` records the last commit that contains them, `2155bb63e1a87a1f993d50c439b98a9bc7298ad5`. Scripts that tcbench still needs are kept under `tprims-bench`.
+- Removed from the tree: **`tensorprimitives/bench-results/`** (about 2400
+  files) and **`tensorprimitives/scripts/`** (35 sbatch/analysis files),
+  retaining history. This does not delete root `scripts/` (CI checks) or
+  `benchmarks/scripts/` (current measurement support).
+- Before removal, record a path-by-path keep/archive/delete manifest in the
+  removal worklog. Archive historical reports with pinned repository/commit
+  links, not broken relative links into deleted directories. `fbc83f5` is a
+  verified pre-removal snapshot containing both directories; the earlier
+  `2155bb63e1a87a1f993d50c439b98a9bc7298ad5` snapshot also contains them.
+  Record the actual deletion parent's full SHA and a `git archive` recovery
+  command in provenance when deletion lands; do not call the earlier import
+  commit the "last containing commit".
+- Keep scripts needed for the supported tcbench **workflow**, including their
+  transitive sourced/imported helpers, under `benchmarks/` (package
+  `tprims-bench`). Historical scheduler/experiment scripts have no automatic
+  keep entitlement. Current benchmark commands must work in a clean checkout
+  without recovering anything from history. Rewrite working-directory,
+  output-path, binary/feature and env-to-config assumptions, and syntax/test
+  the kept scripts. Historical experiment reproduction uses the pinned old
+  checkout and toolchain, rather than the new CLI with old scripts.
 - Add root `LICENSE-MIT` / `LICENSE-APACHE`, with copyright for Lukas Devos and tensor4all contributors.
 
 ## 9. History and authorship
@@ -312,6 +644,15 @@ Benchmarks parse env/flags into `PlanConfig`.
 - Files derived from tensorprimitives-rs keep their source/author headers.
 - The `authors` of `tprims-kernel`, `tprims-contract` and `tprims-capi` include Lukas Devos.
 - Commits that port his code carry `Co-authored-by: Lukas Devos <ldevos@flatironinstitute.org>`.
+- Preserve imported ancestor commits with ordinary merge commits; do not
+  squash or rewrite the subtree's imported history. A pure move commit and
+  later responsibility splits retain derivation notices and license texts;
+  git mv alone does not guarantee follow across a split. The move manifest
+  records old/new paths and commits for those cases. Preserve BSD-3 notices
+  for the pinned TAPP headers and Apache-2.0 notices for DLPack. Testkit also
+  credits Lukas for its moved oracle; add Satoshi Terasaki/Hiroshi Shinaoka
+  wherever strided-derived files actually move. Review imported tests file
+  by file, rather than assigning all sources one guessed copyright.
 
 ## 10. Phase 2 (separate spec, summary only)
 
@@ -333,27 +674,131 @@ Benchmarks parse env/flags into `PlanConfig`.
 
 ## 11. Delivery and verification (Phase 1)
 
-There are four PRs in dependency order. Each is green on the local gate before it is pushed.
+There are four PRs in dependency order. Each is green on its current
+workspace's local gate before it is pushed, with no manifest referring to a
+deleted package. The order below is ownership order, not permission to leave
+intermediate clients broken.
 
-1. **exec consolidation.** Workspace move, `Spmd` replaced by `Exec`, thread-spawning paths deleted.
-2. **kernel consolidation.** `tprims-kernel` layout, ID rename, removal of environment reads.
-3. **contract consolidation.** `Problem`, front ends, plan, single error, driver move, strategies. Deletes blas, linalg, pgx86, kernel-gemm and contract-traits.
-4. **capi, testkit and bench consolidation.** Docs archive, licenses, and removal of `tensorprimitives/`.
+1. **exec consolidation.** Move workspace and its tests from gemm-kernel;
+   remove exec's dependency on gemm-kernel and adapt **all** old driver,
+   bridge and pool-workspace consumers to the exec-owned byte API in this
+   PR. Replace Spmd and every own-thread fallback, including batch.rs.
+   The existing library/bench/C callers still build on the interim crate set.
+2. **kernel consolidation.** Create tprims-kernel, move the provider bodies,
+   rename IDs and migrate imports/manifests/ID fixtures in every consumer,
+   including the temporarily retained tensorcontract and TAPP crates.
+   Removing kernel env reads requires adapting old planners and benchmark
+   parsers to explicit config in the same PR; old helpers cannot depend on
+   a removed from_env function. Preserve family contract, ISA and opt-in tests.
+3. **contract consolidation.** Problem, front ends, plan, errors, driver and
+   strategies. Rebase the retained TAPP wrapper onto the new Plan and move
+   the oracle/second-backend support needed by the ported tests now, rather
+   than delaying it to PR 4. Delete blas/linalg/pgx86/kernel-gemm and
+   contract-traits only after migrating/removing their consumers, including
+   bundle's blas dependency/feature, BLAS C symbols and obsolete benchmark
+   targets. Trim CI commands for those targets in the same PR. A temporary
+   tensorcontract crate may remain only while tcbench still consumes it;
+   delete it once its last consumer moves, with no permanent compatibility shim.
+4. **capi, testkit and bench completion.** Merge core/TAPP/bundle into
+   tprims-capi, move tcbench and remaining testkit support, then remove all
+   remaining tensorprimitives packages, docs/assets and the subtree. Finish
+   headers, install/pkg-config, config extensions, licenses and migration
+   docs. Replace all old package/feature paths in CI, AGENTS.md,
+   REPOSITORY_RULES.md, README/rustdoc/examples and bundled usage skills.
 
 Implementation is mostly one sequential lane. testkit/bench and the docs archive can run in parallel. PR 3 is internally sequential: problem and front ends, then the driver move, then the strategies.
 
-Verification:
+Every PR maintains a test-migration ledger: original path/case, new owner and
+whether it is ported or removed with a named deleted feature. A failed test
+cannot be classified as deleted merely because the new representation omits
+its behavior. The final review searches manifests, public docs, scripts and
+symbol inventories for removed packages/APIs/env variables. Archived docs
+are clearly historical and use their own pinned source links.
 
-- every numerical test of a kept feature is ported and passes;
+Correctness and structural acceptance (reuse/port existing tests; do not
+expand the bullets into a Cartesian product of configurations):
+
+- every numerical test of a kept feature is ported and passes across all four
+  dtypes: TAPP cases 1–4, output diagonal preservation, isolated reductions,
+  arbitrary output order, separate C/D, all conjugations and zero/scalar cases;
+- Labels/DotGeneral/role inputs agree where equivalent; static/dynamic,
+  direct/scratch, elementwise/faer/packed and trait/concrete paths agree with
+  an independent oracle or known values. Force packed families via IDs for
+  coverage without adding a permanent public strategy enum;
+- negative/offset/broadcast input layouts, invalid shapes/strides/labels,
+  arithmetic overflow, noninjective output, stale execution layouts and
+  single/whole-batch alias failures are tested, including at alpha/beta zero
+  and empty size. Whole-batch failures preserve all outputs;
+- 1T and 4T **correctness/control tests** cover partial budgets, nesting,
+  concurrent plans, repeated execution and executor/workspace cleanup. These
+  are not heavy paired throughput experiments;
+- allocation/copy counters check no full-operand copy, trait/concrete parity,
+  steady-state workspace reuse and bounded retention/clear/reentry behavior;
 - tests of deleted features are removed together with the feature;
-- the local gate passes: fmt, clippy `-D warnings`, workspace tests, release tests of the packed driver, docs `-D warnings`, MSRV 1.89, C/C++ ABI consumers, the `nm` symbol check and the scripts job;
-- one 1T smoke run of `tenferro-p1` and `hadamard` against `fbc83f5`, checking only for gross regressions, with no paired protocol.
+- the local gate passes: fmt, both clippy configurations with `-D warnings`,
+  workspace tests, release tests of packed-driver/kernel contracts, runnable
+  doctests and docs `-D warnings`, MSRV 1.89, C/C++ ABI consumers, the nm
+  export allowlist and the scripts job. Build the current library artifact
+  before ABI tests (`tprims-bundle` during transition, `tprims-capi` finally).
+  Every compiling Cargo command uses `-j 16` (fmt does not accept a job flag).
+  Test exec with/without its strided feature separately; remove stale
+  strided workspace-only feature invocations. The final crates use std;
+  old tensorcontract no-std/package-list lanes disappear with that package,
+  not by weakening coverage while it is still supported;
+- benchmark rows cover retained public operations (including add/permute),
+  kernel paths and alternative strategies at 1T/4T. A missing comparison
+  feature is explicit, not silently treated as a zero-time row;
+- **Once at Phase 1 completion**, one release-mode 1T smoke run covers `tenferro-p1`, `hadamard`,
+  `tenferro-p1-gemm` and `large-batched-gemm` against fbc83f5. Before running,
+  freeze case correspondence, timed boundary, host/provider/thread settings
+  and a gross-regression investigation threshold (2x workload time). Record
+  every case and skipped feature, verify numerical output, and keep the
+  baseline and candidate runs sequential. Use pinned idle cores on Linux;
+  on macOS record that affinity is unavailable. Exceeding the threshold
+  requires investigation and a written disposition, not a performance
+  claim or a selective favorable retry. Smoke success does not establish
+  parity, promote Auto priorities or replace Phase 2's paired protocol.
+  Do not repeat benchmarks per file move, PR, audit lane or docs change.
+  Rerun only an affected smoke case when a failure is fixed; a paired
+  optimization experiment, if later requested, follows its own complete-run
+  rules. Each implementation PR runs its correctness/local gate, not another
+  performance campaign. No benchmark is required for this design-only change.
+
+Phase 1 integration readiness follows the shared rules' final independent
+cross-phase review. Reviewers reuse the recorded smoke evidence; this gate
+does not impose repeat timing or Phase 2 optimization experiments. Record
+unavailable ISA hardware; do not claim it passed. No implementation audit is
+claimed by this design-only revision.
+
+### 11.1 tenferro migration boundary
+
+The migration guide must distinguish a rename from a removed capability:
+
+| Old dependency/API | Phase 1 destination or disposition |
+|---|---|
+| Exec/Pool | tprims-exec; borrowed host pool, one shared wrapper (§5.1) |
+| ContractPlan/DotGeneral/Flags | Plan/DotGeneral/PlanConfig and explicit accumulation source |
+| gemm | DotGeneral or Labels with one K pair; preserve op/scaling/layout semantics |
+| gemm_batched | batch axes or a validated independent item batch; document the distinction |
+| gemm_grouped | per-shape plans, grouped by the host; no claim that one fixed-layout plan accepts heterogeneous items |
+| trsm | removed; no contraction replacement |
+| tprims-linalg decompositions/solves | removed; the consumer chooses another provider separately |
+| whole-backend trait crate | tprims-contract::api; updated object-safe factory/prepared-plan contract |
+| kernel names | complete per-target ID rename table, with old names rejected |
+
+The pinned `ext/tenferro-cpu-tprims` consumer stays on its old revision until
+its separate migration is complete; this repository cannot claim a drop-in
+rev bump. Update #31's acceptance language for the new seam, and record that
+trsm/linalg migration requires downstream provider work. No shims or new
+replacement numerical operations are introduced here.
 
 ## 12. Issues
 
 - **#22.** Add a note that the linalg split is obsolete (linalg is deleted); the repository rename remains.
 - **#31.** Slice 4 (the tenferro bridge) stays open and is rebased onto the new API.
-- **New tracking issue.** One issue for this spec. Phase 2 gets its own issue when its spec is written.
+- **#37.** Tracking issue for this spec. Phase 2 gets its own issue when its
+  spec is written. Keep this draft and the issue's readiness status explicit;
+  no automatic implementation/merge authorization follows from this audit.
 
 ## 13. Out of scope
 

@@ -2,6 +2,23 @@
 
 Dated 2026-09-29. A source link supports the observation; the proposed response remains a hypothesis until an experiment records evidence. Structural decisions (naming, packaging, ABI shape) are marked **Decided** when the maintainer has chosen them; they can still be revisited before the first release.
 
+## 2026-10-02 source integration draft ([#37](https://github.com/tensor4all/tprims-rs/issues/37))
+
+This is a future design, not the current public surface. The
+[audited Phase 1 spec](superpowers/specs/2026-10-02-source-integration-design.md)
+supersedes the earlier structural proposals below **when implemented**;
+historical observations and measured results remain evidence.
+
+| Question | Ruling | Evidence or next check |
+| --- | --- | --- |
+| Subtree/product boundary? | **Maintainer decision:** dissolve tensorprimitives/ while preserving authorship/history; remove library BLAS, engines/adapters and linalg; retain internal copy-free faer in Phase 1. | Issue #37; spec D1–D10. No implementation or performance parity claimed. |
+| Final dependency graph? | **Draft clarification:** exec and kernel are independent siblings; contract depends on both; capi depends on contract/exec. Traits move into contract::api, so the old dependency-isolated trait crate is intentionally removed. | Spec §3/§4.4; dependency-direction and second-backend tests required. |
+| Numerical and buffer semantics? | **Draft clarification:** retain TAPP diagonals, isolated reductions, separate C/D and whole-result op_D; split metadata validation from per-call pointer validation; make Rust overwrite/accumulation explicit. Reject cross-item write dependencies before parallel batches. | Baseline plan.rs and TAPP conformance/aliasing tests; spec §4/§5.2/§7.1. |
+| Parallel/resource ownership? | **Draft design:** keep the shared borrowed Pool contract; full-pool-only barrier broadcasts, barrier-free medium widths, Plan-owned serial scratch and a simple retained-byte bound. | Spec §5. No exclusive pool borrow or new lifecycle framework; no measured tuning claim. |
+| Kernel IDs and C tuning? | **Draft design:** retain descriptor distinctions in scheme names (scalar/portable, direct/direct-B, induced logical tile); standard TAPP keeps defaults, tprims extensions snapshot explicit PlanConfig. | Spec §6/§7.1; target-specific snapshots and C consumers required. |
+| Historical scripts and large files? | **Draft clarification:** remove only tensorprimitives/scripts and its results, keep workflow helpers transitively under benchmarks, record pinned recovery links; split by ownership rather than a fixed file count. | Spec §4.6/§7/§8/§9; [audit worklog](worklogs/2026-10-02-source-integration-audit.md). |
+| Verification and landing? | **Draft clarification:** each PR migrates its consumers/CI atomically; focused 1T/4T correctness/control checks remain required. One four-corpus 1T smoke at Phase 1 completion screens gross regressions; no per-move/PR/auditor timing campaign. | Maintainer request to avoid excessive safety design and benchmark frequency, 2026-10-02; spec §11. Phase 2 performance promotion remains separate. |
+
 ## 2026-10-01 native interleaved SIMD complex families ([#30](https://github.com/tensor4all/tprims-rs/issues/30))
 
 | Question | Ruling | Evidence or next check |
