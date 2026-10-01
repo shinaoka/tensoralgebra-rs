@@ -272,6 +272,14 @@ impl<T: Scalar> ContractPlan<T> {
             _ if custom.is_some() => Inner::Tb(Box::new(tblis::plan::<T>(
                 cfg, &shape, dims, strides, conj, gemm, custom,
             )?)),
+            // A partition policy is a requirement of the packed driver; the
+            // elementwise pass has no output grid to assign.
+            Strategy::Auto | Strategy::PermuteGemm if all_batch && gemm.has_partition_request() => {
+                return Err(select_err(tprims_blas::SelectError::EngineUnsupported {
+                    engine: "elementwise",
+                    reason: "an all-batch problem has no partition to choose; use Strategy::Tblis",
+                }));
+            }
             Strategy::Auto | Strategy::PermuteGemm if all_batch => Inner::Elementwise {
                 a_axes: cfg.lhs_batch.clone(),
                 b_axes: cfg.rhs_batch.clone(),
@@ -293,6 +301,7 @@ impl<T: Scalar> ContractPlan<T> {
                 // copying permute+GEMM plan is only a fallback for the default
                 // configuration.
                 let wants_packed = gemm.kernel != tprims_blas::KernelChoice::Auto
+                    || gemm.has_partition_request()
                     || matches!(gemm.engine, tprims_blas::EngineChoice::Packed);
                 let pg = permute_gemm::plan(cfg, &shape, dims, strides, false, gemm)?;
                 if pg.materialized.iter().any(|&m| m) || wants_packed {
@@ -327,6 +336,7 @@ impl<T: Scalar> ContractPlan<T> {
                 // that asks for another engine or a named kernel has no arm
                 // here; saying so now beats a surprise when it runs.
                 let unsupported = gemm.kernel != tprims_blas::KernelChoice::Auto
+                    || gemm.has_partition_request()
                     || matches!(
                         gemm.engine,
                         tprims_blas::EngineChoice::PrivateGemmX86
@@ -379,6 +389,7 @@ impl<T: Scalar> ContractPlan<T> {
             partition: rg.partition,
             batched: None,
             origin: Some(rg.family().origin),
+            dynamic: tb.dynamic(&rg),
         })
     }
 
