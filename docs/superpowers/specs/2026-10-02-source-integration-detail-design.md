@@ -371,7 +371,7 @@ old paths; old experiment reproduction runs the old checkout/toolchain.
 | 1 exec | workspace move, direct Exec callers and thread-source consolidation; all current clients build |
 | 2 kernel | new owning crate, complete ID/import migration and explicit config inputs in current planners/harnesses |
 | 3 contract | new metadata/API/driver/strategies; TAPP rebased, testkit support moved as needed; remove obsolete library/bench dependencies together |
-| 4 capi/testkit/bench/docs | consolidate libtprims, config extension, tcbench, install artifacts, archived docs/assets and subtree removal |
+| 4 capi/testkit/bench/docs | consolidate libtprims, install artifacts, archived docs/assets, subtree removal and a from-scratch README rewrite |
 
 Do not add permanent re-export shims just to preserve the old product layout.
 Move or delete a consumer in the same PR that removes its dependency. Bundle
