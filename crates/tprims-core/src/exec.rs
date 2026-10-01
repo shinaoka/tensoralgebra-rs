@@ -1,16 +1,30 @@
-//! Executor handles: serial, or a Rayon pool created (and joined) by tprims
-//! for C hosts without one.
+//! Executors: the `TAPP_executor` of the TAPP C API, serial or owning a Rayon
+//! pool that tprims creates and joins for C hosts without one.
+//!
+//! A `TAPP_executor` is an `intptr_t` holding a pointer to an [`Executor`];
+//! zero selects the default serial executor (a tprims policy, not in the
+//! pinned TAPP headers). `TAPP_create_executor` makes a serial executor;
+//! `tprims_tapp_executor_create_rayon` makes one that owns a pool;
+//! `TAPP_destroy_executor` stops and joins that pool. Operations of every
+//! part of `libtprims` (TAPP products, BLAS) take the same executor.
+//!
+//! Rust hosts do not use this module: they lend their pool to
+//! [`tprims_exec::Pool::borrow`] and never create a second one.
 #![allow(non_camel_case_types)]
 
+use std::ffi::c_int;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Mutex, RwLock};
+use std::sync::Mutex;
 use std::thread::JoinHandle;
 
-use ::tprims_exec::{Exec, Pool};
+use ::tprims_exec::{Exec, Pool, PoolStats};
 
 use crate::status::*;
 
-/// Options for [`tprims_exec_rayon_create`].
+/// `TAPP_executor`: `intptr_t`, zero meaning the default serial executor.
+pub type TAPP_executor = isize;
+
+/// Options for [`tprims_tapp_executor_create_rayon`].
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct tprims_rayon_opts {
@@ -22,37 +36,113 @@ pub struct tprims_rayon_opts {
 enum Kind {
     Serial,
     Pool {
-        // Boxed: the pool owns its workspace arena, which is much larger than
-        // the serial variant, and this handle lives in a C-visible struct.
-        pool: RwLock<Option<Box<Pool<'static>>>>,
+        // The one `Pool` wrapper of this `ThreadPool`: its SPMD gate is
+        // pool-wide, so every call must go through this wrapper.
+        pool: Box<Pool<'static>>,
         joins: Mutex<Vec<JoinHandle<()>>>,
         budget: AtomicUsize,
     },
 }
 
-/// An executor handle (opaque in C).
-pub struct tprims_exec {
-    refs: AtomicUsize,
+/// What a `TAPP_executor` points at (opaque in C).
+pub struct Executor {
+    inflight: AtomicUsize,
     kind: Kind,
 }
 
-impl tprims_exec {
-    /// Run `f` with an [`Exec`] for this handle, holding it in flight.
+impl std::fmt::Debug for Executor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let (pool_size, budget) = self.threads();
+        f.debug_struct("Executor")
+            .field("pool_size", &pool_size)
+            .field("budget", &budget)
+            .finish()
+    }
+}
+
+/// Holds one call in flight; released on drop, also when unwinding.
+struct Flight<'a>(&'a AtomicUsize);
+
+impl Drop for Flight<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::Release);
+    }
+}
+
+impl Executor {
+    fn serial() -> Box<Self> {
+        Box::new(Self {
+            inflight: AtomicUsize::new(0),
+            kind: Kind::Serial,
+        })
+    }
+
+    /// A pool of `nthreads >= 2` workers. `hook` runs for each worker's index
+    /// before it is spawned and may refuse (a failed OS spawn); the value it
+    /// returns lives as long as that worker does. On any failure every worker
+    /// already started is stopped and joined before the error is returned.
+    fn pooled(
+        nthreads: usize,
+        stack: usize,
+        hook: impl Fn(usize) -> std::io::Result<Box<dyn std::any::Any + Send>> + Send + Sync + 'static,
+    ) -> Result<Box<Self>, FfiError> {
+        let joins = std::sync::Arc::new(Mutex::new(Vec::new()));
+        let j2 = joins.clone();
+        let built = rayon::ThreadPoolBuilder::new()
+            .num_threads(nthreads)
+            .spawn_handler(move |t| {
+                let held = hook(t.index())?;
+                let h = std::thread::Builder::new()
+                    .name(format!("tprims-worker-{}", t.index()))
+                    .stack_size(stack)
+                    .spawn(move || {
+                        let _held = held;
+                        t.run()
+                    })?;
+                j2.lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .push(h);
+                Ok(())
+            })
+            .build();
+        let handles = std::mem::take(
+            &mut *joins
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        );
+        match built {
+            Ok(tp) => Ok(Box::new(Self {
+                inflight: AtomicUsize::new(0),
+                kind: Kind::Pool {
+                    pool: Box::new(Pool::owned(tp)),
+                    joins: Mutex::new(handles),
+                    budget: AtomicUsize::new(nthreads),
+                },
+            })),
+            Err(e) => {
+                // Rayon terminated the workers it had started; wait for them
+                // (and their TLS teardown) so a failed create leaves no thread.
+                for h in handles {
+                    let _ = h.join();
+                }
+                Err(FfiError::new(TPRIMS_ERR_INTERNAL, e.to_string()))
+            }
+        }
+    }
+
+    /// Run `f` with an [`Exec`] for this executor, holding it in flight. The
+    /// budget is read once, here: a later `set_budget` does not affect `f`.
     ///
     /// # Errors
     ///
-    /// `TPRIMS_ERR_CLOSED` after close.
+    /// Whatever `f` returns.
     pub fn with<R>(&self, f: impl FnOnce(&Exec<'_>) -> Result<R, FfiError>) -> Result<R, FfiError> {
+        self.inflight.fetch_add(1, Ordering::Acquire);
+        let _flight = Flight(&self.inflight);
         match &self.kind {
             Kind::Serial => f(&Exec::serial()),
             Kind::Pool { pool, budget, .. } => {
-                let g = pool
-                    .read()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                let p = g
-                    .as_ref()
-                    .ok_or_else(|| FfiError::new(TPRIMS_ERR_CLOSED, "executor is closed"))?;
-                let exec = Exec::rayon(p)
+                let exec = Exec::rayon(pool)
                     .with_budget(budget.load(Ordering::Relaxed))
                     .map_err(|e| FfiError::new(TPRIMS_ERR_INVALID_ARGUMENT, e.to_string()))?;
                 f(&exec)
@@ -60,67 +150,178 @@ impl tprims_exec {
         }
     }
 
-    fn close(&self) -> tprims_status {
+    /// `(pool_size, budget)`: `(0, 1)` for a serial executor. The budget is an
+    /// upper bound on a call's width, not the active width.
+    pub fn threads(&self) -> (usize, usize) {
         match &self.kind {
-            Kind::Serial => TPRIMS_OK,
-            Kind::Pool { pool, joins, .. } => {
-                // A worker of this pool cannot join its own pool.
-                if let Ok(g) = pool.try_read() {
-                    if g.as_ref().is_some_and(|p| Exec::rayon(p).is_worker()) {
-                        return TPRIMS_ERR_WOULD_DEADLOCK;
-                    }
-                }
-                let mut g = match pool.try_write() {
-                    Ok(g) => g,
-                    Err(_) => return TPRIMS_BUSY,
-                };
-                // Take the join list before releasing the pool lock and hold
-                // it while joining: a concurrent close that finds the pool
-                // already gone waits on this lock, so no close returns before
-                // every worker (including its TLS teardown) has finished.
-                let mut j = joins
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                let Some(p) = g.take() else {
-                    return TPRIMS_OK; // already closed and joined
-                };
-                drop(p.into_owned()); // starts worker shutdown
-                drop(g);
-                for h in std::mem::take(&mut *j) {
-                    let _ = h.join();
-                }
-                TPRIMS_OK
+            Kind::Serial => (0, 1),
+            Kind::Pool { pool, budget, .. } => (
+                pool.size(),
+                budget.load(Ordering::Relaxed).clamp(1, pool.size().max(1)),
+            ),
+        }
+    }
+
+    /// Entry counters of the owned pool, or `None` for a serial executor
+    /// (which has no pool to enter). For tests and benchmarks.
+    pub fn pool_stats(&self) -> Option<PoolStats> {
+        match &self.kind {
+            Kind::Serial => None,
+            Kind::Pool { pool, .. } => Some(pool.stats()),
+        }
+    }
+
+    /// Whether the calling thread is a worker of this executor's pool.
+    fn on_own_worker(&self) -> bool {
+        match &self.kind {
+            Kind::Serial => false,
+            Kind::Pool { pool, .. } => Exec::rayon(pool).is_worker(),
+        }
+    }
+
+    /// Stop and join the pool, then free. Consumes the box only on success.
+    fn destroy(this: *mut Executor) -> Result<(), FfiError> {
+        // SAFETY: `this` is a live executor handle (caller contract).
+        let e = unsafe { &*this };
+        // A worker cannot join its own pool.
+        if e.on_own_worker() {
+            return Err(FfiError::new(
+                TPRIMS_ERR_WOULD_DEADLOCK,
+                "executor destroyed from one of its own workers",
+            ));
+        }
+        if e.inflight.load(Ordering::Acquire) != 0 {
+            return Err(FfiError::new(TPRIMS_BUSY, "executor has calls in flight"));
+        }
+        // SAFETY: nothing is in flight and the caller synchronizes new calls
+        // with this destruction; the handle was produced by `Box::into_raw`.
+        let boxed = unsafe { Box::from_raw(this) };
+        if let Kind::Pool { pool, joins, .. } = boxed.kind {
+            // Take the join handles before shutdown starts, join after: when
+            // this returns no tprims worker code, TLS teardown included, runs.
+            let handles = joins
+                .into_inner()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            drop(pool.into_owned()); // starts worker shutdown
+            for h in handles {
+                let _ = h.join();
             }
         }
+        Ok(())
     }
 }
 
-fn boxed(kind: Kind) -> *mut tprims_exec {
-    Box::into_raw(Box::new(tprims_exec {
-        refs: AtomicUsize::new(1),
-        kind,
-    }))
-}
-
-/// A serial executor (runs everything on the calling thread).
-#[no_mangle]
-pub extern "C" fn tprims_exec_serial() -> *mut tprims_exec {
-    boxed(Kind::Serial)
-}
-
-/// Create a Rayon pool of `nthreads` workers owned by tprims. `opts` may be
-/// null. Returns null on failure (see `tprims_last_error`).
+/// The executor behind a handle; `None` for the default (zero).
 ///
 /// # Safety
 ///
-/// `opts` is null or valid.
+/// `e` is zero or a live handle from this library.
+unsafe fn resolve<'a>(e: TAPP_executor) -> Option<&'a Executor> {
+    if e == 0 {
+        None
+    } else {
+        // SAFETY: per the contract.
+        Some(unsafe { &*(e as *const Executor) })
+    }
+}
+
+/// Run `f` on the executor behind `exec` (zero: the default serial executor).
+///
+/// # Safety
+///
+/// `exec` is zero or a live handle, not destroyed during the call.
+pub unsafe fn with_executor<R>(
+    exec: TAPP_executor,
+    f: impl FnOnce(&Exec<'_>) -> Result<R, FfiError>,
+) -> Result<R, FfiError> {
+    // SAFETY: forwarded contract.
+    match unsafe { resolve(exec) } {
+        Some(e) => e.with(f),
+        None => f(&Exec::serial()),
+    }
+}
+
+/// Borrow the [`Executor`] behind a nonzero handle, for diagnostics.
+///
+/// # Safety
+///
+/// `exec` is a live handle from this library, not destroyed while borrowed.
+pub unsafe fn executor_ref<'a>(exec: TAPP_executor) -> Option<&'a Executor> {
+    // SAFETY: forwarded contract.
+    unsafe { resolve(exec) }
+}
+
+fn out_handle(out: *mut TAPP_executor, e: Box<Executor>) -> Result<(), FfiError> {
+    // SAFETY: non-null, checked by the callers, writable per the contract.
+    unsafe { *out = Box::into_raw(e) as TAPP_executor };
+    Ok(())
+}
+
+fn null_out(out: *mut TAPP_executor) -> Result<(), FfiError> {
+    if out.is_null() {
+        Err(FfiError::new(
+            TPRIMS_ERR_INVALID_ARGUMENT,
+            "null executor out-parameter",
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+/// `TAPP_create_executor`: a serial executor (no workers). Destroy it with
+/// [`TAPP_destroy_executor`].
+///
+/// # Safety
+///
+/// `exec` is null or writable.
 #[no_mangle]
-pub unsafe extern "C" fn tprims_exec_rayon_create(
+pub unsafe extern "C" fn TAPP_create_executor(exec: *mut TAPP_executor) -> c_int {
+    ffi(|| {
+        null_out(exec)?;
+        out_handle(exec, Executor::serial())
+    })
+}
+
+/// `TAPP_destroy_executor`: destroy a serial executor, or stop and join the
+/// pool an owned executor created with [`tprims_tapp_executor_create_rayon`]
+/// and free it. Zero is the default executor: success, nothing to do.
+///
+/// `TPRIMS_BUSY` while calls are in flight and `TPRIMS_ERR_WOULD_DEADLOCK`
+/// from one of the executor's own workers; both leave the handle live, so the
+/// caller may retry. A live handle is destroyed successfully once: double
+/// destruction and stale handles are unsupported, and the caller must
+/// synchronize destruction with the start of new calls.
+///
+/// # Safety
+///
+/// `exec` is zero or a live handle from this library.
+#[no_mangle]
+pub unsafe extern "C" fn TAPP_destroy_executor(exec: TAPP_executor) -> c_int {
+    ffi(|| {
+        if exec == 0 {
+            return Ok(());
+        }
+        Executor::destroy(exec as *mut Executor)
+    })
+}
+
+/// Create an executor that owns a private Rayon pool of `nthreads` workers,
+/// reusable across plans and shared by every part of the library.
+/// `nthreads == 0` is an error; `nthreads == 1` is a serial executor with no
+/// workers. The width is never inferred from the environment. `opts` may be
+/// null.
+///
+/// # Safety
+///
+/// `out` is null or writable; `opts` is null or valid.
+#[no_mangle]
+pub unsafe extern "C" fn tprims_tapp_executor_create_rayon(
+    out: *mut TAPP_executor,
     nthreads: usize,
     opts: *const tprims_rayon_opts,
-) -> *mut tprims_exec {
-    let mut out = std::ptr::null_mut();
-    let st = ffi(|| {
+) -> c_int {
+    ffi(|| {
+        null_out(out)?;
         if nthreads == 0 {
             return Err(FfiError::new(
                 TPRIMS_ERR_INVALID_ARGUMENT,
@@ -133,141 +334,137 @@ pub unsafe extern "C" fn tprims_exec_rayon_create(
         } else {
             unsafe { *opts }
         };
-        let stack = if o.stack_size == 0 {
-            16 << 20
+        let e = if nthreads == 1 {
+            Executor::serial()
         } else {
-            o.stack_size
+            let stack = if o.stack_size == 0 {
+                16 << 20
+            } else {
+                o.stack_size
+            };
+            Executor::pooled(nthreads, stack, |_| Ok(Box::new(())))?
         };
-        let joins = std::sync::Arc::new(Mutex::new(Vec::new()));
-        let j2 = joins.clone();
-        let tp = rayon::ThreadPoolBuilder::new()
-            .num_threads(nthreads)
-            .spawn_handler(move |t| {
-                let h = std::thread::Builder::new()
-                    .name(format!("tprims-worker-{}", t.index()))
-                    .stack_size(stack)
-                    .spawn(|| t.run())?;
-                j2.lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .push(h);
-                Ok(())
-            })
-            .build()
-            .map_err(|e| FfiError::new(TPRIMS_ERR_INTERNAL, e.to_string()))?;
-        let handles = std::mem::take(
-            &mut *joins
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner),
-        );
-        out = boxed(Kind::Pool {
-            pool: RwLock::new(Some(Box::new(Pool::owned(tp)))),
-            joins: Mutex::new(handles),
-            budget: AtomicUsize::new(nthreads),
-        });
-        Ok(())
-    });
-    if st == TPRIMS_OK {
-        out
-    } else {
-        std::ptr::null_mut()
-    }
+        out_handle(out, e)
+    })
 }
 
-fn handle<'a>(e: *mut tprims_exec) -> Result<&'a tprims_exec, FfiError> {
-    if e.is_null() {
-        return Err(FfiError::new(TPRIMS_ERR_INVALID_ARGUMENT, "null executor"));
-    }
-    // SAFETY: non-null handles come from tprims and are alive (refcounted).
-    Ok(unsafe { &*e })
-}
-
-/// Borrow the handle behind a pointer, for other parts' ABI functions.
+/// Set the thread budget of calls started afterwards (clamped to the pool
+/// width; a serial executor stays at 1). The pool is not resized.
 ///
-/// # Errors
+/// # Safety
 ///
-/// Null pointer.
-pub fn exec_ref<'a>(e: *mut tprims_exec) -> Result<&'a tprims_exec, FfiError> {
-    handle(e)
-}
-
-/// Number of worker threads (1 for serial); 0 for null or closed.
+/// `exec` is zero or a live handle.
 #[no_mangle]
-pub extern "C" fn tprims_exec_num_threads(e: *mut tprims_exec) -> usize {
-    handle(e)
-        .ok()
-        .map_or(0, |h| h.with(|x| Ok(x.budget().max(1))).unwrap_or(0))
-}
-
-/// Limit the threads an operation may occupy (clamped to the pool size).
-#[no_mangle]
-pub extern "C" fn tprims_exec_set_budget(e: *mut tprims_exec, max_threads: usize) -> tprims_status {
+pub unsafe extern "C" fn tprims_tapp_executor_set_budget(
+    exec: TAPP_executor,
+    budget: usize,
+) -> c_int {
     ffi(|| {
-        let h = handle(e)?;
-        if max_threads == 0 {
+        if budget == 0 {
             return Err(FfiError::new(
                 TPRIMS_ERR_INVALID_ARGUMENT,
                 "budget must be at least 1",
             ));
         }
-        if let Kind::Pool { budget, .. } = &h.kind {
-            budget.store(max_threads, Ordering::Relaxed);
+        // SAFETY: per the contract.
+        if let Some(Executor {
+            kind: Kind::Pool {
+                pool, budget: b, ..
+            },
+            ..
+        }) = unsafe { resolve(exec) }
+        {
+            b.store(budget.min(pool.size().max(1)), Ordering::Relaxed);
         }
         Ok(())
     })
 }
 
-/// Close: an owned pool stops and its workers are joined before this
-/// returns. `TPRIMS_BUSY` while calls are in flight, `TPRIMS_ERR_WOULD_DEADLOCK`
-/// from one of its workers; closing twice is `TPRIMS_OK`. The handle stays
-/// valid until its last `tprims_exec_release`.
+/// Report the pool width and the budget; either out-parameter may be null. A
+/// serial executor (including zero) reports `pool_size == 0`, `budget == 1`.
+/// The budget bounds a call's width; it is not the active width or an
+/// affinity promise.
+///
+/// # Safety
+///
+/// `exec` is zero or a live handle; the out-parameters are null or writable.
 #[no_mangle]
-pub extern "C" fn tprims_exec_close(e: *mut tprims_exec) -> tprims_status {
-    match handle(e) {
-        Ok(h) => h.close(),
-        Err(err) => {
-            set_last_error(&err.message);
-            err.status
+pub unsafe extern "C" fn tprims_tapp_executor_get_threads(
+    exec: TAPP_executor,
+    pool_size: *mut usize,
+    budget: *mut usize,
+) -> c_int {
+    ffi(|| {
+        // SAFETY: per the contract.
+        let (p, b) = unsafe { resolve(exec) }.map_or((0, 1), Executor::threads);
+        // SAFETY: null or writable per the contract.
+        unsafe {
+            if !pool_size.is_null() {
+                *pool_size = p;
+            }
+            if !budget.is_null() {
+                *budget = b;
+            }
+        }
+        Ok(())
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    use super::*;
+
+    /// A worker's exit takes this long to finish; `Executor::pooled` must
+    /// not return before it did, also when it fails.
+    struct SlowExit(Arc<AtomicUsize>);
+
+    impl Drop for SlowExit {
+        fn drop(&mut self) {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            self.0.fetch_sub(1, Ordering::SeqCst);
         }
     }
-}
 
-/// Add a reference.
-#[no_mangle]
-pub extern "C" fn tprims_exec_retain(e: *mut tprims_exec) {
-    if let Ok(h) = handle(e) {
-        h.refs.fetch_add(1, Ordering::Relaxed);
-    }
-}
-
-/// Drop a reference; the last one closes (joining an owned pool) and frees
-/// the handle. On a worker of the pool itself the join is handed to a
-/// detached thread.
-#[no_mangle]
-pub extern "C" fn tprims_exec_release(e: *mut tprims_exec) {
-    let Ok(h) = handle(e) else { return };
-    if h.refs.fetch_sub(1, Ordering::AcqRel) != 1 {
-        return;
-    }
-    let p = SendPtr(e);
-    let finish = move || {
-        let p = p;
-        // SAFETY: last reference; nobody else can observe the handle now.
-        let b = unsafe { Box::from_raw(p.0) };
-        while b.close() == TPRIMS_BUSY {
-            std::thread::yield_now();
+    /// A spawn failure at worker `at` joins the workers already started,
+    /// including their thread-exit work.
+    #[test]
+    fn failed_creation_reclaims_started_workers() {
+        for at in [1usize, 2, 3] {
+            let alive = Arc::new(AtomicUsize::new(0));
+            let a2 = alive.clone();
+            let err = Executor::pooled(4, 1 << 20, move |i| {
+                if i == at {
+                    return Err(std::io::Error::other("injected spawn failure"));
+                }
+                a2.fetch_add(1, Ordering::SeqCst);
+                Ok(Box::new(SlowExit(a2.clone())))
+            })
+            .unwrap_err();
+            assert_eq!(err.status, TPRIMS_ERR_INTERNAL);
+            assert_eq!(
+                alive.load(Ordering::SeqCst),
+                0,
+                "creation failed at worker {at} but returned before the started workers finished"
+            );
         }
-    };
-    if h.close() == TPRIMS_ERR_WOULD_DEADLOCK {
-        // A worker cannot join its own pool: hand the join to a reaper. If no
-        // thread can be spawned the handle is leaked rather than panicking.
-        let _ = std::thread::Builder::new()
-            .name("tprims-reaper".into())
-            .spawn(finish);
-    } else {
-        finish();
+    }
+
+    /// A successful creation does not wait for or touch the hook values.
+    #[test]
+    fn successful_creation_keeps_workers_until_destroy() {
+        let alive = Arc::new(AtomicUsize::new(0));
+        let a2 = alive.clone();
+        let e = Executor::pooled(3, 1 << 20, move |_| {
+            a2.fetch_add(1, Ordering::SeqCst);
+            Ok(Box::new(SlowExit(a2.clone())))
+        })
+        .unwrap();
+        assert_eq!(alive.load(Ordering::SeqCst), 3);
+        assert_eq!(e.threads(), (3, 3));
+        Executor::destroy(Box::into_raw(e)).unwrap();
+        assert_eq!(alive.load(Ordering::SeqCst), 0, "destroy returned early");
     }
 }
-
-struct SendPtr(*mut tprims_exec);
-// SAFETY: the pointer is the last reference, moved to one thread.
-unsafe impl Send for SendPtr {}

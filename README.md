@@ -79,19 +79,19 @@ format, the kernel-family contract and the resolution, and the providers
 
 | Crate | Owns | C ABI crate |
 | --- | --- | --- |
-| `tprims-exec` | Execution context: serial, a Rayon pool borrowed from the host (or created by a C host), host scheduling callbacks; width chosen from work; reusable scratch. No ambient global pool. | `tprims-core` |
+| `tprims-exec` | Execution context: serial, a Rayon pool borrowed from the host (or created and joined through the C API by a C host); width chosen from work; reusable scratch. No ambient global pool. | `tprims-core` |
 | `strided-*` (external, [strided-rs](https://github.com/tensor4all/strided-rs)) | Checked strided views, scalar and conjugation contracts, copy and permutation, map / reduce / fused elementwise. | `strided-capi` (planned) |
 | `tprims-gemm-kernel` | The kernel contract, with no dependencies of its own: packed formats, kernel-family descriptors, CPU masks, resolution with frozen blocking, the partition policy, the workspace provider and caller-scoped catalogs of downstream kernels. MIT OR Apache-2.0. | none |
 | `tprims-kernel-tensorcontract` (imported, tensorprimitives-rs by Lukas Devos) | Lukas Devos's register-tile microkernels: scalar, AVX2, AVX-512 and NEON, with and without complex schemes. MIT OR Apache-2.0. | none |
 | `tprims-kernel-gemm` | Adapter calling the MIT-licensed `gemm-f64`/`gemm-f32` microkernels as direct-update families (feature `kernel-gemm`). MIT OR Apache-2.0. | none |
 | `tprims-kernel-pgx86` | Adapter calling the MIT-licensed `private-gemm-x86` as a matrix engine (feature `kernel-pgx86`, x86-64 only). MIT OR Apache-2.0. | none |
-| `tensorcontract` (imported, tensorprimitives-rs by Lukas Devos) | The direct contraction driver: packing traversal, the loop nest, write-back, and the `Spmd` seam it borrows a workspace through. | none |
+| `tensorcontract` (imported, tensorprimitives-rs by Lukas Devos) | The direct contraction driver: packing traversal, the loop nest, write-back, and the `Spmd` seam it borrows a workspace through. | `tensorprimitives-tapp` (imported): the [TAPP](https://arxiv.org/abs/2601.07827) contraction C API |
 | `tprims-blas` | GEMM and batched GEMM (faer plus a loop over items, or TBLIS-style; compared), TRSM, later SYRK / HERK. | `tprims-blas-capi` |
 | `tprims-linalg` | LU, Cholesky, LDLᴴ, QR, SVD, symmetric / Hermitian eigendecomposition; solves on factor objects, `solve`, `lstsq`, `inv`, `det`; `batched` module. faer per item first. | `tprims-linalg-capi` (Phase 2) |
 | `tprims-custom-kernel-test` | Test-only downstream stand-in with its own packed kernels and a custom selector (see [architecture](docs/architecture.md#custom-kernels-with-a-safe-selector)); not part of the stack. | none |
 | `tprims-contract-traits` | The implementation-independent contraction interface: problem and validation, shared errors, object-safe backend / prepared-plan traits and a minimal borrowed host-execution seam; `tprims-contract` implements it, other backends can too. No executor runtime or kernel layer. | none |
 | `tprims-contract-testkit` | Test-only second backend (naive loop nest) used to prove the interface; not a production fallback. | none |
-| `tprims-contract` | Binary contraction with batch indices (`dot_general` semantics) with two strategies to compare: permute plus batched GEMM (from tenferro-rs) and TBLIS-style direct (from tensorprimitives-rs); thin permute / add / trace wrappers. | `tprims-contract-capi` |
+| `tprims-contract` | Binary contraction with batch indices (`dot_general` semantics) with two strategies to compare: permute plus batched GEMM (from tenferro-rs) and TBLIS-style direct (from tensorprimitives-rs); thin permute / add / trace wrappers. Rust API only; C callers contract through TAPP. | none |
 
 Crate, header and symbol names map one to one: `tprims-blas` exposes
 `tprims/blas.h` and `tprims_blas_*`. A Rust user who prefers short paths can
@@ -107,30 +107,34 @@ backends.
 
 ```mermaid
 flowchart LR
-    CO["tprims-core<br/>DLPack types, status, exec handles"]
+    CO["tprims-core<br/>DLPack types, status, TAPP executors"]
     S["strided-capi"]
     B["tprims-blas-capi"]
     L["tprims-linalg-capi"]
-    C["tprims-contract-capi"]
+    C["tensorprimitives-tapp<br/>TAPP contraction API"]
     BU["tprims-bundle<br/>cdylib + staticlib<br/>features select parts"]
-    O["libtprims.so / .dylib / .dll / .a<br/>tprims/*.h, pkg-config"]
+    O["libtprims.so / .dylib / .dll / .a<br/>tapp.h, tprims/*.h, pkg-config"]
     S & B & L & C --> CO
     CO --> BU
     S -.->|"feature strided"| BU
     B -.->|"feature blas"| BU
     L -.->|"feature linalg"| BU
-    C -.->|"feature contract"| BU
+    C -.->|"feature tapp"| BU
     BU --> O
     classDef abi fill:#f0eaff,stroke:#7551a8,color:#392456
     class CO,S,B,L,C abi
 ```
 
 ```sh
-cargo build --release -p tprims-bundle --features blas,contract
+cargo build --release -p tprims-bundle --features blas,tapp
 ```
 
 Every part links into one library, so handles such as an executor created by
-`tprims_exec_rayon_create` are valid in every other part's calls. Separate
+`tprims_tapp_executor_create_rayon` are valid in every other part's calls. The
+contraction API is the standard [TAPP](https://arxiv.org/abs/2601.07827) C API,
+declared by the pinned upstream headers (`tapp.h`, `tapp/*.h`, commit
+`77c32d744ee6`); a handle from another TAPP provider cannot be mixed in, and
+separate TAPP and tprims shared libraries do not share handles. Separate
 per-part shared libraries are not supported: they would duplicate Rust types,
 Rayon runtimes and, for static libraries, the Rust standard library symbols.
 A 2026-09-29 local prototype confirmed that `#[no_mangle]` functions defined
@@ -155,18 +159,18 @@ a handle created by one part is accepted by another.
 
 ## Caller-owned execution
 
+The executor is the standard `TAPP_executor` (an `intptr_t`); the Rayon pool behind it is a tprims extension (`<tprims/tapp_ext.h>`):
+
 ```c
-tprims_exec *tprims_exec_serial(void);
-tprims_exec *tprims_exec_rayon_create(size_t nthreads, const tprims_rayon_opts *opts);
-tprims_exec *tprims_exec_from_callbacks(const tprims_exec_vtable *host);
-size_t       tprims_exec_num_threads(const tprims_exec *exec);
-tprims_status tprims_exec_set_budget(tprims_exec *exec, size_t max_threads);
-tprims_status tprims_exec_close(tprims_exec *exec);   /* owned pool: joins workers */
-void         tprims_exec_retain(tprims_exec *exec);
-void         tprims_exec_release(tprims_exec *exec);
+TAPP_error TAPP_create_executor(TAPP_executor *exec);            /* serial, no workers */
+TAPP_error TAPP_destroy_executor(TAPP_executor exec);            /* owned pool: stops and joins it */
+TAPP_error tprims_tapp_executor_create_rayon(TAPP_executor *out, size_t nthreads,
+                                             const tprims_rayon_opts *opts);
+TAPP_error tprims_tapp_executor_set_budget(TAPP_executor exec, size_t budget);
+TAPP_error tprims_tapp_executor_get_threads(TAPP_executor exec, size_t *pool_size, size_t *budget);
 ```
 
-Every expensive operation takes an explicit `tprims_exec`. Rust callers pass an `Exec` that borrows the host's Rayon pool, for example the pool of tenferro-rs, for the duration of the call. Serial work runs on the calling thread without entering any pool; only a kernel that runs in parallel enters the pool, and not at all if the caller is already one of its workers. With that rule an entry cost of about 10 µs is acceptable ([measurement](experiments/rayon-entry/README.md)): work below roughly 50 to 100 µs runs serially, and a kernel picks its width from its work so that full-width fan-out (55 to 200 µs at 18 threads) is paid only by large kernels ([cost model](docs/architecture.md#cost-of-parallel-execution)). faer can therefore serve as the first backend. `close` of a pool created through the C ABI is synchronous: dropping a Rayon `ThreadPool` only terminates threads asynchronously, so the handle keeps each worker's `JoinHandle` and joins them, returning `TPRIMS_BUSY` while work is in flight. Closing a context that borrows a host pool never stops the host's threads. [Details](docs/architecture.md#execution-context).
+Executor `0` is the default serial executor (a tprims policy, not in the pinned headers). `nthreads == 0` is an error and `nthreads == 1` is serial with no workers; the width is never inferred from `RAYON_NUM_THREADS`, `TENSORCONTRACT_THREADS` or the CPU count. The pool width is fixed at creation; the budget (clamped to it) is read once at the start of each call. Every expensive operation, TAPP products and BLAS alike, takes an executor. Rust callers pass an `Exec` that borrows the host's Rayon pool, for example the pool of tenferro-rs, for the duration of the call. Serial work runs on the calling thread without entering any pool; only a kernel that runs in parallel enters the pool, and not at all if the caller is already one of its workers. With that rule an entry cost of about 10 µs is acceptable ([measurement](experiments/rayon-entry/README.md)): work below roughly 50 to 100 µs runs serially, and a kernel picks its width from its work so that full-width fan-out (55 to 200 µs at 18 threads) is paid only by large kernels ([cost model](docs/architecture.md#cost-of-parallel-execution)). faer can therefore serve as the first backend. `TAPP_destroy_executor` of a pool created through the C ABI is synchronous: dropping a Rayon `ThreadPool` only terminates threads asynchronously, so the executor keeps each worker's `JoinHandle` and joins them, returning `TPRIMS_BUSY` while work is in flight and `TPRIMS_ERR_WOULD_DEADLOCK` from one of its own workers (both leave the handle live). A live handle is destroyed successfully once, and the caller synchronizes destruction with the start of new calls. Pure Rust hosts borrow their pool and never stop it. [Details](docs/architecture.md#execution-context).
 
 ## Two contraction strategies, compared
 
@@ -195,10 +199,10 @@ the same run.
 | 1c | `tprims-contract`: permute + batched GEMM and TBLIS direct, compared |
 | 1d | `tprims-linalg`: faer per item plus batched loops, covering tenferro's CPU linear algebra including nonsymmetric `eig` |
 | 1e | tenferro-rs integration behind a feature, with an explicit per-op fallback to the current backend, A/B correctness and a same-run performance gate |
-| 1f | A thin C ABI slice (core, blas, contract, bundle) and C benchmarks, to test the design across the C boundary early |
+| 1f | A thin C ABI slice (core, blas, contract, bundle) and C benchmarks, to test the design across the C boundary early; the contraction part was then replaced by TAPP ([#26](https://github.com/tensor4all/tprims-rs/issues/26)) |
 
 **Status (2026-09-30):** 1a, 1b, 1c, 1d and 1f are implemented
-(`crates/tprims-{exec,blas,linalg,contract,core,blas-capi,contract-capi,bundle}`),
+(`crates/tprims-{exec,blas,linalg,contract,core,blas-capi,bundle}`),
 each with 1T/4T benchmarks under [`benchmarks/benchmarks/tprims/`](benchmarks/benchmarks/tprims/README.md)
 and [`benchmarks/c/`](benchmarks/c/README.md). 1e (tenferro-rs integration,
 [design](docs/superpowers/specs/2026-09-30-phase1e-tenferro-integration-design.md))

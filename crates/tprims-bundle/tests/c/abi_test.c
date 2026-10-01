@@ -1,5 +1,5 @@
-/* End-to-end test of libtprims from C: zero copy, layouts, pools, cross-part
-   handles, error reporting. Exit status 0 on success. */
+/* End-to-end test of libtprims from C: zero copy, layouts, pools, TAPP and BLAS
+   sharing one executor, error reporting. Exit status 0 on success. */
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
@@ -18,7 +18,7 @@ static DLTensor f64_tensor(double *data, int32_t ndim, int64_t *shape, int64_t *
 
 int main(void) {
   CHECK(tprims_abi_version() == TPRIMS_ABI_VERSION, "abi version");
-  CHECK(tprims_has_part("blas") && tprims_has_part("contract") && tprims_has_part("core"), "parts");
+  CHECK(tprims_has_part("blas") && tprims_has_part("tapp") && tprims_has_part("core"), "parts");
   CHECK(!tprims_has_part("linalg"), "linalg not in this slice");
 
   /* A: 2x3 row-major (NULL strides), B: 3x2 column-major, C: 2x2 column-major. */
@@ -30,12 +30,21 @@ int main(void) {
   DLTensor ta = f64_tensor(a, 2, sa, NULL), tb = f64_tensor(b, 2, sb, stb), tc = f64_tensor(c, 2, sc, stc);
   double one = 1.0, zero = 0.0;
 
-  tprims_exec *pool = tprims_exec_rayon_create(4, NULL);
-  CHECK(pool != NULL, "pool create");
-  CHECK(tprims_exec_num_threads(pool) == 4, "pool size");
-  tprims_exec *serial = tprims_exec_serial();
-  tprims_exec *execs[2] = {serial, pool};
-  for (int i = 0; i < 2; i++) {
+  /* One executor type for every part: 0 (serial), TAPP_create_executor, and an
+     owned Rayon pool all go to the BLAS entry points. */
+  TAPP_executor pool = 0, serial = 0;
+  CHECK(tprims_tapp_executor_create_rayon(&pool, 4, NULL) == TPRIMS_OK && pool != 0, "pool create");
+  size_t psize = 99, pbudget = 99;
+  CHECK(tprims_tapp_executor_get_threads(pool, &psize, &pbudget) == TPRIMS_OK && psize == 4 && pbudget == 4, "pool size");
+  CHECK(tprims_tapp_executor_set_budget(pool, 2) == TPRIMS_OK, "budget");
+  CHECK(tprims_tapp_executor_get_threads(pool, &psize, &pbudget) == TPRIMS_OK && psize == 4 && pbudget == 2, "budget set");
+  CHECK(tprims_tapp_executor_set_budget(pool, 0) == TPRIMS_ERR_INVALID_ARGUMENT, "zero budget");
+  CHECK(tprims_tapp_executor_set_budget(pool, 4) == TPRIMS_OK, "budget reset");
+  CHECK(TAPP_check_success(TAPP_create_executor(&serial)), "serial executor");
+  CHECK(tprims_tapp_executor_get_threads(serial, &psize, &pbudget) == TPRIMS_OK && psize == 0 && pbudget == 1, "serial threads");
+  TAPP_executor execs[3] = {0, serial, pool};
+  for (int i = 0; i < 3; i++) {
+    c[0] = c[1] = c[2] = c[3] = NAN;
     tprims_status st = tprims_blas_gemm(execs[i], &one, tprims_tensor_borrow_raw(&ta, 0), 0,
                                         tprims_tensor_borrow_raw(&tb, 0), 0, &zero,
                                         tprims_tensor_borrow_raw(&tc, 0));
@@ -44,21 +53,45 @@ int main(void) {
     CHECK(c[0] == 35 && c[1] == 44 && c[2] == 44 && c[3] == 56, "gemm values");
   }
 
-  /* Same product through a contraction plan, executed on the pool: the
-     executor handle from core is accepted by the contract part. */
-  size_t lc[1] = {1}, rc[1] = {0};
-  tprims_dot_general cfg = {lc, rc, 1, NULL, NULL, 0};
-  tprims_contract_plan *plan = NULL;
-  memset(c, 0, sizeof c);
-  CHECK(tprims_contract_plan_create(&cfg, tprims_tensor_borrow_raw(&ta, 0), tprims_tensor_borrow_raw(&tb, 0),
-                                    tprims_tensor_borrow_raw(&tc, 0), 0, 0, 0, TPRIMS_NO_MATERIALIZE, &plan) == TPRIMS_OK,
-        "plan create");
-  CHECK(tprims_contract_plan_selected(plan) == 0, "copy-free plan");
-  CHECK(tprims_contract_plan_execute(plan, pool, &one, tprims_tensor_borrow_raw(&ta, 0), tprims_tensor_borrow_raw(&tb, 0),
-                                     &zero, tprims_tensor_borrow_raw(&tc, 0)) == TPRIMS_OK,
-        "plan execute");
-  CHECK(c[0] == 35 && c[3] == 56, "contract values");
-  tprims_contract_plan_destroy(plan);
+  /* The same product through TAPP, on every executor: D = A * B with labels
+     i,k / k,j / i,j; A is row-major (strides {3,1}), B and D column-major. */
+  {
+    TAPP_handle handle;
+    CHECK(TAPP_check_success(TAPP_create_handle(&handle)), "handle");
+    int64_t ea[2] = {2, 3}, sa_[2] = {3, 1}, eb[2] = {3, 2}, sb_[2] = {1, 3}, ed[2] = {2, 2}, sd_[2] = {1, 2};
+    TAPP_tensor_info ia, ib, id;
+    CHECK(TAPP_check_success(TAPP_create_tensor_info(&ia, TAPP_F64, 2, ea, sa_)), "info A");
+    CHECK(TAPP_check_success(TAPP_create_tensor_info(&ib, TAPP_F64, 2, eb, sb_)), "info B");
+    CHECK(TAPP_check_success(TAPP_create_tensor_info(&id, TAPP_F64, 2, ed, sd_)), "info D");
+    int64_t la[2] = {'i', 'k'}, lb[2] = {'k', 'j'}, ld[2] = {'i', 'j'};
+    TAPP_tensor_product plan;
+    CHECK(TAPP_check_success(TAPP_create_tensor_product(&plan, handle, TAPP_IDENTITY, ia, la, TAPP_IDENTITY, ib, lb,
+                                                        TAPP_IDENTITY, id, ld, TAPP_IDENTITY, id, ld, TAPP_DEFAULT_PREC)),
+          "plan create");
+    CHECK(TAPP_create_tensor_product(&plan, 0, TAPP_IDENTITY, ia, la, TAPP_IDENTITY, ib, lb, TAPP_IDENTITY, id, ld,
+                                     TAPP_IDENTITY, id, ld, TAPP_DEFAULT_PREC) == TPRIMS_ERR_INVALID_ARGUMENT,
+          "zero handle rejected");
+    CHECK(TAPP_check_success(TAPP_create_tensor_product(&plan, handle, TAPP_IDENTITY, ia, la, TAPP_IDENTITY, ib, lb,
+                                                        TAPP_IDENTITY, id, ld, TAPP_IDENTITY, id, ld, TAPP_DEFAULT_PREC)),
+          "plan create again");
+    double ra[6] = {1, 3, 5, 2, 4, 6}; /* row-major rows [1,3,5], [2,4,6] */
+    for (int i = 0; i < 3; i++) {
+      double d[4] = {NAN, NAN, NAN, NAN};
+      TAPP_status status = -1;
+      tprims_status st = TAPP_execute_product(plan, execs[i], &status, &one, ra, b, &zero, TAPP_IN_PLACE, d);
+      CHECK(st == TPRIMS_OK && status == 0, "TAPP execute");
+      CHECK(d[0] == 35 && d[1] == 44 && d[2] == 44 && d[3] == 56, "TAPP values");
+    }
+    /* Output aliasing an input is rejected before any write. */
+    CHECK(TAPP_execute_product(plan, 0, NULL, &one, ra, b, &zero, TAPP_IN_PLACE, ra) == TPRIMS_ERR_ALIASED,
+          "aliasing rejected");
+    CHECK(strlen(tprims_last_error()) > 0, "aliasing message");
+    CHECK(TAPP_check_success(TAPP_destroy_tensor_product(plan)), "plan destroy");
+    CHECK(TAPP_check_success(TAPP_destroy_tensor_info(ia)) && TAPP_check_success(TAPP_destroy_tensor_info(ib)) &&
+              TAPP_check_success(TAPP_destroy_tensor_info(id)),
+          "info destroy");
+    CHECK(TAPP_check_success(TAPP_destroy_handle(handle)), "handle destroy");
+  }
 
   /* Complex operands whose byte_offset is one real, not one element (#16):
      complex elements align to their real type, so these are valid. */
@@ -102,13 +135,13 @@ int main(void) {
   CHECK(tprims_blas_gemm(serial, &one, tprims_tensor_borrow_raw(&tc, 0), 0, tprims_tensor_borrow_raw(&tc, 0), 0,
                          &zero, tprims_tensor_borrow_raw(&tc, 0)) == TPRIMS_ERR_ALIASED,
         "aliasing rejected");
-  CHECK(tprims_exec_close(pool) == TPRIMS_OK, "close joins");
-  CHECK(tprims_exec_close(pool) == TPRIMS_OK, "second close");
-  CHECK(tprims_blas_gemm(pool, &one, tprims_tensor_borrow_raw(&ta, 0), 0, tprims_tensor_borrow_raw(&tb, 0), 0,
-                         &zero, tprims_tensor_borrow_raw(&tc, 0)) == TPRIMS_ERR_CLOSED,
-        "closed pool");
-  tprims_exec_release(pool);
-  tprims_exec_release(serial);
+  /* Destruction: an owned pool is stopped and joined; the default executor is a no-op. */
+  CHECK(TAPP_check_success(TAPP_destroy_executor(pool)), "destroy pool joins");
+  CHECK(TAPP_check_success(TAPP_destroy_executor(serial)), "destroy serial");
+  CHECK(TAPP_check_success(TAPP_destroy_executor(0)), "destroy default executor");
+  CHECK(tprims_tapp_executor_create_rayon(&pool, 0, NULL) == TPRIMS_ERR_INVALID_ARGUMENT, "zero threads");
+  char msg[64];
+  CHECK(TAPP_explain_error(TPRIMS_BUSY, sizeof msg, msg) == strlen(msg) && strlen(msg) > 0, "explain");
   printf("abi_test ok\n");
   return 0;
 }

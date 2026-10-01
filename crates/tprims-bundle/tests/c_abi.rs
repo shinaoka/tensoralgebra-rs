@@ -59,7 +59,7 @@ fn library_and_nm_args() -> (&'static str, &'static [&'static str]) {
     }
 }
 
-/// `tprims_*` names in `nm` output (`[address] type name` per line), with
+/// `tprims_*` and `TAPP_*` names in `nm` output (`[address] type name` per line), with
 /// the Mach-O leading underscore removed when `macho`.
 fn tprims_symbols(nm_output: &str, macho: bool) -> Vec<String> {
     nm_output
@@ -72,7 +72,7 @@ fn tprims_symbols(nm_output: &str, macho: bool) -> Vec<String> {
                 s
             }
         })
-        .filter(|s| s.starts_with("tprims_"))
+        .filter(|s| s.starts_with("tprims_") || s.starts_with("TAPP_"))
         .map(str::to_owned)
         .collect()
 }
@@ -115,12 +115,33 @@ fn only_tprims_symbols_of_the_selected_parts_are_exported() {
         &String::from_utf8_lossy(&out.stdout),
         cfg!(target_os = "macos"),
     );
-    for want in [
-        "tprims_abi_version",
+    // The superseded proprietary surfaces are gone.
+    for gone in [
+        "tprims_exec_serial",
         "tprims_exec_rayon_create",
         "tprims_exec_close",
-        "tprims_blas_gemm",
+        "tprims_exec_retain",
+        "tprims_exec_release",
         "tprims_contract_plan_create",
+        "tprims_contract_plan_execute",
+        "tprims_contract_plan_destroy",
+    ] {
+        assert!(
+            !syms.iter().any(|s| s == gone),
+            "{gone} is still exported: {syms:?}"
+        );
+    }
+    for want in [
+        "tprims_abi_version",
+        "tprims_tapp_executor_create_rayon",
+        "tprims_tapp_executor_set_budget",
+        "tprims_tapp_executor_get_threads",
+        "TAPP_create_executor",
+        "TAPP_destroy_executor",
+        "TAPP_create_tensor_product",
+        "TAPP_execute_product",
+        "TAPP_execute_batched_product",
+        "tprims_blas_gemm",
         "tprims_has_part",
     ] {
         assert!(
@@ -149,5 +170,88 @@ fn headers_combine_with_a_real_dlpack_h_in_either_order() {
             .expect("cc");
         let _ = std::fs::remove_file(&out);
         assert!(st.success(), "{src} failed to compile");
+    }
+}
+
+/// The standard-ABI claim: a program that includes only the pinned upstream
+/// headers (`<tapp.h>`, no tprims header) compiles as C and as C++ and performs
+/// a serial contraction through the library.
+#[test]
+fn consumer_of_the_pinned_standard_headers_only() {
+    let cc = std::env::var("CC").unwrap_or_else(|_| "cc".into());
+    let cxx = std::env::var("CXX").unwrap_or_else(|_| "c++".into());
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let include = root.join("../tprims-core/include");
+    let lib = target_dir();
+    let src = root.join("tests/c/standard_consumer.c");
+    for (compiler, lang, std_flag) in [(&cc, "c", "-std=c11"), (&cxx, "c++", "-std=c++17")] {
+        if Command::new(compiler).arg("--version").output().is_err() {
+            eprintln!("skipping {lang}: no compiler ({compiler})");
+            continue;
+        }
+        let out = std::env::temp_dir().join(format!(
+            "tprims_standard_consumer_{}_{}",
+            lang.replace('+', "p"),
+            std::process::id()
+        ));
+        let st = Command::new(compiler)
+            .args([std_flag, "-Wall", "-Werror", "-x", lang, "-o"])
+            .arg(&out)
+            .arg(&src)
+            // Only the upstream headers' root: `<tapp.h>` and `tapp/*.h` must
+            // be enough; no `tprims/` header is included by the program.
+            .arg(format!("-I{}", include.display()))
+            .arg(format!("-L{}", lib.display()))
+            .arg(format!("-Wl,-rpath,{}", lib.display()))
+            .args(["-ltprims", "-lm"])
+            .status()
+            .expect("compiler");
+        assert!(
+            st.success(),
+            "standard_consumer.c failed to compile as {lang}"
+        );
+        let run = Command::new(&out).output().expect("run");
+        let _ = std::fs::remove_file(&out);
+        assert!(
+            run.status.success(),
+            "standard consumer ({lang}) failed: {}{}",
+            String::from_utf8_lossy(&run.stdout),
+            String::from_utf8_lossy(&run.stderr)
+        );
+    }
+}
+
+/// The vendored headers are the pinned upstream files: the recorded commit is
+/// named in `tapp/README.md`, and every file matches the SHA-256 listed there
+/// (skipped when no `sha256sum`/`shasum` exists).
+#[test]
+fn vendored_tapp_headers_are_the_pinned_ones() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../tprims-core/include");
+    let readme = std::fs::read_to_string(root.join("tapp/README.md")).expect("tapp/README.md");
+    assert!(readme.contains("77c32d744ee6d339f504620cc80b8679601669bc"));
+    let recorded: Vec<(&str, &str)> = readme
+        .lines()
+        .filter_map(|l| {
+            let (sum, file) = l.split_once("  ")?;
+            (sum.len() == 64 && sum.chars().all(|c| c.is_ascii_hexdigit())).then_some((sum, file))
+        })
+        .collect();
+    assert_eq!(recorded.len(), 12, "{recorded:?}");
+    let tool = [("sha256sum", &[][..]), ("shasum", &["-a", "256"][..])]
+        .into_iter()
+        .find(|(t, _)| Command::new(t).arg("--version").output().is_ok());
+    for (sum, file) in recorded {
+        assert!(root.join(file).exists(), "{file} is not vendored");
+        let Some((tool, args)) = tool else { continue };
+        let out = Command::new(tool)
+            .args(args)
+            .arg(root.join(file))
+            .output()
+            .expect("checksum tool");
+        let got = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            got.starts_with(sum),
+            "{file} differs from the pinned upstream copy ({got})"
+        );
     }
 }
