@@ -5,7 +5,8 @@
 //! upstream. The microkernel module is undocumented upstream, so the versions
 //! are pinned exactly and a bump has to be re-checked.
 //!
-//! The microkernel signature differs from [`DirectUkrFn`] only in argument
+//! The microkernel signature differs from [`tprims_gemm_kernel::DirectUkrFn`]
+//! only in argument
 //! order and in the `alpha_status`/conjugation tail, so one context-free shim
 //! per dtype adapts it: the real function pointer travels through
 //! [`KernelFamily::opaque`], which the driver copies into [`UkrAux::opaque`]

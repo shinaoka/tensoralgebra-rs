@@ -184,7 +184,7 @@ pub fn gemm_batched<T: Scalar>(
 /// [`gemm_batched`], with a configuration and a full report.
 ///
 /// The TBLIS-style strategy is the packed driver, so it honours
-/// [`GemmConfig::kernel`]; the faer-loop strategies compute with faer and so
+/// [`crate::GemmConfig::kernel`]; the faer-loop strategies compute with faer and so
 /// refuse a configuration that asks for anything else, rather than quietly
 /// ignoring it.
 ///

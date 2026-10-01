@@ -6,7 +6,8 @@
 //! results, for a machine whose complex kernel is suspect, and for comparing
 //! the three methods against each other on one panel layout.
 //!
-//! * **1m** packs A with [`PackFormat::OneE`] and B with [`PackFormat::OneR`],
+//! * **1m** packs A with [`PackFormat::OneE`] and B with `OneR` (the planar
+//!   format),
 //!   and calls the real kernel with *twice* the logical k, because one complex
 //!   k-step is two real k-steps of the 2x2 real block
 //!   `[[re, -im], [im, re]]`. The resulting `2*mr' x nr` real tile is exactly

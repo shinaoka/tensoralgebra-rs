@@ -455,7 +455,7 @@ pub unsafe fn execute<T>(
 /// Effective blocking uses the active grid width, not the plan's requested width.
 ///
 /// # Safety
-/// All [`execute`] pointer/alias obligations apply. `rg` must be validated for
+/// All `execute` pointer/alias obligations apply. `rg` must be validated for
 /// `T`, the plan's conjugations, scratch ABI, and every active width (including
 /// serial fallback); its public geometry/blocking fields must remain valid.
 ///

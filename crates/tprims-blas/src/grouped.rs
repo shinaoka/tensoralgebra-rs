@@ -147,7 +147,7 @@ pub fn gemm_grouped<T: Scalar>(
 ///
 /// # Errors
 ///
-/// As [`gemm_grouped`], plus [`Error::Select`] for such a configuration.
+/// As [`gemm_grouped`], plus [`crate::Error::Select`] for such a configuration.
 #[allow(clippy::too_many_arguments)] // INVARIANT: the grouped GEMM argument set.
 pub fn gemm_grouped_with<T: Scalar>(
     exec: &Exec<'_>,
