@@ -14,7 +14,7 @@ use tprims_blas::{gemm_batched_with, BatchIn, BatchStrategy, Conj, Scalar};
 use tprims_exec::strided::run_with_exec;
 use tprims_exec::Exec;
 
-use crate::config::{DotGeneral, Shape};
+use crate::{DotGeneral, Shape};
 use crate::{Error, Result};
 
 /// One index group: per axis, the axis number in each of A, B, C (`None`
@@ -207,8 +207,8 @@ pub(crate) fn plan(
             fused,
         });
     }
-    Err(Error::Backend(
-        "no fusable layout (unreachable: copying all operands always fuses)".into(),
+    Err(Error::backend(
+        "no fusable layout (unreachable: copying all operands always fuses)",
     ))
 }
 
@@ -220,7 +220,7 @@ fn compact(e: [usize; 3]) -> [(usize, isize); 3] {
 }
 
 fn permuted<'a, T: Scalar>(v: &StridedView<'a, T>, perm: &[usize]) -> Result<StridedView<'a, T>> {
-    v.permute(perm).map_err(|e| Error::Backend(e.to_string()))
+    v.permute(perm).map_err(Error::backend)
 }
 
 fn batch_view<'a, T>(
@@ -234,7 +234,7 @@ fn batch_view<'a, T>(
         &[f[0].1, f[1].1, f[2].1],
         offset,
     )
-    .map_err(|e| Error::Backend(e.to_string()))
+    .map_err(Error::backend)
 }
 
 /// Execute a validated, non-empty, alpha != 0 problem.
@@ -287,7 +287,7 @@ pub(crate) fn execute<T: Scalar>(
         with_conj(BatchIn::new(&av), ca),
         with_conj(BatchIn::new(&bv), cb),
     );
-    let blas = |e: tprims_blas::Error| Error::Backend(e.to_string());
+    let blas = |e: tprims_blas::Error| Error::backend(e);
     if p.materialized[2] {
         let cview = c.as_view();
         let mut cbuf = if beta == <T as Element>::zero() {
@@ -302,7 +302,7 @@ pub(crate) fn execute<T: Scalar>(
                 &[fc[0].1, fc[1].1, fc[2].1],
                 0,
             )
-            .map_err(|e| Error::Backend(e.to_string()))?;
+            .map_err(Error::backend)?;
             gemm_batched_with(
                 exec,
                 &p.gemm,
@@ -324,7 +324,7 @@ pub(crate) fn execute<T: Scalar>(
             &[fc[0].1, fc[1].1, fc[2].1],
             off,
         )
-        .map_err(|e| Error::Backend(e.to_string()))?;
+        .map_err(Error::backend)?;
         gemm_batched_with(
             exec,
             &p.gemm,
@@ -370,10 +370,9 @@ fn copy_compact<T: Scalar>(
     let mut buf = vec![<T as Element>::zero(); len];
     let strides = col_major(&dims);
     {
-        let mut dst = StridedViewMut::new(&mut buf, &dims, &strides, 0)
-            .map_err(|e| Error::Backend(e.to_string()))?;
+        let mut dst = StridedViewMut::new(&mut buf, &dims, &strides, 0).map_err(Error::backend)?;
         run_with_exec(exec, len, |_| strided_basic::copy_into(&mut dst, &sp))
-            .map_err(|e| Error::Backend(e.to_string()))?;
+            .map_err(Error::backend)?;
     }
     Ok(buf)
 }
@@ -388,13 +387,12 @@ fn copy_back<T: Scalar>(
     let dims: Vec<usize> = perm.iter().map(|&x| c.dims()[x]).collect();
     let strides_c: Vec<isize> = perm.iter().map(|&x| c.strides()[x]).collect();
     let off = c.offset();
-    let src: StridedView<'_, T> = StridedView::new(buf, &dims, &col_major(&dims), 0)
-        .map_err(|e| Error::Backend(e.to_string()))?;
+    let src: StridedView<'_, T> =
+        StridedView::new(buf, &dims, &col_major(&dims), 0).map_err(Error::backend)?;
     let len = buf.len();
-    let mut dst = StridedViewMut::new(c.data_mut(), &dims, &strides_c, off)
-        .map_err(|e| Error::Backend(e.to_string()))?;
-    run_with_exec(exec, len, |_| strided_basic::copy_into(&mut dst, &src))
-        .map_err(|e| Error::Backend(e.to_string()))
+    let mut dst =
+        StridedViewMut::new(c.data_mut(), &dims, &strides_c, off).map_err(Error::backend)?;
+    run_with_exec(exec, len, |_| strided_basic::copy_into(&mut dst, &src)).map_err(Error::backend)
 }
 
 fn col_major(dims: &[usize]) -> Vec<isize> {

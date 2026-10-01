@@ -36,7 +36,9 @@ The full statement and rationale are in [design principles](design-principles.md
 | `tprims-blas` | GEMM and batched GEMM with three engines (faer, `private-gemm-x86`, the packed driver) and a selectable kernel family, `SelectedGemm` reporting what ran, TRSM; later SYRK/HERK and further BLAS-like operations. | faer, `tensorcontract`, `tprims-gemm-kernel`, `strided-view`, `tprims-exec` |
 | `tprims-linalg` | Dense linear algebra: factorizations, direct solves, least squares, symmetric/Hermitian and nonsymmetric eigendecomposition, factor objects, errors; `batched` module. faer per item. | faer, `tprims-blas`, `strided-view`, `tprims-exec`; `tensorcontract` only for the scalar trait that `tprims_blas::Scalar` extends, which now comes from `tprims-gemm-kernel` |
 | `tprims-custom-kernel-test` | Test-only downstream stand-in: its own tiny packed kernels, admitted through a `KernelCatalog` and selected with a captured selector, without editing tprims or calling the global `register`. Not part of the stack; `publish = false`. | `tprims-gemm-kernel` (dev: `tprims-blas`, `tprims-contract`, `tprims-exec`, `tensorcontract`) |
-| `tprims-contract` | Binary contraction with free, contracted and batch indices (`dot_general` semantics): one plan API over two strategies, permute plus batched GEMM and TBLIS-style direct packing with bounded scatter. Thin permute / add wrappers. Needs matrix GEMM only; it does not depend on `tprims-linalg`. | `tprims-blas`, `tensorcontract`, `strided-basic`, `strided-view`, `tprims-exec` |
+| `tprims-contract-traits` | The implementation-independent contraction interface: `Problem` / `DotGeneral` / `Layout`, the canonical validation, the shared `Error` (source-preserving `Backend`), the object-safe `ContractionBackend<T>` / `PreparedContraction<T>` traits and the minimal borrowed `HostExecution` seam (budget, `install`, barrier-free `for_each_partition`, co-scheduled `broadcast`). No executor runtime, kernel layer, faer or tenferro. | `strided-view` |
+| `tprims-contract-testkit` | Test-only second backend (naive loop nest) proving the interface is implementable from the interface crate alone. Not a production fallback; never published or selected by default. | `tprims-contract-traits`, `strided-view` |
+| `tprims-contract` | Binary contraction with free, contracted and batch indices (`dot_general` semantics): one plan API over two strategies, permute plus batched GEMM and TBLIS-style direct packing with bounded scatter. Thin permute / add wrappers. Needs matrix GEMM only; it does not depend on `tprims-linalg`. | `tprims-blas`, `tensorcontract`, `tprims-contract-traits`, `tprims-gemm-kernel`, `strided-basic`, `strided-view`, `tprims-exec` |
 
 The name `contract` was chosen over `tensordot` because NumPy, PyTorch and JAX `tensordot` has no batch indices; the operation here does, as in cuTENSOR's `cutensorContract`.
 
@@ -289,7 +291,7 @@ selection policy without editing tprims or touching the process defaults.
 Errors are `SelectError` variants (`DuplicateId`, `ForeignHandle`,
 `NotACandidate`, `NoCandidates`, `SelectorFailed`, plus the existing
 `CpuUnsupported`, `DtypeMismatch`, `Incompatible`, `EngineUnsupported`); the
-contract crate preserves the typed source in `Error::Select`. `SelectedGemm`
+contract crate preserves the typed `SelectError` as the source of `Error::Backend` (downcast it). `SelectedGemm`
 reports the chosen family, its geometry and its provenance (`origin`);
 downstream kernels report `Origin::External { crate_name, license }`.
 

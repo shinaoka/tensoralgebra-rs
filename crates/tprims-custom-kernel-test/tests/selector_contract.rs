@@ -12,6 +12,17 @@ fn catalog(list: &'static [&'static tprims_gemm_kernel::KernelFamily<f64>]) -> K
     unsafe { KernelCatalog::<f64>::from_static_families(list) }.unwrap()
 }
 
+/// The typed selection error a contraction error carries as its source.
+fn typed(e: &Error) -> SelectError {
+    match e {
+        Error::Backend(b) => b
+            .downcast_ref::<SelectError>()
+            .cloned()
+            .unwrap_or_else(|| panic!("not a selection error: {e:?}")),
+        _ => panic!("not a typed selection error: {e:?}"),
+    }
+}
+
 fn ints(len: usize, seed: usize) -> Vec<f64> {
     (0..len)
         .map(|x| ((x * 5 + seed * 3) % 13) as f64 - 6.0)
@@ -156,8 +167,7 @@ fn incompatible_strategies_engines_and_choices_are_typed_errors() {
     let other = catalog(own::f64_families());
     let g = GemmConfig::default();
     let sel_err = |r: Result<ContractPlan<f64>, Error>| match r {
-        Err(Error::Select(e)) => e,
-        Err(e) => panic!("not a typed selection error: {e:?}"),
+        Err(e) => typed(&e),
         Ok(_) => panic!("accepted"),
     };
     // Permute+GEMM computes with faer; it cannot honour a selector.
@@ -232,7 +242,7 @@ fn all_batch_and_zero_size_problems_still_select_or_refuse() {
             called = true;
             true
         }),
-        Err(Error::Select(SelectError::EngineUnsupported { .. }))
+        Err(e) if matches!(typed(&e), SelectError::EngineUnsupported { .. })
     ));
     assert!(!called);
     assert!(build(Strategy::Tblis, &mut || true).is_ok());
@@ -259,7 +269,7 @@ fn all_batch_and_zero_size_problems_still_select_or_refuse() {
     };
     assert!(matches!(
         zero(foreign),
-        Err(Error::Select(SelectError::ForeignHandle { .. }))
+        Err(e) if matches!(typed(&e), SelectError::ForeignHandle { .. })
     ));
     let ok = zero(cat.get("custom.f64.2x2").unwrap()).unwrap();
     let a: Vec<f64> = vec![];

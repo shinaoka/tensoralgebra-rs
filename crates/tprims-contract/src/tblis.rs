@@ -9,7 +9,8 @@ use tensorcontract::{Layout, Operand, Plan};
 use tprims_blas::{Conj, Scalar};
 use tprims_exec::{Exec, WidthPolicy};
 
-use crate::config::{DotGeneral, Shape};
+use crate::util::select_err;
+use crate::{DotGeneral, Shape};
 use crate::{Error, Result};
 
 struct ExecSpmd<'a> {
@@ -59,7 +60,7 @@ fn layout(dims: &[usize], strides: &[isize]) -> Result<Layout> {
     let e = |x: usize| i64::try_from(x).map_err(|_| Error::Shape("extent exceeds i64".into()));
     let ext = dims.iter().map(|&d| e(d)).collect::<Result<Vec<_>>>()?;
     let st = strides.iter().map(|&s| s as i64).collect();
-    Layout::new(ext, st).map_err(|e| Error::Backend(e.to_string()))
+    Layout::new(ext, st).map_err(Error::backend)
 }
 
 fn op(o: Operand<'_>, c: Conj) -> Operand<'_> {
@@ -81,8 +82,8 @@ pub(crate) struct Custom<'a, T: Scalar> {
 
 fn backend_or_select(e: tensorcontract::Error) -> Error {
     match e {
-        tensorcontract::Error::KernelSelection(s) => Error::Select(s),
-        other => Error::Backend(other.to_string()),
+        tensorcontract::Error::KernelSelection(s) => select_err(s),
+        other => Error::backend(other),
     }
 }
 
@@ -129,11 +130,11 @@ pub(crate) fn plan<T: Scalar>(
         op(Operand::new(&yb, &lb), conj.1),
     );
     let (oc, od) = (Operand::new(&yc, &lc), Operand::new(&yc, &lc));
-    let plan = Plan::new(oa, ob, Some(oc), od).map_err(|e| Error::Backend(e.to_string()))?;
+    let plan = Plan::new(oa, ob, Some(oc), od).map_err(Error::backend)?;
     let plan = match custom {
         None => plan
             .with_kernel(gemm.kernel.clone())
-            .map_err(|e| Error::Backend(e.to_string()))?,
+            .map_err(Error::backend)?,
         Some(custom) => {
             let mut plan = plan;
             match custom.method {
@@ -151,7 +152,7 @@ pub(crate) fn plan<T: Scalar>(
                 .with_selector::<T, _>([oa, ob, oc, od], custom.catalog, custom.chooser)
                 .map_err(backend_or_select)?;
             if let Some(method) = custom.method {
-                let rg = plan.resolved::<T>()?;
+                let rg = plan.resolved::<T>().map_err(select_err)?;
                 let family = rg.family().complex.map(|s| s.method);
                 let ok = match method {
                     tprims_gemm_kernel::Method::Native => {
@@ -160,12 +161,10 @@ pub(crate) fn plan<T: Scalar>(
                     other => family == Some(other),
                 };
                 if !ok {
-                    return Err(Error::Select(
-                        tprims_gemm_kernel::SelectError::Incompatible {
-                            id: rg.family().id.into(),
-                            reason: "family implements a different complex method",
-                        },
-                    ));
+                    return Err(select_err(tprims_gemm_kernel::SelectError::Incompatible {
+                        id: rg.family().id.into(),
+                        reason: "family implements a different complex method",
+                    }));
                 }
             }
             plan

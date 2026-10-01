@@ -12,6 +12,8 @@ members = [
     "crates/tprims-bundle",
     "crates/tprims-blas",
     "crates/tprims-linalg",
+    "crates/tprims-contract-traits",
+    "crates/tprims-contract-testkit",
     "crates/tprims-contract",
     "crates/tprims-custom-kernel-test",
     "tensorprimitives/crates/tensorcontract",
@@ -45,6 +47,8 @@ tprims-blas-capi = { version = "0.1.0", path = "crates/tprims-blas-capi" }
 tprims-contract-capi = { version = "0.1.0", path = "crates/tprims-contract-capi" }
 tprims-blas = { version = "0.1.0", path = "crates/tprims-blas" }
 tprims-linalg = { version = "0.1.0", path = "crates/tprims-linalg" }
+tprims-contract-traits = { version = "0.1.0", path = "crates/tprims-contract-traits" }
+tprims-contract-testkit = { version = "0.1.0", path = "crates/tprims-contract-testkit" }
 tprims-contract = { version = "0.1.0", path = "crates/tprims-contract" }
 
 approx = "0.5"

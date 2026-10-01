@@ -44,6 +44,7 @@ flowchart TB
     TC["<b>tensorcontract</b><br/>packing, loop nest,<br/>write-back, driver"]
     GK["<b>tprims-gemm-kernel</b><br/>contract, resolution,<br/>partition, workspace"]
     KT["<b>tprims-kernel-tensorcontract</b><br/>(Lukas Devos's kernels)"]
+    TR["<b>tprims-contract-traits</b><br/>Backend + plan traits,<br/>problem, errors, host seam"]
     FA["faer"]
     ST["<b>strided-rs</b> (external)<br/>views, permutation, copies"]
     EX["<b>tprims-exec</b><br/>Execution context<br/>borrowed pool, width"]
@@ -57,13 +58,15 @@ flowchart TB
     TC --> KT
     KT --> GK
     CT --> ST
+    CT --> TR
+    TR --> ST
     BL --> ST
     BL --> EX
     EX -.->|"feature strided"| ST
     classDef tensor fill:#e8f2ff,stroke:#2563a6,color:#132f50
     classDef matrix fill:#e7f5ec,stroke:#28784c,color:#173d27
     classDef base fill:#edf0f4,stroke:#536477,color:#233244
-    class CT tensor
+    class CT,TR tensor
     class LA,BL,TC matrix
     class GK,KT base
     class FA,ST,EX base
@@ -86,6 +89,8 @@ format, the kernel-family contract and the resolution, and the providers
 | `tprims-blas` | GEMM and batched GEMM (faer plus a loop over items, or TBLIS-style; compared), TRSM, later SYRK / HERK. | `tprims-blas-capi` |
 | `tprims-linalg` | LU, Cholesky, LDLᴴ, QR, SVD, symmetric / Hermitian eigendecomposition; solves on factor objects, `solve`, `lstsq`, `inv`, `det`; `batched` module. faer per item first. | `tprims-linalg-capi` (Phase 2) |
 | `tprims-custom-kernel-test` | Test-only downstream stand-in with its own packed kernels and a custom selector (see [architecture](docs/architecture.md#custom-kernels-with-a-safe-selector)); not part of the stack. | none |
+| `tprims-contract-traits` | The implementation-independent contraction interface: problem and validation, shared errors, object-safe backend / prepared-plan traits and a minimal borrowed host-execution seam; `tprims-contract` implements it, other backends can too. No executor runtime or kernel layer. | none |
+| `tprims-contract-testkit` | Test-only second backend (naive loop nest) used to prove the interface; not a production fallback. | none |
 | `tprims-contract` | Binary contraction with batch indices (`dot_general` semantics) with two strategies to compare: permute plus batched GEMM (from tenferro-rs) and TBLIS-style direct (from tensorprimitives-rs); thin permute / add / trace wrappers. | `tprims-contract-capi` |
 
 Crate, header and symbol names map one to one: `tprims-blas` exposes

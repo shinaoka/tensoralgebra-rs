@@ -1,12 +1,12 @@
 use strided_view::{StridedView, StridedViewMut};
 use tensorcontract::Element;
-use tprims_blas::{is_injective_layout, Conj, Scalar};
+use tprims_blas::{Conj, Scalar};
 use tprims_exec::Exec;
 
-use crate::config::{DotGeneral, Shape};
 use crate::permute_gemm::{self, PgPlan};
 use crate::tblis::{self, TbPlan};
-use crate::{Error, Result};
+use crate::util::select_err;
+use crate::{DotGeneral, Error, Result};
 
 /// Which implementation a plan uses.
 ///
@@ -164,7 +164,7 @@ impl<T: Scalar> ContractPlan<T> {
     ///
     /// # Errors
     ///
-    /// As [`ContractPlan::new_with`], plus [`Error::Select`] (typed) for an
+    /// As [`ContractPlan::new_with`], plus a typed `SelectError` source in [`Error::Backend`] for an
     /// engine other than `Auto`/`Packed`, a forced kernel id alongside the
     /// selector, an incompatible strategy, no admissible candidate, the
     /// selector's own `Err` (unchanged) or a handle it should not have
@@ -194,20 +194,20 @@ impl<T: Scalar> ContractPlan<T> {
         match gemm.engine {
             tprims_blas::EngineChoice::Auto | tprims_blas::EngineChoice::Packed => {}
             _ => {
-                return Err(Error::Select(SelectError::EngineUnsupported {
+                return Err(select_err(SelectError::EngineUnsupported {
                     engine: "contract",
                     reason: "a custom kernel selector needs the packed engine",
                 }));
             }
         }
         if let tprims_blas::KernelChoice::Id(id) = &gemm.kernel {
-            return Err(Error::Select(SelectError::Incompatible {
+            return Err(select_err(SelectError::Incompatible {
                 id: id.clone(),
                 reason: "a forced kernel id and a custom selector are ambiguous",
             }));
         }
         if strategy == Strategy::PermuteGemm {
-            return Err(Error::Select(SelectError::EngineUnsupported {
+            return Err(select_err(SelectError::EngineUnsupported {
                 engine: "permute+GEMM",
                 reason: "the permute+GEMM strategy computes with faer; use Strategy::Tblis",
             }));
@@ -253,44 +253,18 @@ impl<T: Scalar> ContractPlan<T> {
         flags: Flags,
         custom: Option<crate::tblis::Custom<'_, T>>,
     ) -> Result<Self> {
-        for (name, l) in [("A", &a), ("B", &b), ("C", &c)] {
-            if l.0.len() != l.1.len() {
-                return Err(Error::Shape(format!(
-                    "{name}: {} extents, {} strides",
-                    l.0.len(),
-                    l.1.len()
-                )));
-            }
-        }
-        let shape: Shape = cfg.validate(a.0, b.0)?;
-        for (name, l) in [("A", &a), ("B", &b), ("C", &c)] {
-            let n = l.0.iter().try_fold(1usize, |acc, &d| acc.checked_mul(d));
-            if n.and_then(|n| n.checked_mul(std::mem::size_of::<T>()))
-                .is_none_or(|b| b > isize::MAX as usize)
-            {
-                return Err(Error::Shape(format!("{name}: element count overflows")));
-            }
-        }
-        if shape.out_dims != c.0 {
-            return Err(Error::Shape(format!(
-                "C has extents {:?}, expected {:?}",
-                c.0, shape.out_dims
-            )));
-        }
-        let cl: Vec<(usize, isize)> = c.0.iter().copied().zip(c.1.iter().copied()).collect();
-        if !is_injective_layout(&cl) {
-            return Err(Error::AliasedOutput);
-        }
+        let tprims_contract_traits::Validated {
+            shape,
+            k_empty,
+            all_batch,
+        } = tprims_contract_traits::validate_layouts::<T>(cfg, a, b, c)?;
         let dims = [a.0, b.0, c.0];
         let strides = [a.1, b.1, c.1];
-        let k_empty = cfg.lhs_contract.iter().any(|&x| a.0[x] == 0);
-        let all_batch =
-            shape.lhs_free.is_empty() && shape.rhs_free.is_empty() && cfg.lhs_contract.is_empty();
         let inner = match strategy {
             // A custom selector is a requirement: an elementwise pass has no
             // kernel to select, so it is refused rather than ignoring it.
             Strategy::Auto if all_batch && custom.is_some() => {
-                return Err(Error::Select(tprims_blas::SelectError::EngineUnsupported {
+                return Err(select_err(tprims_blas::SelectError::EngineUnsupported {
                     engine: "elementwise",
                     reason: "an all-batch problem has no kernel to select; use Strategy::Tblis",
                 }));
@@ -359,7 +333,7 @@ impl<T: Scalar> ContractPlan<T> {
                             | tprims_blas::EngineChoice::Packed
                     );
                 if unsupported {
-                    return Err(Error::Backend(
+                    return Err(Error::Unsupported(
                         "the permute+GEMM strategy computes with faer; \
                          select Strategy::Tblis for a packed engine or a named kernel"
                             .into(),
@@ -390,11 +364,9 @@ impl<T: Scalar> ContractPlan<T> {
     /// The packed plan's resolution, as a report.
     fn resolved_gemm(&self) -> Result<tprims_blas::SelectedGemm> {
         let Inner::Tb(tb) = &self.inner else {
-            return Err(Error::Backend("not a packed plan".into()));
+            return Err(Error::backend("not a packed plan"));
         };
-        let rg = tb
-            .resolved::<T>()
-            .map_err(|e| Error::Backend(e.to_string()))?;
+        let rg = tb.resolved::<T>().map_err(Error::backend)?;
         Ok(tprims_blas::SelectedGemm {
             engine: tprims_blas::Engine::Packed,
             family_id: Some(rg.family().id),
