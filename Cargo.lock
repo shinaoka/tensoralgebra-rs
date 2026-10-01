@@ -1012,6 +1012,7 @@ dependencies = [
  "rand",
  "rand_chacha",
  "tprims-gemm-kernel",
+ "tprims-kernel-gemm",
  "tprims-kernel-tensorcontract",
 ]
 
@@ -1165,6 +1166,16 @@ name = "tprims-gemm-kernel"
 version = "0.1.0"
 dependencies = [
  "num-complex",
+]
+
+[[package]]
+name = "tprims-kernel-gemm"
+version = "0.1.0"
+dependencies = [
+ "gemm-common",
+ "gemm-f32",
+ "gemm-f64",
+ "tprims-gemm-kernel",
 ]
 
 [[package]]

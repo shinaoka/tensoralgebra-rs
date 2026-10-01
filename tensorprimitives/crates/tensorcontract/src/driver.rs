@@ -590,6 +590,7 @@ pub(crate) unsafe fn execute_capped<T>(
                     tile_fmt: ukr.tile_fmt,
                     b_access: BAccess::Packed,
                     kernel: UkrFn::Tile(ukr.func),
+                    opaque: core::ptr::null(),
                     inner: None,
                     method: None,
                 },
@@ -1237,6 +1238,7 @@ unsafe fn run_strip<T>(
                                             (false, false) => bpan,
                                         },
                                         inner: None,
+                                        opaque: fam.opaque,
                                     };
                                     // SAFETY: A is the packed panel with unit row
                                     // stride; B and D follow the strides derived

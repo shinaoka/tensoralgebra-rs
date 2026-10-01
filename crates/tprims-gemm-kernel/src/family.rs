@@ -209,6 +209,9 @@ pub struct UkrAux<R: 'static> {
     pub b_next: *const R,
     /// Real kernel underlying an induced family.
     pub inner: Option<&'static KernelFamily<R>>,
+    /// The family's [`KernelFamily::opaque`], for adapters whose kernel cannot
+    /// be a plain `fn` pointer of this crate's signature.
+    pub opaque: *const (),
 }
 /// Driver-facing view of a validated family: register geometry, packing
 /// metadata and the kernel arm to dispatch on.
@@ -238,11 +241,17 @@ pub struct DriverFamily<R: 'static> {
     pub b_access: BAccess,
     /// The kernel arm.
     pub kernel: UkrFn<R>,
+    /// Value copied into [`UkrAux::opaque`] for each call.
+    pub opaque: *const (),
     /// Induced families' inner real kernel, or none.
     pub inner: Option<&'static KernelFamily<R>>,
     /// Complex method, or none for real storage.
     pub method: Option<Method>,
 }
+
+// SAFETY: as for `KernelFamily`: `opaque` is immutable, process-constant
+// adapter state and every other field is a plain value.
+unsafe impl<R: 'static> Sync for DriverFamily<R> {}
 
 impl<R: 'static> DriverFamily<R> {
     /// Reals of scratch the tile arm needs beyond its accumulator tile: the
@@ -335,6 +344,14 @@ pub struct KernelFamily<R: 'static> {
     pub blocks: Blocksizes,
     /// Supported operand operations.
     pub caps: Caps,
+    /// Adapter state a shim reads back out of [`UkrAux::opaque`], or null.
+    ///
+    /// A family generated from a function that is not a plain `extern "Rust"
+    /// fn` of this crate's own signature — a foreign microkernel reached
+    /// through a context-free shim — passes the real pointer here and the shim
+    /// reads it back, so no global lookup or per-call registration is needed.
+    /// It must stay valid and immutable for the process lifetime.
+    pub opaque: *const (),
     /// The real family this one's arithmetic is induced from, or none. Set
     /// only for [`KernelImpl::Induced`] families; the driver scales the inner
     /// kernel's k loop rather than calling `ukr` itself.
@@ -483,11 +500,17 @@ impl<R: Real> KernelFamily<R> {
             tile_fmt,
             b_access: self.b_access,
             kernel: self.ukr,
+            opaque: self.opaque,
             inner: self.inner,
             method: self.complex.map(|s| s.method),
         })
     }
 }
+
+// SAFETY: `opaque` points at immutable, process-constant adapter state (in
+// practice a `fn` pointer), and every other field is a plain value, so sharing
+// a family between threads is sharing read-only data.
+unsafe impl<R: 'static> Sync for KernelFamily<R> {}
 
 fn supported(s: ComplexScheme) -> bool {
     matches!(

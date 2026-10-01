@@ -105,6 +105,7 @@ fn append_config<R: RealSlot>(
             conj_a: true,
             conj_b: true,
         },
+        opaque: core::ptr::null(),
         inner: None,
         allow_auto: u.tile_fmt != TileFormat::ThreeM,
     };

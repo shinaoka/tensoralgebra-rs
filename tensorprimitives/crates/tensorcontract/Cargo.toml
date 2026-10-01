@@ -31,6 +31,7 @@ default = ["std"]
 std = ["tprims-gemm-kernel/std", "tprims-kernel-tensorcontract/std"]
 
 [dev-dependencies]
+tprims-kernel-gemm = { path = "../../../crates/tprims-kernel-gemm" }
 rand = "0.8"
 rand_chacha = "0.3"
 

@@ -115,7 +115,10 @@ pub unsafe fn cplx_tile<R: Real, const MR: usize, const NR: usize>(
 /// let b = [2.0_f64, 3.0];
 /// let mut d = [5.0_f64, 7., 0., 0.];
 /// let aux = tprims_gemm_kernel::UkrAux {
-///     a_next: core::ptr::null(), b_next: core::ptr::null(), inner: None,
+///     a_next: core::ptr::null(),
+///     b_next: core::ptr::null(),
+///     inner: None,
+///     opaque: core::ptr::null(),
 /// };
 /// // SAFETY: full 4x2 A panel, a 2x1 B and four writable D reals.
 /// unsafe { tprims_gemm_kernel::portable::real_direct::<f64, 4, 4>(
@@ -202,6 +205,7 @@ macro_rules! families {
                 conj_a: true,
                 conj_b: true,
             },
+            opaque: core::ptr::null(),
             inner: None,
             allow_auto: true,
         };
