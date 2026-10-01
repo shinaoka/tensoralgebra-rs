@@ -1179,6 +1179,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "tprims-kernel-pgx86"
+version = "0.1.0"
+dependencies = [
+ "num-complex",
+ "private-gemm-x86",
+]
+
+[[package]]
 name = "tprims-kernel-tensorcontract"
 version = "0.1.0"
 dependencies = [

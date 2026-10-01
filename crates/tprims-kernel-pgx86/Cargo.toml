@@ -1,0 +1,22 @@
+[package]
+name = "tprims-kernel-pgx86"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Calls private-gemm-x86 (sarah-ek/gemm-x64-v2) as the tprims PrivateGemmX86 matrix engine"
+
+[target.'cfg(target_arch = "x86_64")'.dependencies]
+# Pinned exactly: the engine is reached through a single entry point whose
+# argument list is checked against this version (issue #23).
+private-gemm-x86 = { version = "=0.1.20", default-features = false, features = [
+    "std",
+    "rayon",
+] }
+
+[dependencies]
+num-complex = { workspace = true }
+
+[lints]
+workspace = true

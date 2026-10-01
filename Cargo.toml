@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/tprims-gemm-kernel",
     "crates/tprims-kernel-gemm",
+    "crates/tprims-kernel-pgx86",
     "crates/tprims-kernel-tensorcontract",
     "crates/tprims-exec",
     "crates/tprims-core",
