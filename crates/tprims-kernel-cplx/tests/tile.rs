@@ -231,7 +231,8 @@ fn family_metadata_and_isa_gating() {
         assert_eq!(f.tile_bound, 64);
     }
     // A CPU without AVX2/FMA is refused at selection, never called.
-    for id in ["cplx.avx2.c64.native.4x4"] {
+    {
+        let id = "cplx.avx2.c64.native.4x4";
         let masked = CpuFeatures {
             avx2: false,
             ..CpuFeatures::detect()
