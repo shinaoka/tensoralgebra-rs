@@ -5,7 +5,7 @@ use std::any::TypeId;
 use std::num::NonZeroUsize;
 use std::ptr::NonNull;
 
-use tprims_contract_traits::{Error, HostError, HostExecution, Par, Result};
+use tprims_contract_traits::{Error, HostError, HostExecution, NativeHost, Par, Result};
 use tprims_exec::{Exec, ExecError};
 
 /// Marker whose `TypeId` names [`ExecHost`] in `HostExecution::native`.
@@ -83,6 +83,14 @@ impl HostExecution for ExecHost<'_> {
         self.exec.broadcast(width, f).map_err(map)
     }
 
+    fn native_host(&self) -> Option<&dyn NativeHost> {
+        Some(self)
+    }
+}
+
+// SAFETY: answers only `ExecHostKind`, with the address of `self`, an
+// `ExecHost`, valid for the borrow of `&self`.
+unsafe impl NativeHost for ExecHost<'_> {
     fn native(&self, kind: TypeId) -> Option<NonNull<()>> {
         (kind == TypeId::of::<ExecHostKind>()).then(|| NonNull::from(self).cast())
     }
@@ -102,9 +110,13 @@ const _: fn(NonZeroUsize) -> tprims_exec::Par = tprims_exec::Par::Threads;
 /// [`HostError::MissingCapability`] (as [`Error::Host`]) for a foreign host
 /// with budget above one.
 pub(crate) fn exec_of<'h>(host: &'h dyn HostExecution) -> Result<Exec<'h>> {
-    if let Some(p) = host.native(TypeId::of::<ExecHostKind>()) {
-        // SAFETY: `native` answers this kind only from `ExecHost::native`, which
-        // returns its own address, valid for the borrow `'h` of `host`. The
+    if let Some(p) = host
+        .native_host()
+        .and_then(|n| n.native(TypeId::of::<ExecHostKind>()))
+    {
+        // SAFETY: by the `NativeHost` contract (only `ExecHost` implements it for
+        // this kind, and no safe impl can forge one), `p` is the address of an
+        // `ExecHost`, valid for the borrow `'h` of `host`. The
         // lifetime parameter is erased by the cast; the stored `Exec` outlives
         // that borrow because `ExecHost<'a>` can only be named while `'a` is live.
         let h: &ExecHost<'h> = unsafe { p.cast::<ExecHost<'h>>().as_ref() };

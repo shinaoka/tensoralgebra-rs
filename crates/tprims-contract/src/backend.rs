@@ -63,7 +63,6 @@ impl Default for TprimsBackend {
 
 struct TprimsPlan<T> {
     plan: ContractPlan<T>,
-    problem: Problem,
     diag: Diagnostics,
 }
 
@@ -97,9 +96,6 @@ impl<T: Scalar> ContractionBackend<T> for TprimsBackend {
         };
         Ok(Box::new(TprimsPlan {
             plan,
-            // The plan snapshots layouts itself; this copy serves the shared
-            // pre-write check so a mismatch is reported in neutral terms.
-            problem: problem.clone(),
             diag: Diagnostics::new(ID, algorithm).with_materialized(materialized),
         }))
     }
@@ -115,11 +111,6 @@ impl<T: Scalar> PreparedContraction<T> for TprimsPlan<T> {
         beta: T,
         c: &mut StridedViewMut<'_, T>,
     ) -> Result<()> {
-        self.problem.check_views(
-            (a.dims(), a.strides()),
-            (b.dims(), b.strides()),
-            (c.dims(), c.strides()),
-        )?;
         let exec = exec_of(host)?;
         self.plan.execute(&exec, alpha, a, b, beta, c)
     }

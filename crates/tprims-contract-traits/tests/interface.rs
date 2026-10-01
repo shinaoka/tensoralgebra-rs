@@ -174,5 +174,31 @@ fn serial_host_contract() {
         SerialHost.broadcast(2, &|_| {}),
         Err(HostError::Unavailable)
     );
-    assert!(SerialHost.native(std::any::TypeId::of::<u8>()).is_none());
+    assert!(SerialHost.native_host().is_none());
+}
+
+/// A safe host cannot forge a native context: the only hook it can override is
+/// `native_host`, which needs an `unsafe impl NativeHost` to return `Some`.
+#[test]
+fn a_safe_host_has_no_native_context() {
+    struct Plain;
+    impl HostExecution for Plain {
+        fn budget(&self) -> usize {
+            1
+        }
+        fn install(&self, _: usize, op: &mut (dyn FnMut(Par) + Send)) {
+            op(Par::Seq)
+        }
+        fn for_each_partition(&self, k: usize, f: &(dyn Fn(usize) + Sync)) {
+            (0..k).for_each(f)
+        }
+        fn broadcast(
+            &self,
+            _: usize,
+            _: &(dyn Fn(usize) + Sync),
+        ) -> std::result::Result<(), HostError> {
+            Err(HostError::Unavailable)
+        }
+    }
+    assert!(Plain.native_host().is_none());
 }

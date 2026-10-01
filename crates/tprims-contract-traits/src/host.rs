@@ -80,15 +80,27 @@ pub trait HostExecution {
     /// when `width` exceeds the host.
     fn broadcast(&self, width: usize, f: &(dyn Fn(usize) + Sync)) -> Result<(), HostError>;
 
-    /// Implementation-private downcast hook for an adapter and the backend that
-    /// understands it. Returns the address of the adapter's own native context
-    /// when `kind` is the `TypeId` of the adapter's marker type, else `None`.
-    /// The pointer is valid for the borrow of `self`. Hosts other than such an
-    /// adapter keep the default.
-    fn native(&self, kind: TypeId) -> Option<NonNull<()>> {
-        let _ = kind;
+    /// Implementation-private downcast hook: `Some` only for an adapter that
+    /// implements the `unsafe` [`NativeHost`] contract. A safe implementation
+    /// cannot forge one, so the default (`None`) is the only thing it can say.
+    fn native_host(&self) -> Option<&dyn NativeHost> {
         None
     }
+}
+
+/// A host that can hand its own native context back to the backend that
+/// understands it.
+///
+/// # Safety
+///
+/// `native(kind)` must return `Some(p)` only when `kind` is the `TypeId` of a
+/// type `K` chosen by the implementor, `p` is the address of a live value of
+/// the type that `K` documents (for the adapter this is `Self`), and `p`
+/// stays valid for the borrow of `&self`. It must return `None` for every
+/// other `kind`. A backend dereferences `p` as exactly that documented type.
+pub unsafe trait NativeHost {
+    /// The address of the native context named by `kind`, or `None`.
+    fn native(&self, kind: TypeId) -> Option<NonNull<()>>;
 }
 
 /// The calling thread only: budget one, no runtime.

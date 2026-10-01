@@ -28,7 +28,7 @@ mod problem;
 
 pub use backend::{BoxedPlan, ContractionBackend, Diagnostics, PreparedContraction, Scalar};
 pub use error::{Error, Result};
-pub use host::{HostError, HostExecution, Par, SerialHost};
+pub use host::{HostError, HostExecution, NativeHost, Par, SerialHost};
 pub use problem::{
     is_injective_layout, validate_layouts, Conj, DotGeneral, Layout, PlanningBudget, Problem,
     Requirements, Shape, Validated,
