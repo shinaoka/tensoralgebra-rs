@@ -310,6 +310,27 @@ the chosen domain slightly busy, so the 4T runs exhausted their retries
 * The A/A spreads are the reason single-run comparisons at 4T are not
   decisive: new/new summed 1.001 and 0.991 (exec rows) while old/old summed
   1.268 for one pair.
+* Recorded, not gated (plan Task 12 Step 4): the built-in `gemm_f64` cases at
+  **1T**, `BENCH_RUNS=5`, one pinned core (CPU 8), `median_ns`:
+
+  | case | faer | packed | pgx86 |
+  | --- | --- | --- | --- |
+  | n8 | 210 | 4470 | 510 |
+  | n32 | 1770 | 7810 | 2240 |
+  | n128 | 78 702 | 216 737 | 98 554 |
+  | n512 | 5 163 491 | 6 606 539 | 6 279 128 |
+  | n1024 | 42 836 294 | 49 679 740 | 43 248 070 |
+  | n2048 | 346 750 583 | 408 360 123 | 395 487 339 |
+  | m256_n1024_k64 | 654 342 | 939 961 | 676 182 |
+  | m1024_n64_k256 | 685 883 | 926 241 | 685 453 |
+
+  Neither opt-in engine beats faer at 1T on these shapes: the packed driver is
+  2–4%…24% slower on the large cases and much slower on tiny ones (its worst is
+  4.47 µs against faer's 0.21 µs at n=8), and `private-gemm-x86` is 1–25%
+  slower, with ~0.3 µs of extra dispatch visible at n=8. That is why `Auto`
+  keeps faer. The `blas` binary in `target/release` was last built with
+  `--features pgx86`; the `contract` comparisons above used the unmodified
+  `contract` binary.
 * Not measured: 8T, the `blas` corpus (faer and batched TBLIS rows), the default
   `BENCH_RUNS=50`, and a properly interleaved ABBA pair. No gate verdict is
   claimed from the partial runs.
