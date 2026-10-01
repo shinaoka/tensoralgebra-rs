@@ -143,9 +143,11 @@ enum {
  */
 
 /*
- * Computational precision. This implementation **accepts any value and
- * ignores it**, computing at the storage precision of the operands; it is
- * declared so that portable caller code compiles. Pass `TAPP_DEFAULT_PREC`.
+ * Computational precision. This implementation computes at the storage
+ * precision of the operands: `TAPP_DEFAULT_PREC` and the storage precision
+ * (F32F32_ACCUM_F32 for F32/C32, F64F64_ACCUM_F64 for F64/C64) are accepted;
+ * any other value is refused with `TAPP_ERROR_UNSUPPORTED` when the product is
+ * created, not ignored.
  *
  * Values 2 and 3 are genuinely absent from the upstream enum — complex has no
  * separate precision enumerator — rather than omitted here.
@@ -191,8 +193,7 @@ enum {
  * libtprims (the tprims-rs workspace renumbered them when the executor and
  * error definitions moved into tprims-core). Computational precisions:
  * TAPP_DEFAULT_PREC (-1) or the storage precision, 0 for F32/C32 and 1 for
- * F64/C64; others are TAPP_ERROR_UNSUPPORTED. */
-enum { TAPP_DEFAULT_PREC = -1, TAPP_F32F32_ACCUM_F32 = 0, TAPP_F64F64_ACCUM_F64 = 1 };
+ * F64/C64 (enumerators above); others are TAPP_ERROR_UNSUPPORTED. */
 
 TAPP_EXPORT bool TAPP_check_success(TAPP_error error);
 
@@ -298,7 +299,7 @@ TAPP_EXPORT TAPP_error TAPP_set_strides(TAPP_tensor_info info, const int64_t* st
  *   - mixed *storage* types across operands: this engine plans one element
  *     type per product, so all four infos must agree
  *
- * `prec` is accepted and ignored; computation happens at storage precision.
+ * `prec` must be `TAPP_DEFAULT_PREC` or the storage precision (see above).
  */
 TAPP_EXPORT TAPP_error TAPP_create_tensor_product(TAPP_tensor_product* plan,
                                                   TAPP_handle handle,

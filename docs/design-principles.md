@@ -43,7 +43,8 @@ Crates are named `tprims-<part>`, where the part name says what it does: `tprims
 Each part owns the C ABI for its own operations, next to the code whose semantics it exposes and tests. C ABI crates contain no algorithms.
 
 - C ABI crates are `rlib`s. A single bundle crate links the parts a host selects into **one** shared or static library, `libtprims`.
-- Everything a host builds together shares one execution runtime and one set of handle types, so an object created by one part is valid in every other part.
+- Everything a host builds together shares one execution runtime and one set of handle types, so an object created by one part is valid in every other part. The executor is the standard `TAPP_executor`, created and destroyed through the C API; the C host owns it and it owns its Rayon pool. Handles of another TAPP provider cannot be mixed in.
+- Where a standard exists, the ABI is the standard: contraction is TAPP with the prototypes of the pinned upstream headers, and tprims adds only named extensions (`tprims_tapp_*`, BLAS and linear algebra with DLPack operands). Nonzero error codes are provider-defined, so callers test success with `TAPP_check_success`.
 - Separate libraries per part are not supported: they would duplicate handle types, thread pools and, for static libraries, Rust runtime symbols.
 - The ABI is a permanent contract: versioned from the start, panics caught at every entry point, errors returned as status codes, capabilities queryable at run time.
 

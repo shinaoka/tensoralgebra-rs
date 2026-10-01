@@ -22,6 +22,13 @@ reachable through the import merges.
 Apache License 2.0 (`crates/tprims-core/include/dlpack/LICENSE`); the Rust
 `#[repr(C)]` mirror in `tprims-core/src/dlpack.rs` follows it.
 
+`crates/tprims-core/include/tapp.h` and `include/tapp/*.h` are the TAPP C API
+headers of <https://github.com/TAPPorg/reference-implementation> at commit
+`77c32d744ee6d339f504620cc80b8679601669bc` (BSD 3-Clause), copied verbatim with
+the upstream `LICENSE.md` and `AUTHORS.md`; `include/tapp/README.md` records the
+commit and the SHA-256 of each file, which `cargo test -p tprims-bundle`
+checks. The ABI baseline is this commit, not moving `main`.
+
 The history of an imported file is reachable through the import merge
 commit's second parent (for example `git log 6a84228^2 -- strided-perm/src/lib.rs`).
 

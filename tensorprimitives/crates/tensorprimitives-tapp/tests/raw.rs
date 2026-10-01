@@ -1,6 +1,11 @@
 //! A tiny f64 front end over the raw C entry points, for the tests that are
 //! about executors and aliasing rather than about numerics.
-#![allow(dead_code, non_snake_case)]
+#![allow(
+    dead_code,
+    non_snake_case,
+    clippy::missing_safety_doc,
+    clippy::too_many_arguments
+)]
 
 use std::ffi::c_void;
 use std::os::raw::c_int;
