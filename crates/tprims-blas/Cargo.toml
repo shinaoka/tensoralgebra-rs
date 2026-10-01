@@ -16,6 +16,7 @@ thiserror = { workspace = true }
 tprims-exec = { workspace = true }
 tprims-gemm-kernel = { workspace = true, default-features = false }
 tprims-kernel-tensorcontract = { workspace = true }
+tprims-kernel-cplx = { workspace = true }
 tprims-kernel-gemm = { workspace = true, optional = true }
 tprims-kernel-pgx86 = { workspace = true, optional = true }
 

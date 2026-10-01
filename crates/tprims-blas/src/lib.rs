@@ -40,7 +40,8 @@ mod trsm;
 pub use batched::{gemm_batched, gemm_batched_with, BatchIn, BatchStrategy, Selected};
 pub use custom::{
     builtin_catalog, gemm_batched_with_selector, gemm_grouped_with_selector, gemm_with_selector,
-    KernelCandidate, KernelCatalog, KernelHandle, OperandMeta, SelectError, SelectionContext,
+    register_kernels, KernelCandidate, KernelCatalog, KernelHandle, OperandMeta, SelectError,
+    SelectionContext,
 };
 pub use engine::{
     default_engine, gemm_with, list_kernels, Engine, EngineChoice, GemmConfig, KernelChoice,

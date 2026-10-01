@@ -22,6 +22,9 @@ pub enum Origin {
     Gemm,
     /// Called private-gemm-x86 engine.
     PrivateGemmX86,
+    /// Project-owned native interleaved complex SIMD kernels
+    /// (`tprims-kernel-cplx`).
+    Cplx,
     /// A downstream crate's own kernels, admitted through a caller-scoped
     /// [`KernelCatalog`](crate::KernelCatalog); the provider reports itself.
     External {
@@ -47,6 +50,7 @@ impl Origin {
             Self::Portable => "tprims-gemm-kernel",
             Self::Gemm => "tprims-kernel-gemm",
             Self::PrivateGemmX86 => "tprims-kernel-pgx86",
+            Self::Cplx => "tprims-kernel-cplx",
             Self::External { crate_name, .. } => crate_name,
         }
     }
@@ -59,7 +63,7 @@ impl Origin {
     /// ```
     pub const fn license(self) -> &'static str {
         match self {
-            Self::Tensorcontract | Self::Portable => "MIT OR Apache-2.0",
+            Self::Tensorcontract | Self::Portable | Self::Cplx => "MIT OR Apache-2.0",
             Self::Gemm | Self::PrivateGemmX86 => "MIT",
             Self::External { license, .. } => license,
         }

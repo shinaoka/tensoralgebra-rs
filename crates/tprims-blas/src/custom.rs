@@ -27,6 +27,20 @@ use crate::{
     Conj, EngineChoice, Error, GemmConfig, GroupedJob, MatIn, Result, Scalar, SelectedGemm,
 };
 
+/// Register the kernel providers this build has (idempotent), so a family id
+/// naming one resolves, or reports the feature to enable, when a plan is built.
+/// The BLAS entry points do this themselves; a layer that builds packed plans
+/// directly (such as `tprims-contract`) calls it first.
+///
+/// # Examples
+/// ```
+/// tprims_blas::register_kernels();
+/// assert!(tprims_blas::list_kernels::<f64>().iter().any(|k| k.id.starts_with("tc.")));
+/// ```
+pub fn register_kernels() {
+    crate::engine::register_built();
+}
+
 /// The built-in and registered families for `T` that this CPU can run, as a
 /// caller-scoped catalog. Registers the workspace's kernel providers first.
 ///

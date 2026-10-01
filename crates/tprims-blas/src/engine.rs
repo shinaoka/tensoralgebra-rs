@@ -189,7 +189,7 @@ pub fn default_engine() -> Engine {
 
 /// Register the kernel crates this build has, once.
 ///
-/// The tensorcontract families are always available; the gemm and pgx86
+/// The tensorcontract and native-complex families are always available; the gemm and pgx86
 /// providers are behind their features, and their id prefixes are declared
 /// even when they are absent so an id naming them reports the feature to
 /// enable rather than "unknown".
@@ -197,6 +197,9 @@ pub(crate) fn register_built() {
     static REGISTER: std::sync::Once = std::sync::Once::new();
     REGISTER.call_once(|| {
         tprims_kernel_tensorcontract::register();
+        // Opt-in native interleaved complex families: registered and listed,
+        // never Auto-eligible, so only an explicit id selects them.
+        tprims_kernel_cplx::register();
         #[cfg(feature = "kernel-gemm")]
         tprims_kernel_gemm::register();
         tprims_gemm_kernel::register_known_prefix("gemm.", "kernel-gemm");
