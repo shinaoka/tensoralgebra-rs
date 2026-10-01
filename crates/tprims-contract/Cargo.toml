@@ -15,7 +15,7 @@ thiserror = { workspace = true }
 tprims-blas = { workspace = true }
 tprims-contract-traits = { workspace = true }
 tprims-exec = { workspace = true, features = ["strided"] }
-tprims-gemm-kernel = { workspace = true, default-features = false }
+tprims-kernel = { workspace = true, default-features = false }
 
 [dev-dependencies]
 tprims-contract-testkit = { workspace = true }

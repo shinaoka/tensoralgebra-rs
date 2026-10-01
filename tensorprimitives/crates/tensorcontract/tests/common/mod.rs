@@ -13,8 +13,8 @@ use tensorcontract::kernel::KernelSet;
 use tensorcontract::plan::{ElementOp, Operand};
 use tensorcontract::reference::{contract_reference, RefOperand};
 use tensorcontract::{driver_decisions, Blocking, KernelChoice, Layout, Plan, ResolvedCall};
-use tprims_gemm_kernel::ResolvedGemm;
-use tprims_gemm_kernel::{CpuFeatures, Families, Registry};
+use tprims_kernel::ResolvedGemm;
+use tprims_kernel::{CpuFeatures, Families, Registry};
 
 /// One case's operand and call options.
 #[derive(Clone, Copy, Debug)]
@@ -101,7 +101,6 @@ pub fn all_families<T>() -> Vec<&'static str>
 where
     T: Element + Families,
 {
-    tprims_kernel_tensorcontract::register();
     Registry::families::<T>(CpuFeatures::detect(), false)
         .into_iter()
         .map(|f| f.id)
@@ -316,8 +315,8 @@ where
         ResolvedGemm::<T::Real>::resolve_with::<T>(
             &choice,
             width,
-            tprims_gemm_kernel::PartitionPolicy::default(),
-            tprims_gemm_kernel::PartitionOpts { align_c_lines },
+            tprims_kernel::PartitionPolicy::default(),
+            tprims_kernel::PartitionOpts { align_c_lines },
         )
         .unwrap()
     } else {

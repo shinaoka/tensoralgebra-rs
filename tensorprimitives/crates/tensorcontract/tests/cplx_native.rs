@@ -1,4 +1,4 @@
-//! The native interleaved AVX2+FMA complex families (`tprims-kernel-cplx`,
+//! The native interleaved AVX2+FMA complex families (`tprims-kernel`,
 //! issue #30) through the real planner and driver: arithmetic, all
 //! conjugations, orientation, alpha/beta, `C == D`, strides (including negative
 //! ones and offsets), genuine block-scatter contraction with batch labels,
@@ -12,10 +12,9 @@ use tensorcontract::kernel::KernelSet;
 use tensorcontract::plan::{ElementOp, Operand};
 use tensorcontract::reference::{contract_reference, RefOperand};
 use tensorcontract::{Blocking, KernelChoice, Layout, Plan, C32, C64};
-use tprims_gemm_kernel::Families;
+use tprims_kernel::Families;
 
 fn cplx_ids<T: Element + Families>() -> Vec<&'static str> {
-    tprims_kernel_cplx::register();
     let ids: Vec<_> = all_families::<T>()
         .into_iter()
         .filter(|id| id.starts_with("cplx."))
@@ -551,7 +550,6 @@ fn one_family_is_bitwise_identical_across_worker_counts() {
 
 #[test]
 fn the_default_selection_does_not_change() {
-    tprims_kernel_cplx::register();
     let l = Layout::col_major(&[9, 9]);
     let plan = |t: usize| {
         Plan::new(

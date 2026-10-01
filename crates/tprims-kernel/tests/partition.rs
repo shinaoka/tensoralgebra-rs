@@ -1,7 +1,7 @@
 //! The strip rule: strips tile the rows, land on `MR` (or alignment)
 //! boundaries, and always claim the tail.
-use tprims_gemm_kernel::partition::*;
-use tprims_gemm_kernel::*;
+use tprims_kernel::partition::*;
+use tprims_kernel::*;
 
 #[test]
 fn strips_tile_the_rows_on_mr_multiples() {
@@ -62,7 +62,7 @@ fn dynamic_tiles_resolves_for_whole_register_blocks_and_survives_retargeting() {
     );
     assert_eq!(rg.with_threads(2).unwrap().partition, rg.partition);
     // Complex families validate against their logical (not packed) MR/NR.
-    let c = ResolvedGemm::<f64>::resolve_with::<tprims_gemm_kernel::C64>(
+    let c = ResolvedGemm::<f64>::resolve_with::<tprims_kernel::C64>(
         &KernelChoice::Id("portable.c64.native.4x4".into()),
         2,
         PartitionPolicy::DynamicTiles { job_m: 4, job_n: 8 },

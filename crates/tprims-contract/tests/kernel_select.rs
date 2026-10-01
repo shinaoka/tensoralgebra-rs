@@ -3,7 +3,7 @@
 //! one there rather than inside a contraction.
 use tprims_blas::{Conj, Engine, GemmConfig, Scalar};
 use tprims_contract::{ContractPlan, DotGeneral, Error, Flags, Strategy};
-use tprims_gemm_kernel::KernelChoice;
+use tprims_kernel::KernelChoice;
 
 mod common;
 use common::{out_dims, T};

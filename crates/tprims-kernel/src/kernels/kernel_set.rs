@@ -1,58 +1,13 @@
-//! Lukas Devos's scalar and SIMD microkernels, moved from tensorcontract.
+//! The legacy `KernelSet` menu: one trait implementation per real type that
+//! hands the packed driver a micro-kernel configuration, for element types the
+//! typed registry does not cover. Lukas Devos's scalar and SIMD microkernels,
+//! moved from tensorcontract.
 //! Source: lkdvos/tensorprimitives-rs, tensorcontract/src/kernel; MIT OR Apache-2.0.
-#![warn(missing_docs)]
-#![warn(missing_debug_implementations)]
 
+use super::{reference::scalar, simd_isa};
 #[cfg(test)]
-use tprims_gemm_kernel::cache;
-pub use tprims_gemm_kernel::{
-    Blocking, ComplexMethod, KernelConfig, PackFormat, Real, TileFormat, Ukr,
-};
-
-mod families;
-pub use families::{families_f32, families_f64, register};
-pub mod scalar;
-
-// The shared micro-kernel bodies. **Must be declared before the ISA modules
-// that invoke them**: `#[macro_use]` makes `macro_rules!` visible to items that
-// follow it textually, not to the module graph, so moving this line below
-// `mod x86` breaks the build with a bare "cannot find macro".
-//
-// Not `pub`: the macros are an implementation detail of the ISA modules, and
-// `#[macro_use]` already puts them where they are needed.
-//
-// Gated on the union of its two consumers below. The module defines macros and
-// nothing else, so on a target that is neither x86 nor aarch64 -- armv7,
-// riscv64gc, powerpc64le -- nothing invokes them and `unused_macros` fires,
-// which under CI's `-D warnings` is a hard error rather than a warning. Keep
-// this cfg equal to the disjunction of the `x86` and `aarch64` cfgs; a new ISA
-// module must be added here as well as below.
-#[cfg(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64"))]
-#[macro_use]
-mod simd;
-
-// The x86-64 SIMD kernels: public for `examples/kernel_shapes`, `doc(hidden)`
-// and outside the semver guarantee. See the module's own docs.
-#[doc(hidden)]
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-pub mod x86;
-
-// The AArch64/NEON kernels, on the same terms.
-#[doc(hidden)]
-#[cfg(target_arch = "aarch64")]
-pub mod aarch64;
-
-#[cfg(target_arch = "aarch64")]
-use aarch64 as simd_isa;
-/// The vectorised kernel module for this target, under one name.
-///
-/// Exists so `impl_kernel_set!` and the dead-code guards name *a* SIMD module
-/// rather than enumerating architectures at every site. Both modules expose the
-/// same ten entry points by construction — that is what `dispatch!` in each of
-/// them generates — so the alias is total, and adding a third ISA means adding
-/// one arm here rather than editing six `#[cfg]`s.
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-use x86 as simd_isa;
+use crate::cache;
+use crate::*;
 
 /// Real scalar types for which the engine has a micro-kernel.
 ///
@@ -117,21 +72,6 @@ pub trait KernelSet: Real + Sized {
         None
     }
 }
-
-/// What `TENSORCONTRACT_KERNEL` asked for.
-///
-/// Pinning an instruction set matters for more than curiosity: the reference
-/// machine has AVX-512, so without a way to say "use the AVX2 kernels anyway"
-/// the AVX2 path could not be *executed* here at all, only compiled. Every
-/// other Phase 4 fast path got a runtime switch for the same reason — a
-/// build-to-build diff has already produced one wrong sign in this project.
-///
-/// Two configurations reach none of this and must not warn about it: without
-/// `std` there is no environment to read, so only [`KernelForce::Auto`] is ever
-/// constructed, and off x86 there is no ISA to pin, so nothing consults the
-/// answer. `not(all(std, x86))` is exactly that pair.
-#[doc(hidden)]
-pub use tprims_gemm_kernel::{kernel_force, KernelForce};
 
 /// Force the portable scalar kernels regardless of CPU features.
 /// Set `TENSORCONTRACT_KERNEL=scalar` to compare against the reference path.
@@ -240,6 +180,10 @@ impl_kernel_set!(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_arch = "aarch64")]
+    use crate::kernels::aarch64;
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    use crate::kernels::x86;
 
     /// Every kernel must agree with the mathematical definition, whatever
     /// packing and tile format it uses. This is the contract the driver relies
@@ -683,7 +627,6 @@ mod tests {
                     assert_eq!((cfg.blk.mc, cfg.blk.kc), (again.blk.mc, again.blk.kc));
                     assert_eq!(again.blk, again.retarget_threads(8).blk);
                 }
-                _ => panic!("extend this test for the new blocking model"),
             }
         }
     }

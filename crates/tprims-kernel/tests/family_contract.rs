@@ -1,4 +1,4 @@
-use tprims_gemm_kernel::*;
+use tprims_kernel::*;
 
 const fn fam(mr: usize, nr: usize) -> KernelFamily<f64> {
     KernelFamily {
@@ -238,7 +238,7 @@ fn registry_registration_cpu_mask_and_forced_errors() {
         .unwrap();
     assert_eq!(
         (info.dtype, info.license, info.crate_name),
-        ("c64", "MIT OR Apache-2.0", "tprims-gemm-kernel")
+        ("c64", "MIT OR Apache-2.0", "tprims-kernel")
     );
     static ALIAS1: KernelFamily<f64> = KernelFamily {
         id: "alias.f64",

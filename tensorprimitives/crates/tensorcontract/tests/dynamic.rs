@@ -14,7 +14,7 @@ use tensorcontract::{
     DynStats, KernelChoice, Layout, Operand, Plan, C32, C64,
 };
 use tprims_exec::{ArenaProvider, Exec, Pool, WorkspaceProvider};
-use tprims_gemm_kernel::{Families, PartitionOpts, PartitionPolicy, SelectError};
+use tprims_kernel::{Families, PartitionOpts, PartitionPolicy, SelectError};
 
 /// A team of `width` workers on a pool of its own, and optionally a lent
 /// workspace. A refusing team runs the whole execution on one of its own
@@ -266,7 +266,6 @@ fn bitwise_equal_to_static_and_serial_across_widths_and_modes() {
 
 #[test]
 fn every_dtype_family_and_orientation_matches_bitwise() {
-    tprims_kernel_tensorcontract::register();
     let mut s = Spec::new(26, 38, 21);
     for row_major in [false, true] {
         s.row_major_d = row_major;
@@ -696,7 +695,7 @@ fn invalid_policies_are_rejected_at_resolution_even_for_empty_problems() {
 mod skew {
     use super::*;
     use std::cell::Cell;
-    use tprims_gemm_kernel::{KernelFamily, UkrFn};
+    use tprims_kernel::{KernelFamily, UkrFn};
 
     /// Worker 0 of the team's pool is the slow one.
     fn slow() -> bool {
@@ -741,14 +740,14 @@ mod skew {
             OTHER_CALLS.fetch_add(1, SeqCst);
         }
         // SAFETY: the same panel/tile ABI as the portable 4x4 kernel.
-        unsafe { tprims_gemm_kernel::portable::real_tile::<f64, 4, 4>(k, a, b, out) };
+        unsafe { tprims_kernel::portable::real_tile::<f64, 4, 4>(k, a, b, out) };
     }
 
     fn manifest() -> &'static [&'static KernelFamily<f64>] {
         static LIST: std::sync::OnceLock<[&'static KernelFamily<f64>; 1]> =
             std::sync::OnceLock::new();
         LIST.get_or_init(|| {
-            let mut f = **tprims_gemm_kernel::portable::families_f64()
+            let mut f = **tprims_kernel::portable::families_f64()
                 .iter()
                 .find(|f| f.id == "portable.f64.4x4")
                 .unwrap();
@@ -763,7 +762,7 @@ mod skew {
     fn a_stalled_worker_does_not_hold_up_the_rest_and_the_result_is_exact() {
         // SAFETY: the manifest copies the validated portable 4x4 footprint,
         // ISA and overwrite contract; `skewed` only waits and then calls it.
-        unsafe { tprims_gemm_kernel::register::<f64>(manifest) };
+        unsafe { tprims_kernel::register::<f64>(manifest) };
         // One epoch (k <= kc), 8 bands of 64 columns: worker 0 holds one band
         // while the other three finish the remaining seven.
         let s = Spec {

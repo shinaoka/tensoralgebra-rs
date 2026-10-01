@@ -60,7 +60,7 @@ pub const IRREGULAR: i64 = i64::MIN;
 /// lengths itself.
 ///
 /// ```
-/// use tprims_gemm_kernel::scatter::build_scatter;
+/// use tprims_kernel::scatter::build_scatter;
 ///
 /// // Two modes: extent 2 stride 1 (fastest), extent 3 stride 10.
 /// // Entry n is the element offset of the n'th index tuple.
@@ -119,7 +119,7 @@ pub fn build_scatter(extents: &[i64], strides: &[i64]) -> Vec<i64> {
 /// size of zero, and the block count below would divide by it.
 ///
 /// ```
-/// use tprims_gemm_kernel::scatter::{build_block_scatter, build_scatter, IRREGULAR};
+/// use tprims_kernel::scatter::{build_block_scatter, build_scatter, IRREGULAR};
 ///
 /// let scat = build_scatter(&[2, 3], &[1, 10]);   // [0, 1, 10, 11, 20, 21]
 ///
@@ -140,7 +140,7 @@ pub fn build_block_scatter(scat: &[i64], blk: usize) -> Vec<i64> {
 ///
 /// # Examples
 /// ```
-/// use tprims_gemm_kernel::scatter::append_block_scatter;
+/// use tprims_kernel::scatter::append_block_scatter;
 /// let mut buf = Vec::new();
 /// let first = append_block_scatter(&mut buf, &[0, 1, 2], 2);
 /// let second = append_block_scatter(&mut buf, &[0, 5], 2);
@@ -166,7 +166,7 @@ pub fn append_block_scatter(out: &mut Vec<i64>, scat: &[i64], blk: usize) -> (us
 ///
 /// # Examples
 /// ```
-/// use tprims_gemm_kernel::scatter::block_scatter_regular;
+/// use tprims_kernel::scatter::block_scatter_regular;
 /// assert!(block_scatter_regular(&[0, 1, 2, 3], 2));
 /// assert!(!block_scatter_regular(&[0, 1, 10, 11], 4));
 /// ```
@@ -205,7 +205,7 @@ fn run_stride(run: &[i64]) -> i64 {
 /// lives here rather than in either of them.
 ///
 /// ```
-/// use tprims_gemm_kernel::scatter::{build_scatter, run_structure};
+/// use tprims_kernel::scatter::{build_scatter, run_structure};
 ///
 /// // Three maximal runs of length 2, each of stride 1.
 /// let scat = build_scatter(&[2, 3], &[1, 10]);
@@ -247,7 +247,7 @@ pub fn run_structure(scat: &[i64]) -> Option<(usize, i64)> {
 /// Exactly the fraction that reaches a strided rather than a gather traversal.
 ///
 /// ```
-/// use tprims_gemm_kernel::scatter::unbroken_fraction;
+/// use tprims_kernel::scatter::unbroken_fraction;
 ///
 /// // Six entries in runs of 2. Blocks of 2 align with the runs exactly.
 /// assert_eq!(unbroken_fraction(6, 2, 2), 1.0);
@@ -273,7 +273,7 @@ pub fn unbroken_fraction(total: usize, len: usize, blk: usize) -> f64 {
 /// diagnostics and for the planar-vs-TTGT dispatch heuristic.
 ///
 /// ```
-/// use tprims_gemm_kernel::scatter::{regular_fraction, IRREGULAR};
+/// use tprims_kernel::scatter::{regular_fraction, IRREGULAR};
 ///
 /// assert_eq!(regular_fraction(&[1, 1, IRREGULAR, 1]), 0.75);
 /// // A zero block stride is regular: it is how a reduction's repeated read

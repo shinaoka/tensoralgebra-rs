@@ -5,7 +5,7 @@ use num_complex::Complex64;
 use tprims_blas::{Conj, Engine, GemmConfig};
 use tprims_contract::{ContractPlan, DotGeneral, Flags, Strategy};
 use tprims_exec::Exec;
-use tprims_gemm_kernel::KernelChoice;
+use tprims_kernel::KernelChoice;
 
 mod common;
 use common::{out_dims, reference, T};

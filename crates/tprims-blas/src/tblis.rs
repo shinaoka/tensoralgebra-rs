@@ -29,7 +29,7 @@ fn as_select(e: tensorcontract::Error) -> Error {
 /// The selector is called at most once per plan built from it and is never
 /// stored in the plan: only the chosen trusted handle is.
 pub(crate) struct Custom<'a, T: Scalar> {
-    pub catalog: &'a tprims_gemm_kernel::KernelCatalog<T>,
+    pub catalog: &'a tprims_kernel::KernelCatalog<T>,
     pub chooser: &'a mut tensorcontract::Chooser<'a, T>,
 }
 
@@ -65,10 +65,9 @@ pub(crate) fn prepare<T: Scalar>(
     cb: Conj,
     threads: usize,
     custom: Option<Custom<'_, T>>,
-) -> Result<(Plan, tprims_gemm_kernel::ResolvedGemm<T::Re>)> {
+) -> Result<(Plan, tprims_kernel::ResolvedGemm<T::Re>)> {
     // Every id-resolving packed entry point registers the providers first, so
     // a forced id never depends on another call having done it.
-    crate::engine::register_built();
     let (la, lb, ld) = (layout(&s.item.a)?, layout(&s.item.b)?, layout(&s.item.c)?);
     let (ia, ib, id) = ([0i64, 2], [2i64, 1], [0i64, 1]);
     let (oa, ob) = (
@@ -107,8 +106,8 @@ pub(crate) fn run<T: Scalar>(
     beta: T,
     c: SendMut<T>,
     plan: Plan,
-    rg: tprims_gemm_kernel::ResolvedGemm<T::Re>,
-) -> Result<(Selected, tprims_gemm_kernel::ResolvedGemm<T::Re>)> {
+    rg: tprims_kernel::ResolvedGemm<T::Re>,
+) -> Result<(Selected, tprims_kernel::ResolvedGemm<T::Re>)> {
     let item = |i: usize, exec: &Exec<'_>| {
         let (a, b, c) = (a, b, c);
         let i = i as isize;
@@ -155,7 +154,7 @@ pub(crate) fn run<T: Scalar>(
 /// was planned for. Nothing here refers to the caller's selector.
 pub(crate) struct OnePlan<T: Scalar> {
     plan: Plan,
-    rg: tprims_gemm_kernel::ResolvedGemm<T::Re>,
+    rg: tprims_kernel::ResolvedGemm<T::Re>,
     width: usize,
 }
 
@@ -234,7 +233,6 @@ pub(crate) fn plan_one<T: Scalar>(
     )?;
     // Registering before the plan is built is what makes an id from an absent
     // provider report its feature instead of looking unknown.
-    crate::engine::register_built();
     let (ia, ib, idd) = ([0i64, 2], [2i64, 1], [0i64, 1]);
     let (oa, ob) = (
         op(Operand::new(&la, &ia), ca),
@@ -253,10 +251,10 @@ pub(crate) fn plan_one<T: Scalar>(
         // rest is checked against the family below, so a mismatch is an error
         // rather than a silent substitution.
         match method {
-            tprims_gemm_kernel::Method::OneM => {
+            tprims_kernel::Method::OneM => {
                 plan = plan.with_complex_method(tensorcontract::ComplexMethod::OneM);
             }
-            tprims_gemm_kernel::Method::ThreeM => {
+            tprims_kernel::Method::ThreeM => {
                 plan = plan.with_complex_method(tensorcontract::ComplexMethod::ThreeM);
             }
             _ => {}
@@ -274,18 +272,16 @@ pub(crate) fn plan_one<T: Scalar>(
     if let Some(method) = cfg.method {
         let family_method = rg.family().complex.map(|s| s.method);
         let matches = match method {
-            tprims_gemm_kernel::Method::Native => {
-                family_method.is_none_or(|m| m == tprims_gemm_kernel::Method::Native)
+            tprims_kernel::Method::Native => {
+                family_method.is_none_or(|m| m == tprims_kernel::Method::Native)
             }
             other => family_method == Some(other),
         };
         if !matches {
-            return Err(Error::Select(
-                tprims_gemm_kernel::SelectError::Incompatible {
-                    id: rg.family().id.into(),
-                    reason: "family implements a different complex method",
-                },
-            ));
+            return Err(Error::Select(tprims_kernel::SelectError::Incompatible {
+                id: rg.family().id.into(),
+                reason: "family implements a different complex method",
+            }));
         }
     }
     Ok(OnePlan { plan, rg, width })

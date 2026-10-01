@@ -163,7 +163,7 @@ pub fn gemm_grouped_with<T: Scalar>(
 ) -> Result<crate::SelectedGemm> {
     let unsupported = match cfg.engine {
         crate::EngineChoice::Auto | crate::EngineChoice::Faer => {
-            cfg.kernel != tprims_gemm_kernel::KernelChoice::Auto
+            cfg.kernel != tprims_kernel::KernelChoice::Auto
                 || cfg.method.is_some()
                 || cfg.has_partition_request()
         }
@@ -171,7 +171,7 @@ pub fn gemm_grouped_with<T: Scalar>(
     };
     if unsupported {
         return Err(Error::Select(
-            tprims_gemm_kernel::SelectError::EngineUnsupported {
+            tprims_kernel::SelectError::EngineUnsupported {
                 engine: "grouped gemm",
                 reason: "the grouped path computes with faer",
             },
@@ -186,7 +186,7 @@ pub fn gemm_grouped_with<T: Scalar>(
         mc: 0,
         nc: 0,
         kc: 0,
-        partition: tprims_gemm_kernel::PartitionPolicy::default(),
+        partition: tprims_kernel::PartitionPolicy::default(),
         batched: Some(selected),
         origin: None,
         dynamic: None,

@@ -15,7 +15,7 @@ use crate::{
     driver, kernel::ComplexMethod, Element, Error, KernelSet, Operand, Plan, PlanStats, Result,
 };
 use core::any::Any;
-use tprims_gemm_kernel::{
+use tprims_kernel::{
     CpuFeatures, Families, KernelCatalog, KernelHandle, Method, PartitionPolicy, SelectError,
 };
 
@@ -245,7 +245,7 @@ impl Plan {
             &[KernelCandidate<T>],
         ) -> core::result::Result<KernelHandle<T>, SelectError>,
     {
-        if let Some(tprims_gemm_kernel::KernelChoice::Id(id)) = &self.kernel {
+        if let Some(tprims_kernel::KernelChoice::Id(id)) = &self.kernel {
             return Err(Error::KernelSelection(SelectError::Incompatible {
                 id: id.clone(),
                 reason: "a forced kernel id and a custom selector are ambiguous",

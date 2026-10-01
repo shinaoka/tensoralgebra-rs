@@ -14,7 +14,7 @@ bench = false
 [dependencies]
 tprims-exec = { workspace = true, features = ["strided"] }
 tprims-blas = { workspace = true }
-tprims-gemm-kernel = { workspace = true }
+tprims-kernel = { workspace = true }
 tprims-contract = { workspace = true }
 tprims-core = { workspace = true }
 strided-basic = { workspace = true }

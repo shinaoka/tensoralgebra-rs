@@ -1,8 +1,7 @@
-use tprims_gemm_kernel::*;
+use tprims_kernel::*;
 
 #[test]
 fn every_tc_family_validates_and_ids_are_unique() {
-    tprims_kernel_tensorcontract::register();
     fn check<T: Families>() {
         let mut ids = std::collections::BTreeSet::new();
         let all = Registry::families::<T>(CpuFeatures::NONE, true);
@@ -22,13 +21,12 @@ fn every_tc_family_validates_and_ids_are_unique() {
 
 #[test]
 fn auto_head_matches_legacy_default() {
-    tprims_kernel_tensorcontract::register();
     let cpu = CpuFeatures::detect();
     let head = Registry::families::<f64>(cpu, false)
         .into_iter()
         .find(|f| f.allow_auto)
         .unwrap();
-    let legacy = <f64 as tprims_kernel_tensorcontract::KernelSet>::config_real();
+    let legacy = <f64 as tprims_kernel::kernels::KernelSet>::config_real();
     assert_eq!(
         (head.mr, head.nr),
         (legacy.ukr.mr, legacy.ukr.nr),
@@ -39,8 +37,7 @@ fn auto_head_matches_legacy_default() {
         .into_iter()
         .find(|f| f.allow_auto)
         .unwrap();
-    let clegacy =
-        <f64 as tprims_kernel_tensorcontract::KernelSet>::config_cplx(ComplexMethod::Planar);
+    let clegacy = <f64 as tprims_kernel::kernels::KernelSet>::config_cplx(ComplexMethod::Planar);
     assert_eq!(
         (chead.mr, chead.nr, chead.complex.unwrap().method),
         (clegacy.ukr.mr, clegacy.ukr.nr, Method::Native)
@@ -49,7 +46,6 @@ fn auto_head_matches_legacy_default() {
 
 #[test]
 fn every_available_family_matches_a_packed_product_oracle() {
-    tprims_kernel_tensorcontract::register();
     fn check<T: Families>(tol: f64) {
         for f in Registry::families::<T>(CpuFeatures::detect(), false) {
             f.validate().unwrap();
@@ -174,7 +170,6 @@ fn every_available_family_matches_a_packed_product_oracle() {
 
 #[test]
 fn id_snapshot() {
-    tprims_kernel_tensorcontract::register();
     let ids: Vec<_> = list_kernels::<f64>().into_iter().map(|k| k.id).collect();
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     let want = include_str!("snapshots/f64_x86_ids.txt");
@@ -191,7 +186,6 @@ fn id_snapshot() {
 
 #[test]
 fn cpu_mask_and_complex_method_metadata() {
-    tprims_kernel_tensorcontract::register();
     for f in Registry::families::<C64>(CpuFeatures::NONE, true) {
         if f.complex.unwrap().method == Method::ThreeM {
             assert!(!f.allow_auto);

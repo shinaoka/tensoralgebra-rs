@@ -13,11 +13,11 @@ use crate::{
 ///
 /// # Examples
 /// ```
-/// use tprims_gemm_kernel::{KernelChoice, ResolvedGemm};
+/// use tprims_kernel::{KernelChoice, ResolvedGemm};
 /// let choice = KernelChoice::Id("portable.f64.4x4".into());
 /// let rg = ResolvedGemm::<f64>::resolve::<f64>(&choice, 1)?;
 /// assert_eq!(rg.family().id, "portable.f64.4x4");
-/// # Ok::<(), tprims_gemm_kernel::SelectError>(())
+/// # Ok::<(), tprims_kernel::SelectError>(())
 /// ```
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[non_exhaustive]
@@ -34,8 +34,8 @@ impl KernelChoice {
     ///
     /// # Examples
     /// ```
-    /// assert!(core::ptr::eq(tprims_gemm_kernel::KernelChoice::from_env(),
-    ///     tprims_gemm_kernel::KernelChoice::from_env()));
+    /// assert!(core::ptr::eq(tprims_kernel::KernelChoice::from_env(),
+    ///     tprims_kernel::KernelChoice::from_env()));
     /// ```
     pub fn from_env() -> &'static Self {
         static CHOICE: std::sync::OnceLock<KernelChoice> = std::sync::OnceLock::new();
@@ -57,10 +57,10 @@ impl KernelChoice {
 ///
 /// # Examples
 /// ```
-/// let a = tprims_gemm_kernel::process_default::<f64>()?;
-/// let b = tprims_gemm_kernel::process_default::<f64>()?;
+/// let a = tprims_kernel::process_default::<f64>()?;
+/// let b = tprims_kernel::process_default::<f64>()?;
 /// assert!(core::ptr::eq(a, b));
-/// # Ok::<(), tprims_gemm_kernel::SelectError>(())
+/// # Ok::<(), tprims_kernel::SelectError>(())
 /// ```
 pub fn process_default<T: Families>() -> Result<&'static ResolvedGemm<T::Real>, SelectError> {
     T::process_default()
@@ -164,12 +164,12 @@ impl BlockingPolicy {
 ///
 /// # Examples
 /// ```
-/// use tprims_gemm_kernel::{KernelChoice, ResolvedGemm};
+/// use tprims_kernel::{KernelChoice, ResolvedGemm};
 /// let rg = ResolvedGemm::<f32>::resolve::<f32>(&KernelChoice::Auto, 4)?;
 /// let serial = rg.with_threads(1)?;
 /// assert!(core::ptr::eq(rg.family(), serial.family()));
 /// assert_eq!(serial.effective_threads, 1);
-/// # Ok::<(), tprims_gemm_kernel::SelectError>(())
+/// # Ok::<(), tprims_kernel::SelectError>(())
 /// ```
 #[derive(Clone, Copy, Debug)]
 pub struct ResolvedGemm<R: Real> {
@@ -212,10 +212,10 @@ impl<R: Real> ResolvedGemm<R> {
     ///
     /// # Examples
     /// ```
-    /// use tprims_gemm_kernel::{KernelChoice, ResolvedGemm};
+    /// use tprims_kernel::{KernelChoice, ResolvedGemm};
     /// let rg = ResolvedGemm::<f64>::resolve::<f64>(&KernelChoice::Auto, 1)?;
     /// assert!(rg.family().validate().is_ok());
-    /// # Ok::<(), tprims_gemm_kernel::SelectError>(())
+    /// # Ok::<(), tprims_kernel::SelectError>(())
     /// ```
     pub fn family(&self) -> &'static KernelFamily<R> {
         self.family
@@ -227,7 +227,7 @@ impl<R: Real> ResolvedGemm<R> {
     ///
     /// # Examples
     /// ```
-    /// use tprims_gemm_kernel::{KernelChoice, ResolvedGemm};
+    /// use tprims_kernel::{KernelChoice, ResolvedGemm};
     /// let rg = ResolvedGemm::<f64>::resolve::<f64>(
     ///     &KernelChoice::Id("portable.f64.4x4".into()), 1)?;
     /// let (pack_a, _) = rg.packers::<f64>();
@@ -236,7 +236,7 @@ impl<R: Real> ResolvedGemm<R> {
     /// // SAFETY: one full 4-row real panel, valid scatters and write capacity.
     /// unsafe { pack_a(input.as_ptr(), &[0,1,2,3], &[1], &[0], 4, false, output.as_mut_ptr()); }
     /// assert_eq!(output, input);
-    /// # Ok::<(), tprims_gemm_kernel::SelectError>(())
+    /// # Ok::<(), tprims_kernel::SelectError>(())
     /// ```
     pub fn packers<T: crate::Element<Real = R>>(&self) -> (crate::PackFn<T>, crate::PackFn<T>) {
         (
@@ -250,7 +250,7 @@ impl<R: Real> ResolvedGemm<R> {
     ///
     /// # Examples
     /// ```
-    /// use tprims_gemm_kernel::{KernelChoice, ResolvedGemm};
+    /// use tprims_kernel::{KernelChoice, ResolvedGemm};
     /// let rg = ResolvedGemm::<f64>::resolve::<f64>(
     ///     &KernelChoice::Id("portable.f64.4x4".into()), 1)?;
     /// let emit = rg.emitter::<f64>();
@@ -261,7 +261,7 @@ impl<R: Real> ResolvedGemm<R> {
     /// unsafe { emit(tile.as_ptr(),4,4,1,1,1.,0.,std::ptr::null(),&[0],&[0],1,false,
     ///     output.as_mut_ptr(),&[0],&[0],1,false); }
     /// assert_eq!(output, [2.]);
-    /// # Ok::<(), tprims_gemm_kernel::SelectError>(())
+    /// # Ok::<(), tprims_kernel::SelectError>(())
     /// ```
     pub fn emitter<T: crate::Element<Real = R>>(&self) -> crate::EmitFn<T> {
         crate::writeback::emit_fn::<T>(self.tile_fmt, self.gather)
@@ -277,10 +277,10 @@ impl<R: Real> ResolvedGemm<R> {
     ///
     /// # Examples
     /// ```
-    /// use tprims_gemm_kernel::{KernelChoice, ResolvedGemm};
+    /// use tprims_kernel::{KernelChoice, ResolvedGemm};
     /// let rg = ResolvedGemm::<f64>::resolve::<f64>(&KernelChoice::Auto, 1)?;
     /// assert_eq!(rg.a_per_k, rg.mr);
-    /// # Ok::<(), tprims_gemm_kernel::SelectError>(())
+    /// # Ok::<(), tprims_kernel::SelectError>(())
     /// ```
     pub fn resolve<T: Families<Real = R>>(
         choice: &KernelChoice,
@@ -304,13 +304,13 @@ impl<R: Real> ResolvedGemm<R> {
     ///
     /// # Examples
     /// ```
-    /// use tprims_gemm_kernel::{KernelChoice, PartitionOpts, PartitionPolicy, ResolvedGemm};
+    /// use tprims_kernel::{KernelChoice, PartitionOpts, PartitionPolicy, ResolvedGemm};
     /// let grid = PartitionPolicy::StaticGrid { pm: 2, pn: 2 };
     /// let rg = ResolvedGemm::<f64>::resolve_with::<f64>(
     ///     &KernelChoice::Auto, 4, grid, PartitionOpts { align_c_lines: true })?;
     /// assert_eq!(rg.partition, grid);
     /// assert!(rg.opts.align_c_lines);
-    /// # Ok::<(), tprims_gemm_kernel::SelectError>(())
+    /// # Ok::<(), tprims_kernel::SelectError>(())
     /// ```
     pub fn resolve_with<T: Families<Real = R>>(
         choice: &KernelChoice,
@@ -337,13 +337,13 @@ impl<R: Real> ResolvedGemm<R> {
     ///
     /// # Examples
     /// ```
-    /// use tprims_gemm_kernel::{KernelChoice, PartitionOpts, PartitionPolicy, ResolvedGemm};
+    /// use tprims_kernel::{KernelChoice, PartitionOpts, PartitionPolicy, ResolvedGemm};
     /// let rg = ResolvedGemm::<f64>::resolve::<f64>(&KernelChoice::Id("portable.f64.4x4".into()), 2)?;
     /// let dynamic = PartitionPolicy::DynamicTiles { job_m: 8, job_n: 16 };
     /// assert_eq!(rg.with_partition(dynamic, PartitionOpts::default())?.partition, dynamic);
     /// assert!(rg.with_partition(
     ///     PartitionPolicy::DynamicTiles { job_m: 6, job_n: 16 }, PartitionOpts::default()).is_err());
-    /// # Ok::<(), tprims_gemm_kernel::SelectError>(())
+    /// # Ok::<(), tprims_kernel::SelectError>(())
     /// ```
     pub fn with_partition(
         mut self,
@@ -431,13 +431,13 @@ impl<R: Real> ResolvedGemm<R> {
     ///
     /// # Examples
     /// ```
-    /// use tprims_gemm_kernel::{KernelCatalog, PartitionOpts, PartitionPolicy, ResolvedGemm};
+    /// use tprims_kernel::{KernelCatalog, PartitionOpts, PartitionPolicy, ResolvedGemm};
     /// let catalog = KernelCatalog::<f64>::builtin();
     /// let handle = catalog.get("portable.f64.4x4").unwrap();
     /// let rg = ResolvedGemm::<f64>::resolve_handle::<f64>(
     ///     &handle, 2, PartitionPolicy::default(), PartitionOpts::default())?;
     /// assert_eq!(rg.family().id, "portable.f64.4x4");
-    /// # Ok::<(), tprims_gemm_kernel::SelectError>(())
+    /// # Ok::<(), tprims_kernel::SelectError>(())
     /// ```
     pub fn resolve_handle<T: Families<Real = R>>(
         handle: &crate::KernelHandle<T>,
@@ -502,11 +502,11 @@ impl<R: Real> ResolvedGemm<R> {
     ///
     /// # Examples
     /// ```
-    /// use tprims_gemm_kernel::{Blocking, KernelChoice, ResolvedGemm};
+    /// use tprims_kernel::{Blocking, KernelChoice, ResolvedGemm};
     /// let rg = ResolvedGemm::<f64>::resolve::<f64>(&KernelChoice::Auto, 1)?;
     /// let rg = rg.with_blocking(Blocking { mc: 5, kc: 3, nc: 7 })?;
     /// assert_eq!(rg.with_threads(4)?.kc, 3);
-    /// # Ok::<(), tprims_gemm_kernel::SelectError>(())
+    /// # Ok::<(), tprims_kernel::SelectError>(())
     /// ```
     pub fn with_blocking(mut self, blocking: Blocking) -> Result<Self, SelectError> {
         self.policy.explicit = Some(blocking);
@@ -523,10 +523,10 @@ impl<R: Real> ResolvedGemm<R> {
     ///
     /// # Examples
     /// ```
-    /// use tprims_gemm_kernel::{KernelChoice, ResolvedGemm};
+    /// use tprims_kernel::{KernelChoice, ResolvedGemm};
     /// let rg = ResolvedGemm::<f64>::resolve::<f64>(&KernelChoice::Auto, 8)?;
     /// assert_eq!(rg.with_threads(1)?.effective_threads, 1);
-    /// # Ok::<(), tprims_gemm_kernel::SelectError>(())
+    /// # Ok::<(), tprims_kernel::SelectError>(())
     /// ```
     pub fn with_threads(mut self, threads: usize) -> Result<Self, SelectError> {
         let fail = |reason| SelectError::Incompatible {

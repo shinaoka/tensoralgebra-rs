@@ -1,15 +1,15 @@
 //! Kernel selection glue between tensorcontract plans and the kernel layer.
-pub use tprims_gemm_kernel::cache;
-pub use tprims_gemm_kernel::{
-    Blocking, ComplexMethod, KernelConfig, PackFormat, ParseError, TileFormat, Ukr,
-};
+pub use tprims_kernel::blocking as cache;
 #[cfg(target_arch = "aarch64")]
 #[doc(hidden)]
-pub use tprims_kernel_tensorcontract::aarch64;
+pub use tprims_kernel::kernels::aarch64;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[doc(hidden)]
-pub use tprims_kernel_tensorcontract::x86;
-pub use tprims_kernel_tensorcontract::{scalar, KernelSet};
+pub use tprims_kernel::kernels::x86;
+pub use tprims_kernel::kernels::{reference::scalar, KernelSet};
+pub use tprims_kernel::{
+    Blocking, ComplexMethod, KernelConfig, PackFormat, ParseError, TileFormat, Ukr,
+};
 
 /// The register block `(MR, NR)` and cache blocking the engine will use for
 /// element type `T`. Exposed for diagnostics and for harnesses that want to

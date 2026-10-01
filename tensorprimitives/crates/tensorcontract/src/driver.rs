@@ -126,8 +126,8 @@ use crate::plan::Plan;
 use crate::scatter::IRREGULAR;
 use crate::writeback::{scale_only, writeback};
 pub use dynamic::{dynamic_report, Assignment, DynSnapshot, DynStats, DynamicReport};
-use tprims_gemm_kernel::scatter::append_block_scatter;
-use tprims_gemm_kernel::{Axis, BAccess, DriverFamily, Real, UkrAux, UkrFn};
+use tprims_kernel::scatter::append_block_scatter;
+use tprims_kernel::{Axis, BAccess, DriverFamily, Real, UkrAux, UkrFn};
 
 /// Operand-dependent decisions the driver makes once per execute, kept
 /// separate from the plan-level resolution so tests can pin the real rule.
@@ -145,7 +145,7 @@ pub struct ResolvedCall {
 #[doc(hidden)]
 pub fn driver_decisions<T>(
     plan: &Plan,
-    rg: &tprims_gemm_kernel::ResolvedGemm<T::Real>,
+    rg: &tprims_kernel::ResolvedGemm<T::Real>,
     c: *const T,
     d: *mut T,
     beta: T,
@@ -185,7 +185,7 @@ pub(crate) fn pack_b_needed(b_access: BAccess, bk: &[i64], bn: &[i64], nr: usize
     if bk.len() > 1 && !bk.windows(2).all(|w| w[1] - w[0] == 1) {
         return true;
     }
-    !tprims_gemm_kernel::scatter::block_scatter_regular(bn, nr)
+    !tprims_kernel::scatter::block_scatter_regular(bn, nr)
 }
 
 /// Whether the Direct kernel may write D in place. Real storage only, no C or D
@@ -257,8 +257,8 @@ where
 {
     plan: &'a Plan,
     fam: DriverFamily<T::Real>,
-    packers: Option<(tprims_gemm_kernel::PackFn<T>, tprims_gemm_kernel::PackFn<T>)>,
-    emitter: Option<tprims_gemm_kernel::EmitFn<T>>,
+    packers: Option<(tprims_kernel::PackFn<T>, tprims_kernel::PackFn<T>)>,
+    emitter: Option<tprims_kernel::EmitFn<T>>,
     /// This call's operand-dependent decisions, when a resolution is in use.
     call: Option<ResolvedCall>,
     /// Whether the kernel's column role takes B in place this call.
@@ -493,7 +493,7 @@ pub unsafe fn execute<T>(
 /// this same frozen family/policy; it never re-selects the plan default.
 pub unsafe fn execute_resolved<T: Element>(
     plan: &Plan,
-    rg: &tprims_gemm_kernel::ResolvedGemm<T::Real>,
+    rg: &tprims_kernel::ResolvedGemm<T::Real>,
     exec: &Exec<'_>,
     workspace: Option<&dyn WorkspaceProvider>,
     alpha: T,
@@ -532,7 +532,7 @@ pub unsafe fn execute_resolved<T: Element>(
 #[doc(hidden)]
 pub unsafe fn execute_resolved_instrumented<T: Element>(
     plan: &Plan,
-    rg: &tprims_gemm_kernel::ResolvedGemm<T::Real>,
+    rg: &tprims_kernel::ResolvedGemm<T::Real>,
     exec: &Exec<'_>,
     workspace: Option<&dyn WorkspaceProvider>,
     stats: &DynStats,
@@ -611,7 +611,7 @@ pub(crate) unsafe fn execute_capped<T>(
     d: *mut T,
     exec: &Exec<'_>,
     workspace: Option<&dyn WorkspaceProvider>,
-    resolution: Option<&tprims_gemm_kernel::ResolvedGemm<T::Real>>,
+    resolution: Option<&tprims_kernel::ResolvedGemm<T::Real>>,
     stats: Option<&dynamic::DynStats>,
 ) where
     T: Element,
@@ -760,16 +760,14 @@ pub(crate) unsafe fn execute_capped<T>(
     // An explicit grid is clamped to the width this call may use; the default
     // grid is the plan's own cost model, which already respects it.
     let explicit_grid = match resolved.map(|rg| rg.partition) {
-        Some(tprims_gemm_kernel::PartitionPolicy::StaticGrid { pm, pn }) if pm != 0 => {
-            Some((pm, pn))
-        }
+        Some(tprims_kernel::PartitionPolicy::StaticGrid { pm, pn }) if pm != 0 => Some((pm, pn)),
         _ => None,
     };
     // `DynamicTiles`: the team claims jobs, so the grid is `p x 1` (all in the
     // row direction, which only fixes the barrier's size). The width is the
     // host's budget capped by the jobs that exist at the widest NC block.
     let dyn_jobs = match resolved.map(|rg| rg.partition) {
-        Some(tprims_gemm_kernel::PartitionPolicy::DynamicTiles { job_m, job_n }) => {
+        Some(tprims_kernel::PartitionPolicy::DynamicTiles { job_m, job_n }) => {
             let nc_serial = resolved
                 .and_then(|rg| rg.with_threads(1).ok())
                 .map_or(n, |rg| rg.nc);
@@ -1022,7 +1020,7 @@ pub(crate) unsafe fn execute_capped<T>(
             pm,
             bar: (pm > 1).then(|| &bars[g]),
         };
-        let (lo, hi) = tprims_gemm_kernel::partition::strip(r, pm, cx.m, mr, align);
+        let (lo, hi) = tprims_kernel::partition::strip(r, pm, cx.m, mr, align);
         with_buffers(&mut |ap, tile| {
             // SAFETY: `execute`'s contract covers the accesses; the strips and
             // column groups partition the output, so this thread's writes are
@@ -1400,7 +1398,7 @@ unsafe fn compute_block<T>(
                     // family contract; an induced family
                     // scales the inner kernel's k itself.
                     unsafe {
-                        tprims_gemm_kernel::induced::tile_call(
+                        tprims_kernel::induced::tile_call(
                             &fam,
                             pc_len,
                             apan,

@@ -20,12 +20,12 @@ mod sealed {
 /// Mutable registration storage is not part of the public API.
 ///
 /// ```compile_fail
-/// use tprims_gemm_kernel::RealSlot;
+/// use tprims_kernel::RealSlot;
 /// let _ = <f64 as RealSlot>::slot();
 /// ```
 /// The typed dispatch method cannot bypass the unsafe registration boundary.
 /// ```compile_fail
-/// use tprims_gemm_kernel::{RealSlot, KernelFamily};
+/// use tprims_kernel::{RealSlot, KernelFamily};
 /// fn none() -> &'static [&'static KernelFamily<f64>] { &[] }
 /// <f64 as RealSlot>::add_provider(none);
 /// ```
@@ -86,7 +86,7 @@ macro_rules! families {
                 static DEFAULT: std::sync::OnceLock<Result<crate::ResolvedGemm<$r>, SelectError>> =
                     std::sync::OnceLock::new();
                 DEFAULT
-                    .get_or_init(crate::resolved::resolve_default::<$t>)
+                    .get_or_init(crate::select::resolve::resolve_default::<$t>)
                     .as_ref()
                     .map_err(Clone::clone)
             }
@@ -108,10 +108,10 @@ macro_rules! families {
         }
     };
 }
-families!(f32, f32, "f32", crate::portable::families_f32);
-families!(f64, f64, "f64", crate::portable::families_f64);
-families!(C32, f32, "c32", crate::portable::families_f32);
-families!(C64, f64, "c64", crate::portable::families_f64);
+families!(f32, f32, "f32", crate::kernels::builtin_f32);
+families!(f64, f64, "f64", crate::kernels::builtin_f64);
+families!(C32, f32, "c32", crate::kernels::builtin_f32);
+families!(C64, f64, "c64", crate::kernels::builtin_f64);
 
 fn registered<R: RealSlot>(
     builtin: &'static [&'static KernelFamily<R>],
@@ -131,7 +131,7 @@ fn registered<R: RealSlot>(
 ///
 /// Calling this boundary requires an explicit ABI/ISA safety promise.
 /// ```compile_fail
-/// use tprims_gemm_kernel::{register, KernelFamily};
+/// use tprims_kernel::{register, KernelFamily};
 /// fn none() -> &'static [&'static KernelFamily<f64>] { &[] }
 /// register::<f64>(none);
 /// ```
@@ -144,7 +144,7 @@ fn registered<R: RealSlot>(
 ///
 /// # Examples
 /// ```
-/// use tprims_gemm_kernel::{register, KernelFamily};
+/// use tprims_kernel::{register, KernelFamily};
 /// fn none() -> &'static [&'static KernelFamily<f64>] { &[] }
 /// // SAFETY: the immutable empty manifest has no kernel ABI obligations.
 /// unsafe { register::<f64>(none); register::<f64>(none); }
@@ -163,7 +163,7 @@ impl Registry {
     ///
     /// # Examples
     /// ```
-    /// use tprims_gemm_kernel::{Registry, CpuFeatures};
+    /// use tprims_kernel::{Registry, CpuFeatures};
     /// let families = Registry::families::<f64>(CpuFeatures::detect(), false);
     /// assert!(families.iter().all(|f| CpuFeatures::detect().contains(f.required)));
     /// ```
@@ -193,7 +193,7 @@ impl Registry {
     ///
     /// # Examples
     /// ```
-    /// use tprims_gemm_kernel::{Registry, CpuFeatures, SelectError};
+    /// use tprims_kernel::{Registry, CpuFeatures, SelectError};
     /// assert!(matches!(Registry::select::<f64>("nonexistent.f64", CpuFeatures::NONE),
     ///     Err(SelectError::UnknownId { .. })));
     /// ```
@@ -279,7 +279,7 @@ pub struct KernelInfo {
 ///
 /// # Examples
 /// ```
-/// use tprims_gemm_kernel::list_kernels;
+/// use tprims_kernel::list_kernels;
 /// assert!(list_kernels::<f64>().iter().all(|info| info.dtype == "f64"));
 /// ```
 pub fn list_kernels<T: Families>() -> Vec<KernelInfo> {

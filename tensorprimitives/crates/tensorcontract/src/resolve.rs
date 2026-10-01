@@ -4,7 +4,7 @@ use std::{
     any::{Any, TypeId},
     sync::OnceLock,
 };
-use tprims_gemm_kernel::{
+use tprims_kernel::{
     CpuFeatures, Families, Isa, KernelChoice, KernelImpl, Method, Origin, Registry, ResolvedGemm,
     SelectError, C32, C64,
 };
@@ -53,14 +53,14 @@ pub(crate) fn default_choice() -> &'static KernelChoice {
 }
 
 fn legacy_isa() -> Isa {
-    use tprims_kernel_tensorcontract::{kernel_force, KernelForce};
+    use tprims_kernel::{kernel_force, KernelForce};
     if kernel_force() == KernelForce::Scalar {
         return Isa::Portable;
     }
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    return match tprims_kernel_tensorcontract::x86::selected_isa() {
-        Some(tprims_kernel_tensorcontract::x86::Isa::Avx2) => Isa::Avx2,
-        Some(tprims_kernel_tensorcontract::x86::Isa::Avx512) => Isa::Avx512,
+    return match tprims_kernel::kernels::x86::selected_isa() {
+        Some(tprims_kernel::kernels::x86::Isa::Avx2) => Isa::Avx2,
+        Some(tprims_kernel::kernels::x86::Isa::Avx512) => Isa::Avx512,
         None => Isa::Portable,
     };
     #[cfg(target_arch = "aarch64")]
@@ -85,11 +85,10 @@ where
     if let Some(forced) = &p.forced {
         return resolve_forced::<T>(p, forced);
     }
-    tprims_kernel_tensorcontract::register();
     let choice = p.kernel.as_ref().unwrap_or_else(|| default_choice());
     let legacy_auto = matches!(choice, KernelChoice::Auto);
     let default = if p.kernel.is_none() && p.method.is_none() {
-        Some(tprims_gemm_kernel::process_default::<T>()?)
+        Some(tprims_kernel::process_default::<T>()?)
     } else {
         None
     };
@@ -132,7 +131,7 @@ where
         };
     check_family::<T>(p, &rg)?;
     if legacy_auto
-        && tprims_gemm_kernel::cache::block_model() == tprims_gemm_kernel::cache::BlockModel::Legacy
+        && tprims_kernel::blocking::block_model() == tprims_kernel::blocking::BlockModel::Legacy
     {
         // Preserve old percentage-before-register-rounding semantics. The
         // canonical resolver above already checked override multiplication;
@@ -158,7 +157,7 @@ fn apply_partition<T: Families>(
         return Ok(rg);
     };
     let rg = rg.with_partition(policy, opts)?;
-    if let tprims_gemm_kernel::PartitionPolicy::DynamicTiles { job_m, job_n } = policy {
+    if let tprims_kernel::PartitionPolicy::DynamicTiles { job_m, job_n } = policy {
         let (m, n) = (p.a_m.len(), p.b_n.len());
         let jobs = |m: usize, n: usize| {
             m.div_ceil(job_m)

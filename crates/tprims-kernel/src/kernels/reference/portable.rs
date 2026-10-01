@@ -10,7 +10,7 @@ use crate::*;
 /// ```
 /// let a = [1.0_f64; 8]; let b = [1.0_f64; 8]; let mut tile = [f64::NAN; 16];
 /// // SAFETY: two full 4-lane slivers and a distinct 4x4 output tile.
-/// unsafe { tprims_gemm_kernel::portable::real_tile::<f64, 4, 4>(
+/// unsafe { tprims_kernel::portable::real_tile::<f64, 4, 4>(
 ///     2, a.as_ptr(), b.as_ptr(), tile.as_mut_ptr()) };
 /// assert_eq!(tile, [2.0; 16]);
 /// ```
@@ -55,7 +55,7 @@ pub unsafe fn real_tile<R: Real, const MR: usize, const NR: usize>(
 /// let b = [0.0_f64, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0]; // four values i
 /// let mut tile = [f64::NAN; 32];
 /// // SAFETY: full 4-lane complex panels and a distinct 4x4 complex tile.
-/// unsafe { tprims_gemm_kernel::portable::cplx_tile::<f64, 4, 4>(
+/// unsafe { tprims_kernel::portable::cplx_tile::<f64, 4, 4>(
 ///     1, a.as_ptr(), b.as_ptr(), tile.as_mut_ptr()) };
 /// assert!(tile.chunks_exact(2).all(|z| z == [-1.0, 1.0]));
 /// ```
@@ -114,14 +114,14 @@ pub unsafe fn cplx_tile<R: Real, const MR: usize, const NR: usize>(
 /// let a = [1.0_f64, 0., 0., 0., 0., 1., 0., 0.];
 /// let b = [2.0_f64, 3.0];
 /// let mut d = [5.0_f64, 7., 0., 0.];
-/// let aux = tprims_gemm_kernel::UkrAux {
+/// let aux = tprims_kernel::UkrAux {
 ///     a_next: core::ptr::null(),
 ///     b_next: core::ptr::null(),
 ///     inner: None,
 ///     opaque: core::ptr::null(),
 /// };
 /// // SAFETY: full 4x2 A panel, a 2x1 B and four writable D reals.
-/// unsafe { tprims_gemm_kernel::portable::real_direct::<f64, 4, 4>(
+/// unsafe { tprims_kernel::portable::real_direct::<f64, 4, 4>(
 ///     4, 1, 2, d.as_mut_ptr(), 1, 4, a.as_ptr(), 4,
 ///     b.as_ptr(), 1, 2, 1.0, 1.0, &aux) };
 /// assert_eq!(d, [7.0, 10., 0., 0.]);
@@ -238,7 +238,7 @@ macro_rules! families {
             ..$direct
         };
         /// Static real and native-interleaved complex fallback descriptors.
-        #[doc = concat!("\n# Examples\n```\nlet families = tprims_gemm_kernel::portable::",
+        #[doc = concat!("\n# Examples\n```\nlet families = tprims_kernel::portable::",
                                     stringify!($list), "();\nassert_eq!(families.len(), 4);\n",
                                     "assert!(families.iter().all(|f| f.validate().is_ok()));\n```")]
         pub fn $list() -> &'static [&'static KernelFamily<$r>] {

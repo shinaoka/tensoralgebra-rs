@@ -8,7 +8,7 @@ publish = false
 description = "A downstream crate with its own packed GEMM kernels, exercising the custom-selector API without touching tprims or its global registry"
 
 [dependencies]
-tprims-gemm-kernel = { workspace = true, default-features = false, features = ["std"] }
+tprims-kernel = { workspace = true, default-features = false, features = ["std"] }
 
 [dev-dependencies]
 num-complex = { workspace = true }

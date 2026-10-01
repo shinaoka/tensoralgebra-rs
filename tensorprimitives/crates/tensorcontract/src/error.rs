@@ -46,7 +46,7 @@ use core::fmt;
 #[non_exhaustive]
 pub enum Error {
     /// Invalid registered-kernel selection/configuration, before computation.
-    KernelSelection(tprims_gemm_kernel::SelectError),
+    KernelSelection(tprims_kernel::SelectError),
     /// `extents.len() != strides.len()`.
     RankMismatch {
         /// Number of extents supplied.

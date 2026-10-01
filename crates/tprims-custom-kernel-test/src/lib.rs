@@ -7,7 +7,7 @@
 //! not to be fast.
 //!
 //! The ABI each kernel implements is the documented one of
-//! [`tprims_gemm_kernel::TileUkrFn`]: A packed `MR` reals per k-step, B packed
+//! [`tprims_kernel::TileUkrFn`]: A packed `MR` reals per k-step, B packed
 //! `NR` reals per k-step, and the complete column-major `MR x NR` tile
 //! overwritten.
 //!
@@ -16,35 +16,35 @@
 //! A handle is minted only by an admitted catalog. It cannot be built from its
 //! parts,
 //! ```compile_fail,E0451
-//! let _ = tprims_gemm_kernel::KernelHandle::<f64> { family: todo!(), catalog: 0, _t: todo!() };
+//! let _ = tprims_kernel::KernelHandle::<f64> { family: todo!(), catalog: 0, _t: todo!() };
 //! ```
 //! converted from a number or pointer,
 //! ```compile_fail,E0277
-//! let _: tprims_gemm_kernel::KernelHandle<f64> = 3usize.into();
+//! let _: tprims_kernel::KernelHandle<f64> = 3usize.into();
 //! ```
 //! made from a raw descriptor, as a selector's return value would have to be,
 //! ```compile_fail,E0308
-//! fn pick(f: &'static tprims_gemm_kernel::KernelFamily<f64>)
-//!     -> Result<tprims_gemm_kernel::KernelHandle<f64>, tprims_gemm_kernel::SelectError> {
+//! fn pick(f: &'static tprims_kernel::KernelFamily<f64>)
+//!     -> Result<tprims_kernel::KernelHandle<f64>, tprims_kernel::SelectError> {
 //!     Ok(f)
 //! }
 //! ```
 //! mutated, or asked for the descriptor behind it:
 //! ```compile_fail,E0616
-//! fn poke(mut h: tprims_gemm_kernel::KernelHandle<f64>) { h.family = todo!(); }
+//! fn poke(mut h: tprims_kernel::KernelHandle<f64>) { h.family = todo!(); }
 //! ```
 //! ```compile_fail,E0624
-//! fn peek(h: tprims_gemm_kernel::KernelHandle<f64>) { let _ = h.family(); }
+//! fn peek(h: tprims_kernel::KernelHandle<f64>) { let _ = h.family(); }
 //! ```
 //! A handle of one storage type is not a handle of another:
 //! ```compile_fail,E0308
-//! fn widen(h: tprims_gemm_kernel::KernelHandle<f64>) -> tprims_gemm_kernel::KernelHandle<tprims_gemm_kernel::C64> { h }
+//! fn widen(h: tprims_kernel::KernelHandle<f64>) -> tprims_kernel::KernelHandle<tprims_kernel::C64> { h }
 //! ```
 //! And the admission constructor is `unsafe`:
 //! ```compile_fail,E0133
-//! let _ = tprims_gemm_kernel::KernelCatalog::<f64>::from_static_families(&[]);
+//! let _ = tprims_kernel::KernelCatalog::<f64>::from_static_families(&[]);
 //! ```
-use tprims_gemm_kernel::{
+use tprims_kernel::{
     portable, Axis, BAccess, Blocksizes, CPref, CUpdate, Caps, ComplexScheme, CpuFeatures, Isa,
     KernelFamily, KernelImpl, Layout, Method, Origin, TileFormat, UkrFn,
 };
@@ -67,7 +67,7 @@ unsafe fn tile_kernel<R, const MR: usize, const NR: usize>(
     b: *const R,
     tile: *mut R,
 ) where
-    R: tprims_gemm_kernel::Real,
+    R: tprims_kernel::Real,
 {
     // SAFETY: the function's extent contract.
     unsafe {

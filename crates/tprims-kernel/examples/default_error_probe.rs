@@ -1,5 +1,5 @@
 //! Separate, single-threaded check of cached process-default selection errors.
-use tprims_gemm_kernel::{process_default, SelectError};
+use tprims_kernel::{process_default, SelectError};
 fn main() {
     // SAFETY: standalone program creates no threads; this precedes planning.
     unsafe {

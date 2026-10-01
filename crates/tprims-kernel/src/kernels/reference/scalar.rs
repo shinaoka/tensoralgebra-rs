@@ -10,7 +10,7 @@
 //! # Adding an element type
 //!
 //! Three impls, no kernel of your own: [`Real`] for the arithmetic,
-//! [`Element`](tprims_gemm_kernel::Element) to say how a storage element decomposes
+//! [`Element`](tprims_kernel::Element) to say how a storage element decomposes
 //! into reals, and [`KernelSet`](super::KernelSet) to hand back
 //! [`config_real`] / [`config_cplx`] at a register block of your choosing.
 //! Everything else — index analysis, folding, scatter and block scatter,
@@ -101,8 +101,7 @@
 //! three methods and the same kernels, with the complex method still selectable
 //! per plan.
 
-use super::{Blocking, ComplexMethod, KernelConfig, PackFormat, TileFormat, Ukr};
-use tprims_gemm_kernel::Real;
+use crate::{Blocking, ComplexMethod, KernelConfig, PackFormat, Real, TileFormat, Ukr};
 
 /// `ab[j * MR + i] = sum_p a[p * MR + i] * b[p * NR + j]`
 ///

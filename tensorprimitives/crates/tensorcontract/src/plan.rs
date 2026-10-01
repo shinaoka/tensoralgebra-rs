@@ -52,7 +52,7 @@
 //! claim on contiguity; `K` only affects the packing of `A` and `B`. This is a
 //! heuristic and a Phase 4 tuning knob.
 
-use tprims_gemm_kernel::env_once;
+use tprims_kernel::env_once;
 
 use crate::error::{Error, Result};
 use crate::layout::Layout;
@@ -302,14 +302,11 @@ pub struct Plan {
     pub(crate) method: Option<crate::kernel::ComplexMethod>,
     /// Overrides the default thread count when set.
     pub(crate) threads: Option<usize>,
-    pub(crate) kernel: Option<tprims_gemm_kernel::KernelChoice>,
+    pub(crate) kernel: Option<tprims_kernel::KernelChoice>,
     /// Set by [`Plan::with_selector`]: the family a caller's selector chose.
     pub(crate) forced: Option<crate::select::Forced>,
     /// Partition policy requested by [`Plan::with_partition`].
-    pub(crate) partition: Option<(
-        tprims_gemm_kernel::PartitionPolicy,
-        tprims_gemm_kernel::PartitionOpts,
-    )>,
+    pub(crate) partition: Option<(tprims_kernel::PartitionPolicy, tprims_kernel::PartitionOpts)>,
     pub(crate) resolved_cache: crate::resolve::Cache,
     /// The matrix shape and folded axes this plan reduced to. Public because
     /// it is the answer to "what did the index analysis actually decide", which
@@ -343,26 +340,25 @@ impl Plan {
     /// assert_eq!(p.resolved::<f64>()?.family().id, "portable.f64.4x4");
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
-    pub fn with_kernel(mut self, choice: tprims_gemm_kernel::KernelChoice) -> Result<Self> {
+    pub fn with_kernel(mut self, choice: tprims_kernel::KernelChoice) -> Result<Self> {
         if let Some(forced) = &self.forced {
             return Err(Error::KernelSelection(
-                tprims_gemm_kernel::SelectError::Incompatible {
+                tprims_kernel::SelectError::Incompatible {
                     id: forced.id().into(),
                     reason: "a custom selector already chose this plan's kernel",
                 },
             ));
         }
-        if let tprims_gemm_kernel::KernelChoice::Id(id) = &choice {
-            tprims_kernel_tensorcontract::register();
-            let cpu = tprims_gemm_kernel::CpuFeatures::detect();
+        if let tprims_kernel::KernelChoice::Id(id) = &choice {
+            let cpu = tprims_kernel::CpuFeatures::detect();
             let mut failure = None;
             macro_rules! check {
                 ($t:ty) => {
-                    match tprims_gemm_kernel::Registry::select::<$t>(id, cpu) {
+                    match tprims_kernel::Registry::select::<$t>(id, cpu) {
                         Ok(_) => {
                             failure = None;
                         }
-                        Err(tprims_gemm_kernel::SelectError::DtypeMismatch { .. }) => {}
+                        Err(tprims_kernel::SelectError::DtypeMismatch { .. }) => {}
                         Err(e) => {
                             failure = Some(e);
                         }
@@ -401,12 +397,9 @@ impl Plan {
     /// assert!(core::ptr::eq(first.family(), p.resolved::<f64>()?.family()));
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
-    pub fn resolved<T: tprims_gemm_kernel::Families>(
+    pub fn resolved<T: tprims_kernel::Families>(
         &self,
-    ) -> core::result::Result<
-        tprims_gemm_kernel::ResolvedGemm<T::Real>,
-        tprims_gemm_kernel::SelectError,
-    >
+    ) -> core::result::Result<tprims_kernel::ResolvedGemm<T::Real>, tprims_kernel::SelectError>
     where
         T::Real: crate::KernelSet,
     {
@@ -685,14 +678,14 @@ impl Plan {
     /// Job extents are logical rows/columns of the *oriented* GEMM (the row
     /// role may be either user operand, see [`Plan::transposes_gemm`]).
     ///
-    /// [`PartitionPolicy`]: tprims_gemm_kernel::PartitionPolicy
-    /// [`PartitionPolicy::StaticGrid`]: tprims_gemm_kernel::PartitionPolicy::StaticGrid
-    /// [`PartitionPolicy::DynamicTiles`]: tprims_gemm_kernel::PartitionPolicy::DynamicTiles
+    /// [`PartitionPolicy`]: tprims_kernel::PartitionPolicy
+    /// [`PartitionPolicy::StaticGrid`]: tprims_kernel::PartitionPolicy::StaticGrid
+    /// [`PartitionPolicy::DynamicTiles`]: tprims_kernel::PartitionPolicy::DynamicTiles
     #[must_use]
     pub fn with_partition(
         mut self,
-        policy: tprims_gemm_kernel::PartitionPolicy,
-        opts: tprims_gemm_kernel::PartitionOpts,
+        policy: tprims_kernel::PartitionPolicy,
+        opts: tprims_kernel::PartitionOpts,
     ) -> Self {
         self.partition = Some((policy, opts));
         self.resolved_cache = Default::default();
@@ -735,7 +728,7 @@ impl Plan {
     ///
     /// Defaults to `TENSORCONTRACT_THREADS`, and to **1** if that is unset.
     pub fn threads(&self) -> usize {
-        self.threads.unwrap_or_else(tprims_gemm_kernel::env_threads)
+        self.threads.unwrap_or_else(tprims_kernel::env_threads)
     }
 
     /// How execution will split the output across threads: `(pm, pn)`, the

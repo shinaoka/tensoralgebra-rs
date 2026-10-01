@@ -256,7 +256,7 @@ pub enum TileFormat {
 ///
 /// # Examples
 /// ```
-/// use tprims_gemm_kernel::{tile_planes, TileFormat};
+/// use tprims_kernel::{tile_planes, TileFormat};
 /// assert_eq!(tile_planes(TileFormat::FourM), 4);
 /// assert_eq!(tile_planes(TileFormat::Interleaved), 2);
 /// ```

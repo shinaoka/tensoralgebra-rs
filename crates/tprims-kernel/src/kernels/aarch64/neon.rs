@@ -67,7 +67,7 @@
 //! Register blocks are per-microarchitecture, so this is an M3 Max result and
 //! not a NEON one. Re-run the sweep on any other Apple part before quoting it.
 
-use super::{Blocking, ComplexMethod, KernelConfig, PackFormat, TileFormat, Ukr};
+use crate::{Blocking, ComplexMethod, KernelConfig, PackFormat, TileFormat, Ukr};
 
 use core::arch::aarch64::*;
 
@@ -297,8 +297,8 @@ pub fn selected_isa() -> Option<Isa> {
 }
 
 fn pick_isa() -> Option<Isa> {
-    use super::KernelForce;
-    match super::kernel_force() {
+    use crate::KernelForce;
+    match crate::kernel_force() {
         KernelForce::Scalar => None,
         KernelForce::Neon | KernelForce::Auto => Some(Isa::Neon),
         // Pinning an x86 family on aarch64 is a request this target cannot

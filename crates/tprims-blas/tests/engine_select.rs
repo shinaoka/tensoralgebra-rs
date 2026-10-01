@@ -6,7 +6,7 @@ use tprims_blas::{
     SelectedGemm,
 };
 use tprims_exec::{Exec, Pool};
-use tprims_gemm_kernel::KernelChoice;
+use tprims_kernel::KernelChoice;
 
 /// Integer-valued operands, so the engines' sums agree exactly.
 const M: usize = 37;
@@ -84,7 +84,7 @@ fn an_unknown_kernel_id_is_a_selection_error() {
     assert!(
         matches!(
             err,
-            Error::Select(tprims_gemm_kernel::SelectError::UnknownId { .. })
+            Error::Select(tprims_kernel::SelectError::UnknownId { .. })
         ),
         "{err:?}"
     );

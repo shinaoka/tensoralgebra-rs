@@ -12,7 +12,6 @@ const SHAPE: Shape = Shape {
 
 #[test]
 fn every_width_is_bitwise_identical_to_width_one() {
-    tprims_kernel_tensorcontract::register();
     for id in [
         "tc.scalar.f64.4x4",
         "portable.f64.4x4",

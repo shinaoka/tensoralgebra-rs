@@ -8,7 +8,7 @@ use tprims_blas::{
     Error, GemmConfig, MatIn,
 };
 use tprims_exec::Exec;
-use tprims_gemm_kernel::{KernelChoice, Method};
+use tprims_kernel::{KernelChoice, Method};
 
 type C64 = Complex<f64>;
 type C32 = Complex<f32>;
@@ -92,12 +92,12 @@ macro_rules! gemm_case {
                     if cfg!(target_arch = "x86_64") {
                         assert!(matches!(
                             err,
-                            Error::Select(tprims_gemm_kernel::SelectError::CpuUnsupported { .. })
+                            Error::Select(tprims_kernel::SelectError::CpuUnsupported { .. })
                         ));
                     } else {
                         assert!(matches!(
                             err,
-                            Error::Select(tprims_gemm_kernel::SelectError::UnknownId { .. })
+                            Error::Select(tprims_kernel::SelectError::UnknownId { .. })
                         ));
                     }
                     return;
@@ -137,12 +137,12 @@ fn the_families_are_listed_and_the_default_is_unchanged() {
         ("cplx.avx2.c32.native.8x4", list_kernels::<C32>()),
     ] {
         if !cfg!(target_arch = "x86_64") {
-            // `tprims-kernel-cplx` compiles to empty family lists elsewhere.
+            // `tprims-kernel` compiles to empty family lists elsewhere.
             assert!(info.iter().all(|k| k.id != id), "{id} listed off x86_64");
             continue;
         }
         let k = info.iter().find(|k| k.id == id).expect("listed");
-        assert_eq!(k.crate_name, "tprims-kernel-cplx");
+        assert_eq!(k.crate_name, "tprims-kernel");
         assert_eq!(k.license, "MIT OR Apache-2.0");
         assert_eq!(k.available_on_this_cpu, have_isa());
         let s = k.complex.unwrap();
@@ -236,7 +236,7 @@ fn tblis_batched_gemm_runs_the_family_by_id() {
     assert!(
         matches!(
             err,
-            Error::Select(tprims_gemm_kernel::SelectError::DtypeMismatch { .. })
+            Error::Select(tprims_kernel::SelectError::DtypeMismatch { .. })
         ),
         "{err:?}"
     );
@@ -294,9 +294,8 @@ fn dynamic_tiles_are_bitwise_equal_to_the_static_grid() {
         .unwrap();
         (sel, c)
     };
-    let (s_static, want) = run(tprims_gemm_kernel::PartitionPolicy::default());
-    let (s_dyn, got) =
-        run(tprims_gemm_kernel::PartitionPolicy::DynamicTiles { job_m: 8, job_n: 8 });
+    let (s_static, want) = run(tprims_kernel::PartitionPolicy::default());
+    let (s_dyn, got) = run(tprims_kernel::PartitionPolicy::DynamicTiles { job_m: 8, job_n: 8 });
     assert_eq!(s_static.family_id, Some("cplx.avx2.c64.native.4x4"));
     assert_eq!(s_dyn.family_id, Some("cplx.avx2.c64.native.4x4"));
     assert_eq!(
@@ -311,7 +310,7 @@ fn dynamic_tiles_are_bitwise_equal_to_the_static_grid() {
     let bad = GemmConfig {
         engine: EngineChoice::Packed,
         kernel: KernelChoice::Id("cplx.avx2.c64.native.4x4".into()),
-        partition: tprims_gemm_kernel::PartitionPolicy::DynamicTiles { job_m: 6, job_n: 8 },
+        partition: tprims_kernel::PartitionPolicy::DynamicTiles { job_m: 6, job_n: 8 },
         ..Default::default()
     };
     let mut c = c0.clone();

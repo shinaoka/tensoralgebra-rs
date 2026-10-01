@@ -48,7 +48,6 @@ fn run(exec: &Exec<'_>, width: usize) {
 
 #[test]
 fn one_pool_lends_one_workspace_and_two_pools_never_share() {
-    tprims_kernel_tensorcontract::register();
     let tp = rayon::ThreadPoolBuilder::new()
         .num_threads(4)
         .build()

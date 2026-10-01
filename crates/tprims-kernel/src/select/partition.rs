@@ -54,7 +54,7 @@ pub struct PartitionOpts {
 ///
 /// # Examples
 /// ```
-/// use tprims_gemm_kernel::partition::strip;
+/// use tprims_kernel::partition::strip;
 /// // 37 rows are five 8-row panels, so three strips take 1, 2 and 2 panels.
 /// assert_eq!(strip(0, 3, 37, 8, 0), (0, 8));
 /// assert_eq!(strip(1, 3, 37, 8, 0), (8, 24));

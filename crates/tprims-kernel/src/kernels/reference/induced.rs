@@ -36,7 +36,7 @@ fn induced_id(base: &str, suffix: &str) -> &'static str {
 ///
 /// # Examples
 /// ```
-/// use tprims_gemm_kernel::{induced, KernelImpl, portable};
+/// use tprims_kernel::{induced, KernelImpl, portable};
 /// let real = portable::families_f64()[0];
 /// let one_m = induced::one_m(real).unwrap();
 /// assert_eq!(one_m.id, "portable.f64.4x4.1m-induced");
@@ -80,7 +80,7 @@ pub fn one_m<R: Real>(real: &'static KernelFamily<R>) -> Option<&'static KernelF
 ///
 /// # Examples
 /// ```
-/// use tprims_gemm_kernel::{induced, portable};
+/// use tprims_kernel::{induced, portable};
 /// let f = induced::four_m(portable::families_f64()[0]).unwrap();
 /// assert_eq!(f.tile_bound, 4 * f.mr * f.nr);
 /// assert!(f.validate().is_ok());

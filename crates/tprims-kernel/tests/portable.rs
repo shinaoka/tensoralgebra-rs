@@ -1,5 +1,5 @@
 use num_complex::Complex;
-use tprims_gemm_kernel::*;
+use tprims_kernel::*;
 
 #[test]
 fn portable_families_validate_and_have_ids() {

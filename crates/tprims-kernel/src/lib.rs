@@ -1,6 +1,9 @@
-//! GEMM family contracts and project-owned portable kernels.
-//! Arithmetic traits, packing, scatter and write-back were moved from Lukas
-//! Devos's tensorcontract: lkdvos/tensorprimitives-rs; MIT OR Apache-2.0.
+//! GEMM kernels: the family contract and its registry, packing and write-back,
+//! cache blocking, and every project-owned microkernel family (Lukas Devos's
+//! tensorcontract kernels, the portable reference kernels and the native
+//! complex kernels). Arithmetic traits, packing, scatter, write-back and the
+//! tensorcontract kernels were moved from Lukas Devos's tensorcontract:
+//! lkdvos/tensorprimitives-rs; MIT OR Apache-2.0.
 #![warn(missing_docs)]
 #![warn(missing_debug_implementations)]
 
@@ -37,32 +40,33 @@ macro_rules! env_once {
     }};
 }
 
-pub mod cache;
-mod cpu;
-mod custom;
-pub mod element;
-mod family;
-pub mod induced;
+pub mod abi;
+pub mod blocking;
+pub mod kernels;
 #[doc(hidden)]
 pub mod pack;
-pub mod partition;
-pub mod portable;
-mod registry;
-mod resolved;
-pub mod scatter;
-mod types;
-#[doc(hidden)]
-pub mod writeback;
+pub mod select;
 
-pub use cpu::{kernel_force, CpuFeatures, Isa, KernelForce};
-pub use custom::{KernelCatalog, KernelHandle};
-pub use element::{Element, Real, C32, C64};
-pub use family::*;
-pub use partition::{PartitionOpts, PartitionPolicy};
-pub use registry::{list_kernels, register, Families, KernelInfo, RealSlot, Registry, SelectError};
-pub use resolved::{process_default, KernelChoice, ResolvedGemm};
-pub use scatter::IRREGULAR;
-pub use types::*;
+// The ABI and selection types live at the crate root, as before.
+use abi::{element, family, types};
+use blocking as cache;
+
+// Module paths the typed API and its doctests use.
+pub use kernels::reference::{induced, portable};
+pub use pack::{scatter, writeback};
+pub use select::partition;
+
+pub use abi::cpu::{kernel_force, CpuFeatures, Isa, KernelForce};
+pub use abi::element::{Element, Real, C32, C64};
+pub use abi::family::*;
+pub use abi::types::*;
+pub use pack::scatter::IRREGULAR;
+pub use select::catalog::{KernelCatalog, KernelHandle};
+pub use select::partition::{PartitionOpts, PartitionPolicy};
+pub use select::registry::{
+    list_kernels, register, Families, KernelInfo, RealSlot, Registry, SelectError,
+};
+pub use select::resolve::{process_default, KernelChoice, ResolvedGemm};
 
 /// `TENSORCONTRACT_THREADS=<n>` sets the default thread count. Read once per
 /// process. Unset means **1**: see `tensorcontract::Plan::threads` for why that is the default

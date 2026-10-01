@@ -35,12 +35,12 @@ static NEXT_CATALOG: AtomicU64 = AtomicU64::new(1);
 ///
 /// A handle cannot be built from its parts in safe code:
 /// ```compile_fail,E0451
-/// use tprims_gemm_kernel::KernelHandle;
+/// use tprims_kernel::KernelHandle;
 /// let h: KernelHandle<f64> = KernelHandle { family: todo!(), catalog: 0, _t: todo!() };
 /// ```
 /// and it exposes no mutable geometry:
 /// ```compile_fail,E0616
-/// fn poke(mut h: tprims_gemm_kernel::KernelHandle<f64>) { h.family = todo!(); }
+/// fn poke(mut h: tprims_kernel::KernelHandle<f64>) { h.family = todo!(); }
 /// ```
 pub struct KernelHandle<T: Families> {
     family: &'static KernelFamily<T::Real>,
@@ -145,7 +145,7 @@ impl<T: Families> KernelHandle<T> {
 ///
 /// # Examples
 /// ```
-/// use tprims_gemm_kernel::KernelCatalog;
+/// use tprims_kernel::KernelCatalog;
 /// let catalog = KernelCatalog::<f64>::builtin();
 /// assert!(catalog.handles().any(|h| h.id() == "portable.f64.4x4"));
 /// // A handle belongs to the catalog that minted it.
@@ -228,7 +228,7 @@ impl<T: Families> KernelCatalog<T> {
     ///
     /// # Examples
     /// ```
-    /// use tprims_gemm_kernel::{portable, KernelCatalog};
+    /// use tprims_kernel::{portable, KernelCatalog};
     /// // SAFETY: the project's own portable kernels meet the obligations.
     /// let catalog = unsafe { KernelCatalog::<f64>::from_static_families(portable::families_f64()) };
     /// // Real and complex storage share `f64` descriptors, but not catalogs.

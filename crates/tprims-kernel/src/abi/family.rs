@@ -8,8 +8,8 @@ use crate::{tile_planes, CpuFeatures, Element, Isa, PackFormat, Real, TileFormat
 ///
 /// # Examples
 /// ```
-/// use tprims_gemm_kernel::Origin;
-/// assert_eq!(Origin::Tensorcontract.crate_name(), "tprims-kernel-tensorcontract");
+/// use tprims_kernel::Origin;
+/// assert_eq!(Origin::Tensorcontract.crate_name(), "tprims-kernel");
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
@@ -19,7 +19,7 @@ pub enum Origin {
     /// Project-owned portable kernels.
     Portable,
     /// Project-owned native interleaved complex SIMD kernels
-    /// (`tprims-kernel-cplx`).
+    /// (`tprims-kernel`).
     Cplx,
     /// A downstream crate's own kernels, admitted through a caller-scoped
     /// [`KernelCatalog`](crate::KernelCatalog); the provider reports itself.
@@ -35,16 +35,16 @@ impl Origin {
     ///
     /// # Examples
     /// ```
-    /// use tprims_gemm_kernel::Origin;
-    /// assert_eq!(Origin::Portable.crate_name(), "tprims-gemm-kernel");
+    /// use tprims_kernel::Origin;
+    /// assert_eq!(Origin::Portable.crate_name(), "tprims-kernel");
     /// let own = Origin::External { crate_name: "my-kernels", license: "Apache-2.0" };
     /// assert_eq!((own.crate_name(), own.license()), ("my-kernels", "Apache-2.0"));
     /// ```
     pub const fn crate_name(self) -> &'static str {
         match self {
-            Self::Tensorcontract => "tprims-kernel-tensorcontract",
-            Self::Portable => "tprims-gemm-kernel",
-            Self::Cplx => "tprims-kernel-cplx",
+            Self::Tensorcontract => "tprims-kernel",
+            Self::Portable => "tprims-kernel",
+            Self::Cplx => "tprims-kernel",
             Self::External { crate_name, .. } => crate_name,
         }
     }
@@ -52,7 +52,7 @@ impl Origin {
     ///
     /// # Examples
     /// ```
-    /// use tprims_gemm_kernel::Origin;
+    /// use tprims_kernel::Origin;
     /// assert_eq!(Origin::Portable.license(), "MIT OR Apache-2.0");
     /// ```
     pub const fn license(self) -> &'static str {
@@ -489,7 +489,7 @@ impl<R: Real> KernelFamily<R> {
     ///
     /// # Examples
     /// ```
-    /// let f = tprims_gemm_kernel::portable::families_f64()[0];
+    /// let f = tprims_kernel::portable::families_f64()[0];
     /// assert_eq!(f.driver_family().unwrap().mr, f.mr);
     /// ```
     pub fn driver_family(&self) -> Option<DriverFamily<R>> {

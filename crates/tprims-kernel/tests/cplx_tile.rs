@@ -4,7 +4,7 @@
 //! `2*MR*kc` / `2*NR*kc` reals faults), and ISA gating.
 #![cfg(all(target_arch = "x86_64", unix))]
 
-use tprims_gemm_kernel::*;
+use tprims_kernel::*;
 
 /// `len` elements of `R` that end exactly at an inaccessible page.
 struct Guarded<R> {
@@ -154,26 +154,24 @@ fn check<R: Rl>(f: &'static KernelFamily<R>, id: &str) {
 
 #[test]
 fn c64_tile_is_correct_overwrites_and_reads_exactly_its_footprint() {
-    tprims_kernel_cplx::register();
     if !avx2_fma() {
         eprintln!("skipping: no AVX2+FMA on this host (ISA body not executed)");
         return;
     }
     check(
-        tprims_kernel_cplx::families_f64()[0],
+        tprims_kernel::kernels::cplx::families_f64()[0],
         "cplx.avx2.c64.native.4x4",
     );
 }
 
 #[test]
 fn c32_tile_is_correct_overwrites_and_reads_exactly_its_footprint() {
-    tprims_kernel_cplx::register();
     if !avx2_fma() {
         eprintln!("skipping: no AVX2+FMA on this host (ISA body not executed)");
         return;
     }
     check(
-        tprims_kernel_cplx::families_f32()[0],
+        tprims_kernel::kernels::cplx::families_f32()[0],
         "cplx.avx2.c32.native.8x4",
     );
 }
@@ -183,7 +181,7 @@ fn tile_handles_pure_real_pure_imaginary_and_cancellation() {
     if !avx2_fma() {
         return;
     }
-    let f = tprims_kernel_cplx::families_f64()[0];
+    let f = tprims_kernel::kernels::cplx::families_f64()[0];
     let UkrFn::Tile(ukr) = f.ukr else { panic!() };
     let (mr, nr) = (f.mr, f.nr);
     // kc = 2: a = i, b = i then a = 1, b = 1: i*i + 1*1 = 0 exactly.
@@ -218,14 +216,13 @@ fn tile_handles_pure_real_pure_imaginary_and_cancellation() {
 
 #[test]
 fn family_metadata_and_isa_gating() {
-    tprims_kernel_cplx::register();
-    for f in tprims_kernel_cplx::families_f64() {
+    for f in tprims_kernel::kernels::cplx::families_f64() {
         check_meta(f, "c64", 4, 4);
         assert_eq!(f.b_per_k, 8);
         assert_eq!(f.tile_bound, 32);
         assert!(f.a_per_k == 8);
     }
-    for f in tprims_kernel_cplx::families_f32() {
+    for f in tprims_kernel::kernels::cplx::families_f32() {
         check_meta(f, "c32", 8, 4);
         assert_eq!(f.a_per_k, 16);
         assert_eq!(f.tile_bound, 64);
@@ -287,14 +284,13 @@ fn check_meta<R: Real>(f: &KernelFamily<R>, dtype: &str, mr: usize, nr: usize) {
     );
     assert!(f.caps.scatter_pack && f.caps.conj_a && f.caps.conj_b);
     assert_eq!(f.origin, Origin::Cplx);
-    assert_eq!(f.origin.crate_name(), "tprims-kernel-cplx");
+    assert_eq!(f.origin.crate_name(), "tprims-kernel");
     assert_eq!(f.origin.license(), "MIT OR Apache-2.0");
     f.validate().unwrap();
 }
 
 #[test]
 fn auto_never_selects_these_families() {
-    tprims_kernel_cplx::register();
     let cpu = CpuFeatures::detect();
     let head64 = Registry::families::<C64>(cpu, false)
         .into_iter()

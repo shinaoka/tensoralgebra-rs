@@ -86,7 +86,7 @@
 //! not model at all. A pending measurement (Phase 4 report part 7) is designed
 //! to separate the two, so no attempt is made to guess the upper bound here.
 
-use super::{Blocking, ParseError};
+use crate::{Blocking, ParseError};
 
 // ---------------------------------------------------------------------------
 // Descriptors

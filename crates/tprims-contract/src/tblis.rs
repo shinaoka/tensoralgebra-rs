@@ -28,8 +28,8 @@ impl TbPlan {
     pub(crate) fn resolved<T: tprims_blas::Scalar>(
         &self,
     ) -> std::result::Result<
-        tprims_gemm_kernel::ResolvedGemm<<T as tprims_blas::Scalar>::Re>,
-        tprims_gemm_kernel::SelectError,
+        tprims_kernel::ResolvedGemm<<T as tprims_blas::Scalar>::Re>,
+        tprims_kernel::SelectError,
     > {
         self.plan.resolved::<T>()
     }
@@ -37,9 +37,9 @@ impl TbPlan {
     /// The dynamic assignment this plan resolved to, when its policy is
     /// `DynamicTiles`. A contraction plan is built before an executor is
     /// chosen, so the active width reported is the job-count cap.
-    pub(crate) fn dynamic<R: tprims_gemm_kernel::Real>(
+    pub(crate) fn dynamic<R: tprims_kernel::Real>(
         &self,
-        rg: &tprims_gemm_kernel::ResolvedGemm<R>,
+        rg: &tprims_kernel::ResolvedGemm<R>,
     ) -> Option<tensorcontract::DynamicReport> {
         tensorcontract::dynamic_report(&self.plan, rg, usize::MAX)
     }
@@ -63,10 +63,10 @@ fn op(o: Operand<'_>, c: Conj) -> Operand<'_> {
 /// A caller's catalog and selector for one plan, with the host thread budget
 /// the plan will run at. The selector is called at most once and not kept.
 pub(crate) struct Custom<'a, T: Scalar> {
-    pub catalog: &'a tprims_gemm_kernel::KernelCatalog<T>,
+    pub catalog: &'a tprims_kernel::KernelCatalog<T>,
     pub chooser: &'a mut tensorcontract::Chooser<'a, T>,
     pub threads: usize,
-    pub method: Option<tprims_gemm_kernel::Method>,
+    pub method: Option<tprims_kernel::Method>,
 }
 
 fn backend_or_select(e: tensorcontract::Error) -> Error {
@@ -134,10 +134,10 @@ pub(crate) fn plan<T: Scalar>(
         Some(custom) => {
             let mut plan = plan;
             match custom.method {
-                Some(tprims_gemm_kernel::Method::OneM) => {
+                Some(tprims_kernel::Method::OneM) => {
                     plan = plan.with_complex_method(tensorcontract::ComplexMethod::OneM);
                 }
-                Some(tprims_gemm_kernel::Method::ThreeM) => {
+                Some(tprims_kernel::Method::ThreeM) => {
                     plan = plan.with_complex_method(tensorcontract::ComplexMethod::ThreeM);
                 }
                 _ => {}
@@ -151,13 +151,13 @@ pub(crate) fn plan<T: Scalar>(
                 let rg = plan.resolved::<T>().map_err(select_err)?;
                 let family = rg.family().complex.map(|s| s.method);
                 let ok = match method {
-                    tprims_gemm_kernel::Method::Native => {
-                        family.is_none_or(|m| m == tprims_gemm_kernel::Method::Native)
+                    tprims_kernel::Method::Native => {
+                        family.is_none_or(|m| m == tprims_kernel::Method::Native)
                     }
                     other => family == Some(other),
                 };
                 if !ok {
-                    return Err(select_err(tprims_gemm_kernel::SelectError::Incompatible {
+                    return Err(select_err(tprims_kernel::SelectError::Incompatible {
                         id: rg.family().id.into(),
                         reason: "family implements a different complex method",
                     }));

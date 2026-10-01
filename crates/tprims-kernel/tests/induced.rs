@@ -1,6 +1,6 @@
 //! Induced 1m/4m variants: registered, validating, never auto-selected, and
 //! numerically equal to the same complex product computed directly.
-use tprims_gemm_kernel::*;
+use tprims_kernel::*;
 
 #[test]
 fn induced_variants_exist_for_every_real_family() {

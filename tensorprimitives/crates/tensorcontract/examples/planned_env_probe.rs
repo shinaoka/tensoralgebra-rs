@@ -16,7 +16,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         nc: 4,
     });
     let before = p.resolved::<f64>()?;
-    let default_before = tprims_gemm_kernel::process_default::<f64>()?;
+    let default_before = tprims_kernel::process_default::<f64>()?;
     assert_eq!(before.effective_threads, 1);
     let swap = p.transposes_gemm(before.mr);
     // SAFETY: standalone process creates no other threads. All environment
@@ -38,7 +38,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let after = p.resolved::<f64>()?;
     assert!(core::ptr::eq(
         default_before,
-        tprims_gemm_kernel::process_default::<f64>()?
+        tprims_kernel::process_default::<f64>()?
     ));
     assert!(core::ptr::eq(before.family(), after.family()));
     assert_eq!(

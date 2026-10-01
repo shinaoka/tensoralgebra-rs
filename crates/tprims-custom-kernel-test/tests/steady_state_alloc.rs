@@ -12,7 +12,7 @@ use tprims_blas::{Conj, GemmConfig, KernelCatalog};
 use tprims_contract::{ContractPlan, DotGeneral, Flags, Strategy};
 use tprims_custom_kernel_test as own;
 use tprims_exec::Exec;
-use tprims_gemm_kernel::KernelChoice;
+use tprims_kernel::KernelChoice;
 
 static COUNT: AtomicUsize = AtomicUsize::new(0);
 

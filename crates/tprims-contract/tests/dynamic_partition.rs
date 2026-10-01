@@ -4,7 +4,7 @@
 use tprims_blas::{Conj, EngineChoice, GemmConfig};
 use tprims_contract::{ContractPlan, DotGeneral, Error, Flags, Selected, Strategy};
 use tprims_exec::{Exec, Pool};
-use tprims_gemm_kernel::{KernelChoice, PartitionOpts, PartitionPolicy, SelectError};
+use tprims_kernel::{KernelChoice, PartitionOpts, PartitionPolicy, SelectError};
 
 mod common;
 use common::{out_dims, T};

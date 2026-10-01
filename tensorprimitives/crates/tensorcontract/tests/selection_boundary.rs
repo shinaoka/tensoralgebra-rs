@@ -1,7 +1,7 @@
 use tensorcontract::{
     Blocking, Error, KernelChoice, Layout, Operand, Plan, TensorView, TensorViewMut,
 };
-use tprims_gemm_kernel::SelectError;
+use tprims_kernel::SelectError;
 
 #[test]
 fn builders_invalidate_cached_geometry_and_preserve_explicit_blocks() {
@@ -39,7 +39,7 @@ fn builders_invalidate_cached_geometry_and_preserve_explicit_blocks() {
 
 #[test]
 fn auto_head_and_blocking_match_existing_kernelset() {
-    fn check<T: tprims_gemm_kernel::Families>()
+    fn check<T: tprims_kernel::Families>()
     where
         T::Real: tensorcontract::KernelSet,
     {

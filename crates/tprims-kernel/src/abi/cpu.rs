@@ -4,7 +4,7 @@
 ///
 /// # Examples
 /// ```
-/// use tprims_gemm_kernel::CpuFeatures;
+/// use tprims_kernel::CpuFeatures;
 /// assert!(CpuFeatures::detect().contains(CpuFeatures::NONE));
 /// ```
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -32,7 +32,7 @@ impl CpuFeatures {
     ///
     /// # Examples
     /// ```
-    /// use tprims_gemm_kernel::CpuFeatures;
+    /// use tprims_kernel::CpuFeatures;
     /// assert_eq!(CpuFeatures::detect(), CpuFeatures::detect());
     /// ```
     pub fn detect() -> Self {
@@ -76,7 +76,7 @@ impl CpuFeatures {
     ///
     /// # Examples
     /// ```
-    /// use tprims_gemm_kernel::CpuFeatures;
+    /// use tprims_kernel::CpuFeatures;
     /// assert!(CpuFeatures::NONE.contains(CpuFeatures::NONE));
     /// assert!(!CpuFeatures::NONE.contains(CpuFeatures { avx2: true, ..CpuFeatures::NONE }));
     /// ```
@@ -91,7 +91,7 @@ impl CpuFeatures {
     ///
     /// # Examples
     /// ```
-    /// use tprims_gemm_kernel::CpuFeatures;
+    /// use tprims_kernel::CpuFeatures;
     /// let req = CpuFeatures { avx2: true, ..CpuFeatures::NONE };
     /// assert_eq!(CpuFeatures::NONE.missing(req), req);
     /// ```
@@ -109,7 +109,7 @@ impl CpuFeatures {
 ///
 /// # Examples
 /// ```
-/// use tprims_gemm_kernel::Isa;
+/// use tprims_kernel::Isa;
 /// assert_eq!(Isa::Portable, Isa::Portable);
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -125,7 +125,7 @@ pub enum Isa {
     Neon,
 }
 
-// Moved from tprims-kernel-tensorcontract; retained legacy parser/control so
+// Moved from tprims-kernel; retained legacy parser/control so
 // registry defaults and the old KernelSet dispatch share one startup fact.
 /// Legacy ISA preference for the tensorcontract family menu.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

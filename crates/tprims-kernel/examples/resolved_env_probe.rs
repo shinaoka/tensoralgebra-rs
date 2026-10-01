@@ -1,5 +1,5 @@
 //! Standalone single-threaded check: retargeting uses frozen policy, not env.
-use tprims_gemm_kernel::{KernelChoice, ResolvedGemm, SelectError};
+use tprims_kernel::{KernelChoice, ResolvedGemm, SelectError};
 
 fn main() -> Result<(), SelectError> {
     let rg = ResolvedGemm::<f64>::resolve::<f64>(&KernelChoice::Auto, 1)?;

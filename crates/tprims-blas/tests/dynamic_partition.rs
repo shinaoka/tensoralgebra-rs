@@ -7,7 +7,7 @@ use tprims_blas::{
     Error, GemmConfig, GroupedJob, MatIn,
 };
 use tprims_exec::{Exec, Pool};
-use tprims_gemm_kernel::{KernelChoice, PartitionOpts, PartitionPolicy, SelectError};
+use tprims_kernel::{KernelChoice, PartitionOpts, PartitionPolicy, SelectError};
 
 fn ints(len: usize, seed: usize) -> Vec<f64> {
     (0..len)

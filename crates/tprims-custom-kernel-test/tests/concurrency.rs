@@ -49,10 +49,7 @@ fn worker(exec: &Exec<'_>, id: &'static str, reps: usize) -> (Vec<f64>, &'static
 
 #[test]
 fn catalogs_run_concurrently_on_one_pool_and_on_separate_pools() {
-    let before = tprims_gemm_kernel::process_default::<f64>()
-        .unwrap()
-        .family()
-        .id;
+    let before = tprims_kernel::process_default::<f64>().unwrap().family().id;
     let tp = rayon::ThreadPoolBuilder::new()
         .num_threads(4)
         .build()
@@ -81,12 +78,9 @@ fn catalogs_run_concurrently_on_one_pool_and_on_separate_pools() {
     assert_eq!(y.0, reference);
 
     // The process default is exactly what it was.
-    let after = tprims_gemm_kernel::process_default::<f64>()
-        .unwrap()
-        .family()
-        .id;
+    let after = tprims_kernel::process_default::<f64>().unwrap().family().id;
     assert_eq!(before, after);
-    assert!(tprims_gemm_kernel::list_kernels::<f64>()
+    assert!(tprims_kernel::list_kernels::<f64>()
         .iter()
         .all(|k| !k.id.starts_with("custom.")));
 }

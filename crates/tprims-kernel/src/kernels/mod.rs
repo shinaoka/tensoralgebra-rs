@@ -1,9 +1,56 @@
-//! Descriptor adapters for Lukas Devos's tensorcontract kernels.
-//! Calls the existing configs/bodies (lkdvos/tensorprimitives-rs, MIT OR
-//! Apache-2.0); no kernel arithmetic is duplicated or ported here.
+//! Built-in kernel families and their registration order.
+//!
+//! The built-in set is present without any caller registration step: the
+//! portable reference families first, then Lukas Devos's tensorcontract menus
+//! (descriptor adapters that call the existing configs and bodies from
+//! lkdvos/tensorprimitives-rs, MIT OR Apache-2.0; no arithmetic is duplicated
+//! here), then the native complex families. The order is the tie-break of
+//! equal priorities, so it is part of the contract and pinned by tests.
 
-use std::sync::{Once, OnceLock};
-use tprims_gemm_kernel::*;
+use crate::*;
+use std::sync::OnceLock;
+
+// The shared micro-kernel bodies. **Must be declared before the ISA modules
+// that invoke them**: `#[macro_use]` makes `macro_rules!` visible to items that
+// follow it textually, not to the module graph, so moving this line below
+// `mod x86` breaks the build with a bare "cannot find macro".
+//
+// Gated on the union of its two consumers below. The module defines macros and
+// nothing else, so on a target that is neither x86 nor aarch64 nothing invokes
+// them and `unused_macros` fires, which under CI's `-D warnings` is a hard
+// error. Keep this cfg equal to the disjunction of the `x86` and `aarch64`
+// cfgs; a new ISA module must be added here as well as below.
+#[cfg(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64"))]
+#[macro_use]
+mod macros;
+
+#[doc(hidden)]
+pub mod cplx;
+mod kernel_set;
+pub mod reference;
+
+// The x86-64 SIMD kernels: public for `examples/kernel_shapes`, `doc(hidden)`
+// and outside the semver guarantee. See the module's own docs.
+#[doc(hidden)]
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+pub mod x86;
+
+// The AArch64/NEON kernels, on the same terms.
+#[doc(hidden)]
+#[cfg(target_arch = "aarch64")]
+pub mod aarch64;
+
+#[cfg(target_arch = "aarch64")]
+use aarch64 as simd_isa;
+/// The vectorised kernel module for this target, under one name.
+///
+/// Exists so the legacy menu and the dead-code guards name *a* SIMD module
+/// rather than enumerating architectures at every site. Both modules expose the
+/// same entry points by construction, so the alias is total.
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use x86 as simd_isa;
+
+pub use kernel_set::KernelSet;
 
 type List<R> = Vec<&'static KernelFamily<R>>;
 
@@ -122,7 +169,7 @@ fn scalar_families<R: RealSlot>() -> List<R> {
         Isa::Portable,
         CpuFeatures::NONE,
         10,
-        crate::scalar::config_real::<R, 4, 4>(),
+        reference::scalar::config_real::<R, 4, 4>(),
     );
     for method in ComplexMethod::ALL {
         append_config(
@@ -131,7 +178,7 @@ fn scalar_families<R: RealSlot>() -> List<R> {
             Isa::Portable,
             CpuFeatures::NONE,
             10,
-            crate::scalar::config_cplx::<R, 4, 4>(method),
+            reference::scalar::config_cplx::<R, 4, 4>(method),
         );
     }
     out
@@ -144,7 +191,7 @@ fn append_menu<R: RealSlot>(
     isa: Isa,
     required: CpuFeatures,
     priority: u16,
-    menu: crate::simd_isa::IsaConfigs<R>,
+    menu: simd_isa::IsaConfigs<R>,
 ) {
     for (complex, method) in [
         (false, ComplexMethod::Planar),
@@ -170,12 +217,10 @@ fn append_menu<R: RealSlot>(
 
 macro_rules! family_list {
     ($r:ty, $name:ident, $sets:ident) => {
-        /// All compiled real/complex families, including CPU-unavailable ISAs.
-        /// Descriptors are a finite process-constant manifest, not a data cache.
-        #[doc = concat!("\n# Examples\n```\nlet families = tprims_kernel_tensorcontract::",
-            stringify!($name), "();\nassert!(families.iter().all(|f| f.validate().is_ok()));\n",
-            "assert!(families.iter().any(|f| f.id.starts_with(\"tc.scalar.\")));\n```")]
-        pub fn $name() -> &'static [&'static KernelFamily<$r>] {
+        /// All compiled real/complex tensorcontract families, including
+        /// CPU-unavailable ISAs. Descriptors are a finite process-constant
+        /// manifest, not a data cache.
+        fn $name() -> &'static [&'static KernelFamily<$r>] {
             static LIST: OnceLock<List<$r>> = OnceLock::new();
             LIST.get_or_init(|| {
                 #[allow(unused_mut)] // INVARIANT: SIMD targets append to the scalar list below.
@@ -191,7 +236,7 @@ macro_rules! family_list {
                             ..CpuFeatures::NONE
                         },
                         300,
-                        crate::simd_isa::$sets(crate::simd_isa::Isa::Avx512),
+                        simd_isa::$sets(simd_isa::Isa::Avx512),
                     );
                     append_menu(
                         &mut out,
@@ -203,7 +248,7 @@ macro_rules! family_list {
                             ..CpuFeatures::NONE
                         },
                         200,
-                        crate::simd_isa::$sets(crate::simd_isa::Isa::Avx2),
+                        simd_isa::$sets(simd_isa::Isa::Avx2),
                     );
                 }
                 #[cfg(target_arch = "aarch64")]
@@ -216,7 +261,7 @@ macro_rules! family_list {
                         ..CpuFeatures::NONE
                     },
                     200,
-                    crate::simd_isa::$sets(crate::simd_isa::Isa::Neon),
+                    simd_isa::$sets(simd_isa::Isa::Neon),
                 );
                 out
             })
@@ -226,22 +271,34 @@ macro_rules! family_list {
 family_list!(f32, families_f32, isa_configs_f32);
 family_list!(f64, families_f64, isa_configs_f64);
 
-/// Register both real slots once. Does not initialize any executor or workspace.
-///
-/// # Examples
-/// ```
-/// tprims_kernel_tensorcontract::register();
-/// assert!(tprims_gemm_kernel::list_kernels::<f64>().iter().any(|f| f.id.starts_with("tc.")));
-/// ```
-pub fn register() {
-    static REGISTER: Once = Once::new();
-    REGISTER.call_once(|| {
-        // SAFETY: immutable compiled menus derive each pointer, tile/panel
-        // footprint and ISA from the same scalar/SIMD config definitions.
-        // Every available entry is tested against a packed-product oracle.
-        unsafe {
-            tprims_gemm_kernel::register::<f32>(families_f32);
-            tprims_gemm_kernel::register::<f64>(families_f64);
+macro_rules! builtin_list {
+    ($r:ty, $name:ident, $reference:path, $tc:ident, $cplx:path) => {
+        /// The built-in families for one real type, in registration order:
+        /// portable, tensorcontract menus, native complex.
+        pub(crate) fn $name() -> &'static [&'static KernelFamily<$r>] {
+            static LIST: OnceLock<Vec<&'static KernelFamily<$r>>> = OnceLock::new();
+            LIST.get_or_init(|| {
+                $reference()
+                    .iter()
+                    .chain($tc().iter())
+                    .chain($cplx().iter())
+                    .copied()
+                    .collect()
+            })
         }
-    });
+    };
 }
+builtin_list!(
+    f32,
+    builtin_f32,
+    reference::portable::families_f32,
+    families_f32,
+    cplx::families_f32
+);
+builtin_list!(
+    f64,
+    builtin_f64,
+    reference::portable::families_f64,
+    families_f64,
+    cplx::families_f64
+);

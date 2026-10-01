@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 
 use tensorcontract::{driver_decisions, KernelChoice, Layout, Operand, Plan};
 use tprims_exec::{ArenaProvider, Exec};
-use tprims_gemm_kernel::ResolvedGemm;
+use tprims_kernel::ResolvedGemm;
 
 static COUNT: AtomicUsize = AtomicUsize::new(0);
 static BIG: AtomicUsize = AtomicUsize::new(0);
@@ -105,7 +105,6 @@ const SHAPE: (usize, usize, usize) = (300, 300, 300);
 
 #[test]
 fn steady_state_execute_allocates_nothing() {
-    tprims_kernel_tensorcontract::register();
     let (m, n, k) = SHAPE;
 
     let mut prepared = Prepared::new("tc.scalar.f64.4x4", m, n, k);

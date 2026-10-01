@@ -7,7 +7,7 @@ use tprims_contract::{ContractPlan, DotGeneral, Error, Flags, Selected, Strategy
 use tprims_custom_kernel_test as own;
 use tprims_exec::Exec;
 
-fn catalog(list: &'static [&'static tprims_gemm_kernel::KernelFamily<f64>]) -> KernelCatalog<f64> {
+fn catalog(list: &'static [&'static tprims_kernel::KernelFamily<f64>]) -> KernelCatalog<f64> {
     // SAFETY: see `selector_blas::catalog`.
     unsafe { KernelCatalog::<f64>::from_static_families(list) }.unwrap()
 }
@@ -153,11 +153,11 @@ fn the_selected_plan_outlives_its_selector_and_catalog() {
     // The family was never registered process-wide: nothing could have looked
     // it up by id.
     assert!(matches!(
-        tprims_gemm_kernel::Registry::select::<f64>(
+        tprims_kernel::Registry::select::<f64>(
             "custom.f64.2x2",
-            tprims_gemm_kernel::CpuFeatures::detect()
+            tprims_kernel::CpuFeatures::detect()
         ),
-        Err(tprims_gemm_kernel::SelectError::UnknownId { .. })
+        Err(tprims_kernel::SelectError::UnknownId { .. })
     ));
 }
 
@@ -184,7 +184,7 @@ fn incompatible_strategies_engines_and_choices_are_typed_errors() {
         SelectError::EngineUnsupported { .. }
     ));
     let forced = GemmConfig {
-        kernel: tprims_gemm_kernel::KernelChoice::Id("portable.f64.4x4".into()),
+        kernel: tprims_kernel::KernelChoice::Id("portable.f64.4x4".into()),
         ..Default::default()
     };
     assert!(matches!(
@@ -307,7 +307,7 @@ fn a_selected_plan_is_bound_to_its_storage_dtype() {
         "custom.f64.2x2"
     );
     assert!(matches!(
-        plan.resolved::<tprims_gemm_kernel::C64>(),
+        plan.resolved::<tprims_kernel::C64>(),
         Err(SelectError::DtypeMismatch { dtype: "c64", .. })
     ));
     // A clone keeps the choice rather than silently falling back.

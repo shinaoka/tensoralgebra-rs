@@ -24,7 +24,7 @@ pub enum Error {
     Contract(#[from] tensorcontract::Error),
     /// The chosen engine or kernel family cannot run this problem.
     #[error(transparent)]
-    Select(#[from] tprims_gemm_kernel::SelectError),
+    Select(#[from] tprims_kernel::SelectError),
 }
 
 /// Result alias for tprims-blas.

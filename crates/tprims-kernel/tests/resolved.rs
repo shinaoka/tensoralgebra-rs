@@ -1,4 +1,4 @@
-use tprims_gemm_kernel::{KernelChoice, Layout, ResolvedGemm, SelectError, TileFormat, C64};
+use tprims_kernel::{KernelChoice, Layout, ResolvedGemm, SelectError, TileFormat, C64};
 
 #[test]
 fn explicit_portable_family_freezes_geometry_and_formats() {
@@ -19,12 +19,11 @@ fn explicit_portable_family_freezes_geometry_and_formats() {
 }
 
 #[test]
-fn auto_and_explicit_native_complex_agree() {
-    let auto = ResolvedGemm::<f64>::resolve::<C64>(&KernelChoice::Auto, 1).unwrap();
-    let explicit =
-        ResolvedGemm::<f64>::resolve::<C64>(&KernelChoice::Id("portable.c64.native.4x4".into()), 1)
-            .unwrap();
-    assert_eq!(auto.family().id, explicit.family().id);
+fn portable_native_complex_freezes_interleaved_geometry() {
+    // Forced: Auto picks the widest built-in family of the machine.
+    let id = KernelChoice::Id("portable.c64.native.4x4".into());
+    let auto = ResolvedGemm::<f64>::resolve::<C64>(&id, 1).unwrap();
+    assert_eq!(auto.family().id, "portable.c64.native.4x4");
     assert_eq!(
         (auto.a_layout, auto.b_layout, auto.tile_fmt),
         (

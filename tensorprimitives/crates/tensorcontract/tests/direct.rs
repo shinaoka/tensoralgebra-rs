@@ -7,7 +7,7 @@ use tensorcontract::element::Element;
 use tensorcontract::plan::{ElementOp, Operand};
 use tensorcontract::reference::{contract_reference, RefOperand};
 use tensorcontract::{KernelChoice, Layout, Plan};
-use tprims_gemm_kernel::{CpuFeatures, Registry, SelectError, C64};
+use tprims_kernel::{CpuFeatures, Registry, SelectError, C64};
 
 const DIRECT: &str = "portable.f64.4x4.direct";
 const DIRECT_B: &str = "portable.f64.4x4.direct-b";
@@ -157,7 +157,6 @@ fn direct_b_plan_has_zero_b_workspace() {
 /// `!T::IS_COMPLEX` term unreachable-by-construction rather than untested.
 #[test]
 fn complex_storage_cannot_reach_a_real_direct_family() {
-    tprims_kernel_tensorcontract::register();
     assert!(matches!(
         Registry::select::<C64>(DIRECT, CpuFeatures::detect()),
         Err(SelectError::DtypeMismatch { .. })
@@ -167,15 +166,15 @@ fn complex_storage_cannot_reach_a_real_direct_family() {
         Err(SelectError::DtypeMismatch { .. })
     ));
     // And the descriptor itself refuses a complex scheme with a Direct kernel.
-    let mut f = **tprims_gemm_kernel::portable::families_f64()
+    let mut f = **tprims_kernel::portable::families_f64()
         .iter()
         .find(|f| f.id == DIRECT)
         .unwrap();
-    f.complex = Some(tprims_gemm_kernel::ComplexScheme {
-        method: tprims_gemm_kernel::Method::Native,
-        a: tprims_gemm_kernel::Layout::Planar,
-        b: tprims_gemm_kernel::Layout::Planar,
-        tile: tprims_gemm_kernel::TileFormat::Planar,
+    f.complex = Some(tprims_kernel::ComplexScheme {
+        method: tprims_kernel::Method::Native,
+        a: tprims_kernel::Layout::Planar,
+        b: tprims_kernel::Layout::Planar,
+        tile: tprims_kernel::TileFormat::Planar,
     });
     f.a_per_k = 8;
     f.b_per_k = 8;

@@ -19,7 +19,7 @@
 use strided_view::StridedViewMut;
 pub use tensorcontract::{KernelCandidate, OperandMeta, SelectionContext};
 use tprims_exec::Exec;
-pub use tprims_gemm_kernel::{KernelCatalog, KernelHandle, SelectError};
+pub use tprims_kernel::{KernelCatalog, KernelHandle, SelectError};
 
 use crate::batched::{batched_impl, BatchIn, BatchStrategy};
 use crate::tblis::Custom;
@@ -37,9 +37,7 @@ use crate::{
 /// tprims_blas::register_kernels();
 /// assert!(tprims_blas::list_kernels::<f64>().iter().any(|k| k.id.starts_with("tc.")));
 /// ```
-pub fn register_kernels() {
-    crate::engine::register_built();
-}
+pub fn register_kernels() {}
 
 /// The built-in and registered families for `T` that this CPU can run, as a
 /// caller-scoped catalog. Registers the workspace's kernel providers first.
@@ -50,7 +48,6 @@ pub fn register_kernels() {
 /// assert!(catalog.get("portable.f64.4x4").is_some());
 /// ```
 pub fn builtin_catalog<T: Scalar>() -> KernelCatalog<T> {
-    crate::engine::register_built();
     KernelCatalog::builtin()
 }
 
@@ -69,7 +66,7 @@ fn check_config(cfg: &GemmConfig) -> Result<()> {
             }))
         }
     }
-    if let tprims_gemm_kernel::KernelChoice::Id(id) = &cfg.kernel {
+    if let tprims_kernel::KernelChoice::Id(id) = &cfg.kernel {
         return Err(Error::Select(SelectError::Incompatible {
             id: id.clone(),
             reason: "a forced kernel id and a custom selector are ambiguous",
@@ -329,7 +326,7 @@ where
             mc: 0,
             nc: 0,
             kc: 0,
-            partition: tprims_gemm_kernel::PartitionPolicy::default(),
+            partition: tprims_kernel::PartitionPolicy::default(),
             batched: None,
             origin: None,
             dynamic: None,

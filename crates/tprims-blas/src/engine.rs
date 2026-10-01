@@ -14,7 +14,7 @@
 use strided_view::StridedViewMut;
 use tprims_exec::Exec;
 /// Re-exported because it is part of [`GemmConfig`]'s public surface.
-pub use tprims_gemm_kernel::KernelChoice;
+pub use tprims_kernel::KernelChoice;
 
 use crate::scalar::zero;
 use crate::{Error, MatIn, Result, Scalar};
@@ -49,26 +49,26 @@ pub struct GemmConfig {
     pub engine: EngineChoice,
     /// Registered kernel family for [`Engine::Packed`]; `Auto` uses the
     /// process default set.
-    pub kernel: tprims_gemm_kernel::KernelChoice,
+    pub kernel: tprims_kernel::KernelChoice,
     /// Complex method for [`Engine::Packed`]; `None` keeps the family's own or
     /// the process default.
-    pub method: Option<tprims_gemm_kernel::Method>,
+    pub method: Option<tprims_kernel::Method>,
     /// How [`Engine::Packed`] assigns output work to its team: the default
     /// static grid (with the driver's own cost model), an explicit grid, or the
-    /// opt-in dynamic [`PartitionPolicy::DynamicTiles`](tprims_gemm_kernel::PartitionPolicy).
+    /// opt-in dynamic [`PartitionPolicy::DynamicTiles`](tprims_kernel::PartitionPolicy).
     /// A non-default policy is a requirement for the packed driver: it is
     /// refused (never ignored) by the faer engine and by the faer-loop
     /// strategies.
-    pub partition: tprims_gemm_kernel::PartitionPolicy,
+    pub partition: tprims_kernel::PartitionPolicy,
     /// Options that go with [`partition`](Self::partition).
-    pub partition_opts: tprims_gemm_kernel::PartitionOpts,
+    pub partition_opts: tprims_kernel::PartitionOpts,
 }
 
 impl GemmConfig {
     /// Whether a partition policy other than the default was requested.
     pub fn has_partition_request(&self) -> bool {
-        self.partition != tprims_gemm_kernel::PartitionPolicy::default()
-            || self.partition_opts != tprims_gemm_kernel::PartitionOpts::default()
+        self.partition != tprims_kernel::PartitionPolicy::default()
+            || self.partition_opts != tprims_kernel::PartitionOpts::default()
     }
 }
 
@@ -85,7 +85,7 @@ pub struct SelectedGemm {
     /// The resolved family's id, for [`Engine::Packed`].
     pub family_id: Option<&'static str>,
     /// The resolved family's complex scheme, if it has one.
-    pub complex: Option<tprims_gemm_kernel::ComplexScheme>,
+    pub complex: Option<tprims_kernel::ComplexScheme>,
     /// Micro-tile rows.
     pub mr: usize,
     /// Micro-tile columns.
@@ -97,14 +97,14 @@ pub struct SelectedGemm {
     /// Cache block depth.
     pub kc: usize,
     /// The grid the driver used.
-    pub partition: tprims_gemm_kernel::PartitionPolicy,
+    pub partition: tprims_kernel::PartitionPolicy,
     /// The report the batched strategies already produced, when there is one.
     pub batched: Option<crate::Selected>,
     /// The resolved family's provenance (provider crate and license), for
     /// [`Engine::Packed`]. A downstream kernel reports
-    /// [`Origin::External`](tprims_gemm_kernel::Origin::External).
-    pub origin: Option<tprims_gemm_kernel::Origin>,
-    /// For [`PartitionPolicy::DynamicTiles`](tprims_gemm_kernel::PartitionPolicy):
+    /// [`Origin::External`](tprims_kernel::Origin::External).
+    pub origin: Option<tprims_kernel::Origin>,
+    /// For [`PartitionPolicy::DynamicTiles`](tprims_kernel::PartitionPolicy):
     /// the job extents, the number of workers that actually run (the width
     /// budget capped by the available jobs; for a contraction plan, which is
     /// built before an executor is chosen, the cap alone) and the assignment
@@ -120,7 +120,7 @@ impl SelectedGemm {
     /// # Examples
     /// ```
     /// use tprims_blas::{Engine, SelectedGemm};
-    /// use tprims_gemm_kernel::PartitionPolicy;
+    /// use tprims_kernel::PartitionPolicy;
     /// let s = SelectedGemm {
     ///     engine: Engine::Faer, family_id: None, complex: None,
     ///     mr: 0, nr: 0, mc: 0, nc: 0, kc: 0,
@@ -178,30 +178,15 @@ pub fn default_engine() -> Engine {
     })
 }
 
-/// Register the kernel crates this build has, once.
-///
-/// The tensorcontract and native-complex families are always available.
-pub(crate) fn register_built() {
-    static REGISTER: std::sync::Once = std::sync::Once::new();
-    REGISTER.call_once(|| {
-        tprims_kernel_tensorcontract::register();
-        // Opt-in native interleaved complex families: registered and listed,
-        // never Auto-eligible, so only an explicit id selects them.
-        tprims_kernel_cplx::register();
-    });
-}
-
-/// Every registered family, as a diagnostic table. Registers the kernel crates
-/// this build has first.
+/// Every registered family, as a diagnostic table.
 ///
 /// # Examples
 /// ```
 /// let kernels = tprims_blas::list_kernels::<f64>();
 /// assert!(kernels.iter().any(|k| k.id.starts_with("tc.")));
 /// ```
-pub fn list_kernels<T: Scalar>() -> Vec<tprims_gemm_kernel::KernelInfo> {
-    register_built();
-    tprims_gemm_kernel::list_kernels::<T>()
+pub fn list_kernels<T: Scalar>() -> Vec<tprims_kernel::KernelInfo> {
+    tprims_kernel::list_kernels::<T>()
 }
 
 /// `C = alpha * op(A) * op(B) + beta * C`, on the configured engine.
@@ -238,7 +223,7 @@ pub fn gemm_with<T: Scalar>(
     // can honour it, so refuse rather than ignore it (also for empty problems).
     if cfg.has_partition_request() && engine != Engine::Packed {
         return Err(Error::Select(
-            tprims_gemm_kernel::SelectError::EngineUnsupported {
+            tprims_kernel::SelectError::EngineUnsupported {
                 engine: match engine {
                     Engine::Faer => "faer",
                     _ => "packed",
@@ -289,7 +274,7 @@ pub fn gemm_with<T: Scalar>(
             mc: 0,
             nc: 0,
             kc: 0,
-            partition: tprims_gemm_kernel::PartitionPolicy::default(),
+            partition: tprims_kernel::PartitionPolicy::default(),
             batched: None,
             origin: None,
             dynamic: None,
@@ -332,7 +317,7 @@ pub fn gemm_with<T: Scalar>(
                 mc: 0,
                 nc: 0,
                 kc: 0,
-                partition: tprims_gemm_kernel::PartitionPolicy::default(),
+                partition: tprims_kernel::PartitionPolicy::default(),
                 batched: None,
                 origin: None,
                 dynamic: None,

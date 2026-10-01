@@ -5,8 +5,8 @@
 //! reused for every B column; every accumulator then takes two FMAs:
 //! `acc += a * br + swap(a) * bi`.
 
+use crate::*;
 use core::arch::x86_64::*;
-use tprims_gemm_kernel::*;
 
 /// Columns per tile for both dtypes (two vectors of A per column).
 const NR: usize = 4;

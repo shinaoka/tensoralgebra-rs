@@ -11,10 +11,10 @@ use tprims_blas::{
 };
 use tprims_custom_kernel_test as own;
 use tprims_exec::{Exec, Pool};
-use tprims_gemm_kernel::KernelChoice;
+use tprims_kernel::KernelChoice;
 
-fn catalog<T: tprims_gemm_kernel::Families>(
-    list: &'static [&'static tprims_gemm_kernel::KernelFamily<T::Real>],
+fn catalog<T: tprims_kernel::Families>(
+    list: &'static [&'static tprims_kernel::KernelFamily<T::Real>],
 ) -> KernelCatalog<T> {
     // SAFETY: this crate's kernels honour the documented tile ABI over their
     // declared geometry; they are static, stateless, thread-safe, never panic
@@ -56,7 +56,7 @@ fn naive(
 
 type Pick<'a> = &'a dyn Fn(&tprims_blas::SelectionContext<'_>) -> &'static str;
 
-fn pick_by<T: tprims_gemm_kernel::Families>(
+fn pick_by<T: tprims_kernel::Families>(
     cat: &KernelCatalog<T>,
     pick: Pick<'_>,
     ctx: &tprims_blas::SelectionContext<'_>,
@@ -264,8 +264,8 @@ fn custom_complex_families_need_a_dtype_correct_handle() {
     assert!(catalog_result::<f32>(own::f32_families()).is_ok());
 }
 
-fn catalog_result<T: tprims_gemm_kernel::Families>(
-    list: &'static [&'static tprims_gemm_kernel::KernelFamily<T::Real>],
+fn catalog_result<T: tprims_kernel::Families>(
+    list: &'static [&'static tprims_kernel::KernelFamily<T::Real>],
 ) -> Result<KernelCatalog<T>, SelectError> {
     // SAFETY: as in `catalog`.
     unsafe { KernelCatalog::<T>::from_static_families(list) }
@@ -413,7 +413,7 @@ fn a_builtin_fallback_is_explicit() {
     );
     let report = r.unwrap();
     assert_eq!(report.family_id, Some("portable.f64.4x4"));
-    assert_eq!(report.origin, Some(tprims_gemm_kernel::Origin::Portable));
+    assert_eq!(report.origin, Some(tprims_kernel::Origin::Portable));
 }
 
 #[test]

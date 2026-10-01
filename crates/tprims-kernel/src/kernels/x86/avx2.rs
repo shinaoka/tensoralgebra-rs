@@ -76,7 +76,7 @@
 //! choice of aspect ratio, so AVX2 register blocks are 2–6x smaller than their
 //! AVX-512 counterparts and are much closer to the register bound.
 
-use super::{Blocking, ComplexMethod, KernelConfig, PackFormat, TileFormat, Ukr};
+use crate::{Blocking, ComplexMethod, KernelConfig, PackFormat, TileFormat, Ukr};
 
 #[cfg(target_arch = "x86")]
 use core::arch::x86::*;
@@ -492,8 +492,8 @@ pub fn selected_isa() -> Option<Isa> {
 }
 
 fn pick_isa() -> Option<Isa> {
-    use super::KernelForce;
-    match super::kernel_force() {
+    use crate::KernelForce;
+    match crate::kernel_force() {
         KernelForce::Scalar => None,
         KernelForce::Avx2 => have_avx2().then_some(Isa::Avx2),
         KernelForce::Avx512 => have_avx512().then_some(Isa::Avx512),

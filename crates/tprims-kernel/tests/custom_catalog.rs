@@ -1,5 +1,5 @@
 //! Caller-scoped catalogs: admission, handle identity and resolution.
-use tprims_gemm_kernel::*;
+use tprims_kernel::*;
 
 const OWN: Origin = Origin::External {
     crate_name: "downstream-kernels",

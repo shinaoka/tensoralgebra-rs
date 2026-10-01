@@ -1013,9 +1013,7 @@ dependencies = [
  "rand_chacha",
  "rayon",
  "tprims-exec",
- "tprims-gemm-kernel",
- "tprims-kernel-cplx",
- "tprims-kernel-tensorcontract",
+ "tprims-kernel",
 ]
 
 [[package]]
@@ -1083,7 +1081,7 @@ dependencies = [
  "tprims-contract",
  "tprims-core",
  "tprims-exec",
- "tprims-gemm-kernel",
+ "tprims-kernel",
 ]
 
 [[package]]
@@ -1097,9 +1095,7 @@ dependencies = [
  "tensorcontract",
  "thiserror",
  "tprims-exec",
- "tprims-gemm-kernel",
- "tprims-kernel-cplx",
- "tprims-kernel-tensorcontract",
+ "tprims-kernel",
 ]
 
 [[package]]
@@ -1124,7 +1120,7 @@ dependencies = [
  "tprims-contract-testkit",
  "tprims-contract-traits",
  "tprims-exec",
- "tprims-gemm-kernel",
+ "tprims-kernel",
 ]
 
 [[package]]
@@ -1164,7 +1160,7 @@ dependencies = [
  "tprims-blas",
  "tprims-contract",
  "tprims-exec",
- "tprims-gemm-kernel",
+ "tprims-kernel",
 ]
 
 [[package]]
@@ -1178,28 +1174,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "tprims-gemm-kernel"
-version = "0.1.0"
-dependencies = [
- "num-complex",
-]
-
-[[package]]
-name = "tprims-kernel-cplx"
+name = "tprims-kernel"
 version = "0.1.0"
 dependencies = [
  "libc",
  "num-complex",
  "tensorcontract",
- "tprims-gemm-kernel",
-]
-
-[[package]]
-name = "tprims-kernel-tensorcontract"
-version = "0.1.0"
-dependencies = [
- "tensorcontract",
- "tprims-gemm-kernel",
 ]
 
 [[package]]
