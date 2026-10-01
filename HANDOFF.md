@@ -66,8 +66,8 @@ The spec and Task 8 now reflect that correction.
   with copyright preserved. Each origin gets its own crate so licenses don't
   mix. faer's MPL-2.0 parts need a separate decision.
 - private-gemm-x86 and gemm-common/gemm-* are **called** where possible, not
-  reimplemented. This is the plan's `tprims-kernel-gemm` and
-  `tprims-kernel-pgx86`.
+  reimplemented. This was the plan's `tprims-kernel-gemm` and
+  `tprims-kernel-pgx86` (both removed in #37).
 - The kernel layer is split out of `tensorcontract` into its own crates
   (spec v3 §3.1). Lukas Devos's files move with `git mv`, keeping authorship
   and history. This ends `git subtree pull` for the moved files, which is
@@ -146,7 +146,7 @@ checked without a quiet host is green:
 - `cargo +1.98.0 clippy --workspace --all-targets -- -D warnings`;
 - `cargo test --workspace --release` (89 green test binaries);
 - `cargo test -p tprims-exec --release --no-default-features`;
-- `cargo test -p tprims-blas --release --features kernel-gemm,kernel-pgx86`;
+- `cargo test -p tprims-blas --release --features kernel-gemm,kernel-pgx86` (those features were removed in #37);
 - the kernel crates for `wasm32-unknown-unknown` and `aarch64-apple-darwin`,
   and `tprims-kernel-pgx86` on both (it is inert off x86-64);
 - `cargo build -p tprims-bundle --release`, and the capi crates' tests.

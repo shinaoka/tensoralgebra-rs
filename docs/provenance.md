@@ -78,8 +78,8 @@ The [shared tensor4all provenance policy](https://github.com/tensor4all/tensor4a
 | gemmkit | [MIT or Apache-2.0](https://github.com/SomeB1oody/gemmkit) | Verify the chosen release's package contents if integrating. |
 | tenferro-rs | MIT OR Apache-2.0 | Planned port (Phase 1): permute plus batched GEMM contraction and the CPU GEMM driver from `tenferro-cpu`. Same maintainers; record the source commit. |
 | tensorprimitives-rs | MIT OR Apache-2.0 | Imported (Phase 0) under `tensorprimitives/` at `8cda75e` with `git subtree add`, history and authorship preserved: `tensorcontract` (TBLIS-style direct contraction and driver) and, after the 2026-09-30 pure-rename split, `tprims-kernel-tensorcontract` (scalar and SIMD microkernels) by Lukas Devos. |
-| gemm-f64, gemm-f32, gemm-common | [MIT](https://github.com/sarah-ek/gemm/blob/main/LICENSE) | Called, not copied: `tprims-kernel-gemm` reaches the public microkernel tables through a shim. The microkernel module is undocumented upstream, so the versions are pinned exactly (`=0.19.0`) and a bump has to be re-checked. |
-| private-gemm-x86 | [MIT](https://github.com/sarah-ek/gemm-x64-v2/blob/main/LICENSE) | Called, not copied: `tprims-kernel-pgx86` wraps the single `gemm` entry point, pinned exactly (`=0.1.20`) for the same reason. |
+| gemm-f64, gemm-f32, gemm-common | [MIT](https://github.com/sarah-ek/gemm/blob/main/LICENSE) | Called, not copied (the adapter `tprims-kernel-gemm` was removed in #37): it reached the public microkernel tables through a shim. The microkernel module is undocumented upstream, so the versions are pinned exactly (`=0.19.0`) and a bump has to be re-checked. |
+| private-gemm-x86 | [MIT](https://github.com/sarah-ek/gemm-x64-v2/blob/main/LICENSE) | Called, not copied (the adapter `tprims-kernel-pgx86` was removed in #37): it wrapped the single `gemm` entry point, pinned exactly (`=0.1.20`) for the same reason. |
 | `tprims-kernel-cplx` (project-owned, MIT OR Apache-2.0) | n/a | Independent intrinsics written from the interleaved complex arithmetic `Cr += Ar*Br - Ai*Bi; Ci += Ai*Br + Ar*Bi` with a signed swap formed once per A vector, as stated in issue #30. Not a port: no source of `gemm-c32/c64` (0.19.0: `mod microkernel` is private, so no callable tile entry exists) or `private-gemm-x86` (0.1.20: `call_microkernel`/`millikernel_*` take a custom register/parameter ABI, unusable as a `TileUkrFn` without a larger adapter) was read into or copied. Reuse check done 2026-10-01 against the pinned registry sources; the independent-intrinsics route was chosen for that reason. Panels, scatter, write-back and scheduling are the existing driver's (Lukas Devos's tensorcontract driver). Its families report `Origin::Cplx` (crate `tprims-kernel-cplx`, `MIT OR Apache-2.0`); `Origin::External` is reserved for downstream third-party kernels. |
 
 ### Per-origin crate rule
@@ -88,8 +88,8 @@ A crate that contains imported code states its origin, authorship and license
 in its manifest and keeps the imported license texts beside it
 (`tprims-kernel-tensorcontract`, `tensorcontract`). A crate that only *calls*
 another project carries the same provenance in this file and in its header, but
-its own license is the project's (`tprims-kernel-gemm`,
-`tprims-kernel-pgx86`). The kernel contract crate
+its own license is the project's (as `tprims-kernel-gemm` and
+`tprims-kernel-pgx86` were, before #37 removed them). The kernel contract crate
 (`tprims-gemm-kernel`) is project code: it was written here, from the design and
 the research notes, and only the *moved* kernel files carry Lukas Devos's
 authorship.
@@ -99,7 +99,7 @@ authorship.
 The switchable-engine work is a **contract around** other people's kernels, not
 a port of them: a family holds a function pointer to a compiled upstream kernel
 or to one of ours, and the driver calls it. No upstream kernel body was copied
-into `tprims-gemm-kernel`, `tprims-kernel-gemm` or `tprims-kernel-pgx86`, and
+into `tprims-gemm-kernel` (or the removed `tprims-kernel-gemm` and `tprims-kernel-pgx86`), and
 `faer` remains a called dependency under its upstream license, which is not the
 project's: nothing here relicenses it. Any future port would be a new decision
 with its own provenance record.

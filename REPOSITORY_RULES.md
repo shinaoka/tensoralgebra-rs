@@ -19,7 +19,7 @@ file minimal.
   against the manifests (`cargo tree -e normal --depth 1 -p <crate>`); names,
   features, commands and status lines against the code; planned items
   labelled as planned. The Phase 0 README diagram kept showing
-  `tprims-contract` depending on `tprims-linalg` after the code settled
+  `tprims-contract` depending on a sibling crate after the code settled
   otherwise.
 
 ## Public Surface Discipline

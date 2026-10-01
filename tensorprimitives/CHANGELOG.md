@@ -15,6 +15,12 @@ the part a prospective dependant most needs, and it has no KaC category.
 
 ### Changed
 
+* **Threads come only from a `tprims_exec::Exec`** (tprims-rs integration,
+  [#37](https://github.com/tensor4all/tprims-rs/issues/37)). The `Spmd` trait, the
+  parked-thread pool (`TENSORCONTRACT_POOL`), the `std::thread::scope` fallback and
+  `contract_batched_with_threads` are gone. `Plan::run_with`, `run_raw_with`,
+  `execute_resolved` and `batch::contract_batched` take an `Exec`; without one,
+  execution is serial, and `TENSORCONTRACT_THREADS` no longer starts threads.
 * **The Julia wrapper moved out**, to
   [TensorPrimitives.jl](https://github.com/lkdvos/TensorPrimitives.jl), with its
   history. It versions independently now, bounded by a `[compat]` entry on
