@@ -96,6 +96,10 @@ pub trait ContractionBackend<T: Scalar>: Debug + Send + Sync {
 
     /// Validate `problem`, check `requirements` and build a reusable plan.
     ///
+    /// `budget` is advisory: a backend may use it to size planning choices, but
+    /// the plan runs correctly on any host width and no backend may reject a
+    /// host later because it differs from the budget.
+    ///
     /// # Errors
     ///
     /// Validation errors ([`Error::Config`](crate::Error::Config),
