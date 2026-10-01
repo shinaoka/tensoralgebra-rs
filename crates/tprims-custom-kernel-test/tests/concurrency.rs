@@ -90,3 +90,60 @@ fn catalogs_run_concurrently_on_one_pool_and_on_separate_pools() {
         .iter()
         .all(|k| !k.id.starts_with("custom.")));
 }
+
+#[test]
+fn executing_from_inside_a_worker_of_the_same_pool_falls_back_serially_on_the_same_family() {
+    use tprims_blas::Conj;
+    use tprims_contract::{ContractPlan, DotGeneral, Flags, Strategy};
+    let tp = rayon::ThreadPoolBuilder::new()
+        .num_threads(4)
+        .build()
+        .unwrap();
+    let pool = Pool::borrow(&tp);
+    let exec = Exec::rayon(&pool);
+    let cat = catalog();
+    let (dims_a, dims_b, dims_c) = ([M, K], [K, N], [M, N]);
+    let (sa, sb, sc) = (
+        [1isize, M as isize],
+        [1isize, K as isize],
+        [1isize, M as isize],
+    );
+    let plan = ContractPlan::<f64>::new_with_selector(
+        &exec,
+        &GemmConfig::default(),
+        &cat,
+        |ctx, cands| {
+            assert!(ctx.threads > 1, "planned for the pool's width");
+            Ok(cands[1].handle)
+        },
+        &DotGeneral::new(&[1], &[0], &[], &[]),
+        (&dims_a, &sa),
+        (&dims_b, &sb),
+        (&dims_c, &sc),
+        (Conj::No, Conj::No),
+        Strategy::Tblis,
+        Flags::default(),
+    )
+    .unwrap();
+    drop(cat);
+    let (a, b) = (data(M * K, 1), data(K * N, 2));
+    let reference = worker(&Exec::serial(), "custom.f64.2x2", 1).0;
+    let run = |exec: &Exec<'_>| {
+        let av = StridedView::new(&a, &dims_a, &sa, 0).unwrap();
+        let bv = StridedView::new(&b, &dims_b, &sb, 0).unwrap();
+        let mut c = vec![0.0; M * N];
+        let mut cv = StridedViewMut::new(&mut c, &dims_c, &sc, 0).unwrap();
+        plan.execute(exec, 1.0, &av, &bv, 0.0, &mut cv).unwrap();
+        c
+    };
+    let outside = run(&exec);
+    // Inside a worker of the very pool the plan was made for, a broadcast
+    // cannot be co-scheduled; the call runs serially with the frozen family.
+    let inside = tp.install(|| run(&exec));
+    assert_eq!(outside, reference);
+    assert_eq!(inside, reference);
+    assert_eq!(
+        plan.selected_gemm().unwrap().unwrap().family_id,
+        Some("custom.f64.3x4")
+    );
+}
