@@ -3,7 +3,7 @@ use faer::{Accum, MatMut, MatRef};
 use strided_view::StridedViewMut;
 use tprims_exec::{Exec, Par, WidthPolicy};
 
-use crate::operand::{check_injective, mat2, scale_in_place, Mat2};
+use crate::operand::{check_injective, scale_in_place, Mat2};
 use crate::scalar::{one, zero};
 use crate::{Error, MatIn, Result, Scalar};
 
@@ -130,22 +130,9 @@ pub fn gemm<T: Scalar>(
     beta: T,
     c: &mut StridedViewMut<'_, T>,
 ) -> Result<()> {
-    let s = check_gemm(
-        mat2("A", a.view.dims(), a.view.strides())?,
-        mat2("B", b.view.dims(), b.view.strides())?,
-        mat2("C", c.dims(), c.strides())?,
-    )?;
-    let k = gemm_width::<T>(exec, s.c.rows, s.c.cols, s.a.cols);
-    let (ap, bp) = (SendConst(a.view.ptr()), SendConst(b.view.ptr()));
-    let cp = SendMut(c.as_mut_ptr());
-    let (ca, cb) = (a.conj, b.conj);
-    exec.install(k, move |par| {
-        let (ap, bp, cp) = (ap, bp, cp);
-        // SAFETY: shapes validated against the views, which were bounds-checked
-        // at construction; `c` is an exclusive borrow, injective by check_gemm.
-        unsafe { gemm_raw(&s, alpha, ap.0, ca, bp.0, cb, beta, cp.0, to_faer(par)) }
-    });
-    Ok(())
+    // The default configuration is faer with the views as they are, which is
+    // what this entry point has always done.
+    crate::gemm_with(exec, &crate::GemmConfig::default(), alpha, a, b, beta, c).map(|_| ())
 }
 
 /// Raw pointers moved into a pool closure.

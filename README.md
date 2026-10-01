@@ -41,7 +41,9 @@ flowchart TB
     CT["<b>tprims-contract</b><br/>Binary contraction<br/>permute + batched GEMM<br/>or TBLIS direct"]
     LA["<b>tprims-linalg</b><br/>Factorizations, solves<br/>lstsq, eigh, batched<br/>(faer first)"]
     BL["<b>tprims-blas</b><br/>GEMM, batched GEMM, TRSM<br/>faer + loop or TBLIS"]
-    TC["<b>tensorcontract</b><br/>(tensorprimitives-rs)<br/>TBLIS-style packing, microkernels"]
+    TC["<b>tensorcontract</b><br/>packing, loop nest,<br/>write-back, driver"]
+    GK["<b>tprims-gemm-kernel</b><br/>contract, resolution,<br/>partition, workspace"]
+    KT["<b>tprims-kernel-tensorcontract</b><br/>(Lukas Devos's kernels)"]
     FA["faer"]
     ST["<b>strided-rs</b> (external)<br/>views, permutation, copies"]
     EX["<b>tprims-exec</b><br/>Execution context<br/>borrowed pool, width"]
@@ -51,6 +53,9 @@ flowchart TB
     LA --> FA
     CT -->|"direct tensor path"| TC
     BL -->|"TBLIS batched GEMM"| TC
+    TC --> GK
+    TC --> KT
+    KT --> GK
     CT --> ST
     BL --> ST
     BL --> EX
@@ -60,17 +65,24 @@ flowchart TB
     classDef base fill:#edf0f4,stroke:#536477,color:#233244
     class CT tensor
     class LA,BL,TC matrix
+    class GK,KT base
     class FA,ST,EX base
 ```
 
-A separate `tprims-gemm-kernel` (packed format and microkernels split out of
-`tensorcontract`) is planned, not built.
+The kernel layer is its own crate set: `tprims-gemm-kernel` owns the packed
+format, the kernel-family contract and the resolution, and the providers
+(`tprims-kernel-tensorcontract`, and the call-only `tprims-kernel-gemm` and
+`tprims-kernel-pgx86`) supply kernels.
 
 | Crate | Owns | C ABI crate |
 | --- | --- | --- |
 | `tprims-exec` | Execution context: serial, a Rayon pool borrowed from the host (or created by a C host), host scheduling callbacks; width chosen from work; reusable scratch. No ambient global pool. | `tprims-core` |
 | `strided-*` (external, [strided-rs](https://github.com/tensor4all/strided-rs)) | Checked strided views, scalar and conjugation contracts, copy and permutation, map / reduce / fused elementwise. | `strided-capi` (planned) |
-| `tensorcontract` (imported, tensorprimitives-rs by Lukas Devos) | TBLIS-style packing, register-tile microkernels, the direct contraction driver. A separate `tprims-gemm-kernel` is planned. | none |
+| `tprims-gemm-kernel` | The kernel contract, with no dependencies of its own: packed formats, kernel-family descriptors, CPU masks, resolution with frozen blocking, the partition policy and the workspace provider. MIT OR Apache-2.0. | none |
+| `tprims-kernel-tensorcontract` (imported, tensorprimitives-rs by Lukas Devos) | Lukas Devos's register-tile microkernels: scalar, AVX2, AVX-512 and NEON, with and without complex schemes. MIT OR Apache-2.0. | none |
+| `tprims-kernel-gemm` | Adapter calling the MIT-licensed `gemm-f64`/`gemm-f32` microkernels as direct-update families (feature `kernel-gemm`). MIT OR Apache-2.0. | none |
+| `tprims-kernel-pgx86` | Adapter calling the MIT-licensed `private-gemm-x86` as a matrix engine (feature `kernel-pgx86`, x86-64 only). MIT OR Apache-2.0. | none |
+| `tensorcontract` (imported, tensorprimitives-rs by Lukas Devos) | The direct contraction driver: packing traversal, the loop nest, write-back, and the `Spmd` seam it borrows a workspace through. | none |
 | `tprims-blas` | GEMM and batched GEMM (faer plus a loop over items, or TBLIS-style; compared), TRSM, later SYRK / HERK. | `tprims-blas-capi` |
 | `tprims-linalg` | LU, Cholesky, LDLᴴ, QR, SVD, symmetric / Hermitian eigendecomposition; solves on factor objects, `solve`, `lstsq`, `inv`, `det`; `batched` module. faer per item first. | `tprims-linalg-capi` (Phase 2) |
 | `tprims-contract` | Binary contraction with batch indices (`dot_general` semantics) with two strategies to compare: permute plus batched GEMM (from tenferro-rs) and TBLIS-style direct (from tensorprimitives-rs); thin permute / add / trace wrappers. | `tprims-contract-capi` |

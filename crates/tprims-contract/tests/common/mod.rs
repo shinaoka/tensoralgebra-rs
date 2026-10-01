@@ -234,3 +234,8 @@ pub fn rel_err<S: Scalar>(x: &T<S>, y: &T<S>) -> f64 {
     });
     err / scale
 }
+
+/// The output extents of a validated contraction.
+pub fn out_dims(cfg: &tprims_contract::DotGeneral, a: &[usize], b: &[usize]) -> Vec<usize> {
+    cfg.validate(a, b).unwrap().out_dims
+}

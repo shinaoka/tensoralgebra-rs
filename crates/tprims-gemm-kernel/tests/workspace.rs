@@ -1,0 +1,147 @@
+//! Workspace ownership: no allocation for a zero requirement, page-aligned
+//! reuse, fresh buffers on re-entry, exclusive team sets, and per-worker
+//! first touch.
+use tprims_gemm_kernel::*;
+
+#[test]
+fn zero_requirement_never_allocates() {
+    let arena = ArenaProvider::traced();
+    let _ = arena.trace_take();
+    arena.with_worker(&WorkspaceReq::default(), &mut |_, _, _| {});
+    let _lease = arena.take_team(&WorkspaceReq::default(), 1, 1);
+    assert!(arena.trace_take().is_empty());
+}
+
+#[test]
+fn page_aligned_and_reused() {
+    let arena = ArenaProvider::default();
+    let req = WorkspaceReq {
+        a_bytes: 1000,
+        tile_bytes: 64,
+        ..Default::default()
+    };
+    let (mut p1, mut t1) = (0usize, 0usize);
+    arena.with_worker(&req, &mut |a, t, _| {
+        p1 = a as usize;
+        t1 = t as usize;
+    });
+    let (mut p2, mut t2) = (0usize, 0usize);
+    arena.with_worker(&req, &mut |a, t, _| {
+        p2 = a as usize;
+        t2 = t as usize;
+    });
+    assert_eq!(p1 % 4096, 0);
+    assert_eq!(t1 % 4096, 0);
+    assert_eq!(p1, p2, "the second call must reuse the A block");
+    assert_eq!(t1, t2, "and the tile");
+}
+
+#[test]
+fn reentrant_execute_uses_fresh_buffers() {
+    let arena = ArenaProvider::default();
+    let req = WorkspaceReq {
+        a_bytes: 64,
+        ..Default::default()
+    };
+    arena.with_worker(&req, &mut |outer, _, _| {
+        let mut inner = outer;
+        arena.with_worker(&req, &mut |a, _, _| inner = a);
+        assert_ne!(outer, inner);
+    });
+    // The outer slot is usable again afterwards.
+    let (mut first, mut second) = (0usize, 0usize);
+    arena.with_worker(&req, &mut |a, _, _| first = a as usize);
+    arena.with_worker(&req, &mut |a, _, _| second = a as usize);
+    assert_eq!(first, second);
+}
+
+#[test]
+fn concurrent_team_sets_never_share_buffers() {
+    let arena = ArenaProvider::default();
+    let req = WorkspaceReq {
+        b_bytes: 4096,
+        barriers: 2,
+        ..Default::default()
+    };
+    // The driver sizes the panel it needs, because only it knows the element
+    // type; the lease provides the storage and the barriers.
+    let mut a = arena.take_team(&req, 2, 2);
+    let a_ptr = a.b.ensure(req.b_bytes);
+    let mut b = arena.take_team(&req, 2, 2);
+    let b_ptr = b.b.ensure(req.b_bytes);
+    assert_ne!(a_ptr, b_ptr);
+    assert_eq!(a.barriers.len(), 2);
+    assert_eq!(b.barriers.len(), 2);
+    drop(a);
+    // The returned set is what the next lease reuses, not a fresh allocation.
+    let c = arena.take_team(&req, 2, 2);
+    assert_eq!(c.b.as_ptr(), a_ptr);
+    assert_eq!(c.barriers.len(), 2);
+}
+
+#[test]
+fn trimmed_storage_is_released_and_live_storage_is_not() {
+    let arena = ArenaProvider::default();
+    let req = WorkspaceReq {
+        a_bytes: 1 << 16,
+        b_bytes: 1 << 16,
+        ..Default::default()
+    };
+    arena.with_worker(&req, &mut |_, _, _| {});
+    let mut lease = arena.take_team(&req, 1, 1);
+    lease.panel(req.b_bytes);
+    let before = arena.retained_bytes();
+    assert!(before >= 2 * (1 << 16), "retained {before}");
+    arena.trim();
+    // The worker slot was idle, so its storage is gone; the leased team set is
+    // live and must survive.
+    let after = arena.retained_bytes();
+    assert!(after < before, "before {before}, after {after}");
+    assert!(after >= 1 << 16, "the live lease was released");
+    drop(lease);
+    arena.trim();
+    assert_eq!(arena.retained_bytes(), 0);
+}
+
+/// Worker buffers are allocated by the thread that writes them, which is the
+/// property that makes their first touch node-local.
+#[test]
+fn worker_buffers_are_allocated_on_the_worker() {
+    let arena = ArenaProvider::traced();
+    let _ = arena.trace_take();
+    let req = WorkspaceReq {
+        a_bytes: 1 << 16,
+        tile_bytes: 4096,
+        ..Default::default()
+    };
+    let tid = std::thread::scope(|s| {
+        s.spawn(|| {
+            arena.with_worker(&req, &mut |_, _, _| {});
+            std::thread::current().id()
+        })
+        .join()
+        .unwrap()
+    });
+    let recorded = arena.trace_take();
+    assert!(!recorded.is_empty(), "the worker's buffers were not grown");
+    assert!(
+        recorded.iter().all(|(t, _)| *t == tid),
+        "storage was first touched off the worker: {recorded:?}"
+    );
+}
+
+/// Two owners used from one caller never share a worker slot, even though the
+/// thread-local handle is per thread.
+#[test]
+fn two_owners_do_not_share_a_worker_slot() {
+    let a = ArenaProvider::default();
+    let b = ArenaProvider::default();
+    let req = WorkspaceReq {
+        a_bytes: 4096,
+        ..Default::default()
+    };
+    let (mut pa, mut pb) = (0usize, 0usize);
+    a.with_worker(&req, &mut |p, _, _| pa = p as usize);
+    b.with_worker(&req, &mut |p, _, _| pb = p as usize);
+    assert_ne!(pa, pb);
+}

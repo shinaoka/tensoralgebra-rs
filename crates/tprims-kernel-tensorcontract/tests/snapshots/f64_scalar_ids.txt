@@ -1,0 +1,4 @@
+tc.scalar.f64.4x4
+portable.f64.4x4
+portable.f64.4x4.direct
+portable.f64.4x4.direct-b

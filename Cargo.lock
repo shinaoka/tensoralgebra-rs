@@ -1011,6 +1011,9 @@ dependencies = [
  "num-complex",
  "rand",
  "rand_chacha",
+ "tprims-gemm-kernel",
+ "tprims-kernel-gemm",
+ "tprims-kernel-tensorcontract",
 ]
 
 [[package]]
@@ -1090,6 +1093,10 @@ dependencies = [
  "tensorcontract",
  "thiserror",
  "tprims-exec",
+ "tprims-gemm-kernel",
+ "tprims-kernel-gemm",
+ "tprims-kernel-pgx86",
+ "tprims-kernel-tensorcontract",
 ]
 
 [[package]]
@@ -1122,6 +1129,7 @@ dependencies = [
  "thiserror",
  "tprims-blas",
  "tprims-exec",
+ "tprims-gemm-kernel",
 ]
 
 [[package]]
@@ -1152,6 +1160,41 @@ dependencies = [
  "strided-basic",
  "tensorcontract",
  "thiserror",
+ "tprims-gemm-kernel",
+ "tprims-kernel-tensorcontract",
+]
+
+[[package]]
+name = "tprims-gemm-kernel"
+version = "0.1.0"
+dependencies = [
+ "num-complex",
+]
+
+[[package]]
+name = "tprims-kernel-gemm"
+version = "0.1.0"
+dependencies = [
+ "gemm-common",
+ "gemm-f32",
+ "gemm-f64",
+ "tprims-gemm-kernel",
+]
+
+[[package]]
+name = "tprims-kernel-pgx86"
+version = "0.1.0"
+dependencies = [
+ "num-complex",
+ "private-gemm-x86",
+]
+
+[[package]]
+name = "tprims-kernel-tensorcontract"
+version = "0.1.0"
+dependencies = [
+ "tensorcontract",
+ "tprims-gemm-kernel",
 ]
 
 [[package]]

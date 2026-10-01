@@ -20,6 +20,23 @@ Environment: `BENCH_RUNS` (default 50; capped at 15 above 5e8 flops and 5
 above 5e9), `BENCH_WARMUP` (5), `BENCH_FILTER`. Timed boundary: one public
 call, including validation and (for TBLIS) plan construction.
 
+### 2026-10-01 switchable GEMM engine: non-regression
+
+Branch against `main` at `690794c` on `../corpus/tenferro-p1-gemm.json`,
+`BENCH_RUNS=5`, each session pinned and verified idle. Same metric and noise
+rule as the contract benchmark's block.
+
+| T | `faer` (new/old) | `tblis` (new/old) | |
+| --- | --- | --- | --- |
+| 1 | 0.998 | 0.954 | pass |
+| 4 | 0.949 | 0.917 | pass |
+| 8 | 0.996 | 0.946 | pass |
+
+`faer` is the untouched control and stays within 0.3%; the TBLIS-style packed
+driver is 4.6-8.3% faster. Raw sessions and `decision.txt` are under
+[`results/2026-10-01-gemm-engine/`](results/2026-10-01-gemm-engine/).
+
+
 ## Observation, 2026-09-30 (single run, not a claim)
 
 - tprims-rs `c181402` (clean tree; after the Phase 1b review fixes),

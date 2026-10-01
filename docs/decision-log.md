@@ -2,6 +2,17 @@
 
 Dated 2026-09-29. A source link supports the observation; the proposed response remains a hypothesis until an experiment records evidence. Structural decisions (naming, packaging, ABI shape) are marked **Decided** when the maintainer has chosen them; they can still be revisited before the first release.
 
+## 2026-09-30 switchable GEMM engine
+
+| Question | Ruling | Evidence or next check |
+| --- | --- | --- |
+| Two-level selection? | **Decided:** an `Engine` (faer, `private-gemm-x86`, the packed driver) and a *kernel family* are separate choices. `Auto` keeps faer for a matrix GEMM, so no existing caller changes behaviour. | `GemmConfig`, `SelectedGemm`, `docs/architecture.md#selection-two-levels`; `crates/tprims-blas/tests/engine_select.rs` |
+| Kernel layer split? | **Decided:** packed formats, descriptors, CPU masks, resolution, partition policy and the workspace contract live in `tprims-gemm-kernel`; providers supply kernels. The move was a pure rename with history preserved. | Commit `d5776b8`, `docs/provenance.md#kernel-layer-move-2026-09-30` |
+| `DynamicTiles`? | **Designed, not implemented.** Resolution returns `NotImplemented` rather than ignoring it. | `crates/tprims-gemm-kernel/tests/partition.rs` |
+| Workspace ownership? | **Decided (correction of the earlier process-global proposal):** one arena per owner — a `Pool` or a serial plan — borrowed through `Spmd::workspace`. Worker buffers are named by thread-local handles, team sets are leased exclusively and returned to the issuing owner, and re-entry takes fresh call-local buffers. No process-global arena and no cross-pool free list. | `crates/tprims-gemm-kernel/tests/workspace.rs`, `crates/tprims-exec/tests/pool_workspace.rs`, `tensorcontract/tests/workspace_alloc.rs` |
+| `Selected` vs `SelectedGemm`? | **Decided: additive.** `SelectedGemm` wraps `Selected`. Changing `Selected` would break tenferro-cpu-tprims, which is pinned to this API. | `tprims-blas/src/engine.rs`; the pinned consumer's commit is recorded in that PR |
+| No-port rule? | **Restated:** the contract calls other projects' kernels; no upstream kernel body was copied. `gemm-*` and `private-gemm-x86` are called dependencies pinned exactly, and `faer` keeps its own license. | `docs/provenance.md#the-no-port-rule-issue-23` |
+
 ## Structure and ABI
 
 | Question | Present position | Evidence or next check |

@@ -11,6 +11,9 @@ description = "Benchmarks for the tprims stack"
 path = "src/lib.rs"
 bench = false
 
+[features]
+pgx86 = ["tprims-blas/kernel-pgx86"]
+
 [dependencies]
 tprims-exec = { workspace = true, features = ["strided"] }
 tprims-blas = { workspace = true }

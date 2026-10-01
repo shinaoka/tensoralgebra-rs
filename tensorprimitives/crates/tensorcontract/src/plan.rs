@@ -52,6 +52,8 @@
 //! claim on contiguity; `K` only affects the packing of `A` and `B`. This is a
 //! heuristic and a Phase 4 tuning knob.
 
+use tprims_gemm_kernel::env_once;
+
 use crate::error::{Error, Result};
 use crate::layout::Layout;
 use crate::scatter::{build_scatter, run_structure, unbroken_fraction};
@@ -300,6 +302,8 @@ pub struct Plan {
     pub(crate) method: Option<crate::kernel::ComplexMethod>,
     /// Overrides the default thread count when set.
     pub(crate) threads: Option<usize>,
+    pub(crate) kernel: Option<tprims_gemm_kernel::KernelChoice>,
+    pub(crate) resolved_cache: crate::resolve::Cache,
     /// The matrix shape and folded axes this plan reduced to. Public because
     /// it is the answer to "what did the index analysis actually decide", which
     /// nothing else reports.
@@ -307,6 +311,95 @@ pub struct Plan {
 }
 
 impl Plan {
+    pub(crate) fn freeze_execution_switches(&self) {
+        // These are process-constant startup choices, not workspace caches.
+        // Force initialization during typed planning, before raw execution.
+        let _ = orient_override();
+        let _ = row_block_override();
+        let _ = partition_override();
+        #[cfg(feature = "std")]
+        let _ = crate::pool::enabled();
+    }
+
+    /// Select a registered family, or restore automatic selection.
+    /// Dtype agreement is checked by `resolved::<T>` before execution.
+    ///
+    /// # Errors
+    /// Returns `KernelSelection` for an unknown/unbuilt id, unavailable CPU,
+    /// ambiguous id or invalid descriptor. No forced id silently falls back.
+    ///
+    /// # Examples
+    /// ```
+    /// use tensorcontract::{KernelChoice, Layout, Operand, Plan};
+    /// let l = Layout::col_major(&[2, 2]);
+    /// let p = Plan::new(Operand::new(&l, &[0,2]), Operand::new(&l, &[2,1]),
+    ///     None, Operand::new(&l, &[0,1]))?;
+    /// let p = p.with_kernel(KernelChoice::Id("portable.f64.4x4".into()))?;
+    /// assert_eq!(p.resolved::<f64>()?.family().id, "portable.f64.4x4");
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    pub fn with_kernel(mut self, choice: tprims_gemm_kernel::KernelChoice) -> Result<Self> {
+        if let tprims_gemm_kernel::KernelChoice::Id(id) = &choice {
+            tprims_kernel_tensorcontract::register();
+            let cpu = tprims_gemm_kernel::CpuFeatures::detect();
+            let mut failure = None;
+            macro_rules! check {
+                ($t:ty) => {
+                    match tprims_gemm_kernel::Registry::select::<$t>(id, cpu) {
+                        Ok(_) => {
+                            failure = None;
+                        }
+                        Err(tprims_gemm_kernel::SelectError::DtypeMismatch { .. }) => {}
+                        Err(e) => {
+                            failure = Some(e);
+                        }
+                    }
+                };
+            }
+            // INVARIANT: every id names one of the four sealed storage dtypes.
+            // A dtype mismatch isn't a builder error before T is known.
+            check!(f32);
+            check!(f64);
+            check!(crate::C32);
+            check!(crate::C64);
+            if let Some(e) = failure {
+                return Err(Error::KernelSelection(e));
+            }
+        }
+        self.kernel = Some(choice);
+        self.resolved_cache = Default::default();
+        Ok(self)
+    }
+
+    /// Resolve and cache the family/blocking for a built-in storage dtype.
+    /// Clones and choice/blocking/method/width builders start fresh caches.
+    ///
+    /// # Errors
+    /// Returns typed `SelectError` for invalid ids, dtype/CPU incompatibility,
+    /// unsupported conjugation or overflowing blocking configuration.
+    ///
+    /// # Examples
+    /// ```
+    /// use tensorcontract::{Layout, Operand, Plan};
+    /// let l = Layout::col_major(&[2, 2]);
+    /// let p = Plan::new(Operand::new(&l, &[0,2]), Operand::new(&l, &[2,1]),
+    ///     None, Operand::new(&l, &[0,1]))?;
+    /// let first = p.resolved::<f64>()?;
+    /// assert!(core::ptr::eq(first.family(), p.resolved::<f64>()?.family()));
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    pub fn resolved<T: tprims_gemm_kernel::Families>(
+        &self,
+    ) -> core::result::Result<
+        tprims_gemm_kernel::ResolvedGemm<T::Real>,
+        tprims_gemm_kernel::SelectError,
+    >
+    where
+        T::Real: crate::KernelSet,
+    {
+        self.resolved_cache.resolved::<T>(self)
+    }
+
     /// Analyse a contraction. `c` may be `None`, in which case `beta` is
     /// ignored at execution time and `D` is overwritten.
     ///
@@ -510,6 +603,8 @@ impl Plan {
             blocking: None,
             method: None,
             threads: None,
+            kernel: None,
+            resolved_cache: Default::default(),
             stats,
         })
     }
@@ -540,6 +635,7 @@ impl Plan {
     #[must_use]
     pub fn with_complex_method(mut self, method: crate::kernel::ComplexMethod) -> Self {
         self.method = Some(method);
+        self.resolved_cache = Default::default();
         self
     }
 
@@ -557,6 +653,7 @@ impl Plan {
     #[must_use]
     pub fn with_blocking(mut self, blk: crate::kernel::Blocking) -> Self {
         self.blocking = Some(blk);
+        self.resolved_cache = Default::default();
         self
     }
 
@@ -584,6 +681,7 @@ impl Plan {
     #[must_use]
     pub fn with_threads(mut self, n: usize) -> Self {
         self.threads = Some(n.max(1));
+        self.resolved_cache = Default::default();
         self
     }
 
@@ -606,7 +704,7 @@ impl Plan {
     /// amortisation guard was the other candidate and was measured and rejected:
     /// it is a trade, costing a correctly-threaded caller 10-39%.
     pub fn threads(&self) -> usize {
-        self.threads.unwrap_or_else(env_threads)
+        self.threads.unwrap_or_else(tprims_gemm_kernel::env_threads)
     }
 
     /// How execution will split the output across threads: `(pm, pn)`, the
@@ -1160,22 +1258,6 @@ fn partition_override() -> PartitionMode {
             }
         }
     )
-}
-
-/// `TENSORCONTRACT_THREADS=<n>` sets the default thread count. Read once per
-/// process. Unset means **1**: see [`Plan::threads`] for why that is the default
-/// while Phase 4 is still measuring, and note that it keeps every committed
-/// single-core number reproducible from a bare checkout.
-///
-/// Visible to the crate because the blocking model needs a thread count when it
-/// is asked for a configuration without a plan — one definition of the default,
-/// rather than two readers of one variable.
-pub(crate) fn env_threads() -> usize {
-    env_once!(usize, "TENSORCONTRACT_THREADS", 1, |v: &str| v
-        .trim()
-        .parse::<usize>()
-        .unwrap_or(1)
-        .max(1))
 }
 
 /// Collapse repeated labels within one tensor onto its diagonal, validating

@@ -25,6 +25,7 @@ pub trait Scalar:
     sealed::Sealed
     + faer::traits::ComplexField<Real = <Self as Scalar>::Re>
     + tensorcontract::Element<Real = <Self as Scalar>::Re>
+    + tprims_gemm_kernel::Families
     + Copy
     + Send
     + Sync

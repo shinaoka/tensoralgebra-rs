@@ -10,7 +10,7 @@
 //! `[M, N, H]` order.
 use strided_view::{StridedView, StridedViewMut};
 use tensorcontract::Element;
-use tprims_blas::{gemm_batched, BatchIn, BatchStrategy, Conj, Scalar};
+use tprims_blas::{gemm_batched_with, BatchIn, BatchStrategy, Conj, Scalar};
 use tprims_exec::strided::run_with_exec;
 use tprims_exec::Exec;
 
@@ -65,6 +65,8 @@ fn sorted_by(group: &Group, strides: &[&[isize]; 3], op: usize) -> Vec<usize> {
 #[derive(Clone, Debug)]
 pub(crate) struct PgPlan {
     pub materialized: [bool; 3],
+    /// The matrix engine and kernel this plan's GEMMs use.
+    pub gemm: tprims_blas::GemmConfig,
     /// Axis order of each operand in its canonical compact layout.
     perms: [Vec<usize>; 3],
     /// Fused `(extent, stride)` per operand for the three batched-matrix
@@ -124,12 +126,14 @@ pub(crate) fn plan(
     dims: [&[usize]; 3],
     strides: [&[isize]; 3],
     no_materialize: bool,
+    gemm: &tprims_blas::GemmConfig,
 ) -> Result<PgPlan> {
     let gs = groups(cfg, s, dims[0], dims[1]);
     // An empty problem never reaches the GEMM (execute returns early).
     if dims.iter().any(|d| d.contains(&0)) {
         return Ok(PgPlan {
             materialized: [false; 3],
+            gemm: gemm.clone(),
             perms: [vec![], vec![], vec![]],
             fused: [[(0, 1); 3]; 3],
         });
@@ -198,6 +202,7 @@ pub(crate) fn plan(
         });
         return Ok(PgPlan {
             materialized: mat,
+            gemm: gemm.clone(),
             perms,
             fused,
         });
@@ -298,8 +303,17 @@ pub(crate) fn execute<T: Scalar>(
                 0,
             )
             .map_err(|e| Error::Backend(e.to_string()))?;
-            gemm_batched(exec, alpha, ai, bi, beta, &mut cv, BatchStrategy::FaerLoop)
-                .map_err(blas)?;
+            gemm_batched_with(
+                exec,
+                &p.gemm,
+                alpha,
+                ai,
+                bi,
+                beta,
+                &mut cv,
+                BatchStrategy::FaerLoop,
+            )
+            .map_err(blas)?;
         }
         copy_back(exec, &cbuf, c, &p.perms[2])?;
     } else {
@@ -311,7 +325,17 @@ pub(crate) fn execute<T: Scalar>(
             off,
         )
         .map_err(|e| Error::Backend(e.to_string()))?;
-        gemm_batched(exec, alpha, ai, bi, beta, &mut cv, BatchStrategy::FaerLoop).map_err(blas)?;
+        gemm_batched_with(
+            exec,
+            &p.gemm,
+            alpha,
+            ai,
+            bi,
+            beta,
+            &mut cv,
+            BatchStrategy::FaerLoop,
+        )
+        .map_err(blas)?;
     }
     Ok(())
 }
