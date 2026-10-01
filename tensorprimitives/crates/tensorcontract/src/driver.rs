@@ -173,7 +173,7 @@ where
 ///
 /// This reads the operand's own scatter rather than its block scatter, so it
 /// can decide before any scratch buffer exists.
-fn pack_b_needed(b_access: BAccess, bk: &[i64], bn: &[i64], nr: usize) -> bool {
+pub(crate) fn pack_b_needed(b_access: BAccess, bk: &[i64], bn: &[i64], nr: usize) -> bool {
     if !matches!(
         b_access,
         BAccess::Direct {

@@ -82,6 +82,9 @@ where
     T::Real: KernelSet,
 {
     p.freeze_execution_switches();
+    if let Some(forced) = &p.forced {
+        return resolve_forced::<T>(p, forced);
+    }
     tprims_kernel_tensorcontract::register();
     let choice = p.kernel.as_ref().unwrap_or_else(|| default_choice());
     let legacy_auto = matches!(choice, KernelChoice::Auto);
@@ -127,6 +130,24 @@ where
             Some(r) => r.with_threads(p.threads())?,
             None => ResolvedGemm::<T::Real>::resolve::<T>(choice, p.threads())?,
         };
+    check_family::<T>(p, &rg)?;
+    if legacy_auto
+        && tprims_gemm_kernel::cache::block_model() == tprims_gemm_kernel::cache::BlockModel::Legacy
+    {
+        // Preserve old percentage-before-register-rounding semantics. The
+        // canonical resolver above already checked override multiplication;
+        // the legacy raw seed is no larger than its aligned descriptor seed.
+        // This runs once in planning, never in the built-in execute path.
+        rg = rg.with_blocking(crate::kernel::config_for_plan::<T>(p).blk)?;
+    }
+    if let Some(blk) = p.blocking {
+        rg = rg.with_blocking(blk)?;
+    }
+    Ok(rg)
+}
+
+/// The checks every resolved family passes before it may execute this plan.
+fn check_family<T: Families>(p: &Plan, rg: &ResolvedGemm<T::Real>) -> Result<(), SelectError> {
     if T::IS_COMPLEX
         && p.method.is_some_and(|m| {
             rg.family()
@@ -154,15 +175,23 @@ where
             reason: "operand conjugation unsupported",
         });
     }
-    if legacy_auto
-        && tprims_gemm_kernel::cache::block_model() == tprims_gemm_kernel::cache::BlockModel::Legacy
-    {
-        // Preserve old percentage-before-register-rounding semantics. The
-        // canonical resolver above already checked override multiplication;
-        // the legacy raw seed is no larger than its aligned descriptor seed.
-        // This runs once in planning, never in the built-in execute path.
-        rg = rg.with_blocking(crate::kernel::config_for_plan::<T>(p).blk)?;
-    }
+    Ok(())
+}
+
+/// Resolution of a family a caller's selector chose (see `Plan::with_selector`):
+/// no id lookup and no registry; the handle is the trusted descriptor.
+fn resolve_forced<T: Families>(
+    p: &Plan,
+    forced: &crate::select::Forced,
+) -> Result<ResolvedGemm<T::Real>, SelectError> {
+    let handle = forced.handle::<T>()?;
+    let mut rg = ResolvedGemm::<T::Real>::resolve_handle::<T>(
+        &handle,
+        p.threads(),
+        Default::default(),
+        Default::default(),
+    )?;
+    check_family::<T>(p, &rg)?;
     if let Some(blk) = p.blocking {
         rg = rg.with_blocking(blk)?;
     }
@@ -180,6 +209,11 @@ where
             .and_then(|rg| rg.with_threads(1))
             .map(|_| ())
             .map_err(crate::Error::KernelSelection)
+    } else if let Some(forced) = &p.forced {
+        Err(crate::Error::KernelSelection(SelectError::DtypeMismatch {
+            id: forced.id().into(),
+            dtype: "a foreign scalar",
+        }))
     } else if let KernelChoice::Id(id) = p.kernel.as_ref().unwrap_or_else(|| default_choice()) {
         Err(crate::Error::KernelSelection(SelectError::Incompatible {
             id: id.clone(),
