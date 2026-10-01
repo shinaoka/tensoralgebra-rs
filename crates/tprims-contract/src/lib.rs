@@ -21,6 +21,13 @@
 //! TBLIS-style kernel when permute+GEMM would copy an operand (measured on
 //! tenferro's shape corpus; `docs/decision-log.md`).
 //!
+//! # Neutral interface
+//!
+//! [`TprimsBackend`] implements `tprims_contract_traits::ContractionBackend` (and
+//! [`ExecHost`] lends an [`tprims_exec::Exec`] as the neutral host), so a
+//! consumer can swap this implementation for another one at run time while
+//! `ContractPlan` stays the concrete type for callers that do not need to.
+//!
 //! # Examples
 //!
 //! ```
