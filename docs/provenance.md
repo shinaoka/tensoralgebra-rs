@@ -58,7 +58,31 @@ The [shared tensor4all provenance policy](https://github.com/tensor4all/tensor4a
 | Reference LAPACK | [LICENSE](https://github.com/Reference-LAPACK/lapack/blob/master/LICENSE) | Check the selected file and version before reuse. |
 | gemmkit | [MIT or Apache-2.0](https://github.com/SomeB1oody/gemmkit) | Verify the chosen release's package contents if integrating. |
 | tenferro-rs | MIT OR Apache-2.0 | Planned port (Phase 1): permute plus batched GEMM contraction and the CPU GEMM driver from `tenferro-cpu`. Same maintainers; record the source commit. |
-| tensorprimitives-rs | MIT OR Apache-2.0 | Imported (Phase 0) under `tensorprimitives/` at `8cda75e` with `git subtree add`, history and authorship preserved: `tensorcontract` (TBLIS-style direct contraction, packing, microkernels) by Lukas Devos. |
+| tensorprimitives-rs | MIT OR Apache-2.0 | Imported (Phase 0) under `tensorprimitives/` at `8cda75e` with `git subtree add`, history and authorship preserved: `tensorcontract` (TBLIS-style direct contraction and driver) and, after the 2026-09-30 pure-rename split, `tprims-kernel-tensorcontract` (scalar and SIMD microkernels) by Lukas Devos. |
+| gemm-f64, gemm-f32, gemm-common | [MIT](https://github.com/sarah-ek/gemm/blob/main/LICENSE) | Called, not copied: `tprims-kernel-gemm` reaches the public microkernel tables through a shim. The microkernel module is undocumented upstream, so the versions are pinned exactly (`=0.19.0`) and a bump has to be re-checked. |
+| private-gemm-x86 | [MIT](https://github.com/sarah-ek/gemm-x64-v2/blob/main/LICENSE) | Called, not copied: `tprims-kernel-pgx86` wraps the single `gemm` entry point, pinned exactly (`=0.1.20`) for the same reason. |
+
+### Per-origin crate rule
+
+A crate that contains imported code states its origin, authorship and license
+in its manifest and keeps the imported license texts beside it
+(`tprims-kernel-tensorcontract`, `tensorcontract`). A crate that only *calls*
+another project carries the same provenance in this file and in its header, but
+its own license is the project's (`tprims-kernel-gemm`,
+`tprims-kernel-pgx86`). The kernel contract crate
+(`tprims-gemm-kernel`) is project code: it was written here, from the design and
+the research notes, and only the *moved* kernel files carry Lukas Devos's
+authorship.
+
+### The no-port rule (issue #23)
+
+The switchable-engine work is a **contract around** other people's kernels, not
+a port of them: a family holds a function pointer to a compiled upstream kernel
+or to one of ours, and the driver calls it. No upstream kernel body was copied
+into `tprims-gemm-kernel`, `tprims-kernel-gemm` or `tprims-kernel-pgx86`, and
+`faer` remains a called dependency under its upstream license, which is not the
+project's: nothing here relicenses it. Any future port would be a new decision
+with its own provenance record.
 
 [MIT](https://opensource.org/license/mit) requires its copyright and permission notices in copies or substantial portions. [BSD 3-Clause](https://opensource.org/license/BSD-3-clause) requires retaining the copyright notice, conditions, and disclaimer in source redistributions, reproducing them in binary distribution materials, and not implying endorsement. A `NOTICE` file is useful as an index, but its name alone does not satisfy these conditions. Including such permissively licensed portions does not, by itself, relicense unrelated original project code.
 

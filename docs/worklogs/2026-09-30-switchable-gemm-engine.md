@@ -229,3 +229,73 @@ Remaining: the allocation-counting steady-state test and the same-pool
 adapter test for Task 8, then Tasks 9 (gemm-f64/pgx86 providers), 10, 11
 (selection/query APIs and compatibility), and 12 (docs, benchmark option,
 ABBA non-regression gates, PR). No performance measurement has been taken.
+
+## Tasks 8–12: workspace tests, providers, selection, docs and gates
+
+Task 8's plumbing is finished and tested: `tprims-exec`'s `Pool` and the
+contract plan own an `ArenaProvider`, `Exec::workspace` hands it to both
+`ExecSpmd` adapters, and the driver builds its block scatters into the leased
+buffer, takes the panel from the lease and runs a declined broadcast on the
+caller with the same lease. `tensorcontract/tests/workspace_alloc.rs` counts
+allocations with a one-thread host: after one warm-up, two steady-state
+executes add none, and a direct-B case adds no buffer-sized allocation beyond
+the packed A block. `crates/tprims-exec/tests/pool_workspace.rs` shows two
+pools owning distinct arenas, an operation growing only its own pool's panel,
+and a second operation of the same shape reusing that panel byte for byte.
+
+Task 9 registers every compiled `gemm-f64`/`gemm-f32` microkernel as a Direct
+family (`gemm.{isa}.{dtype}.{MR}x{NR}`, 20 on this host), with only the widest
+table's largest tile Auto-eligible. A single `opaque` pointer per family carries
+the real microkernel into the shim. The parity test checks every entry against a
+naive product on a full and an edge tile, with B packed and in place, for both
+dtypes, and the tensorcontract sweep drives them through the planner and driver.
+
+Task 10 wraps `private_gemm_x86::gemm` (`tprims-kernel-pgx86`), pinned exactly,
+with `available()` gating and a portable no-op body off x86-64; its tests cover
+all four scalar kinds, both stride conventions, alpha with and without
+accumulation, and every conjugation combination.
+
+Task 11 adds the selection surface: `GemmConfig` (engine and kernel family),
+`SelectedGemm` (engine, family, geometry, grid; wraps `Selected` rather than
+replacing it), `gemm_with`, `list_kernels`, `Error::Select`, and the
+`kernel-gemm`/`kernel-pgx86` features. The packed path resolves when the plan is
+built, so an unknown id or an unusable engine is a constructor error, and an
+explicit engine or kernel stops the automatic strategy from silently falling
+back to the copying permute+GEMM plan. `ContractPlan::new_with` and
+`selected_gemm` carry the same choice into the contract layer.
+
+Task 12 adds `blas --engine faer|packed|pgx86` with the resolved family printed
+per case, updates `README.md`, `docs/architecture.md`, `docs/provenance.md` and
+`docs/decision-log.md`, and runs the local gate. Evidence for every gate step is
+in `.artifacts/gemm-engine-spec/task12/`.
+
+### Recorded deviations (continued)
+
+* `tprims-blas` folds the planned `select.rs` into `engine.rs`, and the planned
+  `concurrent_families.rs` test into `engine_select.rs`: one module and one
+  binary for one subject.
+* `SelectedGemm` has no `workspace` field: the driver's requirement depends on
+  the active partition, so it is derived per call rather than stored as a
+  property of the plan.
+* `ContractPlan` does not store the `GemmConfig`: the choice is baked into the
+  sub-plans (`Plan::with_kernel`, `PgPlan::gemm`), so a stored copy would be
+  unread state.
+
+### Performance gate: partial, blocked by host noise
+
+The prescribed gate (`.agents/skills/tprims-benchmark/SKILL.md`: idle L3 domain,
+`pinned.sh`, A/A noise floor, 1/4/8T, both corpora, default runs) could **not**
+be completed from this session: `pinned.sh` needs the pinned cores idle before
+*and* after each run, and this agent's own processes keep at least one core of
+the chosen domain slightly busy, so the 4T runs exhausted their retries
+(`cpus 32,33,34,35 busy before run (attempt 5)`). What did complete:
+
+* `contract --corpus tenferro-p1.json`, `BENCH_RUNS=5`, **1T**, both sides
+  pinning-verified and complete (228 case/variant rows each), new on cores 0–7
+  and old on 32–39, ~15 minutes apart. Calls-weighted ratio new/old of the
+  summed medians: `pg_exec` **0.973**, `tblis_exec` **0.926**; `pg_plan` 1.034
+  and `tblis_plan` 1.037 (35 µs against tens of ms of execution), whose worst
+  per-case ratio is 3.15.
+* Not measured: 4T and 8T, the `blas` corpus (faer and batched TBLIS rows), the
+  A/A noise floor, and the default `BENCH_RUNS=50`. No gate verdict is claimed
+  from the partial run.

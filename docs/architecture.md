@@ -29,9 +29,12 @@ The full statement and rationale are in [design principles](design-principles.md
 | --- | --- | --- |
 | `tprims-exec` | Execution context: serial, a Rayon pool borrowed from the host (or owned, for a C host), width chosen from work, kernel-level entry, SPMD `broadcast`; `strided::run_with_exec` bridges strided-rs kernels (feature `strided`). Planned: host scheduling callbacks, scratch queries. | rayon; strided-basic (optional) |
 | `strided-traits`, `strided-view`, `strided-perm`, `strided-basic` (external, strided-rs) | Checked borrowed strided views, scalar and conjugation contracts; copy, permutation and elementwise kernels. | none in tprims |
-| `tensorcontract` (imported, tensorprimitives-rs) | TBLIS-style packed panels, ISA-dispatched microkernels, the direct contraction driver with an `Spmd` seam. Planned: split its packing and microkernels into `tprims-gemm-kernel`. | none in tprims |
-| `tprims-blas` | GEMM and batched GEMM with two implementations (faer plus a loop over items; TBLIS-style through `tensorcontract`), TRSM; later SYRK/HERK and further BLAS-like operations. | faer, `tensorcontract`, `strided-view`, `tprims-exec` |
-| `tprims-linalg` | Dense linear algebra: factorizations, direct solves, least squares, symmetric/Hermitian and nonsymmetric eigendecomposition, factor objects, errors; `batched` module. faer per item. | faer, `tprims-blas`, `strided-view`, `tprims-exec`; `tensorcontract` only for the scalar trait that `tprims_blas::Scalar` extends |
+| `tprims-gemm-kernel` | The kernel contract: packed formats, kernel-family descriptors, CPU masks and validation, resolution with a frozen blocking policy, the partition policy, and the workspace provider a host lends through `Spmd::workspace`. No executor and no ambient state. | none in tprims |
+| `tprims-kernel-tensorcontract` (imported, tensorprimitives-rs) | Lukas Devos's scalar, AVX2, AVX-512 and NEON register-tile microkernels, with and without complex schemes, behind the family contract. | `tprims-gemm-kernel` |
+| `tprims-kernel-gemm`, `tprims-kernel-pgx86` | Call-only adapters: the `gemm-f64`/`gemm-f32` microkernels as direct-update families, and `private-gemm-x86` as a matrix engine. Both behind `tprims-blas` features, pinned exactly because the upstream entry points are undocumented. | `tprims-gemm-kernel` |
+| `tensorcontract` (imported, tensorprimitives-rs) | The direct contraction driver: packing traversal, the loop nest, write-back, and the `Spmd` seam it borrows a workspace through. It consumes resolved families rather than choosing kernels. | `tprims-gemm-kernel` |
+| `tprims-blas` | GEMM and batched GEMM with three engines (faer, `private-gemm-x86`, the packed driver) and a selectable kernel family, `SelectedGemm` reporting what ran, TRSM; later SYRK/HERK and further BLAS-like operations. | faer, `tensorcontract`, `tprims-gemm-kernel`, `strided-view`, `tprims-exec` |
+| `tprims-linalg` | Dense linear algebra: factorizations, direct solves, least squares, symmetric/Hermitian and nonsymmetric eigendecomposition, factor objects, errors; `batched` module. faer per item. | faer, `tprims-blas`, `strided-view`, `tprims-exec`; `tensorcontract` only for the scalar trait that `tprims_blas::Scalar` extends, which now comes from `tprims-gemm-kernel` |
 | `tprims-contract` | Binary contraction with free, contracted and batch indices (`dot_general` semantics): one plan API over two strategies, permute plus batched GEMM and TBLIS-style direct packing with bounded scatter. Thin permute / add wrappers. Needs matrix GEMM only; it does not depend on `tprims-linalg`. | `tprims-blas`, `tensorcontract`, `strided-basic`, `strided-view`, `tprims-exec` |
 
 The name `contract` was chosen over `tensordot` because NumPy, PyTorch and JAX `tensordot` has no batch indices; the operation here does, as in cuTENSOR's `cutensorContract`.
@@ -47,12 +50,12 @@ The name `contract` was chosen over `tensordot` because NumPy, PyTorch and JAX `
 | `tprims-contract-capi` | Contraction plans and execution | `tprims/contract.h` |
 | `tprims-bundle` | No API. `cdylib` + `staticlib` with one feature per part; installs the selected headers, a generated umbrella `tprims/tprims.h`, and a pkg-config file | |
 
-The planned `tprims-gemm-kernel` would have no C ABI: its packed format is an internal contract between drivers.
+`tprims-gemm-kernel` and its providers have no C ABI: the packed format is an internal contract between the driver and the kernels.
 
 ### Dependency rules
 
 - `tprims-exec` and `tprims-core` are the bottom of the tprims graph; their only stack dependency is strided-rs (`tprims-exec` optionally, for `strided::run_with_exec`; `tprims-core` for `strided-view`). strided-rs depends on nothing in tprims.
-- The microkernel layer (`tensorcontract` today, `tprims-gemm-kernel` when split) takes no tprims execution context of its own; drivers pass parallelism through its `Spmd` seam.
+- The kernel layer takes no tprims execution context of its own; drivers pass parallelism through the `Spmd` seam, and a workspace by borrowing the host's provider.
 - `tprims-contract` and `tprims-linalg` are siblings over `tprims-blas`; neither depends on the other.
 - `tprims-blas`, `tprims-linalg` and `tprims-contract` take an explicit `tprims-exec` context for every expensive operation.
 - A C ABI crate depends on its Rust part and `tprims-core` only. It contains no algorithm.
@@ -208,6 +211,34 @@ Consequences for the design:
 Not yet measured: real GEMM and contraction break-even against width, barrier cost inside one SPMD call, a subset-broadcast primitive, a homogeneous x86 CPU, and the fixed cost through the C ABI ([Prototype 4](experiments.md#prototype-4-c-abi-slice)).
 
 TBLIS also uses cooperating threads and barriers inside a blocked contraction. An arbitrary task-submission interface, including host callbacks, does not automatically provide that contract. Start with outer-batch parallelism and serial inner contractions, then prototype an explicitly synchronized inner driver on a Rayon context if large contractions need it.
+
+## Selection: two levels
+
+A GEMM is chosen in two steps, and both happen when a plan is built, never
+during a call.
+
+* **Engine** — `GemmConfig::engine`: faer (the default), the packed
+  micro-kernel driver, or `private-gemm-x86` called directly. faer is what every
+  caller got before this layer existed, so `Auto` keeps it; the other two are
+  opt-in per call or process-wide through `TPRIMS_GEMM_ENGINE`.
+* **Kernel family** — `GemmConfig::kernel` and `TPRIMS_GEMM_KERNEL`: a
+  registered family by id, or the first Auto-eligible one. Families carry their
+  own tile, packed layout, complex scheme, CPU requirements and cache blocking,
+  and resolution freezes the blocking policy and the partition so a later
+  environment change cannot move it.
+
+`SelectedGemm` reports what ran: the engine, the family id, its geometry and the
+grid. A choice that cannot be honoured is an error from the constructor — an
+unknown id, a feature that is not built, a CPU without the required
+instructions, or an engine a strategy has no arm for. `list_kernels` returns
+the registry for diagnostics.
+
+The packed driver is told where its scratch lives: a host that owns threads
+implements `Spmd::workspace` and lends a workspace (per-thread A block and tile,
+a page-aligned shared B panel, scatter vectors and barriers), which one pool or
+plan owns and every operation on it reuses. A host that does not gets per-call
+buffers. Nothing is process-global, and a lease returns to the owner that issued
+it.
 
 ## Two contraction strategies
 
