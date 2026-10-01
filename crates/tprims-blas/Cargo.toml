@@ -17,16 +17,10 @@ tprims-exec = { workspace = true }
 tprims-gemm-kernel = { workspace = true, default-features = false }
 tprims-kernel-tensorcontract = { workspace = true }
 tprims-kernel-cplx = { workspace = true }
-tprims-kernel-gemm = { workspace = true, optional = true }
-tprims-kernel-pgx86 = { workspace = true, optional = true }
 
 [features]
 default = ["std"]
 std = ["tprims-gemm-kernel/std", "tensorcontract/std"]
-# The gemm-f64/f32 and private-gemm-x86 providers, off by default so a bare
-# build keeps the compiled tensorcontract menu as its only registered set.
-kernel-gemm = ["dep:tprims-kernel-gemm"]
-kernel-pgx86 = ["dep:tprims-kernel-pgx86"]
 
 [dev-dependencies]
 rayon = { workspace = true }

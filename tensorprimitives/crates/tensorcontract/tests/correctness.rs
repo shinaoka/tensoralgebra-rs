@@ -21,6 +21,23 @@ use tensorcontract::kernel::{Blocking, ComplexMethod, KernelSet};
 use tensorcontract::plan::{ElementOp, Operand};
 use tensorcontract::reference::{contract_reference, RefOperand};
 use tensorcontract::{Layout, Plan};
+use tprims_exec::{Exec, Pool};
+
+/// One pool for every thread-count sweep, wide enough for the widest of them,
+/// so each run takes a budget of it instead of building threads.
+fn sweep_pool() -> &'static Pool<'static> {
+    static TP: std::sync::OnceLock<rayon::ThreadPool> = std::sync::OnceLock::new();
+    static POOL: std::sync::OnceLock<Pool<'static>> = std::sync::OnceLock::new();
+    POOL.get_or_init(|| {
+        let tp = TP.get_or_init(|| {
+            rayon::ThreadPoolBuilder::new()
+                .num_threads(64)
+                .build()
+                .unwrap()
+        });
+        Pool::borrow(tp)
+    })
+}
 
 // ---------------------------------------------------------------- utilities
 
@@ -966,8 +983,13 @@ fn threaded_case<T>(
             }
         }
         let mut d = start.clone();
+        let exec = Exec::rayon(sweep_pool())
+            .with_budget(nthreads.max(1))
+            .unwrap();
         unsafe {
-            plan.run_raw::<T>(
+            plan.run_raw_with::<T>(
+                &exec,
+                None,
                 alpha,
                 a.as_ptr(),
                 b.as_ptr(),

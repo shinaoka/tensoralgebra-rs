@@ -1,6 +1,6 @@
+use crate::ArenaProvider;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
-use tprims_gemm_kernel::ArenaProvider;
 
 /// A Rayon pool lent by the host for the lifetime `'p`.
 ///
@@ -80,7 +80,7 @@ impl<'p> Pool<'p> {
     /// worker buffers survive; a worker parked on this pool keeps its slot
     /// until it is idle again.
     pub fn trim_workspace(&self) {
-        use tprims_gemm_kernel::WorkspaceProvider;
+        use crate::WorkspaceProvider;
         self.workspace.trim();
     }
 

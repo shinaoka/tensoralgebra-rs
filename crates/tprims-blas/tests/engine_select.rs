@@ -57,19 +57,6 @@ fn every_engine_agrees() {
     assert!(packed.family_id.is_some());
     assert!(packed.mr > 0 && packed.nr > 0 && packed.kc > 0);
     assert_eq!(got, want, "the packed engine disagrees with faer");
-
-    if cfg!(feature = "kernel-pgx86") {
-        let (pg, got) = run(
-            &exec,
-            &GemmConfig {
-                engine: EngineChoice::PrivateGemmX86,
-                ..Default::default()
-            },
-        )
-        .unwrap();
-        assert_eq!(pg.engine, Engine::PrivateGemmX86);
-        assert_eq!(got, want, "private-gemm-x86 disagrees with faer");
-    }
 }
 
 #[test]
@@ -103,32 +90,6 @@ fn an_unknown_kernel_id_is_a_selection_error() {
     );
 }
 
-/// Without the provider, a gemm id must name the feature to build rather than
-/// claiming the id is unknown.
-#[test]
-fn an_unbuilt_provider_names_its_feature() {
-    if cfg!(feature = "kernel-gemm") {
-        return;
-    }
-    let exec = Exec::serial();
-    let cfg = GemmConfig {
-        engine: EngineChoice::Packed,
-        kernel: KernelChoice::Id("gemm.avx2.f64.8x6".into()),
-        ..Default::default()
-    };
-    let err = run(&exec, &cfg).unwrap_err();
-    assert!(
-        matches!(
-            err,
-            Error::Select(tprims_gemm_kernel::SelectError::NotBuilt {
-                feature: "kernel-gemm",
-                ..
-            })
-        ),
-        "{err:?}"
-    );
-}
-
 /// The process default is faer unless the environment chose otherwise at
 /// startup, and the engine list registers what this build has.
 #[test]
@@ -137,8 +98,6 @@ fn default_engine_and_kernel_list_are_available() {
     let kernels = list_kernels::<f64>();
     assert!(kernels.iter().any(|k| k.id.starts_with("tc.")));
     assert!(kernels.iter().any(|k| k.id == "portable.f64.4x4"));
-    #[cfg(feature = "kernel-gemm")]
-    assert!(kernels.iter().any(|k| k.id.starts_with("gemm.")));
 }
 
 /// Two families, two threads, one pool: the workspace is leased per call, so

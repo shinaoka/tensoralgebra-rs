@@ -17,6 +17,7 @@ authors = ["Lukas Devos <ldevos@flatironinstitute.org>"]
 
 [dependencies]
 num-complex.workspace = true
+tprims-exec.workspace = true
 tprims-gemm-kernel.workspace = true
 tprims-kernel-tensorcontract.workspace = true
 
@@ -31,10 +32,10 @@ default = ["std"]
 std = ["tprims-gemm-kernel/std", "tprims-kernel-tensorcontract/std"]
 
 [dev-dependencies]
-tprims-kernel-gemm = { path = "../../../crates/tprims-kernel-gemm" }
 tprims-kernel-cplx = { path = "../../../crates/tprims-kernel-cplx" }
 rand = "0.8"
 rand_chacha = "0.3"
+rayon.workspace = true
 
 [package.metadata.docs.rs]
 # Document every feature, so `std`-gated items are not silently missing.

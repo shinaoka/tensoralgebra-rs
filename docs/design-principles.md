@@ -25,13 +25,13 @@ The dependency graph is acyclic and layered: execution context at the bottom, th
 
 A new crate is created when a separate consumer and a stable interface justify it, not to mirror a taxonomy.
 
-- `tprims-linalg` keeps factorizations and solves together because solves depend on factor internals.
+- A linear-algebra part would keep factorizations and solves together because solves depend on factor internals (`tprims-linalg` was removed in [#37](https://github.com/tensor4all/tprims-rs/issues/37) for lack of a consumer).
 - Batched execution is a module of the crate that owns the per-item algorithm, not a crate of its own.
 - Out-of-scope work (for example Krylov solvers) is added later as a new part, without reshaping existing ones.
 
 ## 4. Short names under one prefix
 
-Crates are named `tprims-<part>`, where the part name says what it does: `tprims-exec`, `tprims-blas`, `tprims-linalg`, `tprims-contract`.
+Crates are named `tprims-<part>`, where the part name says what it does: `tprims-exec`, `tprims-blas`, `tprims-contract`.
 
 - The prefix identifies the family and avoids claiming generic crates.io names such as `blas3` or `tensordot`.
 - The prefix is neutral: no consumer or project name, because the stack is meant for users beyond its original project.

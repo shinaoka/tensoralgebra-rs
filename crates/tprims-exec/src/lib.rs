@@ -21,6 +21,7 @@ mod error;
 mod exec;
 mod pool;
 mod width;
+mod workspace;
 
 #[cfg(feature = "strided")]
 pub mod strided;
@@ -29,3 +30,6 @@ pub use error::ExecError;
 pub use exec::{Exec, Par};
 pub use pool::{Pool, PoolStats};
 pub use width::WidthPolicy;
+pub use workspace::{
+    ArenaProvider, PageBuf, TeamLease, TeamSet, WorkspaceProvider, WorkspaceReq, PAGE,
+};

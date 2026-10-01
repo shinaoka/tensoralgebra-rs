@@ -6,7 +6,7 @@
 //! pinned TAPP headers). `TAPP_create_executor` makes a serial executor;
 //! `tprims_tapp_executor_create_rayon` makes one that owns a pool;
 //! `TAPP_destroy_executor` stops and joins that pool. Operations of every
-//! part of `libtprims` (TAPP products, BLAS) take the same executor.
+//! part of `libtprims` (TAPP products) take the same executor.
 //!
 //! Rust hosts do not use this module: they lend their pool to
 //! [`tprims_exec::Pool::borrow`] and never create a second one.

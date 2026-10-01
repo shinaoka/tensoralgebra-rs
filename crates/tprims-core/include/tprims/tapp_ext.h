@@ -3,7 +3,7 @@
 
    The names are tprims-specific. A TAPP_executor is an intptr_t owned by the
    caller: it is created here (or by TAPP_create_executor), shared by any
-   number of plans and BLAS calls of this library, and destroyed by the
+   number of plans of this library, and destroyed by the
    standard TAPP_destroy_executor, which stops and joins an owned pool. Handles
    of another TAPP provider cannot be mixed in. */
 #ifndef TPRIMS_TAPP_EXT_H

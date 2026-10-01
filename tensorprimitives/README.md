@@ -152,10 +152,9 @@ four.
 | variable | effect |
 |---|---|
 | `TENSORCONTRACT_COMPLEX` | `planar` (default) \| `1m` \| `3m` — the complex method. `3m` is **not bitwise identical** to the other two, see above |
-| `TENSORCONTRACT_THREADS` | thread count, default **1**. Bitwise identical at any count, so never a correctness or accuracy decision |
+| `TENSORCONTRACT_THREADS` | planning-width hint only (default **1**): it no longer starts threads. Execution threads come from the `tprims_exec::Exec` passed to `Plan::run_with`; a plan run without one is serial |
 | `TENSORCONTRACT_KERNEL` | `auto` (default) \| `scalar` \| `avx2` \| `avx512` \| `neon` — pin the instruction set. A pinned ISA the CPU lacks falls back to scalar. **Not bitwise identical across arms**, see above |
 | `TENSORCONTRACT_PARTITION` | `domain` (default) \| `legacy` — which rule apportions threads over the output; or `m` \| `n` \| `<pm>x<pn>` to pin it |
-| `TENSORCONTRACT_POOL` | `on` — reuse parked threads instead of spawning per call. Off by default: measured on two machine classes, and it does not transfer |
 | `TENSORCONTRACT_BLOCKMODEL` | `legacy` (default) \| `model` — cache blocking from probed cache descriptors instead of hardcoded constants. `legacy` is the default on evidence |
 | `TENSORCONTRACT_ORIENT` | `none` \| `swap` \| `legacy` — pin the row/column orientation |
 | `TENSORCONTRACT_ROWBLOCK` | `base` \| `auto` \| `mr=<n>` \| `idx=<i>` — pin the micro-tile row block |

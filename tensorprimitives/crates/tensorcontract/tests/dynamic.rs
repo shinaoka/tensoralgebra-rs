@@ -9,59 +9,40 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering::SeqCst};
 use tensorcontract::element::{Element, Real};
 use tensorcontract::kernel::KernelSet;
 use tensorcontract::reference::{contract_reference, RefOperand};
-use tensorcontract::spmd::Spmd;
 use tensorcontract::{
     dynamic_report, execute_resolved, execute_resolved_instrumented, Assignment, Blocking,
     DynStats, KernelChoice, Layout, Operand, Plan, C32, C64,
 };
-use tprims_gemm_kernel::{
-    ArenaProvider, Families, PartitionOpts, PartitionPolicy, SelectError, WorkspaceProvider,
-};
+use tprims_exec::{ArenaProvider, Exec, Pool, WorkspaceProvider};
+use tprims_gemm_kernel::{Families, PartitionOpts, PartitionPolicy, SelectError};
 
-/// Co-scheduled scoped threads; optionally refuses, runs a per-worker hook and
-/// lends a workspace.
+/// A team of `width` workers on a pool of its own, and optionally a lent
+/// workspace. A refusing team runs the whole execution on one of its own
+/// workers, so the driver's broadcast is declined and the caller does the work.
 struct Team {
     width: usize,
     refuse: bool,
-    hook: Option<fn(usize)>,
     ws: Option<ArenaProvider>,
-    broadcasts: AtomicUsize,
+    pool: Pool<'static>,
 }
 impl Team {
     fn new(width: usize) -> Self {
+        let tp = rayon::ThreadPoolBuilder::new()
+            .num_threads(width.max(2))
+            .build()
+            .unwrap();
         Self {
             width,
             refuse: false,
-            hook: None,
             ws: None,
-            broadcasts: AtomicUsize::new(0),
+            pool: Pool::owned(tp),
         }
     }
-}
-impl Spmd for Team {
-    fn width(&self) -> usize {
-        self.width
+    fn exec(&self) -> Exec<'_> {
+        Exec::rayon(&self.pool).with_budget(self.width).unwrap()
     }
-    fn broadcast(&self, p: usize, f: &(dyn Fn(usize) + Sync)) -> bool {
-        self.broadcasts.fetch_add(1, SeqCst);
-        if self.refuse {
-            return false;
-        }
-        let hook = self.hook;
-        std::thread::scope(|s| {
-            for t in 0..p {
-                s.spawn(move || {
-                    if let Some(h) = hook {
-                        h(t)
-                    }
-                    f(t)
-                });
-            }
-        });
-        true
-    }
-    fn workspace(&self) -> Option<&dyn WorkspaceProvider> {
-        self.ws.as_ref().map(|w| w as &dyn WorkspaceProvider)
+    fn broadcasts(&self) -> u64 {
+        self.pool.stats().broadcasts
     }
 }
 
@@ -161,9 +142,30 @@ fn run<T>(
     stats: Option<&DynStats>,
 ) -> Vec<T>
 where
+    T: Element + Families + Send,
+    T::Real: KernelSet,
+{
+    if team.refuse {
+        team.exec()
+            .install(2, |_| run_on_team::<T>(id, s, policy, team, stats))
+    } else {
+        run_on_team::<T>(id, s, policy, team, stats)
+    }
+}
+
+fn run_on_team<T>(
+    id: &str,
+    s: &Spec,
+    policy: Option<PartitionPolicy>,
+    team: &Team,
+    stats: Option<&DynStats>,
+) -> Vec<T>
+where
     T: Element + Families,
     T::Real: KernelSet,
 {
+    let exec = team.exec();
+    let workspace = team.ws.as_ref().map(|w| w as &dyn WorkspaceProvider);
     let b = layouts(s);
     let a: Vec<T> = (0..b.la.storage_len() as usize).map(value).collect();
     let bv: Vec<T> = (0..b.lb.storage_len() as usize)
@@ -198,7 +200,8 @@ where
             Some(st) => execute_resolved_instrumented(
                 &plan,
                 &rg,
-                Some(team),
+                &exec,
+                workspace,
                 st,
                 alpha,
                 a.as_ptr(),
@@ -210,7 +213,8 @@ where
             None => execute_resolved(
                 &plan,
                 &rg,
-                Some(team),
+                &exec,
+                workspace,
                 alpha,
                 a.as_ptr(),
                 bv.as_ptr(),
@@ -232,7 +236,7 @@ const F64: &str = "portable.f64.4x4";
 /// Dynamic equals static equals serial, bitwise, at every width.
 fn assert_bitwise<T>(id: &str, s: Spec, job: (usize, usize))
 where
-    T: Element + Families,
+    T: Element + Families + Send,
     T::Real: KernelSet,
 {
     let serial = run::<T>(id, &s, None, &Team::new(1), None);
@@ -538,7 +542,7 @@ fn width_one_runs_on_the_caller_without_claims_and_a_refusal_runs_serially() {
     let one = Team::new(1);
     let got = run::<f64>(F64, &s, dynamic(8, 8), &one, Some(&stats));
     assert!(got == serial);
-    assert_eq!(one.broadcasts.load(SeqCst), 0, "width 1 never broadcasts");
+    assert_eq!(one.broadcasts(), 0, "width 1 never broadcasts");
     assert_eq!(stats.snapshot().claims, 0, "no atomic claims at width 1");
 
     // A declined broadcast runs nothing on the team; the caller does the work
@@ -548,7 +552,7 @@ fn width_one_runs_on_the_caller_without_claims_and_a_refusal_runs_serially() {
     refuse.refuse = true;
     let got = run::<f64>(F64, &s, dynamic(8, 8), &refuse, Some(&stats));
     assert!(got == serial);
-    assert_eq!(refuse.broadcasts.load(SeqCst), 1);
+    assert_eq!(refuse.broadcasts(), 0, "a declined broadcast runs nothing");
     assert_eq!(stats.snapshot().claims, 0);
 }
 
@@ -694,7 +698,10 @@ mod skew {
     use std::cell::Cell;
     use tprims_gemm_kernel::{KernelFamily, UkrFn};
 
-    thread_local! { static SLOW: Cell<bool> = const { Cell::new(false) }; }
+    /// Worker 0 of the team's pool is the slow one.
+    fn slow() -> bool {
+        rayon::current_thread_index() == Some(0)
+    }
     static ENTERED: AtomicBool = AtomicBool::new(false);
     static OTHER_CALLS: AtomicUsize = AtomicUsize::new(0);
     static TIMED_OUT: AtomicBool = AtomicBool::new(false);
@@ -722,7 +729,7 @@ mod skew {
     unsafe fn skewed(k: usize, a: *const f64, b: *const f64, out: *mut f64) {
         thread_local! { static FIRST: Cell<bool> = const { Cell::new(true) }; }
         let first = FIRST.replace(false);
-        if SLOW.get() {
+        if slow() {
             if first {
                 ENTERED.store(true, SeqCst);
                 wait_for(|| OTHER_CALLS.load(SeqCst) >= THRESHOLD);
@@ -752,10 +759,6 @@ mod skew {
         })
     }
 
-    fn slow_zero(t: usize) {
-        SLOW.set(t == 0);
-    }
-
     #[test]
     fn a_stalled_worker_does_not_hold_up_the_rest_and_the_result_is_exact() {
         // SAFETY: the manifest copies the validated portable 4x4 footprint,
@@ -773,8 +776,7 @@ mod skew {
         };
         let serial = run::<f64>("portable.f64.4x4", &s, None, &Team::new(1), None);
         let stats = DynStats::new(4);
-        let mut team = Team::new(4);
-        team.hook = Some(slow_zero);
+        let team = Team::new(4);
         let got = run::<f64>("test.skew.f64.4x4", &s, dynamic(8, 8), &team, Some(&stats));
         assert!(!TIMED_OUT.load(SeqCst), "coordination timed out");
         assert!(ENTERED.load(SeqCst), "worker 0 really did hold a job");

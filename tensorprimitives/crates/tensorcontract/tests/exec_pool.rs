@@ -2,29 +2,14 @@
 
 use std::time::Duration;
 
-use tensorcontract::spmd::Spmd;
 use tensorcontract::{Layout, Operand, Plan, TensorView, TensorViewMut};
 use tprims_exec::{Exec, Pool};
-
-struct ExecSpmd<'a> {
-    exec: &'a Exec<'a>,
-    width: usize,
-}
-
-impl Spmd for ExecSpmd<'_> {
-    fn width(&self) -> usize {
-        self.width
-    }
-    fn broadcast(&self, p: usize, f: &(dyn Fn(usize) + Sync)) -> bool {
-        self.exec.broadcast(p, f).is_ok()
-    }
-}
 
 const M: usize = 256;
 const N: usize = 240;
 const K: usize = 200;
 
-fn gemm(spmd: Option<&dyn Spmd>) -> Vec<f64> {
+fn gemm(exec: Option<&Exec<'_>>) -> Vec<f64> {
     let av: Vec<f64> = (0..M * K).map(|x| (x % 13) as f64 - 6.0).collect();
     let bv: Vec<f64> = (0..K * N).map(|x| (x % 7) as f64 * 0.5).collect();
     let la = Layout::col_major(&[M as i64, K as i64]);
@@ -45,8 +30,8 @@ fn gemm(spmd: Option<&dyn Spmd>) -> Vec<f64> {
         TensorView::new(&bv, &lb, &ib),
     );
     let d = TensorViewMut::new(&mut out, &ld, &id);
-    match spmd {
-        Some(s) => plan.run_with(s, 1.0, a, b, 0.0, None, d).unwrap(),
+    match exec {
+        Some(e) => plan.run_with(e, 1.0, a, b, 0.0, None, d).unwrap(),
         None => plan.run(1.0, a, b, 0.0, None, d).unwrap(),
     }
     out
@@ -61,10 +46,7 @@ fn contraction_runs_spmd_on_the_borrowed_pool() {
     let pool = Pool::borrow(&tp);
     let exec = Exec::rayon(&pool);
     let serial = gemm(None);
-    let par = gemm(Some(&ExecSpmd {
-        exec: &exec,
-        width: 4,
-    }));
+    let par = gemm(Some(&exec));
     assert_eq!(par, serial);
     assert_eq!(pool.stats().broadcasts, 1);
 }
@@ -80,12 +62,7 @@ fn nested_contraction_on_a_worker_falls_back_serially() {
         let pool = Pool::borrow(&tp);
         let exec = Exec::rayon(&pool);
         let serial = gemm(None);
-        let nested = exec.install(2, |_| {
-            gemm(Some(&ExecSpmd {
-                exec: &exec,
-                width: 4,
-            }))
-        });
+        let nested = exec.install(2, |_| gemm(Some(&exec)));
         assert_eq!(nested, serial);
         assert_eq!(pool.stats().broadcasts, 0);
         let _ = tx.send(());

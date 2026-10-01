@@ -22,9 +22,9 @@ pub fn conflicting_env(
     })
 }
 
-/// Variables that change tensorcontract's partition or thread source and are
-/// therefore not allowed during a measured run.
-pub const FORBIDDEN_ENV_VARS: [&str; 2] = ["TENSORCONTRACT_PARTITION", "TENSORCONTRACT_POOL"];
+/// Variables that change tensorcontract's partition and are therefore not
+/// allowed during a measured run.
+pub const FORBIDDEN_ENV_VARS: [&str; 1] = ["TENSORCONTRACT_PARTITION"];
 
 /// The first set variable in [`FORBIDDEN_ENV_VARS`], with its value.
 pub fn forbidden_env(get: impl Fn(&str) -> Option<String>) -> Option<(String, String)> {

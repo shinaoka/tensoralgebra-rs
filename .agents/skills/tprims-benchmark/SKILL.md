@@ -1,6 +1,6 @@
 ---
 name: tprims-benchmark
-description: Use when running, adding or reporting a tprims-rs benchmark — the tprims-bench binaries (exec_entry, blas, linalg, contract, capi_rust), the C benchmark, or tenferro-benchmark runs that compare tprims against tenferro's default backend. Covers building, choosing idle cores in one L3 domain, pinning, paired thread counts, the A/A noise floor and recording results; the rules themselves live in PERFORMANCE_TIPS.md.
+description: Use when running, adding or reporting a tprims-rs benchmark — the tprims-bench binaries (exec_entry, blas, contract, capi_rust), the C benchmark, or tenferro-benchmark runs that compare tprims against tenferro's default backend. Covers building, choosing idle cores in one L3 domain, pinning, paired thread counts, the A/A noise floor and recording results; the rules themselves live in PERFORMANCE_TIPS.md.
 ---
 
 # tprims benchmark
@@ -31,7 +31,6 @@ Protocol`, `CPU Threading Contract`); read those sections first.
    `benchmarks/benchmarks/tprims/contract/run.sh OUT CPUS 1 4 8` and
    `CORPUS=file benchmarks/benchmarks/tprims/blas/run.sh OUT CPUS 1 4 8`
    (both `benchmarks/scripts/paired.sh`, which also writes `manifest.txt`),
-   `benchmarks/benchmarks/tprims/linalg/run.sh CPUS1 CPUS4 OUT`,
    `benchmarks/c/run.sh CPUS1 CPUS4 OUT`. A recorded workload is replayed
    with `CORPUS=file` (`contract --corpus`, `blas --corpus`; format in
    `benchmarks/src/corpus.rs`). For a single binary:

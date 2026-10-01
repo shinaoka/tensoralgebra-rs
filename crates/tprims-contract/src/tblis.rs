@@ -4,7 +4,6 @@
 //! arXiv:1607.00291): general strides are packed straight into the
 //! micro-kernel panels, so no operand is transposed in memory.
 use strided_view::{StridedView, StridedViewMut};
-use tensorcontract::spmd::Spmd;
 use tensorcontract::{Layout, Operand, Plan};
 use tprims_blas::{Conj, Scalar};
 use tprims_exec::{Exec, WidthPolicy};
@@ -12,26 +11,6 @@ use tprims_exec::{Exec, WidthPolicy};
 use crate::util::select_err;
 use crate::{DotGeneral, Shape};
 use crate::{Error, Result};
-
-struct ExecSpmd<'a> {
-    exec: &'a Exec<'a>,
-    width: usize,
-    /// Storage this operation's threads share: the pool's when it borrowed one,
-    /// and the plan's own otherwise, so a serial plan reuses its buffers too.
-    workspace: &'a dyn tprims_gemm_kernel::WorkspaceProvider,
-}
-
-impl Spmd for ExecSpmd<'_> {
-    fn width(&self) -> usize {
-        self.width
-    }
-    fn broadcast(&self, p: usize, f: &(dyn Fn(usize) + Sync)) -> bool {
-        self.exec.broadcast(p, f).is_ok()
-    }
-    fn workspace(&self) -> Option<&dyn tprims_gemm_kernel::WorkspaceProvider> {
-        Some(self.workspace)
-    }
-}
 
 /// A tensorcontract plan with its labels, built once.
 ///
@@ -41,7 +20,7 @@ impl Spmd for ExecSpmd<'_> {
 pub(crate) struct TbPlan {
     plan: Plan,
     work: f64,
-    workspace: tprims_gemm_kernel::ArenaProvider,
+    workspace: tprims_exec::ArenaProvider,
 }
 
 impl TbPlan {
@@ -192,7 +171,7 @@ pub(crate) fn plan<T: Scalar>(
     Ok(TbPlan {
         plan,
         work: 2.0 * (out as f64) * (k as f64),
-        workspace: tprims_gemm_kernel::ArenaProvider::new(),
+        workspace: tprims_exec::ArenaProvider::new(),
     })
 }
 
@@ -213,11 +192,8 @@ pub(crate) fn execute<T: Scalar>(
     );
     // A borrowed pool lends its own arena; a serial context uses the plan's,
     // which is why a serial plan's steady state allocates nothing either.
-    let spmd = ExecSpmd {
-        exec,
-        width,
-        workspace: exec.workspace().unwrap_or(&p.workspace),
-    };
+    let exec = exec.with_budget(width).unwrap_or(*exec);
+    let workspace: &dyn tprims_exec::WorkspaceProvider = exec.workspace().unwrap_or(&p.workspace);
     let d = c.as_mut_ptr();
     // SAFETY: the plan was built from these views' validated layouts (checked
     // again in `ContractPlan::execute`); all three are non-empty so their
@@ -225,7 +201,7 @@ pub(crate) fn execute<T: Scalar>(
     // tensorcontract's in-place form.
     unsafe {
         p.plan
-            .run_raw_with(&spmd, alpha, a.ptr(), b.ptr(), beta, d, d)
+            .run_raw_with(&exec, Some(workspace), alpha, a.ptr(), b.ptr(), beta, d, d)
     };
     Ok(())
 }

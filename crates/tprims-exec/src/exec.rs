@@ -101,7 +101,7 @@ impl<'a> Exec<'a> {
     /// A pool lends its own arena to every operation that runs on it; the
     /// serial context owns nothing, so a caller that wants reuse keeps a
     /// provider of its own and lends it directly.
-    pub fn workspace(&self) -> Option<&dyn tprims_gemm_kernel::WorkspaceProvider> {
+    pub fn workspace(&self) -> Option<&dyn crate::WorkspaceProvider> {
         match self {
             Exec::Serial => None,
             Exec::Rayon { pool, .. } => Some(pool.workspace()),

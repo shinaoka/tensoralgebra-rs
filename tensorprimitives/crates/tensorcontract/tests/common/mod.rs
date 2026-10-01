@@ -265,29 +265,24 @@ pub struct Shape {
     pub k: usize,
 }
 
-/// A host that supplies co-scheduled workers from scoped threads, as the
-/// tprims seam expects.
-pub struct ScopeSpmd {
-    /// Workers this host promises.
-    pub width: usize,
-}
-
-impl tensorcontract::spmd::Spmd for ScopeSpmd {
-    fn width(&self) -> usize {
-        self.width
-    }
-    fn broadcast(&self, p: usize, f: &(dyn Fn(usize) + Sync)) -> bool {
-        std::thread::scope(|s| {
-            for t in 0..p {
-                s.spawn(move || f(t));
-            }
+/// A pool of eight workers shared by every width-sweep run. Each run takes a
+/// budget of it, so the pool is built once instead of once per call.
+fn sweep_pool() -> &'static tprims_exec::Pool<'static> {
+    static TP: std::sync::OnceLock<rayon::ThreadPool> = std::sync::OnceLock::new();
+    static POOL: std::sync::OnceLock<tprims_exec::Pool<'static>> = std::sync::OnceLock::new();
+    POOL.get_or_init(|| {
+        let tp = TP.get_or_init(|| {
+            rayon::ThreadPoolBuilder::new()
+                .num_threads(8)
+                .build()
+                .unwrap()
         });
-        true
-    }
+        tprims_exec::Pool::borrow(tp)
+    })
 }
 
-/// One `ij,jk->ik` contraction at `width`, through the host seam and the
-/// resolved driver, with `D` overwritten (`beta = 0`).
+/// One `ij,jk->ik` contraction at `width`, through an `Exec` of the
+/// shared pool and the resolved driver, with `D` overwritten (`beta = 0`).
 pub fn run_with_width<T>(
     id: &'static str,
     width: usize,
@@ -328,14 +323,17 @@ where
     } else {
         plan.resolved::<T>().unwrap()
     };
-    let host = ScopeSpmd { width };
+    let exec = tprims_exec::Exec::rayon(sweep_pool())
+        .with_budget(width)
+        .unwrap();
     // SAFETY: every buffer is sized by its layout, `beta` is zero so `C` is
     // never read, and `D` is exclusively borrowed here.
     unsafe {
         tensorcontract::execute_resolved(
             &plan,
             &rg,
-            Some(&host),
+            &exec,
+            None,
             T::one(),
             a.as_ptr(),
             b.as_ptr(),

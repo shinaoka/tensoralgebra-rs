@@ -1011,9 +1011,10 @@ dependencies = [
  "num-complex",
  "rand",
  "rand_chacha",
+ "rayon",
+ "tprims-exec",
  "tprims-gemm-kernel",
  "tprims-kernel-cplx",
- "tprims-kernel-gemm",
  "tprims-kernel-tensorcontract",
 ]
 
@@ -1035,7 +1036,6 @@ dependencies = [
  "tensorcontract",
  "tprims-core",
  "tprims-exec",
- "tprims-gemm-kernel",
 ]
 
 [[package]]
@@ -1084,7 +1084,6 @@ dependencies = [
  "tprims-core",
  "tprims-exec",
  "tprims-gemm-kernel",
- "tprims-linalg",
 ]
 
 [[package]]
@@ -1100,18 +1099,7 @@ dependencies = [
  "tprims-exec",
  "tprims-gemm-kernel",
  "tprims-kernel-cplx",
- "tprims-kernel-gemm",
- "tprims-kernel-pgx86",
  "tprims-kernel-tensorcontract",
-]
-
-[[package]]
-name = "tprims-blas-capi"
-version = "0.1.0"
-dependencies = [
- "num-complex",
- "tprims-blas",
- "tprims-core",
 ]
 
 [[package]]
@@ -1119,7 +1107,6 @@ name = "tprims-bundle"
 version = "0.1.0"
 dependencies = [
  "tensorprimitives-tapp",
- "tprims-blas-capi",
  "tprims-core",
 ]
 
@@ -1187,10 +1174,7 @@ dependencies = [
  "faer",
  "rayon",
  "strided-basic",
- "tensorcontract",
  "thiserror",
- "tprims-gemm-kernel",
- "tprims-kernel-tensorcontract",
 ]
 
 [[package]]
@@ -1211,43 +1195,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "tprims-kernel-gemm"
-version = "0.1.0"
-dependencies = [
- "gemm-common",
- "gemm-f32",
- "gemm-f64",
- "tprims-gemm-kernel",
-]
-
-[[package]]
-name = "tprims-kernel-pgx86"
-version = "0.1.0"
-dependencies = [
- "num-complex",
- "private-gemm-x86",
-]
-
-[[package]]
 name = "tprims-kernel-tensorcontract"
 version = "0.1.0"
 dependencies = [
  "tensorcontract",
  "tprims-gemm-kernel",
-]
-
-[[package]]
-name = "tprims-linalg"
-version = "0.1.0"
-dependencies = [
- "faer",
- "num-complex",
- "rayon",
- "strided-view",
- "tensorcontract",
- "thiserror",
- "tprims-blas",
- "tprims-exec",
 ]
 
 [[package]]

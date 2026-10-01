@@ -37,15 +37,11 @@ fn threads_flag_parses_and_rejects_zero() {
 }
 
 #[test]
-fn partition_and_pool_overrides_are_rejected() {
+fn partition_override_is_rejected() {
     use super::forbidden_env;
     assert_eq!(
         forbidden_env(env(&[("TENSORCONTRACT_PARTITION", "4x2")])),
         Some(("TENSORCONTRACT_PARTITION".into(), "4x2".into()))
-    );
-    assert_eq!(
-        forbidden_env(env(&[("TENSORCONTRACT_POOL", "on")])).map(|x| x.0),
-        Some("TENSORCONTRACT_POOL".into())
     );
     assert_eq!(forbidden_env(env(&[])), None);
 }

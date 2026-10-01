@@ -371,17 +371,15 @@ fn bad_choices_fail_before_compute_including_for_empty_problems() {
 #[test]
 fn an_incompatible_engine_or_a_forced_id_is_refused_not_ignored() {
     let cat = catalog::<f64>(own::f64_families());
-    for engine in [EngineChoice::Faer, EngineChoice::PrivateGemmX86] {
-        let cfg = GemmConfig {
-            engine,
-            ..Default::default()
-        };
-        let (r, _) = tiny(&cfg, &cat, (6, 6, 6), |_, _| unreachable!(), 1.0);
-        assert!(
-            matches!(r, Err(Error::Select(SelectError::EngineUnsupported { .. }))),
-            "{r:?}"
-        );
-    }
+    let cfg = GemmConfig {
+        engine: EngineChoice::Faer,
+        ..Default::default()
+    };
+    let (r, _) = tiny(&cfg, &cat, (6, 6, 6), |_, _| unreachable!(), 1.0);
+    assert!(
+        matches!(r, Err(Error::Select(SelectError::EngineUnsupported { .. }))),
+        "{r:?}"
+    );
     let cfg = GemmConfig {
         kernel: KernelChoice::Id("portable.f64.4x4".into()),
         ..Default::default()

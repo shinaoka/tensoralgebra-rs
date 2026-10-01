@@ -1,28 +1,12 @@
 //! A pinned tensorcontract partition (`TENSORCONTRACT_PARTITION`) must not
-//! widen the SPMD team beyond the host's width, nor make a declined
+//! widen the SPMD team beyond the `Exec`'s budget, nor make a declined
 //! broadcast spawn threads. Own test binary: tensorcontract reads the
 //! variable once per process.
 
 use std::time::Duration;
 
-use tensorcontract::spmd::Spmd;
 use tensorcontract::{Layout, Operand, Plan, TensorView, TensorViewMut};
 use tprims_exec::{Exec, Pool};
-
-struct ExecSpmd<'a> {
-    exec: &'a Exec<'a>,
-    width: usize,
-}
-
-impl Spmd for ExecSpmd<'_> {
-    fn width(&self) -> usize {
-        self.width
-    }
-    fn broadcast(&self, p: usize, f: &(dyn Fn(usize) + Sync)) -> bool {
-        assert!(p <= self.width, "p={p} exceeds width {}", self.width);
-        self.exec.broadcast(p, f).is_ok()
-    }
-}
 
 fn os_threads() -> usize {
     std::fs::read_dir("/proc/self/task")
@@ -30,7 +14,7 @@ fn os_threads() -> usize {
         .unwrap_or(0)
 }
 
-fn gemm(spmd: &dyn Spmd) -> Vec<f64> {
+fn gemm(exec: &Exec<'_>) -> Vec<f64> {
     let (m, n, k) = (256usize, 240usize, 200usize);
     let av: Vec<f64> = (0..m * k).map(|x| (x % 13) as f64).collect();
     let bv: Vec<f64> = (0..k * n).map(|x| (x % 7) as f64).collect();
@@ -47,7 +31,7 @@ fn gemm(spmd: &dyn Spmd) -> Vec<f64> {
     .unwrap();
     let mut out = vec![0.0; m * n];
     plan.run_with(
-        spmd,
+        exec,
         1.0,
         TensorView::new(&av, &la, &ia),
         TensorView::new(&bv, &lb, &ib),
@@ -70,20 +54,13 @@ fn pinned_partition_respects_host_width_and_never_spawns() {
             .build()
             .unwrap();
         let pool = Pool::borrow(&tp);
-        let exec = Exec::rayon(&pool);
-        let wide = gemm(&ExecSpmd {
-            exec: &exec,
-            width: 4,
-        });
+        // Budget below the pool size: the pinned 4x2 grid must shrink to it.
+        let exec = Exec::rayon(&pool).with_budget(3).unwrap();
+        let wide = gemm(&exec);
         assert_eq!(pool.stats().broadcasts, 1);
         // Declined broadcast (caller is a worker): must run serially, no spawn.
         let before = os_threads();
-        let nested = exec.install(2, |_| {
-            gemm(&ExecSpmd {
-                exec: &exec,
-                width: 4,
-            })
-        });
+        let nested = exec.install(2, |_| gemm(&exec));
         assert_eq!(nested, wide);
         if before > 0 {
             assert_eq!(os_threads(), before);

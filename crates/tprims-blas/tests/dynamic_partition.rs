@@ -116,11 +116,7 @@ fn invalid_policies_fail_before_compute_even_for_empty_problems() {
 fn other_engines_and_strategies_refuse_a_partition_policy() {
     let exec = Exec::serial();
     let policy = PartitionPolicy::DynamicTiles { job_m: 8, job_n: 8 };
-    for engine in [
-        EngineChoice::Faer,
-        EngineChoice::PrivateGemmX86,
-        EngineChoice::Auto,
-    ] {
+    for engine in [EngineChoice::Faer, EngineChoice::Auto] {
         let cfg = GemmConfig {
             engine: engine.clone(),
             partition: policy,

@@ -99,16 +99,6 @@ fn cpu_contains() {
 }
 
 #[test]
-fn select_error_messages_name_the_cause() {
-    let e = SelectError::NotBuilt {
-        id: "gemm.avx2.f64.8x6".into(),
-        feature: "kernel-gemm",
-    };
-    assert!(e.to_string().contains("kernel-gemm"));
-    assert!(e.to_string().contains("gemm.avx2.f64.8x6"));
-}
-
-#[test]
 fn invalid_geometry_and_complex_scheme_are_rejected() {
     let mut f = fam(4, 4);
     f.blocks.kc = (0, 512);
@@ -237,19 +227,6 @@ fn registry_registration_cpu_mask_and_forced_errors() {
     assert!(matches!(
         Registry::select::<f64>(COMPLEX.id, CpuFeatures::NONE),
         Err(SelectError::DtypeMismatch { .. })
-    ));
-    register_known_prefix("test.", "kernel-test-built");
-    assert!(matches!(
-        Registry::select::<f64>("test.typo", CpuFeatures::NONE),
-        Err(SelectError::UnknownId { .. })
-    ));
-    register_known_prefix("notbuilt.", "kernel-notbuilt");
-    assert!(matches!(
-        Registry::select::<f64>("notbuilt.f64", CpuFeatures::NONE),
-        Err(SelectError::NotBuilt {
-            feature: "kernel-notbuilt",
-            ..
-        })
     ));
     assert!(matches!(
         Registry::select::<f64>("no-such-id", CpuFeatures::NONE),

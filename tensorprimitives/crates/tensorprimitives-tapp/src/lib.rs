@@ -143,7 +143,6 @@ use std::ffi::c_void;
 use std::os::raw::c_int;
 
 use num_complex::Complex;
-use tensorcontract::spmd::Spmd;
 use tensorcontract::{Element, ElementOp, Layout, Operand, Plan};
 use tprims_core::exec::with_executor;
 use tprims_core::status::{
@@ -891,25 +890,6 @@ pub unsafe extern "C" fn TAPP_destroy_tensor_product(plan: isize) -> c_int {
 /// paths on this driver.
 const NS_PER_FLOP: f64 = 0.05;
 
-/// `Spmd` on an `Exec`: co-scheduled threads come from the executor's pool and
-/// never from `std::thread::scope`.
-struct ExecSpmd<'a> {
-    exec: &'a Exec<'a>,
-    width: usize,
-}
-
-impl Spmd for ExecSpmd<'_> {
-    fn width(&self) -> usize {
-        self.width
-    }
-    fn broadcast(&self, p: usize, f: &(dyn Fn(usize) + Sync)) -> bool {
-        self.exec.broadcast(p, f).is_ok()
-    }
-    fn workspace(&self) -> Option<&dyn tprims_gemm_kernel::WorkspaceProvider> {
-        self.exec.workspace()
-    }
-}
-
 /// Data pointers of one execution, as the caller passed them.
 #[derive(Clone, Copy)]
 struct Item {
@@ -989,11 +969,12 @@ impl Product {
         };
         let beta = if it.c.is_null() { T::zero() } else { beta };
         let width = exec.width_for(self.flops * NS_PER_FLOP, &WidthPolicy::default());
-        let spmd = ExecSpmd { exec, width };
+        let exec = exec.with_budget(width).unwrap_or(*exec);
         // SAFETY: forwarded; the executor lends the threads, none are spawned.
         unsafe {
             self.plan.run_raw_with::<T>(
-                &spmd,
+                &exec,
+                None,
                 alpha,
                 it.a as *const T,
                 it.b as *const T,
@@ -1087,7 +1068,7 @@ unsafe fn dispatch(
 /// default serial executor), or an executor of this library; the call uses at
 /// most its budget (read once, here), runs small work on the calling thread
 /// without entering the pool, and runs wider work on the executor's pool through
-/// the `Spmd` seam — never through `TENSORCONTRACT_THREADS` or a pool of its own.
+/// `Exec::broadcast` — never through `TENSORCONTRACT_THREADS` or a pool of its own.
 /// `alpha` and `beta` are read as the plan's element type, so they are pointers
 /// to an `f32`, `f64`, `float _Complex` or `double _Complex` accordingly.
 ///

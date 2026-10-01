@@ -1,7 +1,7 @@
 //! Workspace ownership: no allocation for a zero requirement, page-aligned
 //! reuse, fresh buffers on re-entry, exclusive team sets, and per-worker
 //! first touch.
-use tprims_gemm_kernel::*;
+use tprims_exec::*;
 
 #[test]
 fn zero_requirement_never_allocates() {
@@ -144,4 +144,32 @@ fn two_owners_do_not_share_a_worker_slot() {
     a.with_worker(&req, &mut |p, _, _| pa = p as usize);
     b.with_worker(&req, &mut |p, _, _| pb = p as usize);
     assert_ne!(pa, pb);
+}
+
+/// A callback that unwinds must not leave its worker slot marked as borrowed:
+/// the next call on the thread reuses (and grows) the slot, and `trim` can
+/// release it, instead of every later call taking the fresh-buffer path.
+#[test]
+fn a_panicking_callback_releases_the_worker_slot() {
+    let arena = ArenaProvider::default();
+    let small = WorkspaceReq {
+        a_bytes: 4096,
+        ..WorkspaceReq::default()
+    };
+    let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        arena.with_worker(&small, &mut |_, _, _| panic!("kernel panicked"));
+    }));
+    assert!(unwound.is_err());
+    let big = WorkspaceReq {
+        a_bytes: 1 << 16,
+        ..WorkspaceReq::default()
+    };
+    arena.with_worker(&big, &mut |_, _, _| {});
+    assert!(
+        arena.retained_bytes() >= 1 << 16,
+        "the slot stayed borrowed after the panic: {} bytes retained",
+        arena.retained_bytes()
+    );
+    arena.trim();
+    assert_eq!(arena.retained_bytes(), 0);
 }

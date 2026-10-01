@@ -4,7 +4,7 @@
 
 use crate::{tile_planes, CpuFeatures, Element, Isa, PackFormat, Real, TileFormat, Ukr};
 
-/// Kernel provenance (adapters call their upstream; they do not copy it).
+/// Kernel provenance.
 ///
 /// # Examples
 /// ```
@@ -18,10 +18,6 @@ pub enum Origin {
     Tensorcontract,
     /// Project-owned portable kernels.
     Portable,
-    /// Called gemm-f32/f64 microkernels.
-    Gemm,
-    /// Called private-gemm-x86 engine.
-    PrivateGemmX86,
     /// Project-owned native interleaved complex SIMD kernels
     /// (`tprims-kernel-cplx`).
     Cplx,
@@ -48,8 +44,6 @@ impl Origin {
         match self {
             Self::Tensorcontract => "tprims-kernel-tensorcontract",
             Self::Portable => "tprims-gemm-kernel",
-            Self::Gemm => "tprims-kernel-gemm",
-            Self::PrivateGemmX86 => "tprims-kernel-pgx86",
             Self::Cplx => "tprims-kernel-cplx",
             Self::External { crate_name, .. } => crate_name,
         }
@@ -59,12 +53,11 @@ impl Origin {
     /// # Examples
     /// ```
     /// use tprims_gemm_kernel::Origin;
-    /// assert_eq!(Origin::Gemm.license(), "MIT");
+    /// assert_eq!(Origin::Portable.license(), "MIT OR Apache-2.0");
     /// ```
     pub const fn license(self) -> &'static str {
         match self {
             Self::Tensorcontract | Self::Portable | Self::Cplx => "MIT OR Apache-2.0",
-            Self::Gemm | Self::PrivateGemmX86 => "MIT",
             Self::External { license, .. } => license,
         }
     }
