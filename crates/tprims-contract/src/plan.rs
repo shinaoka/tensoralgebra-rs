@@ -337,11 +337,7 @@ impl<T: Scalar> ContractPlan<T> {
                 // here; saying so now beats a surprise when it runs.
                 let unsupported = gemm.kernel != tprims_blas::KernelChoice::Auto
                     || gemm.has_partition_request()
-                    || matches!(
-                        gemm.engine,
-                        tprims_blas::EngineChoice::PrivateGemmX86
-                            | tprims_blas::EngineChoice::Packed
-                    );
+                    || matches!(gemm.engine, tprims_blas::EngineChoice::Packed);
                 if unsupported {
                     return Err(Error::Unsupported(
                         "the permute+GEMM strategy computes with faer; \

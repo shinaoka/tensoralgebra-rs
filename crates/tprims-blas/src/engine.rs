@@ -1,16 +1,14 @@
 //! Which engine computes a GEMM, and what the planner chose.
 //!
-//! Three engines can compute the same product:
+//! Two engines can compute the same product:
 //!
 //! * [`Engine::Faer`] — the workspace's long-standing matrix engine, whose
 //!   blocking and threading are faer's;
-//! * [`Engine::PrivateGemmX86`] — `private-gemm-x86` called directly
-//!   ([`tprims_kernel_pgx86`]), on x86-64 with AVX2 and FMA only;
 //! * [`Engine::Packed`] — the packed micro-kernel driver of
 //!   `tensorcontract`, which is where a *named* kernel family, the direct-C
 //!   guard and the workspace live.
 //!
-//! `Auto` keeps today's behaviour: faer for a matrix GEMM. The other two are
+//! `Auto` keeps today's behaviour: faer for a matrix GEMM. The packed driver is
 //! opt-in, per call ([`GemmConfig::engine`]) or process-wide
 //! (`TPRIMS_GEMM_ENGINE`).
 use strided_view::StridedViewMut;
@@ -30,8 +28,6 @@ pub enum EngineChoice {
     Auto,
     /// faer's `matmul`, with the operand views as they are.
     Faer,
-    /// `private-gemm-x86` called directly.
-    PrivateGemmX86,
     /// The packed micro-kernel driver, with [`GemmConfig::kernel`] selectable.
     Packed,
 }
@@ -42,8 +38,6 @@ pub enum EngineChoice {
 pub enum Engine {
     /// faer's `matmul`.
     Faer,
-    /// `private-gemm-x86`.
-    PrivateGemmX86,
     /// The packed driver.
     Packed,
 }
@@ -63,8 +57,8 @@ pub struct GemmConfig {
     /// static grid (with the driver's own cost model), an explicit grid, or the
     /// opt-in dynamic [`PartitionPolicy::DynamicTiles`](tprims_gemm_kernel::PartitionPolicy).
     /// A non-default policy is a requirement for the packed driver: it is
-    /// refused (never ignored) by the faer and `private-gemm-x86` engines and
-    /// by the faer-loop strategies.
+    /// refused (never ignored) by the faer engine and by the faer-loop
+    /// strategies.
     pub partition: tprims_gemm_kernel::PartitionPolicy,
     /// Options that go with [`partition`](Self::partition).
     pub partition_opts: tprims_gemm_kernel::PartitionOpts,
@@ -176,9 +170,6 @@ pub fn default_engine() -> Engine {
     *DEFAULT.get_or_init(|| {
         #[cfg(feature = "std")]
         if let Ok(v) = std::env::var("TPRIMS_GEMM_ENGINE") {
-            if v.eq_ignore_ascii_case("pgx86") || v.eq_ignore_ascii_case("private-gemm-x86") {
-                return Engine::PrivateGemmX86;
-            }
             if v.eq_ignore_ascii_case("packed") {
                 return Engine::Packed;
             }
@@ -189,10 +180,7 @@ pub fn default_engine() -> Engine {
 
 /// Register the kernel crates this build has, once.
 ///
-/// The tensorcontract and native-complex families are always available; the gemm and pgx86
-/// providers are behind their features, and their id prefixes are declared
-/// even when they are absent so an id naming them reports the feature to
-/// enable rather than "unknown".
+/// The tensorcontract and native-complex families are always available.
 pub(crate) fn register_built() {
     static REGISTER: std::sync::Once = std::sync::Once::new();
     REGISTER.call_once(|| {
@@ -200,114 +188,7 @@ pub(crate) fn register_built() {
         // Opt-in native interleaved complex families: registered and listed,
         // never Auto-eligible, so only an explicit id selects them.
         tprims_kernel_cplx::register();
-        #[cfg(feature = "kernel-gemm")]
-        tprims_kernel_gemm::register();
-        tprims_gemm_kernel::register_known_prefix("gemm.", "kernel-gemm");
-        tprims_gemm_kernel::register_known_prefix("pgx86.", "kernel-pgx86");
     });
-}
-
-/// `private-gemm-x86` for one matrix GEMM, or the error that says why not.
-#[cfg(feature = "kernel-pgx86")]
-fn run_pgx86<T: Scalar>(
-    exec: &Exec<'_>,
-    alpha: T,
-    a: MatIn<'_, '_, T>,
-    b: MatIn<'_, '_, T>,
-    beta: T,
-    c: &mut StridedViewMut<'_, T>,
-    s: &crate::gemm::GemmShape,
-) -> Result<()> {
-    if !tprims_kernel_pgx86::available() {
-        return Err(Error::Select(
-            tprims_gemm_kernel::SelectError::EngineUnsupported {
-                engine: "pgx86",
-                reason: "x86-64 with AVX2 and FMA is required",
-            },
-        ));
-    }
-    if beta != crate::scalar::one() {
-        // SAFETY: shapes validated; `c` is exclusive and injective.
-        unsafe { crate::operand::scale_in_place(c.as_mut_ptr(), &s.c, beta) };
-    }
-    let (m, n, k) = (s.c.rows, s.c.cols, s.a.cols);
-    let (ap, bp) = (
-        crate::gemm::SendConst(a.view.ptr()),
-        crate::gemm::SendConst(b.view.ptr()),
-    );
-    let cp = crate::gemm::SendMut(c.as_mut_ptr());
-    let (ca, cb) = (a.conj, b.conj);
-    let width = crate::gemm::gemm_width::<T>(exec, m, n, k);
-    exec.install(width, move |par| {
-        let threads = match par {
-            tprims_exec::Par::Seq => 1,
-            tprims_exec::Par::Threads(nn) => nn.get(),
-        };
-        let (ap, bp, cp) = (ap, bp, cp);
-        // The engine is generic over four concrete scalars while this entry
-        // point is generic over `Scalar`, whose four implementers those are.
-        // The cast below is therefore the identity for the matching arm, and
-        // the size/complexity pair names exactly one arm per scalar.
-        macro_rules! call {
-            ($scalar:ty) => {{
-                let cp = cp.0 as *mut $scalar;
-                let ap = ap.0 as *const $scalar;
-                let bp = bp.0 as *const $scalar;
-                // SAFETY: the cast is the identity in the arm that runs.
-                let alpha = unsafe { *(&alpha as *const T as *const $scalar) };
-                // SAFETY: shapes validated; `D` is exclusive and does not alias
-                // the operands; `beta` was applied above, so the engine adds.
-                unsafe {
-                    tprims_kernel_pgx86::gemm(
-                        m,
-                        n,
-                        k,
-                        cp,
-                        s.c.rs,
-                        s.c.cs,
-                        beta == zero(),
-                        ap,
-                        s.a.rs,
-                        s.a.cs,
-                        ca == crate::Conj::Yes,
-                        bp,
-                        s.b.rs,
-                        s.b.cs,
-                        cb == crate::Conj::Yes,
-                        alpha,
-                        threads,
-                    )
-                }
-            }};
-        }
-        match (core::mem::size_of::<T>(), T::IS_COMPLEX_SCALAR) {
-            (4, false) => call!(f32),
-            (8, false) => call!(f64),
-            (8, true) => call!(num_complex::Complex<f32>),
-            (16, true) => call!(num_complex::Complex<f64>),
-            _ => unreachable!("Scalar is sealed to the four supported types"),
-        }
-    });
-    Ok(())
-}
-
-/// Without the provider the engine cannot run, and says which feature to build.
-#[cfg(not(feature = "kernel-pgx86"))]
-fn run_pgx86<T: Scalar>(
-    _exec: &Exec<'_>,
-    _alpha: T,
-    _a: MatIn<'_, '_, T>,
-    _b: MatIn<'_, '_, T>,
-    _beta: T,
-    _c: &mut StridedViewMut<'_, T>,
-    _s: &crate::gemm::GemmShape,
-) -> Result<()> {
-    Err(Error::Select(
-        tprims_gemm_kernel::SelectError::EngineUnsupported {
-            engine: "pgx86",
-            reason: "the kernel-pgx86 feature is not enabled",
-        },
-    ))
 }
 
 /// Every registered family, as a diagnostic table. Registers the kernel crates
@@ -331,8 +212,8 @@ pub fn list_kernels<T: Scalar>() -> Vec<tprims_gemm_kernel::KernelInfo> {
 /// # Errors
 ///
 /// Everything [`gemm`](crate::gemm) returns, plus [`Error::Select`] when the
-/// chosen engine or family cannot be used — an unavailable CPU, an unbuilt
-/// provider, an unknown id or an unsupported partition. Nothing is written then.
+/// chosen engine or family cannot be used — an unavailable CPU, an unknown
+/// id or an unsupported partition. Nothing is written then.
 #[allow(clippy::too_many_arguments)] // INVARIANT: the GEMM argument set.
 pub fn gemm_with<T: Scalar>(
     exec: &Exec<'_>,
@@ -351,7 +232,6 @@ pub fn gemm_with<T: Scalar>(
     let engine = match cfg.engine {
         EngineChoice::Auto => default_engine(),
         EngineChoice::Faer => Engine::Faer,
-        EngineChoice::PrivateGemmX86 => Engine::PrivateGemmX86,
         EngineChoice::Packed => Engine::Packed,
     };
     // A partition policy is a requirement of the packed driver; no other engine
@@ -361,7 +241,6 @@ pub fn gemm_with<T: Scalar>(
             tprims_gemm_kernel::SelectError::EngineUnsupported {
                 engine: match engine {
                     Engine::Faer => "faer",
-                    Engine::PrivateGemmX86 => "pgx86",
                     _ => "packed",
                 },
                 reason: "a partition policy needs the packed engine",
@@ -444,23 +323,6 @@ pub fn gemm_with<T: Scalar>(
                     )
                 }
             });
-            Ok(SelectedGemm {
-                engine,
-                family_id: None,
-                complex: None,
-                mr: 0,
-                nr: 0,
-                mc: 0,
-                nc: 0,
-                kc: 0,
-                partition: tprims_gemm_kernel::PartitionPolicy::default(),
-                batched: None,
-                origin: None,
-                dynamic: None,
-            })
-        }
-        Engine::PrivateGemmX86 => {
-            run_pgx86(exec, alpha, a, b, beta, c, &s)?;
             Ok(SelectedGemm {
                 engine,
                 family_id: None,

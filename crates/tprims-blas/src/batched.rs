@@ -398,7 +398,7 @@ fn require_faer_loop_config(cfg: &crate::GemmConfig) -> Result<()> {
                 || cfg.method.is_some()
                 || cfg.has_partition_request()
         }
-        crate::EngineChoice::PrivateGemmX86 | crate::EngineChoice::Packed => true,
+        crate::EngineChoice::Packed => true,
     };
     if unsupported {
         return Err(Error::Select(

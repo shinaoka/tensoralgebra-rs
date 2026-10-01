@@ -3,7 +3,7 @@
 //!
 //! Usage: `blas --threads N [--corpus FILE] [--engine ENGINE] [--list]`. CSV
 //! `case,variant,threads,median_ns,samples`; `CHECK` lines compare the two
-//! batched strategies. `--engine faer|packed|pgx86` selects the matrix engine
+//! batched strategies. `--engine faer|packed` selects the matrix engine
 //! of the single-GEMM cases (default `faer`); `--partition dynamic:JM,JN`
 //! (with `--engine packed`) selects the opt-in `DynamicTiles` scheduler and
 //! tags the row labels `_dynJMxJN`; the resolved family is printed
@@ -39,7 +39,7 @@ struct Cfg {
 }
 
 impl Cfg {
-    /// `--engine {faer|packed|pgx86}`, default faer.
+    /// `--engine {faer|packed}`, default faer.
     fn engine_from_args() -> EngineChoice {
         let args: Vec<String> = std::env::args().collect();
         let Some(i) = args.iter().position(|a| a == "--engine") else {
@@ -51,8 +51,7 @@ impl Cfg {
         match name.as_str() {
             "faer" => EngineChoice::Faer,
             "packed" => EngineChoice::Packed,
-            "pgx86" => EngineChoice::PrivateGemmX86,
-            other => panic!("unknown engine {other}; use faer, packed or pgx86"),
+            other => panic!("unknown engine {other}; use faer or packed"),
         }
     }
 }
@@ -176,7 +175,6 @@ fn gemm_cases<T: Scalar>(cfg: &Cfg, exec: &Exec<'_>) {
                         reported = true;
                         let engine = match sel.engine {
                             Engine::Faer => "faer",
-                            Engine::PrivateGemmX86 => "pgx86",
                             Engine::Packed => "packed",
                             other => panic!("unexpected engine {other:?}"),
                         };

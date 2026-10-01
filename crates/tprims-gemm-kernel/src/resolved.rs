@@ -271,7 +271,7 @@ impl<R: Real> ResolvedGemm<R> {
     /// Providers must register before the first resolution that needs them.
     ///
     /// # Errors
-    /// Returns `UnknownId`, `NotBuilt`, `CpuUnsupported`, `DtypeMismatch`, or
+    /// Returns `UnknownId`, `CpuUnsupported`, `DtypeMismatch`, or
     /// `Incompatible` from registry selection. `Incompatible` also reports
     /// zero width and overflow in blocking overrides/alignment.
     ///

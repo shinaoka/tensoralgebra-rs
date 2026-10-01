@@ -55,7 +55,7 @@ pub fn builtin_catalog<T: Scalar>() -> KernelCatalog<T> {
 }
 
 /// A selector entry point is the packed driver with the caller's policy. An
-/// explicit faer/pgx86 request, a forced kernel id, or a configuration that
+/// explicit faer request, a forced kernel id, or a configuration that
 /// cannot be honoured is refused.
 fn check_config(cfg: &GemmConfig) -> Result<()> {
     match cfg.engine {
@@ -65,12 +65,6 @@ fn check_config(cfg: &GemmConfig) -> Result<()> {
         EngineChoice::Faer => {
             return Err(Error::Select(SelectError::EngineUnsupported {
                 engine: "faer",
-                reason: "a custom kernel selector needs the packed engine",
-            }))
-        }
-        EngineChoice::PrivateGemmX86 => {
-            return Err(Error::Select(SelectError::EngineUnsupported {
-                engine: "pgx86",
                 reason: "a custom kernel selector needs the packed engine",
             }))
         }

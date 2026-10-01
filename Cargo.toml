@@ -2,8 +2,6 @@
 resolver = "2"
 members = [
     "crates/tprims-gemm-kernel",
-    "crates/tprims-kernel-gemm",
-    "crates/tprims-kernel-pgx86",
     "crates/tprims-kernel-cplx",
     "crates/tprims-kernel-tensorcontract",
     "crates/tprims-exec",
@@ -36,8 +34,6 @@ strided-perm = { git = "https://github.com/tensor4all/strided-rs.git", rev = "25
 strided-kernel = { git = "https://github.com/tensor4all/strided-rs.git", rev = "25705339d45583f5eb77bdbde22f2349b48e3f95", version = "0.4.4" }
 tprims-gemm-kernel = { version = "0.1.0", path = "crates/tprims-gemm-kernel", default-features = false }
 tprims-kernel-tensorcontract = { version = "0.1.0", path = "crates/tprims-kernel-tensorcontract", default-features = false }
-tprims-kernel-gemm = { version = "0.1.0", path = "crates/tprims-kernel-gemm", default-features = false }
-tprims-kernel-pgx86 = { version = "0.1.0", path = "crates/tprims-kernel-pgx86" }
 tprims-kernel-cplx = { version = "0.1.0", path = "crates/tprims-kernel-cplx", default-features = false }
 tensorcontract = { version = "0.1.0", path = "tensorprimitives/crates/tensorcontract" }
 tensorprimitives-tapp = { version = "0.1.0", path = "tensorprimitives/crates/tensorprimitives-tapp" }

@@ -167,7 +167,7 @@ pub fn gemm_grouped_with<T: Scalar>(
                 || cfg.method.is_some()
                 || cfg.has_partition_request()
         }
-        crate::EngineChoice::PrivateGemmX86 | crate::EngineChoice::Packed => true,
+        crate::EngineChoice::Packed => true,
     };
     if unsupported {
         return Err(Error::Select(

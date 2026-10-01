@@ -154,24 +154,6 @@ pub unsafe fn register<R: RealSlot>(list: List<R>) {
     unsafe { R::add_provider(list) };
 }
 
-static PREFIXES: Mutex<Vec<(&'static str, &'static str)>> = Mutex::new(Vec::new());
-
-/// Declare an unavailable provider's id prefix and enabling Cargo feature.
-///
-/// # Examples
-/// ```
-/// use tprims_gemm_kernel::{register_known_prefix, Registry, SelectError, CpuFeatures};
-/// register_known_prefix("example.", "kernel-example");
-/// assert!(matches!(Registry::select::<f64>("example.f64", CpuFeatures::NONE),
-///     Err(SelectError::NotBuilt { feature: "kernel-example", .. })));
-/// ```
-pub fn register_known_prefix(prefix: &'static str, feature: &'static str) {
-    let mut prefixes = PREFIXES.lock().unwrap_or_else(|e| e.into_inner());
-    if !prefixes.contains(&(prefix, feature)) {
-        prefixes.push((prefix, feature));
-    }
-}
-
 /// Family lookup and CPU filtering. Lookups happen during planning.
 #[derive(Debug)]
 pub struct Registry;
@@ -206,8 +188,7 @@ impl Registry {
     /// Resolve an explicit id without substituting another family.
     ///
     /// # Errors
-    /// `UnknownId` for an unknown family, `NotBuilt` for a declared unavailable
-    /// provider, `DtypeMismatch` for another scalar, `CpuUnsupported` for
+    /// `UnknownId` for an unknown family, `DtypeMismatch` for another scalar, `CpuUnsupported` for
     /// missing instructions, or `Incompatible` for an invalid descriptor.
     ///
     /// # Examples
@@ -264,19 +245,6 @@ impl Registry {
                 id: id.into(),
                 dtype: T::DTYPE,
             });
-        }
-        if let Some((prefix, feature)) = PREFIXES
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .iter()
-            .find(|(prefix, _)| id.starts_with(prefix))
-        {
-            if !built.iter().any(|f| f.id.starts_with(prefix)) {
-                return Err(SelectError::NotBuilt {
-                    id: id.into(),
-                    feature,
-                });
-            }
         }
         Err(SelectError::UnknownId { id: id.into() })
     }
@@ -341,13 +309,6 @@ pub enum SelectError {
     UnknownId {
         /// Requested identifier.
         id: String,
-    },
-    /// Provider not enabled in this build.
-    NotBuilt {
-        /// Requested identifier.
-        id: String,
-        /// Enabling Cargo feature.
-        feature: &'static str,
     },
     /// CPU lacks required instructions.
     CpuUnsupported {
@@ -417,7 +378,6 @@ impl core::fmt::Display for SelectError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::UnknownId { id } => write!(f, "unknown kernel id {id}; choose an id from list_kernels"),
-            Self::NotBuilt { id, feature } => write!(f, "kernel {id} is not built; enable Cargo feature {feature}"),
             Self::CpuUnsupported { id, missing } => write!(f, "kernel {id} requires unavailable CPU features {missing:?}; choose an available kernel"),
             Self::DtypeMismatch { id, dtype } => write!(f, "kernel {id} does not serve {dtype}; choose a matching scalar family"),
             Self::Incompatible { id, reason } => write!(f, "kernel {id}: {reason}"),

@@ -61,7 +61,7 @@ pub use element::{Element, Real, C32, C64};
 pub use family::*;
 pub use partition::{PartitionOpts, PartitionPolicy};
 pub use registry::{
-    list_kernels, register, register_known_prefix, Families, KernelInfo, RealSlot, Registry,
+    list_kernels, register, Families, KernelInfo, RealSlot, Registry,
     SelectError,
 };
 pub use resolved::{process_default, KernelChoice, ResolvedGemm};
