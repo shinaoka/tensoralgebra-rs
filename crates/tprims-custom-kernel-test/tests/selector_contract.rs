@@ -275,3 +275,38 @@ fn all_batch_and_zero_size_problems_still_select_or_refuse() {
     )
     .unwrap();
 }
+
+#[test]
+fn a_selected_plan_is_bound_to_its_storage_dtype() {
+    use tensorcontract::{Layout, Operand, Plan};
+    let cat = catalog(own::f64_families());
+    let l = Layout::col_major(&[6, 6]);
+    let (ia, ib, id) = ([0i64, 2], [2i64, 1], [0i64, 1]);
+    let ops = [
+        Operand::new(&l, &ia),
+        Operand::new(&l, &ib),
+        Operand::new(&l, &id),
+        Operand::new(&l, &id),
+    ];
+    let plan = Plan::new(ops[0], ops[1], None, ops[3])
+        .unwrap()
+        .with_selector::<f64, _>(ops, &cat, |_, c| Ok(c[0].handle))
+        .unwrap();
+    assert_eq!(
+        plan.resolved::<f64>().unwrap().family().id,
+        "custom.f64.2x2"
+    );
+    assert!(matches!(
+        plan.resolved::<tprims_gemm_kernel::C64>(),
+        Err(SelectError::DtypeMismatch { dtype: "c64", .. })
+    ));
+    // A clone keeps the choice rather than silently falling back.
+    assert_eq!(
+        plan.clone().resolved::<f64>().unwrap().family().id,
+        "custom.f64.2x2"
+    );
+    // A forced id after the selector is ambiguous.
+    assert!(plan
+        .with_kernel(tensorcontract::KernelChoice::Id("portable.f64.4x4".into()))
+        .is_err());
+}

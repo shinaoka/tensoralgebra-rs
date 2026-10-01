@@ -540,3 +540,65 @@ fn batched_and_grouped_select_once_per_plan_not_per_item() {
     assert_eq!(seen, vec![(4, 5, 3), (6, 3, 2)]);
     assert_eq!(gc, gwant);
 }
+
+#[test]
+fn a_batch_spread_over_a_pool_shows_the_selector_the_per_item_width() {
+    // Many tiny items on a four-thread pool run outer-parallel, each item
+    // serially, so the budget the selector must see is one thread.
+    let cat = catalog::<f64>(own::f64_families());
+    let (m, n, k, count) = (8usize, 8usize, 8usize, 4096usize);
+    let a = ints(m * k * count, 1);
+    let b = ints(k * n * count, 2);
+    let mut c = vec![0.0; m * n * count];
+    let av = StridedView::new(&a, &[m, k, count], &[1, m as isize, (m * k) as isize], 0).unwrap();
+    let bv = StridedView::new(&b, &[k, n, count], &[1, k as isize, (k * n) as isize], 0).unwrap();
+    let mut cv = StridedViewMut::new(
+        &mut c,
+        &[m, n, count],
+        &[1, m as isize, (m * n) as isize],
+        0,
+    )
+    .unwrap();
+    let tp = rayon::ThreadPoolBuilder::new()
+        .num_threads(4)
+        .build()
+        .unwrap();
+    let pool = Pool::borrow(&tp);
+    let report = gemm_batched_with_selector(
+        &Exec::rayon(&pool),
+        &GemmConfig::default(),
+        &cat,
+        |ctx, cands| {
+            assert_eq!(ctx.threads, 1);
+            assert!(cands
+                .iter()
+                .all(|c| c.active_width == 1 && c.grid == (1, 1)));
+            Ok(cands[0].handle)
+        },
+        1.0,
+        BatchIn::new(&av),
+        BatchIn::new(&bv),
+        0.0,
+        &mut cv,
+    )
+    .unwrap();
+    assert!(matches!(
+        report.batched,
+        Some(tprims_blas::Selected::Tblis {
+            outer_parallel: true
+        })
+    ));
+    let mut want = vec![0.0; m * n];
+    naive(
+        (m, n, k),
+        1.0,
+        &a[(count - 1) * m * k..],
+        [1, m as isize],
+        &b[(count - 1) * k * n..],
+        [1, k as isize],
+        0.0,
+        &mut want,
+        [1, m as isize],
+    );
+    assert_eq!(&c[(count - 1) * m * n..], &want[..]);
+}

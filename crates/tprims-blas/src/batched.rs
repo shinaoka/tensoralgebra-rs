@@ -266,7 +266,7 @@ pub(crate) fn batched_impl<T: Scalar>(
             &s,
             a.conj,
             b.conj,
-            sched.outer.unwrap_or(sched.inner),
+            sched.inner,
             Some(custom),
         )?),
         _ => None,
@@ -301,14 +301,7 @@ pub(crate) fn batched_impl<T: Scalar>(
         BatchStrategy::Tblis => {
             let (plan, rg) = match prepared {
                 Some(prepared) => prepared,
-                None => crate::tblis::prepare::<T>(
-                    cfg,
-                    &s,
-                    a.conj,
-                    b.conj,
-                    sched.outer.unwrap_or(sched.inner),
-                    None,
-                )?,
+                None => crate::tblis::prepare::<T>(cfg, &s, a.conj, b.conj, sched.inner, None)?,
             };
             let (selected, rg) =
                 crate::tblis::run(exec, &s, &sched, alpha, ap, bp, beta, cp, plan, rg)?;
