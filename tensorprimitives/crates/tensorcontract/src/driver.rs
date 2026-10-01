@@ -999,7 +999,6 @@ unsafe fn run_strip<T>(
     let Ctx {
         plan,
         fam,
-        mr,
         nr,
         mc,
         kc,
@@ -1007,32 +1006,12 @@ unsafe fn run_strip<T>(
         n,
         k,
         b_group,
-        am,
-        ak,
-        bk,
-        bn,
-        cm,
-        cn,
-        dm,
-        dn,
         ha,
         hb,
-        scatter,
-        runs,
-        conj_a,
-        conj_b,
-        alpha,
-        beta,
         direct_b,
         ..
     } = *cx;
     let (ptr_a, ptr_b, c, d, bp_ptr) = (cx.a.0, cx.b.0, cx.c.0 as *const T, cx.d.0, cx.bp.0);
-    // The five block scatters live in one buffer, in `runs` order; these are
-    // the same vectors the driver used to build separately.
-    let (a_m_bs, b_n_bs) = (runs.slice(scatter, runs.a), runs.slice(scatter, runs.b));
-    let (d_m_bs, d_n_bs) = (runs.slice(scatter, runs.dm), runs.slice(scatter, runs.dn));
-    let c_m_bs = runs.slice(scatter, runs.cm);
-    let one = T::one();
 
     for h in 0..plan.stats.batch {
         let ah = ptr_a.offset(ha[h] as isize);
@@ -1070,6 +1049,25 @@ unsafe fn run_strip<T>(
                     "column group overruns its slice of the packed B panel"
                 );
                 let bp_ptr = bp_ptr.add(bpart.g * b_group);
+                let ep = Epoch::<T> {
+                    ah,
+                    bh,
+                    ch,
+                    dh,
+                    pc,
+                    pc_len,
+                    first_k_block,
+                    jc,
+                    jc_len,
+                    b_sliver,
+                    bp: bp_ptr,
+                    q0,
+                };
+                let bufs = Bufs {
+                    ap: ap_ptr,
+                    tile: tile_ptr,
+                    scratch: scratch_ptr,
+                };
                 // A direct-B call reads B where it lies: no panel is written,
                 // so neither barrier is taken. The decision is per call, so
                 // every thread of a group skips the same pair.
@@ -1078,31 +1076,8 @@ unsafe fn run_strip<T>(
                         bar.wait();
                     }
                     if w1 > w0 {
-                        let c0 = jc + w0 * nr;
-                        let c1 = (jc + w1 * nr).min(jc + jc_len);
-                        if let Some((_, pack_b)) = cx.packers {
-                            // SAFETY: same validated scatters/capacity as legacy pack_panel.
-                            pack_b(
-                                bh,
-                                &bn[c0..c1],
-                                &b_n_bs[c0 / nr..c1.div_ceil(nr)],
-                                &bk[pc..pc + pc_len],
-                                nr,
-                                conj_b,
-                                bp_ptr.add((w0 - q0) * b_sliver),
-                            );
-                        } else {
-                            pack_panel::<T>(
-                                bh,
-                                &bn[c0..c1],
-                                &b_n_bs[c0 / nr..c1.div_ceil(nr)],
-                                &bk[pc..pc + pc_len],
-                                nr,
-                                conj_b,
-                                fam.b_pack,
-                                bp_ptr.add((w0 - q0) * b_sliver),
-                            );
-                        }
+                        // SAFETY: slivers `w0..w1` are this thread's alone.
+                        unsafe { pack_b_slivers::<T>(cx, &ep, w0, w1) };
                     }
                     if let Some(bar) = bpart.bar {
                         bar.wait();
@@ -1121,197 +1096,8 @@ unsafe fn run_strip<T>(
                 let mut ic = if jr_lo < jr_hi { m_lo } else { m_hi };
                 while ic < m_hi {
                     let ic_len = mc.min(m_hi - ic);
-
-                    if let Some((pack_a, _)) = cx.packers {
-                        // SAFETY: same validated scatters/capacity as legacy pack_panel.
-                        pack_a(
-                            ah,
-                            &am[ic..ic + ic_len],
-                            &a_m_bs[ic / mr..(ic + ic_len).div_ceil(mr)],
-                            &ak[pc..pc + pc_len],
-                            mr,
-                            conj_a,
-                            ap_ptr,
-                        );
-                    } else {
-                        pack_panel::<T>(
-                            ah,
-                            &am[ic..ic + ic_len],
-                            &a_m_bs[ic / mr..(ic + ic_len).div_ceil(mr)],
-                            &ak[pc..pc + pc_len],
-                            mr,
-                            conj_a,
-                            fam.a_pack,
-                            ap_ptr,
-                        );
-                    }
-                    let a_sliver = fam.a_per_k * pc_len;
-
-                    // ---- loop 2: NR ---------------------------------------
-                    let mut jr = jr_lo;
-                    while jr < jr_hi {
-                        let nrem = nr.min(jc_len - jr);
-                        let j0 = jc + jr;
-                        let bpan = bp_ptr.add((jr / nr - q0) * b_sliver);
-                        // B's k steps are one apart and its columns one constant
-                        // stride apart, both checked by `pack_b_needed`; otherwise
-                        // the tile reads the packed panel (k stride `NR`, columns
-                        // adjacent).
-                        let (b_base, b_rs, b_cs) = if direct_b {
-                            // The base carries this k block's and this column
-                            // block's offsets, so the kernel's own k stride is one.
-                            (
-                                bh.offset((bn[j0] + bk[pc]) as isize) as *const T::Real,
-                                1,
-                                b_n_bs[j0 / nr] as isize,
-                            )
-                        } else {
-                            (bpan as *const T::Real, nr as isize, 1)
-                        };
-
-                        // ---- loop 1: MR -----------------------------------
-                        let mut ir = 0;
-                        while ir < ic_len {
-                            let mrem = mr.min(ic_len - ir);
-                            let i0 = ic + ir;
-                            let apan = ap_ptr.add((ir / mr) * a_sliver);
-                            let d_rs = *d_m_bs.get_unchecked(i0 / mr);
-                            // A Direct family writes D itself only where D's own
-                            // strides make that expressible: the guard was decided
-                            // once for the call, and both scatters must be regular.
-                            let direct_tile = matches!(fam.kernel, UkrFn::Direct(_))
-                                && cx.call.is_some_and(|c| c.direct_c_allowed)
-                                && d_rs != IRREGULAR
-                                && *d_n_bs.get_unchecked(j0 / nr) != IRREGULAR;
-
-                            match fam.kernel {
-                                UkrFn::Tile(_) => {
-                                    // SAFETY: full packed panels and tile per
-                                    // family contract; an induced family
-                                    // scales the inner kernel's k itself.
-                                    unsafe {
-                                        tprims_gemm_kernel::induced::tile_call(
-                                            &fam,
-                                            pc_len,
-                                            apan,
-                                            bpan,
-                                            tile_ptr,
-                                            scratch_ptr,
-                                        )
-                                    };
-                                }
-                                UkrFn::Direct(func) => {
-                                    // A direct tile overlaps the accumulator it
-                                    // scales; a fallback tile is overwritten
-                                    // (`alpha_d = 0`), and the write-back below
-                                    // then applies alpha/beta exactly as the
-                                    // scratch path does.
-                                    let (d_base, rs_d, cs_d, alpha_d, beta_ab) = if direct_tile {
-                                        (
-                                            dh.offset((dm[i0] + dn[j0]) as isize) as *mut T::Real,
-                                            d_rs as isize,
-                                            *d_n_bs.get_unchecked(j0 / nr) as isize,
-                                            if first_k_block {
-                                                if beta == T::zero() {
-                                                    T::Real::ZERO
-                                                } else {
-                                                    beta.re()
-                                                }
-                                            } else {
-                                                T::Real::ONE
-                                            },
-                                            alpha.re(),
-                                        )
-                                    } else {
-                                        (tile_ptr, 1, mr as isize, T::Real::ZERO, T::Real::ONE)
-                                    };
-                                    let aux = UkrAux {
-                                        a_next: if ir + mr < ic_len {
-                                            apan.add(a_sliver)
-                                        } else {
-                                            apan
-                                        },
-                                        // In-place B has no panel to point past.
-                                        b_next: match (direct_b, jr + nr < jc_len) {
-                                            (true, _) => b_base,
-                                            (false, true) => bpan.add(b_sliver),
-                                            (false, false) => bpan,
-                                        },
-                                        inner: None,
-                                        opaque: fam.opaque,
-                                    };
-                                    // SAFETY: A is the packed panel with unit row
-                                    // stride; B and D follow the strides derived
-                                    // above, and `d_out` is the live tile extent.
-                                    unsafe {
-                                        (func)(
-                                            mrem,
-                                            nrem,
-                                            pc_len,
-                                            d_base,
-                                            rs_d,
-                                            cs_d,
-                                            apan as *const T::Real,
-                                            fam.a_per_k as isize,
-                                            b_base,
-                                            b_rs,
-                                            b_cs,
-                                            alpha_d,
-                                            beta_ab,
-                                            &aux,
-                                        )
-                                    };
-                                }
-                            }
-
-                            if direct_tile {
-                                ir += mr;
-                                continue;
-                            }
-                            if first_k_block {
-                                let c_rs = c_m_bs.get(i0 / mr).copied().unwrap_or(IRREGULAR);
-                                emit_tile::<T>(
-                                    cx,
-                                    tile_ptr,
-                                    mrem,
-                                    nrem,
-                                    beta,
-                                    ch,
-                                    &cm[i0..i0 + mrem],
-                                    &cn[j0..j0 + nrem],
-                                    c_rs,
-                                    plan.conj_c,
-                                    dh,
-                                    &dm[i0..i0 + mrem],
-                                    &dn[j0..j0 + nrem],
-                                    d_rs,
-                                    plan.conj_d,
-                                );
-                            } else {
-                                // Accumulate: C := D, beta := 1, and conjugate
-                                // the readback exactly when op_D conjugates.
-                                emit_tile::<T>(
-                                    cx,
-                                    tile_ptr,
-                                    mrem,
-                                    nrem,
-                                    one,
-                                    dh as *const T,
-                                    &dm[i0..i0 + mrem],
-                                    &dn[j0..j0 + nrem],
-                                    d_rs,
-                                    plan.conj_d,
-                                    dh,
-                                    &dm[i0..i0 + mrem],
-                                    &dn[j0..j0 + nrem],
-                                    d_rs,
-                                    plan.conj_d,
-                                );
-                            }
-                            ir += mr;
-                        }
-                        jr += nr;
-                    }
+                    pack_a_rows::<T>(cx, &ep, ic, ic_len, ap_ptr);
+                    compute_block::<T>(cx, &ep, bufs, ic, ic_len, jr_lo, jr_hi);
                     ic += mc;
                 }
                 pc += kc;
@@ -1319,4 +1105,341 @@ unsafe fn run_strip<T>(
             jc += nc;
         }
     }
+}
+
+
+/// Everything the micro-tile loops need that is fixed for one
+/// `(batch, NC panel, KC slab)` epoch: the batch-offset operand bases, the K
+/// slab, the NC block and where the packed `B` sliver for a column lives.
+/// Shared by the static and the dynamic scheduler so there is one copy of the
+/// arithmetic and of the direct-path branches.
+#[derive(Clone, Copy)]
+struct Epoch<T: Element> {
+    ah: *mut T,
+    bh: *mut T,
+    ch: *const T,
+    dh: *mut T,
+    pc: usize,
+    pc_len: usize,
+    first_k_block: bool,
+    jc: usize,
+    jc_len: usize,
+    b_sliver: usize,
+    /// Packed `B` for sliver `q0` of this NC block (the first of the group).
+    bp: *mut T::Real,
+    q0: usize,
+}
+
+/// One worker's private buffers.
+#[derive(Clone, Copy)]
+struct Bufs<R> {
+    ap: *mut R,
+    tile: *mut R,
+    scratch: *mut R,
+}
+
+/// Pack `B` slivers `[w0, w1)` of the epoch's NC block into the shared panel.
+///
+/// # Safety
+/// As [`run_strip`]; `w0..w1` are slivers of the block owned by the caller
+/// alone, and the panel slice has room for them.
+unsafe fn pack_b_slivers<T>(cx: &Ctx<'_, T>, ep: &Epoch<T>, w0: usize, w1: usize)
+where
+    T: Element,
+    T::Real: KernelSet,
+{
+    let (nr, bn, bk, conj_b, fam) = (cx.nr, cx.bn, cx.bk, cx.conj_b, cx.fam);
+    let b_n_bs = cx.runs.slice(cx.scatter, cx.runs.b);
+    let (pc, pc_len, b_sliver) = (ep.pc, ep.pc_len, ep.b_sliver);
+    let c0 = ep.jc + w0 * nr;
+    let c1 = (ep.jc + w1 * nr).min(ep.jc + ep.jc_len);
+    let out = ep.bp.add((w0 - ep.q0) * b_sliver);
+    if let Some((_, pack_b)) = cx.packers {
+        // SAFETY: same validated scatters/capacity as legacy pack_panel.
+        pack_b(
+            ep.bh,
+            &bn[c0..c1],
+            &b_n_bs[c0 / nr..c1.div_ceil(nr)],
+            &bk[pc..pc + pc_len],
+            nr,
+            conj_b,
+            out,
+        );
+    } else {
+        pack_panel::<T>(
+            ep.bh,
+            &bn[c0..c1],
+            &b_n_bs[c0 / nr..c1.div_ceil(nr)],
+            &bk[pc..pc + pc_len],
+            nr,
+            conj_b,
+            fam.b_pack,
+            out,
+        );
+    }
+}
+
+/// Pack rows `[ic, ic + ic_len)` of the epoch's K slab into `ap`.
+///
+/// # Safety
+/// As [`run_strip`]; `ap` is the caller's private panel with room for `ic_len`
+/// rows of the slab.
+unsafe fn pack_a_rows<T>(cx: &Ctx<'_, T>, ep: &Epoch<T>, ic: usize, ic_len: usize, ap: *mut T::Real)
+where
+    T: Element,
+    T::Real: KernelSet,
+{
+    let (mr, am, ak, conj_a, fam) = (cx.mr, cx.am, cx.ak, cx.conj_a, cx.fam);
+    let a_m_bs = cx.runs.slice(cx.scatter, cx.runs.a);
+    let (pc, pc_len) = (ep.pc, ep.pc_len);
+    if let Some((pack_a, _)) = cx.packers {
+        // SAFETY: same validated scatters/capacity as legacy pack_panel.
+        pack_a(
+            ep.ah,
+            &am[ic..ic + ic_len],
+            &a_m_bs[ic / mr..(ic + ic_len).div_ceil(mr)],
+            &ak[pc..pc + pc_len],
+            mr,
+            conj_a,
+            ap,
+        );
+    } else {
+        pack_panel::<T>(
+            ep.ah,
+            &am[ic..ic + ic_len],
+            &a_m_bs[ic / mr..(ic + ic_len).div_ceil(mr)],
+            &ak[pc..pc + pc_len],
+            mr,
+            conj_a,
+            fam.a_pack,
+            ap,
+        );
+    }
+}
+
+/// Loops 2 and 1: every micro-tile of the packed `A` rows `[ic, ic + ic_len)`
+/// against the columns `[jr_lo, jr_hi)` of the epoch's NC block, with the
+/// write-back. The one copy of the tile arithmetic, the direct-C/direct-B
+/// branches and the first-slab/accumulate rule.
+///
+/// # Safety
+/// As [`run_strip`]; `bufs.ap` holds the packed rows, the packed `B` panel (or
+/// the in-place operand) covers the columns, and the caller owns the output
+/// tiles of the covered block.
+#[inline(always)]
+unsafe fn compute_block<T>(
+    cx: &Ctx<'_, T>,
+    ep: &Epoch<T>,
+    bufs: Bufs<T::Real>,
+    ic: usize,
+    ic_len: usize,
+    jr_lo: usize,
+    jr_hi: usize,
+) where
+    T: Element,
+    T::Real: KernelSet,
+{
+    let Ctx {
+        plan,
+        fam,
+        mr,
+        nr,
+        cm,
+        cn,
+        dm,
+        dn,
+        bn,
+        bk,
+        alpha,
+        beta,
+        direct_b,
+        ..
+    } = *cx;
+    let Epoch {
+        bh,
+        ch,
+        dh,
+        pc,
+        pc_len,
+        first_k_block,
+        jc,
+        jc_len,
+        b_sliver,
+        bp: bp_ptr,
+        q0,
+        ..
+    } = *ep;
+    let (ap_ptr, tile_ptr, scratch_ptr) = (bufs.ap, bufs.tile, bufs.scratch);
+    let runs = cx.runs;
+    let scatter = cx.scatter;
+    let b_n_bs = runs.slice(scatter, runs.b);
+    let d_m_bs = runs.slice(scatter, runs.dm);
+    let d_n_bs = runs.slice(scatter, runs.dn);
+    let c_m_bs = runs.slice(scatter, runs.cm);
+    let one = T::one();
+    let a_sliver = fam.a_per_k * pc_len;
+        let mut jr = jr_lo;
+        while jr < jr_hi {
+            let nrem = nr.min(jc_len - jr);
+            let j0 = jc + jr;
+            let bpan = bp_ptr.add((jr / nr - q0) * b_sliver);
+            // B's k steps are one apart and its columns one constant
+            // stride apart, both checked by `pack_b_needed`; otherwise
+            // the tile reads the packed panel (k stride `NR`, columns
+            // adjacent).
+            let (b_base, b_rs, b_cs) = if direct_b {
+                // The base carries this k block's and this column
+                // block's offsets, so the kernel's own k stride is one.
+                (
+                    bh.offset((bn[j0] + bk[pc]) as isize) as *const T::Real,
+                    1,
+                    b_n_bs[j0 / nr] as isize,
+                )
+            } else {
+                (bpan as *const T::Real, nr as isize, 1)
+            };
+
+            // ---- loop 1: MR -----------------------------------
+            let mut ir = 0;
+            while ir < ic_len {
+                let mrem = mr.min(ic_len - ir);
+                let i0 = ic + ir;
+                let apan = ap_ptr.add((ir / mr) * a_sliver);
+                let d_rs = *d_m_bs.get_unchecked(i0 / mr);
+                // A Direct family writes D itself only where D's own
+                // strides make that expressible: the guard was decided
+                // once for the call, and both scatters must be regular.
+                let direct_tile = matches!(fam.kernel, UkrFn::Direct(_))
+                    && cx.call.is_some_and(|c| c.direct_c_allowed)
+                    && d_rs != IRREGULAR
+                    && *d_n_bs.get_unchecked(j0 / nr) != IRREGULAR;
+
+                match fam.kernel {
+                    UkrFn::Tile(_) => {
+                        // SAFETY: full packed panels and tile per
+                        // family contract; an induced family
+                        // scales the inner kernel's k itself.
+                        unsafe {
+                            tprims_gemm_kernel::induced::tile_call(
+                                &fam,
+                                pc_len,
+                                apan,
+                                bpan,
+                                tile_ptr,
+                                scratch_ptr,
+                            )
+                        };
+                    }
+                    UkrFn::Direct(func) => {
+                        // A direct tile overlaps the accumulator it
+                        // scales; a fallback tile is overwritten
+                        // (`alpha_d = 0`), and the write-back below
+                        // then applies alpha/beta exactly as the
+                        // scratch path does.
+                        let (d_base, rs_d, cs_d, alpha_d, beta_ab) = if direct_tile {
+                            (
+                                dh.offset((dm[i0] + dn[j0]) as isize) as *mut T::Real,
+                                d_rs as isize,
+                                *d_n_bs.get_unchecked(j0 / nr) as isize,
+                                if first_k_block {
+                                    if beta == T::zero() {
+                                        T::Real::ZERO
+                                    } else {
+                                        beta.re()
+                                    }
+                                } else {
+                                    T::Real::ONE
+                                },
+                                alpha.re(),
+                            )
+                        } else {
+                            (tile_ptr, 1, mr as isize, T::Real::ZERO, T::Real::ONE)
+                        };
+                        let aux = UkrAux {
+                            a_next: if ir + mr < ic_len {
+                                apan.add(a_sliver)
+                            } else {
+                                apan
+                            },
+                            // In-place B has no panel to point past.
+                            b_next: match (direct_b, jr + nr < jc_len) {
+                                (true, _) => b_base,
+                                (false, true) => bpan.add(b_sliver),
+                                (false, false) => bpan,
+                            },
+                            inner: None,
+                            opaque: fam.opaque,
+                        };
+                        // SAFETY: A is the packed panel with unit row
+                        // stride; B and D follow the strides derived
+                        // above, and `d_out` is the live tile extent.
+                        unsafe {
+                            (func)(
+                                mrem,
+                                nrem,
+                                pc_len,
+                                d_base,
+                                rs_d,
+                                cs_d,
+                                apan as *const T::Real,
+                                fam.a_per_k as isize,
+                                b_base,
+                                b_rs,
+                                b_cs,
+                                alpha_d,
+                                beta_ab,
+                                &aux,
+                            )
+                        };
+                    }
+                }
+
+                if direct_tile {
+                    ir += mr;
+                    continue;
+                }
+                if first_k_block {
+                    let c_rs = c_m_bs.get(i0 / mr).copied().unwrap_or(IRREGULAR);
+                    emit_tile::<T>(
+                        cx,
+                        tile_ptr,
+                        mrem,
+                        nrem,
+                        beta,
+                        ch,
+                        &cm[i0..i0 + mrem],
+                        &cn[j0..j0 + nrem],
+                        c_rs,
+                        plan.conj_c,
+                        dh,
+                        &dm[i0..i0 + mrem],
+                        &dn[j0..j0 + nrem],
+                        d_rs,
+                        plan.conj_d,
+                    );
+                } else {
+                    // Accumulate: C := D, beta := 1, and conjugate
+                    // the readback exactly when op_D conjugates.
+                    emit_tile::<T>(
+                        cx,
+                        tile_ptr,
+                        mrem,
+                        nrem,
+                        one,
+                        dh as *const T,
+                        &dm[i0..i0 + mrem],
+                        &dn[j0..j0 + nrem],
+                        d_rs,
+                        plan.conj_d,
+                        dh,
+                        &dm[i0..i0 + mrem],
+                        &dn[j0..j0 + nrem],
+                        d_rs,
+                        plan.conj_d,
+                    );
+                }
+                ir += mr;
+            }
+            jr += nr;
+        }
 }
