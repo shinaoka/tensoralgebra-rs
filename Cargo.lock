@@ -1205,6 +1205,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tprims-kernel-cplx"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "num-complex",
+ "tensorcontract",
+ "tprims-gemm-kernel",
+]
+
+[[package]]
 name = "tprims-kernel-gemm"
 version = "0.1.0"
 dependencies = [
