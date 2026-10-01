@@ -87,6 +87,9 @@ pub(crate) fn prepare<T: Scalar>(
     threads: usize,
     custom: Option<Custom<'_, T>>,
 ) -> Result<(Plan, tprims_gemm_kernel::ResolvedGemm<T::Re>)> {
+    // Every id-resolving packed entry point registers the providers first, so
+    // a forced id never depends on another call having done it.
+    crate::engine::register_built();
     let (la, lb, ld) = (layout(&s.item.a)?, layout(&s.item.b)?, layout(&s.item.c)?);
     let (ia, ib, id) = ([0i64, 2], [2i64, 1], [0i64, 1]);
     let (oa, ob) = (
