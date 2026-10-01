@@ -233,3 +233,83 @@ fn tblis_batched_gemm_runs_the_family_by_id() {
         .fold(0.0, f64::max);
     assert!(err < 1e-12, "max abs error {err:e}");
 }
+
+/// `DynamicTiles` only assigns work: for one family at one blocking and team
+/// width it must be bitwise identical to the static grid.
+#[test]
+fn dynamic_tiles_are_bitwise_equal_to_the_static_grid() {
+    if !have_isa() {
+        return;
+    }
+    let (m, n, k) = (130usize, 120usize, 100usize);
+    let mk = |len: usize, s: usize| -> Vec<C64> {
+        (0..len)
+            .map(|i| {
+                let (r, im) = z(i, s);
+                C64::new(r, im)
+            })
+            .collect()
+    };
+    let (a, b, c0) = (mk(m * k, 1), mk(k * n, 2), mk(m * n, 3));
+    let av = StridedView::new(&a, &[m, k], &[1, m as isize], 0).unwrap();
+    let bv = StridedView::new(&b, &[k, n], &[1, k as isize], 0).unwrap();
+    let tp = rayon::ThreadPoolBuilder::new()
+        .num_threads(4)
+        .build()
+        .unwrap();
+    let pool = tprims_exec::Pool::borrow(&tp);
+    let exec = Exec::rayon(&pool);
+    let run = |partition| {
+        let cfg = GemmConfig {
+            engine: EngineChoice::Packed,
+            kernel: KernelChoice::Id("cplx.avx2.c64.native.4x4".into()),
+            partition,
+            ..Default::default()
+        };
+        let mut c = c0.clone();
+        let mut cv = StridedViewMut::new(&mut c, &[m, n], &[1, m as isize], 0).unwrap();
+        let sel = gemm_with(
+            &exec,
+            &cfg,
+            C64::new(0.9, 0.1),
+            MatIn::new(&av),
+            MatIn::new(&bv),
+            C64::new(0.5, -0.2),
+            &mut cv,
+        )
+        .unwrap();
+        (sel, c)
+    };
+    let (s_static, want) = run(tprims_gemm_kernel::PartitionPolicy::default());
+    let (s_dyn, got) =
+        run(tprims_gemm_kernel::PartitionPolicy::DynamicTiles { job_m: 8, job_n: 8 });
+    assert_eq!(s_static.family_id, Some("cplx.avx2.c64.native.4x4"));
+    assert_eq!(s_dyn.family_id, Some("cplx.avx2.c64.native.4x4"));
+    assert_eq!(
+        (s_static.mc, s_static.kc, s_static.nc),
+        (s_dyn.mc, s_dyn.kc, s_dyn.nc)
+    );
+    assert!(
+        got == want,
+        "DynamicTiles differs bitwise from the static grid"
+    );
+    // Misaligned job extents are refused for this family's MR/NR, not rounded.
+    let bad = GemmConfig {
+        engine: EngineChoice::Packed,
+        kernel: KernelChoice::Id("cplx.avx2.c64.native.4x4".into()),
+        partition: tprims_gemm_kernel::PartitionPolicy::DynamicTiles { job_m: 6, job_n: 8 },
+        ..Default::default()
+    };
+    let mut c = c0.clone();
+    let mut cv = StridedViewMut::new(&mut c, &[m, n], &[1, m as isize], 0).unwrap();
+    assert!(gemm_with(
+        &exec,
+        &bad,
+        C64::new(1.0, 0.0),
+        MatIn::new(&av),
+        MatIn::new(&bv),
+        C64::new(0.0, 0.0),
+        &mut cv,
+    )
+    .is_err());
+}
