@@ -74,7 +74,9 @@ macro_rules! gemm_case {
             ] {
                 let (_, want) = run(&faer, ca, cb);
                 if !have_isa() {
-                    // Refused at plan creation, never executed.
+                    // Refused at plan creation, never executed. Off x86_64 the
+                    // family is not compiled at all, so the id is unknown;
+                    // on x86_64 it is known but the CPU lacks AVX2+FMA.
                     let mut c = mk(m * n, 3);
                     let mut cv = StridedViewMut::new(&mut c, &[m, n], &[1, m as isize], 0).unwrap();
                     let err = gemm_with(
@@ -87,10 +89,17 @@ macro_rules! gemm_case {
                         &mut cv,
                     )
                     .unwrap_err();
-                    assert!(matches!(
-                        err,
-                        Error::Select(tprims_gemm_kernel::SelectError::CpuUnsupported { .. })
-                    ));
+                    if cfg!(target_arch = "x86_64") {
+                        assert!(matches!(
+                            err,
+                            Error::Select(tprims_gemm_kernel::SelectError::CpuUnsupported { .. })
+                        ));
+                    } else {
+                        assert!(matches!(
+                            err,
+                            Error::Select(tprims_gemm_kernel::SelectError::UnknownId { .. })
+                        ));
+                    }
                     return;
                 }
                 let (sel, got) = run(&packed, ca, cb);
@@ -127,6 +136,11 @@ fn the_families_are_listed_and_the_default_is_unchanged() {
         ("cplx.avx2.c64.native.4x4", list_kernels::<C64>()),
         ("cplx.avx2.c32.native.8x4", list_kernels::<C32>()),
     ] {
+        if !cfg!(target_arch = "x86_64") {
+            // `tprims-kernel-cplx` compiles to empty family lists elsewhere.
+            assert!(info.iter().all(|k| k.id != id), "{id} listed off x86_64");
+            continue;
+        }
         let k = info.iter().find(|k| k.id == id).expect("listed");
         assert_eq!(k.crate_name, "tprims-kernel-cplx");
         assert_eq!(k.license, "MIT OR Apache-2.0");

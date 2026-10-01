@@ -1,6 +1,9 @@
 //! Regression: a forced kernel id must resolve on the batched TBLIS path with
 //! no earlier call having registered the providers. This binary holds exactly
 //! one test, so nothing else can register first.
+// The cplx families exist only on x86_64 (`tprims-kernel-cplx` is empty elsewhere), so
+// off x86_64 there is no provider whose registration order could be tested.
+#![cfg(target_arch = "x86_64")]
 use num_complex::Complex;
 use strided_view::{StridedView, StridedViewMut};
 use tprims_blas::{gemm_batched_with, BatchIn, BatchStrategy, GemmConfig};

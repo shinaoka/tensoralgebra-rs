@@ -1,5 +1,8 @@
 //! Regression: a forced family id resolves in a contraction plan with no
 //! earlier call having registered the providers (single test, own binary).
+// The cplx families exist only on x86_64 (`tprims-kernel-cplx` is empty elsewhere), so
+// off x86_64 there is no provider whose registration order could be tested.
+#![cfg(target_arch = "x86_64")]
 use num_complex::Complex64;
 use tprims_blas::{Conj, GemmConfig};
 use tprims_contract::{ContractPlan, DotGeneral, Flags, Strategy};
