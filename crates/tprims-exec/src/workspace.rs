@@ -392,25 +392,34 @@ impl ArenaProvider {
 impl WorkspaceProvider for ArenaProvider {
     fn with_worker(&self, req: &WorkspaceReq, f: &mut dyn FnMut(*mut u8, *mut u8, &mut Vec<i64>)) {
         let index = self.handle_for_this_thread();
-        let slot = self.slot(index);
-        if slot.is_null() {
+        let raw = self.slot(index);
+        if raw.is_null() {
             return fresh_worker(req, f);
         }
         // SAFETY: the slot belongs to this thread alone (the handle is
         // thread-local and the map entry never moves), and `borrowed` sends a
         // re-entrant call down the fresh path instead of aliasing it.
-        let slot = unsafe { &mut *slot };
+        let slot = unsafe { &mut *raw };
         if slot.borrowed {
             return fresh_worker(req, f);
         }
         slot.borrowed = true;
+        // Clears `borrowed` when `f` returns or unwinds, so a panicking callback
+        // cannot leave the slot permanently out of reach.
+        struct Release(*mut WorkerSlot);
+        impl Drop for Release {
+            fn drop(&mut self) {
+                // SAFETY: the slot is boxed and outlives this call (see above).
+                unsafe { (*self.0).borrowed = false };
+            }
+        }
+        let _release = Release(raw);
         slot.a.ensure(req.a_bytes);
         slot.tile.ensure(req.tile_bytes);
         slot.scratch.clear();
         slot.scratch.reserve(req.worker_scatter);
         let (a, tile) = (slot.a.as_ptr(), slot.tile.as_ptr());
         f(a, tile, &mut slot.scratch);
-        slot.borrowed = false;
     }
 
     fn take_team(&self, req: &WorkspaceReq, pm: usize, pn: usize) -> TeamLease<'_> {
