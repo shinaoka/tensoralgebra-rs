@@ -2,8 +2,7 @@
 //! engine must report the family it used, and an unusable choice must say why.
 use strided_view::{StridedView, StridedViewMut};
 use tprims_blas::{
-    default_engine, gemm_with, list_kernels, Engine, EngineChoice, Error, GemmConfig, MatIn,
-    SelectedGemm,
+    gemm_with, list_kernels, Engine, EngineChoice, Error, GemmConfig, MatIn, SelectedGemm,
 };
 use tprims_exec::{Exec, Pool};
 use tprims_kernel::KernelChoice;
@@ -90,11 +89,9 @@ fn an_unknown_kernel_id_is_a_selection_error() {
     );
 }
 
-/// The process default is faer unless the environment chose otherwise at
-/// startup, and the engine list registers what this build has.
+/// The built-in families are listed without any registration step.
 #[test]
-fn default_engine_and_kernel_list_are_available() {
-    let _ = default_engine();
+fn the_kernel_list_is_available() {
     let kernels = list_kernels::<f64>();
     assert!(kernels.iter().any(|k| k.id.starts_with("tc.")));
     assert!(kernels.iter().any(|k| k.id == "portable.f64.4x4"));

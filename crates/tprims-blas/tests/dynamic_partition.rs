@@ -124,12 +124,6 @@ fn other_engines_and_strategies_refuse_a_partition_policy() {
         };
         for shape in [(20, 20, 20), (0, 4, 4)] {
             let (r, _) = gemm(&exec, &cfg, shape, 1.0);
-            // `Auto` resolves to faer unless the environment chose packed.
-            if tprims_blas::default_engine() == tprims_blas::Engine::Packed
-                && engine == EngineChoice::Auto
-            {
-                continue;
-            }
             assert!(
                 matches!(r, Err(Error::Select(SelectError::EngineUnsupported { .. }))),
                 "{engine:?} {shape:?}: {r:?}"

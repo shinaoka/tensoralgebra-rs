@@ -9,8 +9,8 @@
 //!   guard and the workspace live.
 //!
 //! `Auto` keeps today's behaviour: faer for a matrix GEMM. The packed driver is
-//! opt-in, per call ([`GemmConfig::engine`]) or process-wide
-//! (`TPRIMS_GEMM_ENGINE`).
+//! opt-in, per call ([`GemmConfig::engine`]); no environment variable selects
+//! it.
 use strided_view::StridedViewMut;
 use tprims_exec::Exec;
 /// Re-exported because it is part of [`GemmConfig`]'s public surface.
@@ -23,7 +23,7 @@ use crate::{Error, MatIn, Result, Scalar};
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 #[non_exhaustive]
 pub enum EngineChoice {
-    /// The process default: faer, unless `TPRIMS_GEMM_ENGINE` says otherwise.
+    /// faer, the long-standing default.
     #[default]
     Auto,
     /// faer's `matmul`, with the operand views as they are.
@@ -156,28 +156,6 @@ impl SelectedGemm {
     }
 }
 
-/// The process default engine, read once from `TPRIMS_GEMM_ENGINE`.
-///
-/// Unset or unrecognised means faer, which is what every existing caller gets.
-///
-/// # Examples
-/// ```
-/// // faer unless the environment selected another engine at startup.
-/// let _ = tprims_blas::default_engine();
-/// ```
-pub fn default_engine() -> Engine {
-    static DEFAULT: std::sync::OnceLock<Engine> = std::sync::OnceLock::new();
-    *DEFAULT.get_or_init(|| {
-        #[cfg(feature = "std")]
-        if let Ok(v) = std::env::var("TPRIMS_GEMM_ENGINE") {
-            if v.eq_ignore_ascii_case("packed") {
-                return Engine::Packed;
-            }
-        }
-        Engine::Faer
-    })
-}
-
 /// Every registered family, as a diagnostic table.
 ///
 /// # Examples
@@ -215,7 +193,7 @@ pub fn gemm_with<T: Scalar>(
         crate::operand::mat2("C", c.dims(), c.strides())?,
     )?;
     let engine = match cfg.engine {
-        EngineChoice::Auto => default_engine(),
+        EngineChoice::Auto => Engine::Faer,
         EngineChoice::Faer => Engine::Faer,
         EngineChoice::Packed => Engine::Packed,
     };

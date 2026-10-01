@@ -21,6 +21,7 @@ default = ["std"]
 std = ["tprims-kernel/std", "tensorcontract/std"]
 
 [dev-dependencies]
+tprims-contract-testkit = { workspace = true }
 rayon = { workspace = true }
 num-complex = { workspace = true }
 

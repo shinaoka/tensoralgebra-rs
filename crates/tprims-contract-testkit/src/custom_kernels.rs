@@ -1,6 +1,6 @@
 //! A downstream crate's own packed microkernels.
 //!
-//! This crate plays the part of a user of tprims: it depends on the public
+//! This module plays the part of a user of tprims: it depends on the public
 //! kernel contract only, implements its kernels itself, and never calls the
 //! process-wide `register`. Its kernels are deliberately tiny scalar loops;
 //! they exist to prove the selection, ownership and diagnostics contracts,
@@ -11,39 +11,8 @@
 //! `NR` reals per k-step, and the complete column-major `MR x NR` tile
 //! overwritten.
 //!
-//! # What safe downstream code cannot do
-//!
-//! A handle is minted only by an admitted catalog. It cannot be built from its
-//! parts,
-//! ```compile_fail,E0451
-//! let _ = tprims_kernel::KernelHandle::<f64> { family: todo!(), catalog: 0, _t: todo!() };
-//! ```
-//! converted from a number or pointer,
-//! ```compile_fail,E0277
-//! let _: tprims_kernel::KernelHandle<f64> = 3usize.into();
-//! ```
-//! made from a raw descriptor, as a selector's return value would have to be,
-//! ```compile_fail,E0308
-//! fn pick(f: &'static tprims_kernel::KernelFamily<f64>)
-//!     -> Result<tprims_kernel::KernelHandle<f64>, tprims_kernel::SelectError> {
-//!     Ok(f)
-//! }
-//! ```
-//! mutated, or asked for the descriptor behind it:
-//! ```compile_fail,E0616
-//! fn poke(mut h: tprims_kernel::KernelHandle<f64>) { h.family = todo!(); }
-//! ```
-//! ```compile_fail,E0624
-//! fn peek(h: tprims_kernel::KernelHandle<f64>) { let _ = h.family(); }
-//! ```
-//! A handle of one storage type is not a handle of another:
-//! ```compile_fail,E0308
-//! fn widen(h: tprims_kernel::KernelHandle<f64>) -> tprims_kernel::KernelHandle<tprims_kernel::C64> { h }
-//! ```
-//! And the admission constructor is `unsafe`:
-//! ```compile_fail,E0133
-//! let _ = tprims_kernel::KernelCatalog::<f64>::from_static_families(&[]);
-//! ```
+//! What safe downstream code cannot do with a handle is pinned by the
+//! `compile_fail` doctests of `tprims_kernel::KernelCatalog`.
 use tprims_kernel::{
     portable, Axis, BAccess, Blocksizes, CPref, CUpdate, Caps, ComplexScheme, CpuFeatures, Isa,
     KernelFamily, KernelImpl, Layout, Method, Origin, TileFormat, UkrFn,
@@ -51,7 +20,7 @@ use tprims_kernel::{
 
 /// How this crate reports itself in diagnostics.
 pub const ORIGIN: Origin = Origin::External {
-    crate_name: "tprims-custom-kernel-test",
+    crate_name: "tprims-contract-testkit",
     license: "MIT OR Apache-2.0",
 };
 

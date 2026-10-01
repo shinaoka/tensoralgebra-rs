@@ -9,7 +9,7 @@ use tprims_blas::{
     gemm_batched_with_selector, gemm_grouped_with_selector, gemm_with_selector, BatchIn, Conj,
     EngineChoice, Error, GemmConfig, GroupedJob, KernelCatalog, MatIn, SelectError,
 };
-use tprims_custom_kernel_test as own;
+use tprims_contract_testkit::custom_kernels as own;
 use tprims_exec::{Exec, Pool};
 use tprims_kernel::KernelChoice;
 
@@ -115,7 +115,7 @@ fn shapes_choose_different_custom_kernels_and_diagnostics_name_them() {
         assert_eq!(c, want);
         assert_eq!(report.family_id, Some(expect));
         assert_eq!(report.origin, Some(own::ORIGIN));
-        assert!(report.to_json().contains("tprims-custom-kernel-test"));
+        assert!(report.to_json().contains("tprims-contract-testkit"));
     }
     assert_eq!(calls.get(), 2, "one selector call per call");
 }

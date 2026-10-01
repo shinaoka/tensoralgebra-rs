@@ -4,7 +4,7 @@ use std::cell::Cell;
 use strided_view::{StridedView, StridedViewMut};
 use tprims_blas::{Conj, EngineChoice, GemmConfig, KernelCatalog, SelectError};
 use tprims_contract::{ContractPlan, DotGeneral, Error, Flags, Selected, Strategy};
-use tprims_custom_kernel_test as own;
+use tprims_contract_testkit::custom_kernels as own;
 use tprims_exec::Exec;
 
 fn catalog(list: &'static [&'static tprims_kernel::KernelFamily<f64>]) -> KernelCatalog<f64> {

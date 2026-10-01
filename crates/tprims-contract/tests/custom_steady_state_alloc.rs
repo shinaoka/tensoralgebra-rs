@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 use strided_view::{StridedView, StridedViewMut};
 use tprims_blas::{Conj, GemmConfig, KernelCatalog};
 use tprims_contract::{ContractPlan, DotGeneral, Flags, Strategy};
-use tprims_custom_kernel_test as own;
+use tprims_contract_testkit::custom_kernels as own;
 use tprims_exec::Exec;
 use tprims_kernel::KernelChoice;
 

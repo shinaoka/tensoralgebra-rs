@@ -44,8 +44,7 @@ pub use custom::{
     SelectionContext,
 };
 pub use engine::{
-    default_engine, gemm_with, list_kernels, Engine, EngineChoice, GemmConfig, KernelChoice,
-    SelectedGemm,
+    gemm_with, list_kernels, Engine, EngineChoice, GemmConfig, KernelChoice, SelectedGemm,
 };
 pub use error::{Error, Result};
 pub use gemm::{gemm, GemmPolicy};

@@ -11,6 +11,8 @@ description = "Test-only second implementation of the tprims-contract-traits int
 num-complex = { workspace = true }
 strided-view = { workspace = true }
 tprims-contract-traits = { workspace = true }
+# Only the `custom_kernels` fixture needs the kernel contract.
+tprims-kernel = { workspace = true, features = ["std"] }
 
 [lints]
 workspace = true

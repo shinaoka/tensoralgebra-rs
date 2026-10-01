@@ -13,6 +13,33 @@
 //! a plan keeps the selected handle, whose descriptor and code are `'static`.
 //! New design for issue #28; arithmetic and packing contracts are unchanged
 //! from [`KernelFamily`].
+//!
+//! # What safe downstream code cannot do
+//!
+//! A handle is minted only by an admitted catalog. It cannot be built from its
+//! parts or mutated (see [`KernelHandle`]), converted from a number or pointer,
+//! ```compile_fail,E0277
+//! let _: tprims_kernel::KernelHandle<f64> = 3usize.into();
+//! ```
+//! made from a raw descriptor, as a selector's return value would have to be,
+//! ```compile_fail,E0308
+//! fn pick(f: &'static tprims_kernel::KernelFamily<f64>)
+//!     -> Result<tprims_kernel::KernelHandle<f64>, tprims_kernel::SelectError> {
+//!     Ok(f)
+//! }
+//! ```
+//! or asked for the descriptor behind it:
+//! ```compile_fail,E0624
+//! fn peek(h: tprims_kernel::KernelHandle<f64>) { let _ = h.family(); }
+//! ```
+//! A handle of one storage type is not a handle of another:
+//! ```compile_fail,E0308
+//! fn widen(h: tprims_kernel::KernelHandle<f64>) -> tprims_kernel::KernelHandle<tprims_kernel::C64> { h }
+//! ```
+//! And the admission constructor is `unsafe`:
+//! ```compile_fail,E0133
+//! let _ = tprims_kernel::KernelCatalog::<f64>::from_static_families(&[]);
+//! ```
 
 use crate::{
     CpuFeatures, Families, Isa, KernelFamily, KernelImpl, Origin, Registry, SelectError,

@@ -1,8 +1,8 @@
 //! Independent catalogs, selectors and plans coexist: on one shared pool, on
-//! separate pools, and next to the process defaults they never touch.
+//! separate pools, and next to the built-in defaults they never touch.
 use strided_view::{StridedView, StridedViewMut};
 use tprims_blas::{gemm_with_selector, GemmConfig, KernelCatalog, MatIn};
-use tprims_custom_kernel_test as own;
+use tprims_contract_testkit::custom_kernels as own;
 use tprims_exec::{Exec, Pool};
 
 const M: usize = 150;
@@ -49,7 +49,13 @@ fn worker(exec: &Exec<'_>, id: &'static str, reps: usize) -> (Vec<f64>, &'static
 
 #[test]
 fn catalogs_run_concurrently_on_one_pool_and_on_separate_pools() {
-    let before = tprims_kernel::process_default::<f64>().unwrap().family().id;
+    let default_id = || {
+        tprims_kernel::ResolvedGemm::<f64>::resolve::<f64>(&tprims_kernel::KernelChoice::Auto, 1)
+            .unwrap()
+            .family()
+            .id
+    };
+    let before = default_id();
     let tp = rayon::ThreadPoolBuilder::new()
         .num_threads(4)
         .build()
@@ -77,8 +83,8 @@ fn catalogs_run_concurrently_on_one_pool_and_on_separate_pools() {
     assert_eq!(x.0, reference);
     assert_eq!(y.0, reference);
 
-    // The process default is exactly what it was.
-    let after = tprims_kernel::process_default::<f64>().unwrap().family().id;
+    // The built-in default is exactly what it was.
+    let after = default_id();
     assert_eq!(before, after);
     assert!(tprims_kernel::list_kernels::<f64>()
         .iter()
