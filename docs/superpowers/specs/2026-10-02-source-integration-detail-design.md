@@ -97,9 +97,6 @@ tuning preserves the baseline with environment overrides unset.
 | row_block | optional baseline menu request | resolve against the selected descriptor; no silent geometry change |
 | cache_model | optional BlockModel, hierarchy/L3-domain hints and KC coupling | invoke existing blocking model with explicit inputs |
 | writeback | optional baseline mode | validate against family capabilities; keep direct/scratch fallback |
-| planning_budget | NonZeroUsize; 1 | advisory selector/blocking input; not a future Exec restriction |
-| width_policy | WidthPolicy::default() | existing defaults: 50,000 ns serial floor, 5,000 ns base/per-worker entry cost |
-| ns_per_real_flop | positive finite f64; 0.05 | provisional baseline estimate, not a measured family cost |
 
 Preserve the existing config enum vocabulary instead of adding stringly typed
 options to the library. Benchmark flags/env are parsed before Plan construction.
@@ -116,8 +113,8 @@ Plan<T>::new_with_selector(&Problem, &PlanConfig,
 ```
 
 The second constructor is the #28 typed selection seam, not a new framework.
-The selector sees the validated/oriented shape, explicit method and advisory
-budget, is called at most once, and returns a catalog handle or a typed error.
+The selector sees the validated, oriented shape and the explicit method. It is
+called at most once, and returns a catalog handle or a typed error.
 ID plus selector is Config/Select. Store the handle, not the callback or a
 borrow of the temporary catalog. Keep the current static-descriptor lifetime
 contract; no dynamic kernel-loader lifetime model is introduced.
@@ -215,10 +212,9 @@ BoxedPlan<T> = Box<dyn PreparedContraction<T> + Send + Sync>
 ```
 
 Requirements contains common no-materialize policy. TprimsBackend owns
-PlanConfig; preparation applies Requirements and the caller's advisory budget
-without mutating the factory. Effective no_materialize is the OR of the
-config and requirement flags; the explicit PlanningBudget argument overrides
-the config's default advisory budget for that preparation. Plan<T> implements
+PlanConfig; preparation applies Requirements without mutating the factory.
+Effective no_materialize is the OR of the config and requirement flags.
+PlanningBudget stays advisory, as in #31. Plan<T> implements
 PreparedContraction, not the backend factory.
 The box is allocated once at prepare. No generic trait method prevents object
 safety and there is no per-tile virtual call.
@@ -235,33 +231,26 @@ Preserve Pool::borrow(&ThreadPool), Pool::owned and borrowed Exec. Document
 one shared Pool wrapper per raw pool, since its SPMD gate is owner-local.
 No global wrapper registry or exclusive mutable host-pool borrow is added.
 
-Execution chooses actual width once from useful work/job count and the current
-budget. Complex MACs count as 8 real flops, real MACs as 2. The advisory
-planning budget never rejects a different execution budget or reselects a
-family. Fixed blocks can serve different widths; rederive only scheduling
-and byte workspace requirements from that width.
+Execution chooses the actual width once, from the work estimate and the
+current budget, with the existing WidthPolicy and one internal ns-per-flop
+default. A plan never reselects its family for a different budget. Only the
+scheduling and the byte workspace requirements are rederived from the width.
 
 | Situation | Route |
 |---|---|
 | width 1 / below threshold | caller thread; no pool entry |
-| width equals pool size and budget permits it | gated full-team broadcast, existing shared-panel StaticGrid/DynamicTiles |
-| 1 < width < pool size | barrier-free output partitions, private panel leases, same family |
+| width > 1 | baseline gated broadcast, existing shared-panel StaticGrid/DynamicTiles |
 | already on the same pool's worker | serial same-family fallback; no barrier gate wait |
 | many independent items, item_count >= chosen width | outer partitions, inner serial |
 | fewer items | sequential items using their allowed inner width |
 
-The medium-width route reuses the serial range/tile worker and makes disjoint
-output regions; it does not implement a second numerical driver. Full-team
-callbacks do not allocate, validate or invoke fallible user code between
-barriers. Refusal runs no callback. Never partially broadcast the whole pool
-just to satisfy a reduced budget.
+Full-team callbacks do not allocate, validate or invoke fallible user code
+between barriers. A refused broadcast runs no callback.
 
-contract_batched has one fixed-layout plan and independent item buffers.
-Validate items before writing, then check sorted span intervals for output
-write/write and output/input cross-item dependencies. Input/input sharing
-is allowed. Reject dependencies even if today's width happens to be one;
-heterogeneous shapes use per-shape plans grouped by the host. Do not add a
-grouped-GEMM compatibility layer.
+contract_batched has one fixed-layout plan and independent item buffers,
+which are separate `&mut` outputs. As in the baseline, the borrow checker
+guarantees their disjointness. Heterogeneous shapes use per-shape plans
+grouped by the host. TAPP batched execution keeps its sequential item loop.
 
 Move ArenaProvider/WorkspaceReq/TeamLease and tests to exec. Requests stay
 dtype-independent: byte counts/alignment, scatter capacities and barrier
@@ -270,12 +259,6 @@ worker buffers, exclusive team leases, trim and retained-byte accounting;
 use a guard to clear a worker's borrowed state on unwind. Reentry takes
 call-local buffers rather than waiting for itself.
 
-One retained-byte bound defaults to 64 MiB per owner, configurable in Rust.
-Release oversized idle capacity on return. Account panels/tiles/scatter, not
-RSS. Trim touches idle storage; live leases remain valid. This is a small
-extension at the current arena seam, not a new allocator/resource subsystem.
-No mandatory per-call diagnostic allocation or runtime validation of arbitrary
-raw allocation liveness is promised.
 
 ## 7. Kernel consolidation and identifiers
 
@@ -315,28 +298,11 @@ budget snapshots, join/TLS cleanup and thread-local error-message contracts.
 
 TAPP null C at beta!=0 remains Unsupported. Standard calls use default
 PlanConfig; in-place C=D is recognized by logical mapping, not pointer equality
-alone. Batched execution reuses contract's preflight/scheduling. DLPack borrow
+alone. Batched execution validates every item, then runs the items in sequence, as in the baseline. DLPack borrow
 helpers remain available but do not become a new TAPP operand form.
 
-Expose explicit tuning through one opaque tprims_plan_config handle in
-tapp_ext.h (intptr_t, following the existing handle style):
-
-```text
-tprims_plan_config_create(out) -> TAPP_error
-tprims_plan_config_destroy(config) -> TAPP_error
-tprims_plan_config_set_<field>(config, typed value) -> TAPP_error
-tprims_tapp_create_tensor_product_with_config(standard arguments, config)
-    -> TAPP_error
-```
-
-The setters cover kernel ID/Auto, partition, no_materialize, complex method,
-blocking/percentages, orientation, row block, cache model/L3 hints/KC coupling,
-writeback, planning budget and width/cost policy. Use C enums/scalars for these
-typed values, copy strings, and reject unknown/invalid values. Setters validate
-individual values; creation validates combinations and snapshots them.
-Typed catalog callbacks are Rust-only. No Rust struct layout, general key/value
-parser, JSON config or external C kernel-loader ABI is introduced. Config
-destruction does not invalidate products already created from it.
+Phase 1 adds no C tuning API: standard TAPP calls use the default
+PlanConfig. One can be added when a C caller needs it.
 
 | Error reason | Existing C status |
 |---|---|

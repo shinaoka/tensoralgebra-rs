@@ -99,11 +99,8 @@ Deleted crates:
 - `tprims-contract-traits` (moves into the `tprims-contract::api` module)
 
 The unused workspace dependencies `strided-perm` and `strided-kernel` are removed. The `strided-view`/`strided-basic` pin stays at the tenferro rev.
-The checked-in `strided/` import and its history are not dissolved by this
-issue. The authoritative workspace member set at the baseline is the root
-`Cargo.toml`; do not turn the imported strided directories into workspace
-members as part of this change. Package names, workspace dependencies,
-lockfile, features, test fixtures and CI commands move together.
+Package names, workspace dependencies, lockfile, features, test fixtures and
+CI commands move together.
 
 ## 4. `tprims-contract`
 
@@ -196,9 +193,10 @@ payload is retained. Replanning is explicit when metadata/config changes.
 - `partition`: optional explicit StaticGrid or DynamicTiles (#29); absence
   allows strategy selection, with StaticGrid as the packed default;
 - `no_materialize`;
-- a positive advisory `planning_budget` (default 1), width policy and an
-  explicit cost estimate (§5.2);
-- explicit tuning (§6.4).
+- explicit tuning (§6.4), which replaces the removed environment variables.
+
+The width policy and cost estimate are internal defaults (§5.2), not
+configuration.
 
 On a packed plan the family is resolved once, at plan time, after built-ins
 are available. The selector runs at most once, sees the documented advisory
@@ -323,35 +321,18 @@ validation between `api/validate.rs`, layout helpers and C wrappers.
 - `Exec` is either Serial or Rayon { pool, budget }.
 - `install(k, op)`: width one runs inline; a wider region enters the pool once.
 - `for_each_partition(k, f)` is barrier-free.
-- `broadcast(width, f)` runs the whole team concurrently or nothing. For
-  width > 1 it is permitted only when width == pool size and the budget
-  permits that size. It is serialized per pool and refused from a worker of
-  the same pool. Refusal happens before any callback; never clamp a barrier's
-  participant count. Width one runs inline.
+- `broadcast(width, f)` keeps the baseline semantics. It runs the whole team
+  concurrently or nothing, is serialized per pool, and is refused when wider
+  than the pool or budget, or when called from a worker of the same pool. Width one runs
+  inline.
 - Workspace: `ArenaProvider`, `TeamLease` and the rest move here from
-  gemm-kernel. There is one arena per Pool and a Plan-owned arena for serial
-  reuse, with no process-global data cache or global tracing buffer. Requests
-  describe bytes, alignment and barrier counts, never KernelFamily types.
-  Kernel does not construct arenas; contract owns that integration.
+  gemm-kernel unchanged, together with their lease, trim and reentry
+  behaviour and their tests. There is one arena per Pool and a Plan-owned
+  arena for serial reuse, with no process-global state. Requests describe
+  bytes, alignment and barrier counts, never KernelFamily types. Contract
+  computes them from the resolved family.
 - `strided::run_with_exec` is kept for `add`/`permute`. The Phase 1 faer
   strategy does no operand/result normalization copies.
-
-Workspace leases are exclusive and returned to the issuing owner on success,
-error and unwind. Reentry uses fresh call-local storage without waiting for a
-lease the calling thread holds. Reset worker-borrow state with an RAII guard,
-not a normal-return assignment. All potentially failing allocation and
-validation precede barrier-bearing compute. Kernel callbacks used in an SPMD
-region have a documented non-panicking contract; catch_unwind around the C
-entry alone cannot release workers blocked at a barrier. No new cancellation
-API is promised in Phase 1.
-
-Keep the existing workspace lease, trim and retained-byte APIs when moving
-them. Add one configurable retained-byte limit (64 MiB default per owner),
-with oversized idle buffers dropped on return rather than rejecting valid
-work. Include scatter capacities in accounting. Trim frees idle storage and
-does not invalidate live leases. Avoid a new resource manager, cancellation
-framework, slot-count policy or C workspace-control API; temporary storage
-and typed arithmetic checks are sufficient at the existing owning seam.
 
 Deleted:
 
@@ -365,55 +346,36 @@ Deleted:
 ### 5.2 Parallel strategy
 
 1. **One source of threads.** Threads come only from `Exec`; without one, execution is serial.
-2. **Width.** It is chosen once per execution from the snapshotted Exec
-   budget, job count, plan work estimate and explicit width policy. The
-   duplicated `NS_PER_FLOP` constants move into one PlanConfig default
-   estimate (the baseline's provisional 0.05 ns per real flop); complex work
-   is counted as 8 real flops/MAC. No measured per-family cost table exists
-   yet, so one is not invented for Phase 1. Callers may supply a positive,
-   finite cost estimate. Work below the serial threshold runs inline.
-3. **Inside one contraction.** Width one is serial. A full-pool width may
-   use SPMD StaticGrid (MR/NR-aligned pm×pn) or opt-in DynamicTiles. A medium
-   width or a budget smaller than the pool uses barrier-free independent
-   output partitions with private panels, never a partial broadcast that
-   wakes the whole pool. Repartition a requested grid to the available job
-   count/budget, without extra threads and without changing the family.
-   In-plan batch axes stay serial inside each team in Phase 1. L3-domain
-   hints describe blocking; no CPU affinity/NUMA-placement guarantee is made
-   without host-provided placement information.
-4. **Many items** (`contract_batched`, `TAPP_execute_batched_product`):
-   - when there are at least as many items as the width, items are split barrier-free with `for_each_partition` and each item runs serially;
-   - otherwise items run in sequence, each with inner SPMD.
-
-   One budget governs both levels.
-   Validate all items **and cross-item dependencies** before dispatch:
-   no D_i may overlap D_j, A_j, B_j or C_j for i != j. Shared read-only
-   inputs are allowed; identical C_i/D_i is allowed within one item.
-   Dependent batches are rejected as Alias instead of becoming races or
-   changing meaning with the worker count. Use sorted checked byte spans
-   rather than an unbounded quadratic pair scan. A failed validation leaves
-   every output unchanged; a backend failure during compute may leave
-   some items written. A zero-item batch still validates config/executor and
-   scalar arguments, while operand arrays may be null at zero length.
+2. **Width.** It is chosen once per execution, from the Exec budget and the
+   plan's work estimate, by the existing `WidthPolicy`. The two duplicated
+   `NS_PER_FLOP` constants (tapp and blas) become one internal default, the
+   baseline's provisional 0.05 ns per real flop. Work below the serial
+   threshold runs inline.
+3. **Inside one contraction.** Width one is serial. Wider work runs SPMD
+   via `broadcast` with StaticGrid (MR/NR-aligned pm×pn) or opt-in
+   DynamicTiles, as in the baseline. In-plan batch axes stay serial inside
+   the team in Phase 1.
+4. **Many items** (`contract_batched`). When there are at least as many
+   items as the width, items are split barrier-free with
+   `for_each_partition` and each item runs serially. Otherwise items run in
+   sequence, each with inner SPMD. One budget governs both levels. In the
+   safe Rust API the items are separate `&mut` outputs, so the borrow
+   checker guarantees disjointness, as in the baseline `batch.rs`.
+   `TAPP_execute_batched_product` keeps its baseline sequential item loop,
+   so it needs no new cross-item check.
 5. **Nesting.** A broadcast from a worker of the same pool is refused before
    work starts, and execution falls back to serial with the same family.
-   Never wait for a gate from its own participant. Gate ownership is scoped
-   and unwound with the call. Cross-pool callbacks remain subject to the
-   host's synchronization contract; no cross-pool lock-tracking system is added.
 6. **faer strategy (Phase 1).** It enters with install and derives Par from
    the granted width (Seq at width one). The batched faer loop from the
    deleted tprims-blas moves into `strategy/faer.rs`; when outer batching
    fans out, each inner faer call is Seq. Its corpus coverage is retained;
    performance parity is not asserted before measurement.
 
-Report budget, active width and actual dispatch width through existing Exec
-counters and optional execution diagnostics, separately from immutable
-`plan.report()`; no mandatory per-call allocation or logging. Counter-based tests verify
-1T has no pool entry, partial budgets have no full-pool wakeup, nested calls
-terminate, concurrent full-team calls serialize, and one plan works at
-different budgets without reselecting. Invalid width requests return ExecError
-without running a partial team; public callback docs state the barrier and
-non-panicking obligations instead of promising to validate arbitrary code.
+The existing Exec counters cover the tests. They check that:
+- 1T makes no pool entry;
+- nested calls terminate;
+- concurrent full-team calls serialize;
+- one plan works at different budgets without reselecting its family.
 
 ## 6. `tprims-kernel`
 
@@ -525,9 +487,8 @@ the effective values and their sources. No hidden reblocking at execute time.
 
 ## 7. `tprims-capi`, `tprims-testkit`, `tprims-bench`
 
-- **`tprims-capi`.** Preserve #26's TAPP/core ABI except for the explicitly
-  listed removals/restrictions in §7.1; add tprims-only config extensions.
-  The library `blas` feature is gone.
+- **`tprims-capi`.** Preserve #26's TAPP/core ABI, except for the removals
+  listed in §7.1. The library `blas` feature is gone.
   - Headers in `include/`: the pinned upstream TAPP headers (BSD-3) and `tprims/{tprims,core,tapp_ext}.h`. Lukas Devos's second `tapp.h` is deleted.
   - `examples/c-consumer`, the pkg-config template and `install.sh` are adapted to `libtprims`.
   - The tapp `lib.rs` (1239 lines) is split by ownership: `tensor_info.rs`
@@ -552,7 +513,7 @@ the effective values and their sources. No hidden reblocking at execute time.
   - `exec_entry`, `capi_rust` and `tcbench`.
   - The blas and linalg benchmarks are deleted.
 
-### 7.1 Preserved ABI and explicit C configuration
+### 7.1 Preserved ABI
 
 "Unchanged" covers the pinned TAPP prototypes, numeric enum/status values,
 handle ownership and supported semantics from #26. The intentional ABI break
@@ -566,17 +527,10 @@ Update the umbrella header and installation manifest so neither includes or
 installs `tprims/blas.h`. Pin the final export allowlist with nm and C/C++
 consumers; no removed crate name should survive in build/install commands.
 
-Tensor products snapshot info metadata and config, hold no data pointer or
-executor and survive mutation/destruction of the original infos. Standard
-`TAPP_create_tensor_product` uses PlanConfig defaults. Non-default kernel,
-partition, blocking and no-materialize settings need a tprims-only extension:
-an opaque config handle with typed fallible setters and
-`tprims_tapp_create_tensor_product_with_config` (the standard arguments plus
-one config argument). The created product snapshots it; the config can then
-be destroyed. Keep this in `tapp_ext.h`, leave upstream headers verbatim,
-and specify/test the setter-to-PlanConfig and status mappings before PR 4
-lands. Do not pass a Rust struct or unversioned PlanConfig memory layout
-across C. Standard callers retain the default behavior.
+Tensor products snapshot info metadata, hold no data pointer or executor,
+and survive mutation or destruction of the original infos.
+`TAPP_create_tensor_product` uses the default PlanConfig. Phase 1 adds no C
+tuning API; one can be added when a C caller needs non-default settings.
 
 Preserve explicit executor ownership: executor 0 and TAPP_create_executor
 are serial; Rayon creation with nthreads=0 is invalid and nthreads=1 creates
@@ -594,9 +548,8 @@ beta=0. Null C with beta!=0 is Unsupported, even on an empty output. Explicit
 C=D uses matching logical addresses; separate nonoverlapping C/D may have
 different layouts. Keep existing null A/B/D rules, storage-precision checks,
 op_D semantics, initialized status output and repeated-label behavior.
-The batched adapter uses contract's whole-batch preflight, including the new
-cross-item Alias rejection; this safety restriction is documented alongside
-the otherwise retained ABI.
+The batched adapter keeps its baseline behaviour: it validates every item,
+then runs the items in sequence.
 
 ### 7.2 Benchmark baselines and features
 
@@ -620,22 +573,12 @@ Name feature-gated reference cases separately from tprims strategies.
   files) and **`tensorprimitives/scripts/`** (35 sbatch/analysis files),
   retaining history. This does not delete root `scripts/` (CI checks) or
   `benchmarks/scripts/` (current measurement support).
-- Before removal, record a path-by-path keep/archive/delete manifest in the
-  removal worklog. Archive historical reports with pinned repository/commit
-  links, not broken relative links into deleted directories. `fbc83f5` is a
-  verified pre-removal snapshot containing both directories; the earlier
-  `2155bb63e1a87a1f993d50c439b98a9bc7298ad5` snapshot also contains them.
-  Record the actual deletion parent's full SHA and a `git archive` recovery
-  command in provenance when deletion lands; do not call the earlier import
-  commit the "last containing commit".
-- Keep scripts needed for the supported tcbench **workflow**, including their
-  transitive sourced/imported helpers, under `benchmarks/` (package
-  `tprims-bench`). Historical scheduler/experiment scripts have no automatic
-  keep entitlement. Current benchmark commands must work in a clean checkout
-  without recovering anything from history. Rewrite working-directory,
-  output-path, binary/feature and env-to-config assumptions, and syntax/test
-  the kept scripts. Historical experiment reproduction uses the pinned old
-  checkout and toolchain, rather than the new CLI with old scripts.
+- When the deletion lands, record the parent commit's full SHA in
+  `docs/provenance.md`. Archived docs link to that pinned commit, not to
+  the deleted paths.
+- Scripts that the supported tcbench workflow needs move to `benchmarks/`
+  and are adapted to the new CLI. Historical experiment scripts are not
+  kept.
 - Add root `LICENSE-MIT` / `LICENSE-APACHE`, with copyright for Lukas Devos and tensor4all contributors.
 
 ## 9. History and authorship
@@ -650,9 +593,7 @@ Name feature-gated reference cases separately from tprims strategies.
   git mv alone does not guarantee follow across a split. The move manifest
   records old/new paths and commits for those cases. Preserve BSD-3 notices
   for the pinned TAPP headers and Apache-2.0 notices for DLPack. Testkit also
-  credits Lukas for its moved oracle; add Satoshi Terasaki/Hiroshi Shinaoka
-  wherever strided-derived files actually move. Review imported tests file
-  by file, rather than assigning all sources one guessed copyright.
+  credits Lukas Devos for its moved oracle.
 
 ## 10. Phase 2 (separate spec, summary only)
 
@@ -666,7 +607,7 @@ Name feature-gated reference cases separately from tprims strategies.
 - tuned AVX2 tiles;
 - `target_feature` on packing and write-back;
 - a small-problem path with no fixed packing cost;
-- parallel-partition review;
+- parallel-partition review, including the decided but unimplemented rule (decision log, "SPMD width on a borrowed Rayon pool") that barrier broadcasts use the full pool and medium widths use barrier-free partitions;
 - driver-side batch-axis job claiming, the cross-batch claiming deferred in #29, needed for tiny batched GEMMs and Hadamard;
 - reusable SIMD placed in strided-rs where practical.
 
@@ -721,12 +662,8 @@ PR. This is a prerequisite: the matrix lands on `main` before PR 1.
 
 Implementation is mostly one sequential lane. testkit/bench and the docs archive can run in parallel. PR 3 is internally sequential: problem and front ends, then the driver move, then the strategies.
 
-Every PR maintains a test-migration ledger: original path/case, new owner and
-whether it is ported or removed with a named deleted feature. A failed test
-cannot be classified as deleted merely because the new representation omits
-its behavior. The final review searches manifests, public docs, scripts and
-symbol inventories for removed packages/APIs/env variables. Archived docs
-are clearly historical and use their own pinned source links.
+Each PR description lists the tests it removes, each with the deleted
+feature it belonged to. A test is never removed merely because it fails.
 
 Correctness and structural acceptance (reuse/port existing tests; do not
 expand the bullets into a Cartesian product of configurations):
@@ -761,27 +698,11 @@ expand the bullets into a Cartesian product of configurations):
 - benchmark rows cover retained public operations (including add/permute),
   kernel paths and alternative strategies at 1T/4T. A missing comparison
   feature is explicit, not silently treated as a zero-time row;
-- **Once at Phase 1 completion**, one release-mode 1T smoke run covers `tenferro-p1`, `hadamard`,
-  `tenferro-p1-gemm` and `large-batched-gemm` against fbc83f5. Before running,
-  freeze case correspondence, timed boundary, host/provider/thread settings
-  and a gross-regression investigation threshold (2x workload time). Record
-  every case and skipped feature, verify numerical output, and keep the
-  baseline and candidate runs sequential. Use pinned idle cores on Linux;
-  on macOS record that affinity is unavailable. Exceeding the threshold
-  requires investigation and a written disposition, not a performance
-  claim or a selective favorable retry. Smoke success does not establish
-  parity, promote Auto priorities or replace Phase 2's paired protocol.
-  Do not repeat benchmarks per file move, PR, audit lane or docs change.
-  Rerun only an affected smoke case when a failure is fixed; a paired
-  optimization experiment, if later requested, follows its own complete-run
-  rules. Each implementation PR runs its correctness/local gate, not another
-  performance campaign. No benchmark is required for this design-only change.
-
-Phase 1 integration readiness follows the shared rules' final independent
-cross-phase review. Reviewers reuse the recorded smoke evidence; this gate
-does not impose repeat timing or Phase 2 optimization experiments. Record
-unavailable ISA hardware; do not claim it passed. No implementation audit is
-claimed by this design-only revision.
+- **Smoke run.** It happens once, at Phase 1 completion: release mode, 1T,
+  on Linux. It covers `tenferro-p1`, `hadamard`, `tenferro-p1-gemm` and
+  `large-batched-gemm`, against `fbc83f5`. A case more than 2x slower is
+  investigated. Nothing else is benchmarked in Phase 1, and the smoke run
+  makes no parity claim.
 
 ### 11.1 tenferro migration boundary
 
