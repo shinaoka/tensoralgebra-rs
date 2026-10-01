@@ -706,6 +706,19 @@ intermediate clients broken.
    docs. Replace all old package/feature paths in CI, AGENTS.md,
    REPOSITORY_RULES.md, README/rustdoc/examples and bundled usage skills.
 
+**CI platforms.** Hosted CI runs on Linux x86_64 and macOS arm64 for every
+PR. This is a prerequisite: the matrix lands on `main` before PR 1.
+- **Both OSes:** clippy, workspace tests, release tests of the packed
+  driver/kernels, and the C/C++ ABI consumers. The ABI consumers use
+  `libtprims.so`/`nm -D` on Linux and `libtprims.dylib`/`nm -gU` on macOS.
+- **Linux only:** fmt, scripts, MSRV and docs.
+- **Platform-specific code:** each PR keeps x86-only families and tests
+  platform-correct. Descriptors that exist only on x86 report themselves
+  unavailable or unknown on aarch64, and the tests assert exactly that.
+  NEON kernels run their numerical tests on the macOS lane.
+- **Coverage claims:** a passing local Linux gate does not substitute for
+  the macOS lane.
+
 Implementation is mostly one sequential lane. testkit/bench and the docs archive can run in parallel. PR 3 is internally sequential: problem and front ends, then the driver move, then the strategies.
 
 Every PR maintains a test-migration ledger: original path/case, new owner and

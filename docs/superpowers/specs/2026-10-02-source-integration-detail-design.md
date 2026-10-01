@@ -404,6 +404,11 @@ Move or delete a consumer in the same PR that removes its dependency. Bundle
 and ABI tests cannot retain a blas dependency until PR 4 if blas disappears
 in PR 3. Old tensorcontract remains only until its last tcbench consumer moves.
 
+Every PR must be green on both hosted CI platforms: Linux x86_64 and macOS
+arm64 (overview §11). An x86-only kernel or test is gated by target and has
+an explicit aarch64 expectation. A local Linux run does not stand in for
+the macOS lane.
+
 Port retained tests with a short old/new-owner ledger. Add focused regression
 tests for actual changed seams: diagonal/reduction lowering, C/D update,
 batch dependency refusal, forced-ID collisions, reduced-budget dispatch and
