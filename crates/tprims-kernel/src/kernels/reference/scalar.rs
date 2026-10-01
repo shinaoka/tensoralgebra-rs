@@ -10,8 +10,8 @@
 //! # Adding an element type
 //!
 //! Three impls, no kernel of your own: [`Real`] for the arithmetic,
-//! [`Element`](tprims_kernel::Element) to say how a storage element decomposes
-//! into reals, and [`KernelSet`](super::KernelSet) to hand back
+//! [`Element`](crate::Element) to say how a storage element decomposes
+//! into reals, and [`KernelSet`](crate::kernels::KernelSet) to hand back
 //! [`config_real`] / [`config_cplx`] at a register block of your choosing.
 //! Everything else — index analysis, folding, scatter and block scatter,
 //! packing in four formats, the five-loop driver, the scattered write-back,

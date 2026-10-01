@@ -180,8 +180,6 @@ impl_kernel_set!(
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(target_arch = "aarch64")]
-    use crate::kernels::aarch64;
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     use crate::kernels::x86;
 

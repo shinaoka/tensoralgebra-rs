@@ -3,7 +3,7 @@
 //!
 //! # Why this exists
 //!
-//! [`Blocking::derive`](super::Blocking::derive) hardcodes three numbers —
+//! [`Blocking::derive`](crate::Blocking::derive) hardcodes three numbers —
 //! `kc = 384` for 4-byte reals and `256` otherwise, a 512 KiB budget for the
 //! packed `A` block and a 3 MiB budget for the packed `B` panel. They are half
 //! the L2 and a slice of the L3 of *one* machine (`ccqlin038`, Cascade Lake,
@@ -69,7 +69,7 @@
 //!
 //! * **Reals per element.** This engine's packed panels carry a
 //!   method-dependent number of reals per *logical* element — 2 for planar, 4
-//!   in `A` for 1m, 3 for 3m (see [`super::PackFormat`]) — so every footprint
+//!   in `A` for 1m, 3 for 3m (see [`crate::PackFormat`]) — so every footprint
 //!   below is in reals, not elements. That is what makes 1m automatically get a
 //!   smaller `mc` from the same L2, and getting it wrong would rig the
 //!   project's three-way method comparison.
@@ -105,7 +105,7 @@ pub enum BlockModel {
     /// The hardcoded Phase 2 constants: today's shipping behaviour.
     #[default]
     Legacy,
-    /// [`analytical`], driven by [`hierarchy`].
+    /// [`analytical`], driven by [`super::probe::hierarchy`].
     Analytical,
 }
 
@@ -182,7 +182,7 @@ pub fn block_model() -> BlockModel {
 /// micro-kernel.
 ///
 /// `a_reals`/`b_reals` are the reals a packed panel carries per *logical*
-/// element ([`super::PackFormat::reals_per_element`]), which is what makes the
+/// element ([`crate::PackFormat::reals_per_element`]), which is what makes the
 /// three complex methods see the same cache budget rather than the same element
 /// count.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

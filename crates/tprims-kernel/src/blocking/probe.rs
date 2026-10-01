@@ -43,7 +43,7 @@ impl CacheLevel {
 /// a BSD `sysctl`, a hypervisor's topology table, a `/proc/cpuinfo` reader for
 /// a machine whose sysfs is unmounted — and nothing downstream has to *service*
 /// a source, only report it, so a catch-all arm is a legitimate answer here in a
-/// way it is not for [`super::ComplexMethod`].
+/// way it is not for [`crate::ComplexMethod`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum CacheSource {
