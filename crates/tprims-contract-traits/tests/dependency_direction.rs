@@ -26,7 +26,7 @@ fn tree(package: &str) -> String {
     String::from_utf8(out.stdout).unwrap()
 }
 
-fn names(tree: &str) -> Vec<&str> {
+fn crate_names(tree: &str) -> Vec<&str> {
     tree.lines()
         .filter_map(|l| l.split_whitespace().next())
         .collect()
@@ -35,7 +35,7 @@ fn names(tree: &str) -> Vec<&str> {
 #[test]
 fn the_interface_crate_depends_on_no_implementation() {
     let deps = tree("tprims-contract-traits");
-    let names = names(&deps);
+    let names = crate_names(&deps);
     for forbidden in [
         "tprims-contract",
         "tprims-blas",
@@ -58,7 +58,7 @@ fn the_interface_crate_depends_on_no_implementation() {
 #[test]
 fn the_test_backend_depends_on_the_interface_but_not_on_tprims_contract() {
     let deps = tree("tprims-contract-testkit");
-    let names = names(&deps);
+    let names = crate_names(&deps);
     assert!(names.contains(&"tprims-contract-traits"), "{deps}");
     for forbidden in [
         "tprims-contract ",
@@ -74,5 +74,5 @@ fn the_test_backend_depends_on_the_interface_but_not_on_tprims_contract() {
     }
     // Implementations depend on the interface, never the reverse.
     let contract = tree("tprims-contract");
-    assert!(names(&contract).contains(&"tprims-contract-traits"));
+    assert!(crate_names(&contract).contains(&"tprims-contract-traits"));
 }
