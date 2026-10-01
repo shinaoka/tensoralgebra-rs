@@ -100,13 +100,13 @@ fn a_non_fusable_contraction_runs_dynamically_and_reports_the_policy() {
 fn a_partition_request_selects_the_packed_driver_under_auto() {
     // Without an explicit engine or kernel, a partition policy alone is a
     // requirement, so the automatic strategy plans the packed driver.
-    // 24 x 24 is a whole number of register blocks for every built-in family
-    // (4x4, 8x6, 8x4, ...), since job extents must be multiples of the
-    // selected family's logical MR and NR.
+    // 48 x 48 is a whole number of register blocks for every built-in family
+    // (4x4, 8x6, 8x4, NEON 16x3, ...), since job extents must be multiples of
+    // the selected family's logical MR and NR.
     let cfg = GemmConfig {
         partition: PartitionPolicy::DynamicTiles {
-            job_m: 24,
-            job_n: 24,
+            job_m: 48,
+            job_n: 48,
         },
         ..Default::default()
     };
