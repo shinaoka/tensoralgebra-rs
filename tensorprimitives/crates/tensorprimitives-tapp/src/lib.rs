@@ -147,8 +147,9 @@ use tensorcontract::spmd::Spmd;
 use tensorcontract::{Element, ElementOp, Layout, Operand, Plan};
 use tprims_core::exec::with_executor;
 use tprims_core::status::{
-    ffi, FfiError, TPRIMS_ERR_ALIASED, TPRIMS_ERR_DTYPE, TPRIMS_ERR_INTERNAL,
-    TPRIMS_ERR_INVALID_ARGUMENT, TPRIMS_ERR_LABELS, TPRIMS_ERR_SHAPE, TPRIMS_ERR_UNSUPPORTED,
+    ffi, FfiError, TPRIMS_BUSY, TPRIMS_ERR_ALIASED, TPRIMS_ERR_DTYPE, TPRIMS_ERR_INTERNAL,
+    TPRIMS_ERR_INVALID_ARGUMENT, TPRIMS_ERR_LABELS, TPRIMS_ERR_PANIC, TPRIMS_ERR_SHAPE,
+    TPRIMS_ERR_UNSUPPORTED, TPRIMS_ERR_WOULD_DEADLOCK,
 };
 use tprims_exec::{Exec, WidthPolicy};
 
@@ -217,6 +218,13 @@ pub const TAPP_ERROR_LABELS: c_int = TPRIMS_ERR_LABELS;
 pub const TAPP_ERROR_UNSUPPORTED: c_int = TPRIMS_ERR_UNSUPPORTED;
 /// A bug or an allocation failure.
 pub const TAPP_ERROR_INTERNAL: c_int = TPRIMS_ERR_INTERNAL;
+/// `TAPP_destroy_executor` with calls in flight; the handle stays live.
+pub const TAPP_ERROR_BUSY: c_int = TPRIMS_BUSY;
+/// `TAPP_destroy_executor` from one of the executor's own workers; the handle
+/// stays live.
+pub const TAPP_ERROR_WOULD_DEADLOCK: c_int = TPRIMS_ERR_WOULD_DEADLOCK;
+/// A panic was caught at the ABI boundary and reported instead of unwinding.
+pub const TAPP_ERROR_PANIC: c_int = TPRIMS_ERR_PANIC;
 /// Output memory that overlaps an input or itself, or `C` and `D` that overlap
 /// without being the same mapping.
 pub const TAPP_ERROR_ALIASED: c_int = TPRIMS_ERR_ALIASED;
@@ -1022,7 +1030,7 @@ unsafe fn execute_items<T>(
     exec: isize,
     alpha: *const c_void,
     beta: *const c_void,
-    items: &mut dyn Iterator<Item = Item>,
+    item: &dyn Fn(usize) -> Item,
     count: usize,
 ) -> Result<(), FfiError>
 where
@@ -1031,16 +1039,17 @@ where
 {
     // SAFETY: `alpha` and `beta` are `T`s per the contract.
     let (al, be) = unsafe { (scalar::<T>(alpha, "alpha")?, scalar::<T>(beta, "beta")?) };
-    let items: Vec<Item> = items.take(count).collect();
-    for it in &items {
-        p.validate(*it, is_zero(be))?;
+    // Validate every item before the first write; nothing is allocated, so a
+    // single product costs no more than it did before batches existed.
+    for i in 0..count {
+        p.validate(item(i), is_zero(be))?;
     }
     // SAFETY: `exec` is zero or a live executor per the contract.
     unsafe {
         with_executor(exec, |x| {
-            for it in &items {
+            for i in 0..count {
                 // SAFETY: validated above; the caller's pointer contract.
-                p.run::<T>(x, al, be, *it);
+                p.run::<T>(x, al, be, item(i));
             }
             Ok(())
         })
@@ -1056,16 +1065,16 @@ unsafe fn dispatch(
     exec: isize,
     alpha: *const c_void,
     beta: *const c_void,
-    items: &mut dyn Iterator<Item = Item>,
+    item: &dyn Fn(usize) -> Item,
     count: usize,
 ) -> Result<(), FfiError> {
     // SAFETY: forwarded.
     unsafe {
         match p.dtype {
-            TAPP_F32 => execute_items::<f32>(p, exec, alpha, beta, items, count),
-            TAPP_F64 => execute_items::<f64>(p, exec, alpha, beta, items, count),
-            TAPP_C32 => execute_items::<Complex<f32>>(p, exec, alpha, beta, items, count),
-            TAPP_C64 => execute_items::<Complex<f64>>(p, exec, alpha, beta, items, count),
+            TAPP_F32 => execute_items::<f32>(p, exec, alpha, beta, item, count),
+            TAPP_F64 => execute_items::<f64>(p, exec, alpha, beta, item, count),
+            TAPP_C32 => execute_items::<Complex<f32>>(p, exec, alpha, beta, item, count),
+            TAPP_C64 => execute_items::<Complex<f64>>(p, exec, alpha, beta, item, count),
             _ => Err(fail(TPRIMS_ERR_DTYPE, "unsupported datatype")),
         }
     }
@@ -1133,7 +1142,7 @@ pub unsafe extern "C" fn TAPP_execute_product(
         let p = unsafe { (plan as *const Product).as_ref() }.ok_or_else(|| null("plan"))?;
         let it = Item { a, b, c, d };
         // SAFETY: forwarded contract.
-        unsafe { dispatch(p, exec, alpha, beta, &mut std::iter::once(it), 1) }
+        unsafe { dispatch(p, exec, alpha, beta, &|_| it, 1) }
     })
 }
 
@@ -1182,7 +1191,7 @@ pub unsafe extern "C" fn TAPP_execute_batched_product(
             return Err(null("A, B or D pointer array"));
         }
         let n = num_batches as usize;
-        let mut items = (0..n).map(|i| {
+        let item = |i: usize| {
             // SAFETY: `n` pointer reads per array per the contract.
             unsafe {
                 Item {
@@ -1196,9 +1205,9 @@ pub unsafe extern "C" fn TAPP_execute_batched_product(
                     d: *d.add(i),
                 }
             }
-        });
+        };
         // SAFETY: forwarded contract.
-        unsafe { dispatch(p, exec, alpha, beta, &mut items, n) }
+        unsafe { dispatch(p, exec, alpha, beta, &item, n) }
     })
 }
 

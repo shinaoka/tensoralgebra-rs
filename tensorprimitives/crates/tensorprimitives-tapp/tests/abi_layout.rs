@@ -411,6 +411,9 @@ fn enumerator_values_match_the_upstream_headers() {
     assert_eq!(TAPP_ERROR_SHAPE, 2);
     assert_eq!(TAPP_ERROR_DATATYPE, 3);
     assert_eq!(TAPP_ERROR_ALIASED, 6);
+    assert_eq!(TAPP_ERROR_BUSY, 9);
+    assert_eq!(TAPP_ERROR_WOULD_DEADLOCK, 10);
+    assert_eq!(TAPP_ERROR_PANIC, 12);
     assert_eq!(TAPP_ERROR_INTERNAL, 13);
     assert_eq!(TAPP_ERROR_LABELS, 14);
     assert_eq!(TAPP_ERROR_UNSUPPORTED, 15);
