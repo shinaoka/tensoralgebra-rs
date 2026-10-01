@@ -301,7 +301,10 @@ regime where per-call threading loses."
 pub mod batch;
 mod buffer;
 mod driver;
-pub use driver::{driver_decisions, execute_resolved, ResolvedCall};
+pub use driver::{
+    driver_decisions, dynamic_report, execute_resolved, execute_resolved_instrumented, Assignment,
+    DynSnapshot, DynStats, DynamicReport, ResolvedCall,
+};
 mod resolve;
 pub mod select;
 use tprims_gemm_kernel::pack;

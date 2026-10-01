@@ -120,12 +120,14 @@
 use std::sync::Barrier;
 
 use crate::buffer::Panel;
+mod dynamic;
 use crate::element::Element;
 use crate::kernel::{config_for_plan, Blocking, KernelSet};
 use crate::pack::{pack_panel, panel_len};
 use crate::plan::Plan;
 use crate::scatter::IRREGULAR;
 use crate::writeback::{scale_only, writeback};
+pub use dynamic::{dynamic_report, Assignment, DynSnapshot, DynStats, DynamicReport};
 use tprims_gemm_kernel::scatter::append_block_scatter;
 use tprims_gemm_kernel::{Axis, BAccess, DriverFamily, Real, UkrAux, UkrFn};
 
@@ -448,7 +450,7 @@ pub unsafe fn execute<T>(
 {
     // SAFETY: forwarded unchanged; `usize::MAX` imposes no cap, so the thread
     // count is the plan's, exactly as before this parameter existed.
-    unsafe { execute_capped(plan, alpha, a, b, beta, c, d, usize::MAX, None, None) }
+    unsafe { execute_capped(plan, alpha, a, b, beta, c, d, usize::MAX, None, None, None) }
 }
 
 /// Execute an already resolved built-in family with an optional host SPMD.
@@ -490,7 +492,60 @@ pub unsafe fn execute_resolved<T: Element>(
     T::Real: KernelSet,
 {
     // SAFETY: raw pointer and descriptor obligations forwarded unchanged.
-    unsafe { execute_capped(plan, alpha, a, b, beta, c, d, usize::MAX, spmd, Some(rg)) }
+    unsafe {
+        execute_capped(
+            plan,
+            alpha,
+            a,
+            b,
+            beta,
+            c,
+            d,
+            usize::MAX,
+            spmd,
+            Some(rg),
+            None,
+        )
+    }
+}
+
+/// [`execute_resolved`] with opt-in [`DynStats`] counters, for tests and
+/// benchmarks of `PartitionPolicy::DynamicTiles`. Ordinary execution carries no
+/// counters.
+///
+/// # Safety
+/// As [`execute_resolved`].
+#[doc(hidden)]
+pub unsafe fn execute_resolved_instrumented<T: Element>(
+    plan: &Plan,
+    rg: &tprims_gemm_kernel::ResolvedGemm<T::Real>,
+    spmd: Option<&dyn crate::spmd::Spmd>,
+    stats: &DynStats,
+    alpha: T,
+    a: *const T,
+    b: *const T,
+    beta: T,
+    c: *const T,
+    d: *mut T,
+) where
+    T::Real: KernelSet,
+{
+    // SAFETY: raw pointer and descriptor obligations forwarded unchanged.
+    unsafe {
+        execute_capped(
+            plan,
+            alpha,
+            a,
+            b,
+            beta,
+            c,
+            d,
+            usize::MAX,
+            spmd,
+            Some(rg),
+            Some(stats),
+        )
+    }
 }
 
 /// [`execute`] with host-supplied co-scheduled threads (tprims addition).
@@ -513,7 +568,21 @@ pub unsafe fn execute_with<T>(
     T::Real: KernelSet,
 {
     // SAFETY: forwarded unchanged.
-    unsafe { execute_capped(plan, alpha, a, b, beta, c, d, usize::MAX, Some(spmd), None) }
+    unsafe {
+        execute_capped(
+            plan,
+            alpha,
+            a,
+            b,
+            beta,
+            c,
+            d,
+            usize::MAX,
+            Some(spmd),
+            None,
+            None,
+        )
+    }
 }
 
 /// [`execute`], with an upper bound on the threads this call may use.
@@ -543,6 +612,7 @@ pub(crate) unsafe fn execute_capped<T>(
     max_threads: usize,
     spmd: Option<&dyn crate::spmd::Spmd>,
     resolution: Option<&tprims_gemm_kernel::ResolvedGemm<T::Real>>,
+    stats: Option<&dynamic::DynStats>,
 ) where
     T: Element,
     T::Real: KernelSet,
@@ -700,14 +770,28 @@ pub(crate) unsafe fn execute_capped<T>(
         }
         _ => None,
     };
-    let (mut pm, mut pn) = match explicit_grid {
-        Some((pm, pn)) => (pm, pn),
-        None => plan.partition_with(mr, nr, want),
+    // `DynamicTiles`: the team claims jobs, so the grid is `p x 1` (all in the
+    // row direction, which only fixes the barrier's size). The width is the
+    // host's budget capped by the jobs that exist at the widest NC block.
+    let dyn_jobs = match resolved.map(|rg| rg.partition) {
+        Some(tprims_gemm_kernel::PartitionPolicy::DynamicTiles { job_m, job_n }) => {
+            let nc_serial = resolved
+                .and_then(|rg| rg.with_threads(1).ok())
+                .map_or(n, |rg| rg.nc);
+            let jobs = dynamic::job_count(m, n, nr, nc_serial, job_m, job_n);
+            Some((job_m, job_n, jobs))
+        }
+        _ => None,
+    };
+    let (mut pm, mut pn) = match (explicit_grid, dyn_jobs) {
+        (_, Some((_, _, jobs))) => (want.min(jobs), 1),
+        (Some((pm, pn)), None) => (pm, pn),
+        (None, None) => plan.partition_with(mr, nr, want),
     };
     // A host-supplied `Spmd` promises `p <= width`; a pinned partition
     // (`TENSORCONTRACT_PARTITION` or an explicit grid) ignores the thread
     // count, so shrink it.
-    if spmd.is_some() || explicit_grid.is_some() {
+    if dyn_jobs.is_none() && (spmd.is_some() || explicit_grid.is_some()) {
         while pm * pn > want {
             if pn > 1 {
                 pn -= 1;
@@ -721,7 +805,7 @@ pub(crate) unsafe fn execute_capped<T>(
     // there is no shared panel to publish and no cross-thread barrier: the
     // partition must be a pure split of `N` (`pm == 1`). The total width is
     // unchanged, so the blocking below still matches the active thread count.
-    if direct_b {
+    if direct_b && dyn_jobs.is_none() {
         pm = 1;
         pn = p;
     }
@@ -790,6 +874,9 @@ pub(crate) unsafe fn execute_capped<T>(
             },
         barriers: if pm > 1 { pn } else { 0 },
     };
+    if let Some(st) = stats {
+        st.note_call(p, req.b_bytes);
+    }
     let mut lease = workspace.map(|ws| ws.take_team(&req, pm, pn));
     // The panel lives in the lease when there is one, and in a call-local
     // allocation otherwise; a direct-B call sizes it to zero either way. The
@@ -916,8 +1003,25 @@ pub(crate) unsafe fn execute_capped<T>(
     // in where the threads come from; the partition, the strips and therefore the
     // arithmetic are identical, which is why the result stays bitwise identical to
     // serial under either.
+    let claim = std::sync::atomic::AtomicUsize::new(0);
     let cell = |t: usize| {
         let cx = &cx;
+        if let Some((job_m, job_n, _)) = dyn_jobs {
+            with_buffers(&mut |ap, tile| {
+                let bufs = Bufs {
+                    ap,
+                    tile,
+                    scratch: tile.add(scratch_off),
+                };
+                // SAFETY: `execute`'s contract covers the accesses; the claim
+                // counter hands each job to one worker, and jobs partition the
+                // output within an epoch. The barrier has `p` participants.
+                unsafe {
+                    dynamic::run_dynamic::<T>(cx, t, p, job_m, job_n, &claim, &bars[0], bufs, stats)
+                };
+            });
+            return;
+        }
         let (r, g) = (t / pn, t % pn);
         let bpart = BPart {
             g,
@@ -1107,7 +1211,6 @@ unsafe fn run_strip<T>(
     }
 }
 
-
 /// Everything the micro-tile loops need that is fixed for one
 /// `(batch, NC panel, KC slab)` epoch: the batch-offset operand bases, the K
 /// slab, the NC block and where the packed `B` sliver for a column lives.
@@ -1278,168 +1381,168 @@ unsafe fn compute_block<T>(
     let c_m_bs = runs.slice(scatter, runs.cm);
     let one = T::one();
     let a_sliver = fam.a_per_k * pc_len;
-        let mut jr = jr_lo;
-        while jr < jr_hi {
-            let nrem = nr.min(jc_len - jr);
-            let j0 = jc + jr;
-            let bpan = bp_ptr.add((jr / nr - q0) * b_sliver);
-            // B's k steps are one apart and its columns one constant
-            // stride apart, both checked by `pack_b_needed`; otherwise
-            // the tile reads the packed panel (k stride `NR`, columns
-            // adjacent).
-            let (b_base, b_rs, b_cs) = if direct_b {
-                // The base carries this k block's and this column
-                // block's offsets, so the kernel's own k stride is one.
-                (
-                    bh.offset((bn[j0] + bk[pc]) as isize) as *const T::Real,
-                    1,
-                    b_n_bs[j0 / nr] as isize,
-                )
-            } else {
-                (bpan as *const T::Real, nr as isize, 1)
-            };
+    let mut jr = jr_lo;
+    while jr < jr_hi {
+        let nrem = nr.min(jc_len - jr);
+        let j0 = jc + jr;
+        let bpan = bp_ptr.add((jr / nr - q0) * b_sliver);
+        // B's k steps are one apart and its columns one constant
+        // stride apart, both checked by `pack_b_needed`; otherwise
+        // the tile reads the packed panel (k stride `NR`, columns
+        // adjacent).
+        let (b_base, b_rs, b_cs) = if direct_b {
+            // The base carries this k block's and this column
+            // block's offsets, so the kernel's own k stride is one.
+            (
+                bh.offset((bn[j0] + bk[pc]) as isize) as *const T::Real,
+                1,
+                b_n_bs[j0 / nr] as isize,
+            )
+        } else {
+            (bpan as *const T::Real, nr as isize, 1)
+        };
 
-            // ---- loop 1: MR -----------------------------------
-            let mut ir = 0;
-            while ir < ic_len {
-                let mrem = mr.min(ic_len - ir);
-                let i0 = ic + ir;
-                let apan = ap_ptr.add((ir / mr) * a_sliver);
-                let d_rs = *d_m_bs.get_unchecked(i0 / mr);
-                // A Direct family writes D itself only where D's own
-                // strides make that expressible: the guard was decided
-                // once for the call, and both scatters must be regular.
-                let direct_tile = matches!(fam.kernel, UkrFn::Direct(_))
-                    && cx.call.is_some_and(|c| c.direct_c_allowed)
-                    && d_rs != IRREGULAR
-                    && *d_n_bs.get_unchecked(j0 / nr) != IRREGULAR;
+        // ---- loop 1: MR -----------------------------------
+        let mut ir = 0;
+        while ir < ic_len {
+            let mrem = mr.min(ic_len - ir);
+            let i0 = ic + ir;
+            let apan = ap_ptr.add((ir / mr) * a_sliver);
+            let d_rs = *d_m_bs.get_unchecked(i0 / mr);
+            // A Direct family writes D itself only where D's own
+            // strides make that expressible: the guard was decided
+            // once for the call, and both scatters must be regular.
+            let direct_tile = matches!(fam.kernel, UkrFn::Direct(_))
+                && cx.call.is_some_and(|c| c.direct_c_allowed)
+                && d_rs != IRREGULAR
+                && *d_n_bs.get_unchecked(j0 / nr) != IRREGULAR;
 
-                match fam.kernel {
-                    UkrFn::Tile(_) => {
-                        // SAFETY: full packed panels and tile per
-                        // family contract; an induced family
-                        // scales the inner kernel's k itself.
-                        unsafe {
-                            tprims_gemm_kernel::induced::tile_call(
-                                &fam,
-                                pc_len,
-                                apan,
-                                bpan,
-                                tile_ptr,
-                                scratch_ptr,
-                            )
-                        };
-                    }
-                    UkrFn::Direct(func) => {
-                        // A direct tile overlaps the accumulator it
-                        // scales; a fallback tile is overwritten
-                        // (`alpha_d = 0`), and the write-back below
-                        // then applies alpha/beta exactly as the
-                        // scratch path does.
-                        let (d_base, rs_d, cs_d, alpha_d, beta_ab) = if direct_tile {
-                            (
-                                dh.offset((dm[i0] + dn[j0]) as isize) as *mut T::Real,
-                                d_rs as isize,
-                                *d_n_bs.get_unchecked(j0 / nr) as isize,
-                                if first_k_block {
-                                    if beta == T::zero() {
-                                        T::Real::ZERO
-                                    } else {
-                                        beta.re()
-                                    }
+            match fam.kernel {
+                UkrFn::Tile(_) => {
+                    // SAFETY: full packed panels and tile per
+                    // family contract; an induced family
+                    // scales the inner kernel's k itself.
+                    unsafe {
+                        tprims_gemm_kernel::induced::tile_call(
+                            &fam,
+                            pc_len,
+                            apan,
+                            bpan,
+                            tile_ptr,
+                            scratch_ptr,
+                        )
+                    };
+                }
+                UkrFn::Direct(func) => {
+                    // A direct tile overlaps the accumulator it
+                    // scales; a fallback tile is overwritten
+                    // (`alpha_d = 0`), and the write-back below
+                    // then applies alpha/beta exactly as the
+                    // scratch path does.
+                    let (d_base, rs_d, cs_d, alpha_d, beta_ab) = if direct_tile {
+                        (
+                            dh.offset((dm[i0] + dn[j0]) as isize) as *mut T::Real,
+                            d_rs as isize,
+                            *d_n_bs.get_unchecked(j0 / nr) as isize,
+                            if first_k_block {
+                                if beta == T::zero() {
+                                    T::Real::ZERO
                                 } else {
-                                    T::Real::ONE
-                                },
-                                alpha.re(),
-                            )
-                        } else {
-                            (tile_ptr, 1, mr as isize, T::Real::ZERO, T::Real::ONE)
-                        };
-                        let aux = UkrAux {
-                            a_next: if ir + mr < ic_len {
-                                apan.add(a_sliver)
+                                    beta.re()
+                                }
                             } else {
-                                apan
+                                T::Real::ONE
                             },
-                            // In-place B has no panel to point past.
-                            b_next: match (direct_b, jr + nr < jc_len) {
-                                (true, _) => b_base,
-                                (false, true) => bpan.add(b_sliver),
-                                (false, false) => bpan,
-                            },
-                            inner: None,
-                            opaque: fam.opaque,
-                        };
-                        // SAFETY: A is the packed panel with unit row
-                        // stride; B and D follow the strides derived
-                        // above, and `d_out` is the live tile extent.
-                        unsafe {
-                            (func)(
-                                mrem,
-                                nrem,
-                                pc_len,
-                                d_base,
-                                rs_d,
-                                cs_d,
-                                apan as *const T::Real,
-                                fam.a_per_k as isize,
-                                b_base,
-                                b_rs,
-                                b_cs,
-                                alpha_d,
-                                beta_ab,
-                                &aux,
-                            )
-                        };
-                    }
+                            alpha.re(),
+                        )
+                    } else {
+                        (tile_ptr, 1, mr as isize, T::Real::ZERO, T::Real::ONE)
+                    };
+                    let aux = UkrAux {
+                        a_next: if ir + mr < ic_len {
+                            apan.add(a_sliver)
+                        } else {
+                            apan
+                        },
+                        // In-place B has no panel to point past.
+                        b_next: match (direct_b, jr + nr < jc_len) {
+                            (true, _) => b_base,
+                            (false, true) => bpan.add(b_sliver),
+                            (false, false) => bpan,
+                        },
+                        inner: None,
+                        opaque: fam.opaque,
+                    };
+                    // SAFETY: A is the packed panel with unit row
+                    // stride; B and D follow the strides derived
+                    // above, and `d_out` is the live tile extent.
+                    unsafe {
+                        (func)(
+                            mrem,
+                            nrem,
+                            pc_len,
+                            d_base,
+                            rs_d,
+                            cs_d,
+                            apan as *const T::Real,
+                            fam.a_per_k as isize,
+                            b_base,
+                            b_rs,
+                            b_cs,
+                            alpha_d,
+                            beta_ab,
+                            &aux,
+                        )
+                    };
                 }
-
-                if direct_tile {
-                    ir += mr;
-                    continue;
-                }
-                if first_k_block {
-                    let c_rs = c_m_bs.get(i0 / mr).copied().unwrap_or(IRREGULAR);
-                    emit_tile::<T>(
-                        cx,
-                        tile_ptr,
-                        mrem,
-                        nrem,
-                        beta,
-                        ch,
-                        &cm[i0..i0 + mrem],
-                        &cn[j0..j0 + nrem],
-                        c_rs,
-                        plan.conj_c,
-                        dh,
-                        &dm[i0..i0 + mrem],
-                        &dn[j0..j0 + nrem],
-                        d_rs,
-                        plan.conj_d,
-                    );
-                } else {
-                    // Accumulate: C := D, beta := 1, and conjugate
-                    // the readback exactly when op_D conjugates.
-                    emit_tile::<T>(
-                        cx,
-                        tile_ptr,
-                        mrem,
-                        nrem,
-                        one,
-                        dh as *const T,
-                        &dm[i0..i0 + mrem],
-                        &dn[j0..j0 + nrem],
-                        d_rs,
-                        plan.conj_d,
-                        dh,
-                        &dm[i0..i0 + mrem],
-                        &dn[j0..j0 + nrem],
-                        d_rs,
-                        plan.conj_d,
-                    );
-                }
-                ir += mr;
             }
-            jr += nr;
+
+            if direct_tile {
+                ir += mr;
+                continue;
+            }
+            if first_k_block {
+                let c_rs = c_m_bs.get(i0 / mr).copied().unwrap_or(IRREGULAR);
+                emit_tile::<T>(
+                    cx,
+                    tile_ptr,
+                    mrem,
+                    nrem,
+                    beta,
+                    ch,
+                    &cm[i0..i0 + mrem],
+                    &cn[j0..j0 + nrem],
+                    c_rs,
+                    plan.conj_c,
+                    dh,
+                    &dm[i0..i0 + mrem],
+                    &dn[j0..j0 + nrem],
+                    d_rs,
+                    plan.conj_d,
+                );
+            } else {
+                // Accumulate: C := D, beta := 1, and conjugate
+                // the readback exactly when op_D conjugates.
+                emit_tile::<T>(
+                    cx,
+                    tile_ptr,
+                    mrem,
+                    nrem,
+                    one,
+                    dh as *const T,
+                    &dm[i0..i0 + mrem],
+                    &dn[j0..j0 + nrem],
+                    d_rs,
+                    plan.conj_d,
+                    dh,
+                    &dm[i0..i0 + mrem],
+                    &dn[j0..j0 + nrem],
+                    d_rs,
+                    plan.conj_d,
+                );
+            }
+            ir += mr;
         }
+        jr += nr;
+    }
 }
