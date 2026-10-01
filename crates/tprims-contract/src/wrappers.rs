@@ -64,10 +64,9 @@ pub fn permute<T: Scalar>(
         )));
     }
     check_out(c)?;
-    let src = a.permute(perm).map_err(|e| Error::Backend(e.to_string()))?;
+    let src = a.permute(perm).map_err(Error::backend)?;
     let len = c.len();
-    run_with_exec(exec, len, |_| strided_basic::copy_into(c, &src))
-        .map_err(|e| Error::Backend(e.to_string()))
+    run_with_exec(exec, len, |_| strided_basic::copy_into(c, &src)).map_err(Error::backend)
 }
 
 /// `C = alpha * A + beta * C` elementwise over equal extents (any strides);
@@ -108,7 +107,7 @@ pub fn add<T: Scalar>(
         return run_with_exec(exec, len, |_| {
             strided_basic::map_into(c, a, move |x| Element::mul(alpha, x))
         })
-        .map_err(|e| Error::Backend(e.to_string()));
+        .map_err(Error::backend);
     }
     if len == 0 {
         return Ok(());
