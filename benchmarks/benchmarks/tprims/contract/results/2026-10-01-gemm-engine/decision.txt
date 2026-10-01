@@ -1,0 +1,54 @@
+Non-regression gate for the switchable GEMM engine: branch (new) against main at 690794c (old).
+Runner: python3 benchmarks/scripts/tblis_decision.py --corpus ../../corpus/tenferro-p1.json --bin contract --gate <T> --old old-<T>t-s* --new new-<T>t-s*
+Metric: calls-weighted workload time per group (calls x exec median, summed over the corpus);
+noise: mean |log(total / median over sessions)| of each side's sessions; a group passes when its
+ratio is within max(5%, the larger side's noise). BENCH_RUNS=5 BENCH_WARMUP=1, each session pinned
+and verified idle before and after by pinned.sh. Thread counts were collected separately, so each
+block below is its own directory pair; the 1T and 8T blocks have two sessions per side, 4T one.
+
+### 1T
+  T       group           old           new  ratio  noise  verdict
+  1     pg_exec       17.942s       17.726s  0.988  0.018  ok
+  1  tblis_exec       12.240s       11.416s  0.933  0.009  ok
+gate: PASS
+
+### 4T
+  T       group           old           new  ratio  noise  verdict
+  4     pg_exec        6.623s        6.638s  1.002  0.000  ok
+  4  tblis_exec        3.798s        3.670s  0.966  0.000  ok
+gate: PASS
+
+### 8T
+  T       group           old           new  ratio  noise  verdict
+  8     pg_exec        4.871s        4.983s  1.023  0.022  ok
+  8  tblis_exec        2.631s        2.500s  0.950  0.002  ok
+gate: PASS
+
+### Subset sessions, where the noise band is widest
+
+The full-corpus 4T block above has one session per side, so its noise band is
+zero. The same thread count was also measured on a reduced corpus (entries
+0, 8, 16, 24, 32, 40, 48, 56 of `tenferro-p1.json`) with **five sessions per
+side**, which is where the host's run-to-run spread shows up:
+
+    T       group           old           new  ratio  noise  verdict
+    4     pg_exec        1.970s        2.090s  1.061  0.067  ok
+    4  tblis_exec        0.728s        0.651s  0.895  0.008  ok
+    gate: PASS
+
+    8     pg_exec        1.427s        1.426s  0.999  0.048  ok
+    8  tblis_exec        0.481s        0.439s  0.914  0.005  ok
+    gate: PASS
+
+(`pg_exec` at 4T is 6.1% above the old side's median but only 6.7% above it
+within the measured spread of the *same* side; the driver's own row is 10.5%
+faster.) Sessions: `sub-{old,new}-4t*`, `rev-{old,new}-4t` and `abba8-*` under
+`.artifacts/gemm-engine-spec/task12/perf/`.
+
+### Recorded, not gated: the opt-in engines against faer
+
+`blas` built-in `gemm_f64` cases, 1T, `BENCH_RUNS=5`, one pinned core,
+`median_ns`: faer / packed / pgx86 — n8: 210 / 4470 / 510; n128: 78 702 /
+216 737 / 98 554; n1024: 42 836 294 / 49 679 740 / 43 248 070; n2048:
+346 750 583 / 408 360 123 / 395 487 339. Neither opt-in engine beats faer at
+1T on these shapes, which is why `Auto` keeps faer.

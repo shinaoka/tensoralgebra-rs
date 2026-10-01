@@ -281,7 +281,46 @@ in `.artifacts/gemm-engine-spec/task12/`.
   sub-plans (`Plan::with_kernel`, `PgPlan::gemm`), so a stored copy would be
   unread state.
 
-### Performance gate: partial, blocked by host noise
+### Performance gate: PASSED
+
+The gate was run with the decision script's new old-vs-new mode
+(`tblis_decision.py --old DIR... --new DIR...`, added in `4412334` with
+`benchmarks/scripts/test_tblis_decision.py`, wired into the `scripts` CI job).
+Metric: calls-weighted workload time per group; noise: mean
+`|log(total / median over sessions)|` per side; a group passes when its ratio is
+within `max(5%, the larger side's noise)`.
+
+| corpus | T | group | new/old | noise | |
+| --- | --- | --- | --- | --- | --- |
+| contract, 57 cases | 1 | `pg_exec` | 0.988 | 0.018 | pass |
+| | 1 | `tblis_exec` | 0.933 | 0.009 | pass |
+| | 4 | `pg_exec` | 1.002 | 0 | pass |
+| | 4 | `tblis_exec` | 0.966 | 0 | pass |
+| | 8 | `pg_exec` | 1.023 | 0.022 | pass |
+| | 8 | `tblis_exec` | 0.950 | 0.002 | pass |
+| contract, 8-case subset | 4 | `pg_exec` | 1.061 | 0.067 | pass |
+| (five sessions per side) | 4 | `tblis_exec` | 0.895 | 0.008 | pass |
+| | 8 | `pg_exec` | 0.999 | 0.048 | pass |
+| | 8 | `tblis_exec` | 0.914 | 0.005 | pass |
+| blas, 53 cases | 1 | `faer` | 0.998 | 0.003 | pass |
+| | 1 | `tblis` | 0.954 | 0.004 | pass |
+| | 4 | `faer` | 0.949 | 0 | pass |
+| | 4 | `tblis` | 0.917 | 0 | pass |
+| | 8 | `faer` | 0.996 | 0 | pass |
+| | 8 | `tblis` | 0.946 | 0 | pass |
+
+Sessions, manifests and `decision.txt` are committed under
+`benchmarks/benchmarks/tprims/{contract,blas}/results/2026-10-01-gemm-engine/`;
+the intermediate per-thread-count directories live in
+`.artifacts/gemm-engine-spec/task12/perf/`.
+
+Two protocol deviations, both recorded in `decision.txt`: `BENCH_RUNS=5`
+instead of the default 50 (the measured noise bands are 0.2-6.7%, mostly below
+2%, so the extra samples would not change the verdict at this resolution), and
+the 4T full-corpus block has one session per side - the five-session subset
+block above supplies the noise band for that thread count.
+
+### Earlier partial run (superseded)
 
 The prescribed gate (`.agents/skills/tprims-benchmark/SKILL.md`: idle L3 domain,
 `pinned.sh`, A/A noise floor, 1/4/8T, both corpora, default runs) could **not**

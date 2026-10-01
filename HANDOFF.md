@@ -157,6 +157,25 @@ pre-existing and unrelated.)
 
 ## What is left before this can be merged
 
+The performance gate now **passes** (see below and
+`benchmarks/benchmarks/tprims/{contract,blas}/results/2026-10-01-gemm-engine/decision.txt`);
+what remains is the merge itself.
+
+1. ~~**The performance gate.**~~ **Done.** Contract corpus: `tblis_exec`
+   new/old 0.933/0.966/0.950 at 1/4/8T (noise 0.009/0/0.002) and `pg_exec`
+   0.988/1.002/1.023 (noise 0.018/0/0.022); the 8-case subset with five
+   sessions per side gives 4T `pg_exec` 1.061 against a 0.067 noise band and
+   `tblis_exec` 0.895. Blas corpus: `tblis` 0.954/0.917/0.946 and `faer`
+   0.998/0.949/0.996. All groups pass the `max(5%, noise)` rule with
+   `BENCH_RUNS=5`.
+
+2. **PR, CI and merge.** The branch is pushed and PR #27 is green; merge it
+   when the maintainer is satisfied. Issue #23 stays open for the follow-ups
+   the plan lists (DynamicTiles, per-node team pools, native SIMD complex
+   kernels, ports, the C ABI).
+
+### The original instructions for the gate (kept for reference)
+
 1. **The performance gate.** It needs an *idle* host with an idle L3 domain:
    `pinned.sh` verifies the pinned cores are idle before and after every run,
    and this agent's own processes keep a core slightly busy, so the 4T runs

@@ -31,6 +31,28 @@ log and the commit, CPU, core set and corpus hash in `manifest.txt`.
 f32/f64/c32/c64 with the recorded strides. The observation below predates
 corpus mode and used the older `run.sh CPUS1 CPUS4 OUT` (1T/4T only).
 
+### 2026-10-01 switchable GEMM engine: non-regression
+
+Branch (`gemm-engine-spec`, kernel-family contract and engine selection) against
+`main` at `690794c`, on `../corpus/tenferro-p1.json`, `BENCH_RUNS=5`, each
+session pinned and verified idle. Metric: calls-weighted workload time
+(`calls x exec median` summed over the corpus) per group; noise: mean
+`|log(total / median over sessions)|` of each side. A group passes when its
+ratio is within `max(5%, the larger side's noise)`.
+
+| T | `pg_exec` (new/old) | noise | `tblis_exec` (new/old) | noise | |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 0.988 | 0.018 | 0.933 | 0.009 | pass |
+| 4 | 1.002 | 0 | 0.966 | 0 | pass |
+| 8 | 1.023 | 0.022 | 0.950 | 0.002 | pass |
+
+The driver whose hand-off changed (`tblis_exec`) is 3-7% faster at every thread
+count, and the permute + GEMM row is within the measured noise. Raw sessions and
+the full `decision.txt`, including the five-session subset blocks that give 4T
+and 8T a non-zero noise band, are under
+[`results/2026-10-01-gemm-engine/`](results/2026-10-01-gemm-engine/).
+
+
 ## Observation, 2026-09-30 (single run, not a claim)
 
 - tprims-rs `0e68641` (clean tree), release profile (thin LTO,
