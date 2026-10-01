@@ -55,6 +55,11 @@ Problem::from_labels(dtype, a, b, c_spec, d, labels) -> Result<Problem>
 Problem::from_dot_general(dtype, a, b, d, dot_general) -> Result<Problem>
 ```
 
+- `c_spec` and `Labels.c` go together. `CSpec::Separate` requires
+  `Labels.c`; `CSpec::Absent` and `CSpec::Output` forbid it.
+- `Plan::<T>::new` with `T` different from `problem.dtype()` is
+  `Error::Config`.
+
 DotGeneral lowers to CSpec::Output with identity op_C; free axis order is
 lhs_free, rhs_free, then the supplied paired batch order. Labels keeps the
 specified output order and can describe distinct C/D. Both use one lowering
@@ -91,7 +96,7 @@ tuning preserves the baseline with environment overrides unset.
 | kernel | KernelChoice::Auto or Id(String); Auto | resolve once after strategy selection |
 | partition | Option<PartitionPolicy>; None | explicit Some forces packed; None means packed StaticGrid when packed is selected |
 | no_materialize | bool; false | reject full-operand normalization/copy-back, not bounded packing |
-| complex_method | Option<ComplexMethod>; None | baseline default; forced family must agree |
+| method | Option<tprims_kernel::Method> (Native/OneM/ThreeM/FourM, the descriptor vocabulary GemmConfig uses); None | baseline default; a forced family must agree. The planner's 3-variant ComplexMethod becomes internal |
 | blocking | optional absolute/percentage overrides per dimension | mutually exclusive for one dimension; check tile alignment/bytes |
 | orientation | optional baseline orientation choice | affects role orientation once, not tensor storage |
 | row_block | optional baseline menu request | resolve against the selected descriptor; no silent geometry change |
@@ -124,7 +129,7 @@ Plan construction performs:
 ```text
 validated Problem + config
     -> explicit packed requirement?
-    -> else all-batch elementwise?
+    -> else all-batch elementwise that implements the full op_C/op_D/separate-C semantics?
     -> else full-semantics, copy-free faer fusion?
     -> else packed
 packed -> orient/fold -> build scatter -> resolve family/blocking/partition
@@ -336,10 +341,13 @@ not. Remove blas.h from the umbrella header and installation manifest.
 | gemm-kernel/cache.rs | kernel/blocking/probe (hardware facts) and model (pure explicit inputs); extract large tests |
 | contract-traits | contract/api; drop HostExecution/NativeHost/TypeId hooks |
 | contract/permute_gemm.rs + blas batched faer loop | contract/strategy/faer.rs; retain only copy-free behavior |
+| blas/engine.rs GemmConfig (kernel, method, partition, partition_opts) | contract PlanConfig; Engine/EngineChoice and SelectError::EngineUnsupported dropped (the refusals become Error::Config) |
+| gemm-kernel registry `register_known_prefix`, `SelectError::NotBuilt` | deleted with the gemm/pgx86 providers (PR 1) |
+| tprims-custom-kernel-test | kernel and contract tests (PR 2) |
 | tensorcontract scatter/layout/buffer/element | contract-owned role/offset helpers or existing kernel scalar leaf seam; one owner per definition |
 | tapp/lib.rs | capi/tensor_info, product, execute; core executor/status/DLPack modules retained under capi |
 | reference.rs + contract-testkit | testkit; independent fixture/oracle and trait-backend modules |
-| tensorprimitives-bench | benchmarks/tcbench with optional external-reference features |
+| tensorprimitives-bench | benchmarks/tcbench in PR 3: the corpus run, verify, info and `--stress`, with optional external-reference features; `sweep`/`shapes`/`orient`/`premise` are deleted |
 
 The TAPP split is not fixed to four files. Do not create a new validate module
 that copies contract's checks. Keep files coherent; extract on responsibility
@@ -368,7 +376,7 @@ old paths; old experiment reproduction runs the old checkout/toolchain.
 Do not add permanent re-export shims just to preserve the old product layout.
 Move or delete a consumer in the same PR that removes its dependency. Bundle
 and ABI tests cannot retain a blas dependency until PR 4 if blas disappears
-in PR 3. Old tensorcontract remains only until its last tcbench consumer moves.
+in PR 3. tcbench is ported in PR 3, and tensorcontract is deleted in that PR.
 
 Every PR must be green on both hosted CI platforms: Linux x86_64 and macOS
 arm64 (overview §11). An x86-only kernel or test is gated by target and has

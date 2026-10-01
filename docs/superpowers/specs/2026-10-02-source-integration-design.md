@@ -211,7 +211,12 @@ In Phase 1 the plan picks one internal strategy, using today's rule:
 1. Explicit kernel/selector, partition, or packed-driver tuning requests
    select the packed driver, including for all-batch problems. A request is
    applied or rejected at plan time; never silently ignored.
-2. Otherwise **Elementwise** when every axis is batch.
+2. Otherwise **Elementwise** when every axis is batch **and** the
+   elementwise pass implements the full semantics: op_C, op_D, a separate C
+   and conjugation. Otherwise select packed. The baseline elementwise pass
+   (`tprims-contract/src/plan.rs:451-480`) handles only C = D with conj A/B.
+   TAPP all-batch products with op_D or a separate C therefore go to packed,
+   unless the pass is extended.
 3. Otherwise **faer permute+GEMM** only when it fuses every operand without a
    copy and implements the full C/D/conjugation semantics. If it cannot,
    select packed. Distinct C/D must not cause a hidden copy into D.
@@ -237,7 +242,9 @@ C, incompatible layouts or conjugation; it never rereads beta*C for every
 KC block. Phase 1 preserves the baseline direct-C applicability rules.
 
 After validation, zero output size writes nothing; K=0 or alpha=0 reads no
-A/B payload and computes `op_D(beta * op_C(C))`; beta=0 reads no C/old D.
+A/B payload and computes `op_D(beta * op_C(C))`, including for a separate
+C. The baseline `util::scale(c, beta)` shortcut does not do this, and the
+output-update helper must. beta=0 reads no C or old D.
 An empty K role set has product 1 (outer/Hadamard/scalar cases); a K extent
 of zero has product 0. Check configuration even on these shortcuts. No
 bitwise reproducibility across families is promised; tolerances and residuals
@@ -432,7 +439,12 @@ feature requirements cannot share an ID. The baseline has both portable and
 tc.scalar real 4x4 families, plus direct/direct-B variants; the scheme
 discriminators above resolve these actual collisions and carry through to
 their induced families (`i4m-scalar` analogously). MR/NR name the descriptor's
-logical complex tile, so induced 1m uses half its base real MR. Audit the full descriptor
+logical complex tile, so induced 1m uses half its base real MR. Induced
+families are derived from every real family, registered external ones
+included (`registry.rs:97-105`). Induced families of non-built-in bases keep
+the baseline `<base>.1m-induced` / `.4m-induced` suffix. In built-in IDs,
+`4m` appears only as `i4m`, and `native` comes only from the portable and
+cplx sources (the tc menus emit planar, 1m and 3m). Audit the full descriptor
 inventory before renaming and preserve every remaining descriptor. External catalog
 IDs remain provider-owned opaque names; do not force third-party names into
 the built-in namespace. The full per-target ID list is pinned by snapshot
@@ -448,7 +460,8 @@ the opt-in native c32/c64 families from #30 and 3m. CPU/dtype/capability
 checks apply to forced IDs and external selections before an ISA callback is
 called. Built-ins are present deterministically without any caller registration
 step. Explicit unsafe external registration stays idempotent for the same
-manifest and rejects conflicting IDs. New plans snapshot the available catalog;
+manifest. As in the baseline, duplicate IDs are rejected at catalog
+construction and at resolution, not at registration. New plans snapshot the available catalog;
 later registration cannot mutate an existing plan. Remove environment-derived
 process-default resolution caches; immutable CPU/cache-topology probes may
 still be shared, but every plan's choices come from its explicit config.
@@ -620,11 +633,25 @@ workspace's local gate before it is pushed, with no manifest referring to a
 deleted package. The order below is ownership order, not permission to leave
 intermediate clients broken.
 
-1. **exec consolidation.** Move workspace and its tests from gemm-kernel;
+1. **exec consolidation.** First delete the crates that have no retained
+   consumer:
+   - `tprims-linalg`, with its benchmark and the dependency-direction test
+     reference;
+   - `tprims-blas-capi`, with the bundle `blas` feature, the BLAS C symbols
+     and `blas.h`;
+   - `tprims-kernel-gemm` and `tprims-kernel-pgx86`, with the matching
+     tprims-blas features and engine variants, `register_known_prefix`,
+     `SelectError::NotBuilt` and the bench `pgx86` feature.
+
+   This avoids renaming code that is about to go. Then move workspace and its tests from gemm-kernel;
    remove exec's dependency on gemm-kernel and adapt **all** old driver,
    bridge and pool-workspace consumers to the exec-owned byte API in this
-   PR. Replace Spmd and every own-thread fallback, including batch.rs.
-   The existing library/bench/C callers still build on the interim crate set.
+   PR. Replace Spmd and every own-thread fallback: the driver's
+   `try_broadcast`/pool/`std::thread::scope` (driver.rs:1043-1066) and
+   `contract_batched_with_threads` (batch.rs:174), which now takes `&Exec`.
+   tensorcontract and tensorprimitives-tapp gain a normal dependency on
+   tprims-exec. The existing library/bench/C callers still build on the
+   interim crate set.
 2. **kernel consolidation.** Create tprims-kernel, move the provider bodies,
    rename IDs and migrate imports/manifests/ID fixtures in every consumer,
    including the temporarily retained tensorcontract and TAPP crates.
@@ -637,13 +664,23 @@ intermediate clients broken.
    than delaying it to PR 4. Delete blas/linalg/pgx86/kernel-gemm and
    contract-traits only after migrating/removing their consumers, including
    bundle's blas dependency/feature, BLAS C symbols and obsolete benchmark
-   targets. Trim CI commands for those targets in the same PR. A temporary
-   tensorcontract crate may remain only while tcbench still consumes it;
-   delete it once its last consumer moves, with no permanent compatibility shim.
+   targets. Trim CI commands for those targets in the same PR.
+   - **tcbench port.** tcbench moves to `tprims-bench` in this PR and keeps
+     only the corpus run, `verify`, `info` and `--stress`. The research
+     subcommands `sweep`, `shapes`, `orient` and `premise` are deleted. They
+     use tensorcontract internals (`Scatters`, `run_structure`, `Operand`,
+     `plan_config`) that contract does not export, and no internals module
+     is added for them.
+   - **tensorcontract.** The crate is deleted in this PR, with no
+     compatibility shim.
+   - **GemmConfig.** `blas/engine.rs` `GemmConfig` (kernel, method,
+     partition, partition_opts) becomes contract's `PlanConfig`.
+     `Engine`/`EngineChoice` and `SelectError::EngineUnsupported` are
+     dropped; the equivalent refusals become `Error::Config`.
 4. **capi, testkit and bench completion.** Merge core/TAPP/bundle into
-   tprims-capi, move tcbench and remaining testkit support, then remove all
+   tprims-capi, move the remaining testkit support, then remove all
    remaining tensorprimitives packages, docs/assets and the subtree. Finish
-   headers, install/pkg-config, config extensions, licenses and migration
+   headers, install/pkg-config, licenses and migration
    docs. Replace all old package/feature paths in CI, AGENTS.md,
    REPOSITORY_RULES.md, README/rustdoc/examples and bundled usage skills.
 
@@ -719,6 +756,7 @@ The migration guide must distinguish a rename from a removed capability:
 | tprims-linalg decompositions/solves | removed; the consumer chooses another provider separately |
 | whole-backend trait crate | tprims-contract::api; updated object-safe factory/prepared-plan contract |
 | kernel names | complete per-target ID rename table, with old names rejected |
+| explicit kernel/partition on an all-batch problem | **behaviour change:** the baseline rejects it (`EngineUnsupported`, plan.rs:266-280); Phase 1 runs the packed driver (D5). Tested with StaticGrid and DynamicTiles on an all-batch problem |
 
 The pinned `ext/tenferro-cpu-tprims` consumer stays on its old revision until
 its separate migration is complete; this repository cannot claim a drop-in
