@@ -10,7 +10,7 @@
 use std::ffi::c_void;
 use std::os::raw::c_int;
 
-use tensorprimitives_tapp::*;
+use tprims::*;
 
 /// `(extents, strides, labels)` of one operand.
 pub type Op<'a> = (&'a [i64], &'a [i64], &'a [i64]);
@@ -169,5 +169,5 @@ pub unsafe fn serial_exec() -> isize {
 
 /// The pool's entry counters, or `None` for a serial executor.
 pub fn pool_stats(exec: isize) -> Option<tprims_exec::PoolStats> {
-    unsafe { tprims_core::exec::executor_ref(exec) }.and_then(|e| e.pool_stats())
+    unsafe { tprims::executor::executor_ref(exec) }.and_then(|e| e.pool_stats())
 }

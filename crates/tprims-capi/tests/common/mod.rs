@@ -20,7 +20,7 @@
 use std::ffi::{c_void, CStr};
 use std::os::raw::{c_char, c_int};
 
-use tensorprimitives_tapp::*;
+use tprims::*;
 use tprims_kernel::{Element, Real};
 use tprims_testkit::oracle::{contract_reference, RefOperand, RefOutput};
 

@@ -1,7 +1,7 @@
-# tensorprimitives-tapp
+# tprims-capi (libtprims)
 
 The **TAPP** (Tensor Algebra Processing Primitives, arXiv:2601.07827) C ABI over
-the `tprims-contract` engine (the packed block-scatter driver, with faer and elementwise strategies) — a native-Rust,
+`tprims-contract` (the packed block-scatter driver, with faer and elementwise strategies) — a native-Rust,
 transpose-free dense tensor contraction implementation.
 
 Built as `lib`, `cdylib` and `staticlib`, so the same crate serves a Rust
@@ -31,16 +31,17 @@ the first `//TODO` and specifies no codes for the second.
 
 ## From C
 
-The header is **shipped rather than fetched**: `include/tapp.h` versions with the
-implementation, because upstream TAPP has no releases and no tags, so pinning to
-its `main` would be silent drift.
+The header is **shipped rather than fetched**: `include/` holds the upstream TAPP headers verbatim at a pinned commit
+(`include/tapp/README.md` lists it with checksums) plus tprims' own
+`include/tprims/*.h`, because upstream TAPP has no releases and no tags, so
+tracking its `main` would be silent drift.
 
 ```bash
-cargo build --release -p tensorprimitives-tapp
+cargo build --release -p tprims-capi
 ./install.sh --prefix=/opt/tapp        # headers, libraries, pkg-config
 
 cc myprog.c $(PKG_CONFIG_PATH=/opt/tapp/lib/pkgconfig \
-              pkg-config --cflags --libs tensorprimitives-tapp) -lm
+              pkg-config --cflags --libs tprims) -lm
 ```
 
 `examples/c-consumer` in the repository is a CMake project that consumes this
@@ -61,7 +62,7 @@ checks numerics.
 Prerelease, and **not yet published**. The API may change.
 
 Full documentation, the measurement record and the benchmark harness are in the
-[repository](https://github.com/lkdvos/tensorprimitives-rs).
+[repository](https://github.com/tensor4all/tprims-rs).
 
 ## License
 

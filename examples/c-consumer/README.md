@@ -32,7 +32,7 @@ To link a library you have already built instead — a separate Rust build step,
 an offline site, or simply not wanting CMake to invoke cargo:
 
 ```bash
-cargo build --release -p tensorprimitives-tapp
+cargo build --release -p tprims-capi
 cmake -S examples/c-consumer -B build/c-consumer \
       -DCMAKE_BUILD_TYPE=Release -DTAPP_USE_CORROSION=OFF \
       -DTAPP_LIBRARY_DIR=$PWD/target/release
@@ -49,12 +49,12 @@ FetchContent_Declare(Corrosion
 FetchContent_MakeAvailable(Corrosion)
 
 corrosion_import_crate(
-    MANIFEST_PATH  ${TENSORPRIMITIVES_DIR}/Cargo.toml
-    CRATES         tensorprimitives-tapp)
+    MANIFEST_PATH  ${TPRIMS_DIR}/Cargo.toml
+    CRATES         tprims-capi)
 
-target_link_libraries(your_target PRIVATE tensorprimitives_tapp)
+target_link_libraries(your_target PRIVATE tprims)
 target_include_directories(your_target PRIVATE
-    ${TENSORPRIMITIVES_DIR}/crates/tensorprimitives-tapp/include)
+    ${TPRIMS_DIR}/crates/tprims-capi/include)
 ```
 
 `CRATES` matters: it keeps the unpublished benchmark harness — whose build
@@ -67,14 +67,14 @@ getting that wrong by hand is the usual first failure.
 ## Without CMake
 
 ```bash
-cargo build --release -p tensorprimitives-tapp
+cargo build --release -p tprims-capi
 
-cc myprog.c -I crates/tensorprimitives-tapp/include \
-   -L target/release -ltensorprimitives_tapp \
+cc myprog.c -I crates/tprims-capi/include \
+   -L target/release -ltprims \
    -Wl,-rpath,$PWD/target/release -lm
 ```
 
-Prefer the **cdylib** (`libtensorprimitives_tapp.so` / `.dylib`) over the
+Prefer the **cdylib** (`libtprims.so` / `.dylib`) over the
 `staticlib`. The static archive bundles the Rust standard library: it is ~26 MB,
 needs `-lpthread -ldl -lm` explicitly, and exports internal symbols that collide
 if two Rust static libraries end up in one binary. The cdylib is ~5 MB and
@@ -86,17 +86,17 @@ If you want the library somewhere other than `target/release` — a module tree,
 container image, `/usr/local` — build it and then install it:
 
 ```bash
-cargo build --release -p tensorprimitives-tapp
-crates/tensorprimitives-tapp/install.sh --prefix=/opt/tapp
+cargo build --release -p tprims-capi
+crates/tprims-capi/install.sh --prefix=/opt/tapp
 ```
 
-That lays out `lib/libtensorprimitives_tapp.so`, `include/tapp.h`,
-`lib/pkgconfig/tensorprimitives-tapp.pc` and the two licences, after which the
+That lays out `lib/libtprims.so`, `include/`,
+`lib/pkgconfig/tprims.pc` and the two licences, after which the
 library is consumable without knowing anything about cargo:
 
 ```bash
 export PKG_CONFIG_PATH=/opt/tapp/lib/pkgconfig
-cc myprog.c $(pkg-config --cflags --libs tensorprimitives-tapp) \
+cc myprog.c $(pkg-config --cflags --libs tprims) \
    -Wl,-rpath,/opt/tapp/lib -lm
 ```
 
@@ -117,18 +117,18 @@ Set them at link time. `install.sh` warns if you did not:
 
 ```bash
 # Linux, FreeBSD
-RUSTFLAGS='-C link-arg=-Wl,-soname,libtensorprimitives_tapp.so' \
-  cargo build --release -p tensorprimitives-tapp
+RUSTFLAGS='-C link-arg=-Wl,-soname,libtprims.so' \
+  cargo build --release -p tprims-capi
 
 # macOS
-RUSTFLAGS='-C link-arg=-Wl,-install_name,@rpath/libtensorprimitives_tapp.dylib' \
-  cargo build --release -p tensorprimitives-tapp
+RUSTFLAGS='-C link-arg=-Wl,-install_name,@rpath/libtprims.dylib' \
+  cargo build --release -p tprims-capi
 
 # musl, where the cdylib is otherwise *dropped* -- cargo prints "dropping
 # unsupported crate type `cdylib`" and exits 0, leaving you a header and no
 # library
-RUSTFLAGS='-C target-feature=-crt-static -C link-arg=-Wl,-soname,libtensorprimitives_tapp.so' \
-  cargo build --release -p tensorprimitives-tapp
+RUSTFLAGS='-C target-feature=-crt-static -C link-arg=-Wl,-soname,libtprims.so' \
+  cargo build --release -p tprims-capi
 ```
 
 Do not reach for `-C rpath` to get the macOS install name: it sets it, and also
@@ -142,7 +142,7 @@ Vendor once, then build with the network unused:
 ```bash
 mkdir -p .cargo
 cargo vendor vendor >> .cargo/config.toml
-cargo build --offline --release -p tensorprimitives-tapp
+cargo build --offline --release -p tprims-capi
 ```
 
 Ship `vendor/` alongside the source and the build needs no network at all. Two
@@ -159,7 +159,7 @@ CI's `offline` job.
 
 ## What the API looks like
 
-See `crates/tensorprimitives-tapp/include/tapp.h`, which documents the handle
+See `crates/tprims-capi/include/`, which documents the handle
 discipline, the supported TAPP cases, and the two places this implementation
 departs from an underspecified upstream (`TAPP_IN_PLACE`, and the non-zero error
 codes). The short version, as `main.c` uses it:

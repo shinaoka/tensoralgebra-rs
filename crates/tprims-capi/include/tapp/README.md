@@ -6,12 +6,12 @@ commit `77c32d744ee6d339f504620cc80b8679601669bc` (BSD 3-Clause, see
 `LICENSE.md` and `AUTHORS.md`, copied from the same commit). They are the ABI
 baseline of the tprims contraction C API; do not edit them. To move the
 baseline, replace all of them from one new commit, update the commit here and in
-`docs/provenance.md`, and rerun `cargo test -p tprims-bundle`.
+`docs/provenance.md`, and rerun `cargo test -p tprims-capi`.
 
 tprims-specific declarations (the Rayon executor, extra status codes) live in
 `../tprims/tapp_ext.h`, never here.
 
-SHA-256 of the files as vendored (checked by `cargo test -p tprims-bundle`):
+SHA-256 of the files as vendored (checked by `cargo test -p tprims-capi`):
 
 ```
 a47a8bd0388b0d6fbd56c76be9d4896143818af669ffdc9350ebda5a647a5b41  tapp.h

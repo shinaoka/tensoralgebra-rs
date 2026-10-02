@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
-# Install the built TAPP shared library, its header, a pkg-config file and the
+# Install the built TAPP shared library, its headers, a pkg-config file and the
 # licences into a prefix.
 #
-#   crates/tensorprimitives-tapp/install.sh --prefix=/opt/tapp
+#   crates/tprims-capi/install.sh --prefix=/opt/tapp
 #
 # Why this exists rather than a line of `cp` in each place that needs one: the
 # same layout has to come out of a manual site install, of CI, and of the
@@ -42,8 +42,8 @@ usage: install.sh --prefix=DIR [options]
   --version=X.Y.Z   version for the pkg-config file (default: read from Cargo.toml)
   --no-licenses     skip the licences, for a caller that installs them itself
                     under a different name -- BinaryBuilder's \`install_license\`
-                    uses the package name (tensorprimitives_tapp) where this
-                    script uses the crate name (tensorprimitives-tapp), and its
+                    uses the package name (tprims) where this
+                    script uses the crate name (tprims-capi), and its
                     auditor looks for the former
 EOF
     exit 2
@@ -65,15 +65,15 @@ done
 [[ -n "${prefix}" ]] || usage
 [[ -d "${artifacts}" ]] || {
     echo "install.sh: no such artifact directory: ${artifacts}" >&2
-    echo "            run 'cargo build --release -p tensorprimitives-tapp' first" >&2
+    echo "            run 'cargo build --release -p tprims-capi' first" >&2
     exit 1
 }
 
-# The version comes from the workspace manifest, which is the single source of
+# The version comes from this crate's manifest, which is the single source of
 # truth the header macros and `TAPP_implementation_version()` are both checked
 # against. Parsed rather than passed so a caller cannot supply a different one.
 if [[ -z "${version}" ]]; then
-    version="$(sed -n 's/^version = "\(.*\)"$/\1/p' "${repo_root}/Cargo.toml" | head -n1)"
+    version="$(sed -n 's/^version = "\(.*\)"$/\1/p' "${crate_dir}/Cargo.toml" | head -n1)"
     [[ -n "${version}" ]] || { echo "install.sh: cannot read version from Cargo.toml" >&2; exit 1; }
 fi
 
@@ -83,15 +83,15 @@ fi
 # windows-gnu target spec sets an empty `dll_prefix`, so the DLL has no `lib`.
 lib=""
 for candidate in \
-    "${artifacts}/libtensorprimitives_tapp.so" \
-    "${artifacts}/libtensorprimitives_tapp.dylib" \
-    "${artifacts}/tensorprimitives_tapp.dll"
+    "${artifacts}/libtprims.so" \
+    "${artifacts}/libtprims.dylib" \
+    "${artifacts}/tprims.dll"
 do
     if [[ -f "${candidate}" ]]; then lib="${candidate}"; break; fi
 done
 [[ -n "${lib}" ]] || {
     echo "install.sh: no shared library in ${artifacts}" >&2
-    echo "            expected libtensorprimitives_tapp.{so,dylib} or tensorprimitives_tapp.dll" >&2
+    echo "            expected libtprims.{so,dylib} or tprims.dll" >&2
     echo "            on musl this means the cdylib was dropped: build with" >&2
     echo "            RUSTFLAGS='-C target-feature=-crt-static'" >&2
     exit 1
@@ -109,35 +109,40 @@ fi
 [[ -n "${includedir}" ]] || includedir="${prefix}/include"
 
 install -d "${libdir}" "${includedir}" "${prefix}/lib/pkgconfig"
-[[ ${licenses} -eq 1 ]] && install -d "${prefix}/share/licenses/tensorprimitives-tapp"
+[[ ${licenses} -eq 1 ]] && install -d "${prefix}/share/licenses/tprims"
 
 install -m 0755 "${lib}" "${libdir}/${libname}"
 echo "installed ${libdir}/${libname}"
 
 # The import library, which is how anything links against a Windows DLL.
-if [[ "${libname}" == *.dll && -f "${artifacts}/libtensorprimitives_tapp.dll.a" ]]; then
-    install -m 0644 "${artifacts}/libtensorprimitives_tapp.dll.a" \
-                    "${prefix}/lib/libtensorprimitives_tapp.dll.a"
-    echo "installed ${prefix}/lib/libtensorprimitives_tapp.dll.a"
+if [[ "${libname}" == *.dll && -f "${artifacts}/libtprims.dll.a" ]]; then
+    install -m 0644 "${artifacts}/libtprims.dll.a" \
+                    "${prefix}/lib/libtprims.dll.a"
+    echo "installed ${prefix}/lib/libtprims.dll.a"
 fi
 
-install -m 0644 "${crate_dir}/include/tapp.h" "${includedir}/tapp.h"
-echo "installed ${includedir}/tapp.h"
+# The whole include tree: the pinned upstream TAPP headers (`tapp.h`, `tapp/`)
+# and tprims' own (`tprims/`). Copied with their relative layout, which the
+# headers' `#include` lines depend on.
+(cd "${crate_dir}/include" && find . -type f \( -name '*.h' -o -name '*.md' \)) | while read -r header; do
+    install -D -m 0644 "${crate_dir}/include/${header}" "${includedir}/${header#./}"
+done
+echo "installed headers under ${includedir}"
 
 sed -e "s|@PREFIX@|${prefix}|g" \
     -e "s|@LIBDIR@|${libdir}|g" \
     -e "s|@INCLUDEDIR@|${includedir}|g" \
     -e "s|@VERSION@|${version}|g" \
-    "${crate_dir}/tensorprimitives-tapp.pc.in" \
-    > "${prefix}/lib/pkgconfig/tensorprimitives-tapp.pc"
-echo "installed ${prefix}/lib/pkgconfig/tensorprimitives-tapp.pc"
+    "${crate_dir}/tprims.pc.in" \
+    > "${prefix}/lib/pkgconfig/tprims.pc"
+echo "installed ${prefix}/lib/pkgconfig/tprims.pc"
 
 if [[ ${licenses} -eq 1 ]]; then
     for licence in LICENSE-MIT LICENSE-APACHE; do
         install -m 0644 "${repo_root}/${licence}" \
-                        "${prefix}/share/licenses/tensorprimitives-tapp/${licence}"
+                        "${prefix}/share/licenses/tprims/${licence}"
     done
-    echo "installed ${prefix}/share/licenses/tensorprimitives-tapp/LICENSE-{MIT,APACHE}"
+    echo "installed ${prefix}/share/licenses/tprims/LICENSE-{MIT,APACHE}"
 fi
 
 # Report the shared-library identity rather than assume it. An ELF with no

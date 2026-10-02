@@ -4,8 +4,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use tprims_core::exec::*;
-use tprims_core::status::*;
+use tprims::executor::*;
+use tprims::status::*;
 
 fn create_rayon(n: usize) -> TAPP_executor {
     let mut e = 0;

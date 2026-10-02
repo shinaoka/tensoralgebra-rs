@@ -6,7 +6,7 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 use raw::*;
-use tensorprimitives_tapp::*;
+use tprims::*;
 
 fn threads() -> usize {
     std::fs::read_dir("/proc/self/task").map_or(0, Iterator::count)
@@ -70,7 +70,7 @@ fn concurrent_nested_and_over_budget_products_neither_deadlock_nor_add_threads()
         let mut d = vec![f64::NAN; m * n];
         let dp = d.as_mut_ptr() as usize;
         let (ap, bp) = (a.as_ptr() as usize, b.as_ptr() as usize);
-        let rc = tprims_core::exec::with_executor(exec, |x| {
+        let rc = tprims::executor::with_executor(exec, |x| {
             Ok(x.install(2, move |_| {
                 exec_f64(
                     plan,

@@ -24,6 +24,7 @@
 #include <string.h>
 
 #include <tapp.h>
+#include <tprims/tprims.h>
 
 /* D is M x N, A is M x K, B is K x N, all row-major. */
 #define M 3
@@ -203,7 +204,7 @@ static void test_refusals(TAPP_handle handle, TAPP_executor exec) {
 
     /* Every attribute key is refused, but the symbols must exist to link. */
     void* slot = (void*)0x1234;
-    check(TAPP_attr_get(0, 0, &slot) == TAPP_ERROR_UNSUPPORTED && slot == NULL,
+    check(TAPP_attr_get(0, 0, &slot) == TPRIMS_ERR_UNSUPPORTED && slot == NULL,
           "attribute API links, refuses, and leaves a defined value");
 
     must(TAPP_destroy_tensor_product(plan), "destroy plan");
@@ -214,22 +215,20 @@ static void test_refusals(TAPP_handle handle, TAPP_executor exec) {
 }
 
 /*
- * The header and the library agree about the version.
- *
- * `abi_layout.rs` already checks the `TAPP_VERSION_*` macros against
- * `CARGO_PKG_VERSION` by reading the header as text. This is the other half, and
- * it is the half that needs a C compiler: here the macro comes from the header
- * this translation unit actually included, and the string comes from the library
- * it actually linked. A distribution that ships `include/` and `lib/` as separate
- * packages can get those from different versions, and nothing else would notice.
+ * The library's two version statements agree: `TAPP_implementation_version()`
+ * ("major.minor.patch") and `tprims_abi_version()` (major * 10000 + minor * 100 +
+ * patch). The pinned upstream `tapp.h` has no version macros, so the runtime
+ * symbols are the only source; a distribution that mixes headers and libraries
+ * from different versions still fails on `TPRIMS_ABI_VERSION`.
  */
 static void test_version_agreement(void) {
     const char* linked = TAPP_implementation_version();
-    printf("  header %s, library %s\n", TAPP_VERSION_STRING, linked);
-    check(strcmp(TAPP_VERSION_STRING, linked) == 0,
-          "header TAPP_VERSION_STRING matches the linked library");
-    check(TAPP_VERSION_AT_LEAST(0, 1, 0), "TAPP_VERSION_AT_LEAST(0, 1, 0)");
-    check(!TAPP_VERSION_AT_LEAST(99, 0, 0), "!TAPP_VERSION_AT_LEAST(99, 0, 0)");
+    unsigned major = 0, minor = 0, patch = 0;
+    check(sscanf(linked, "%u.%u.%u", &major, &minor, &patch) == 3, "version string parses");
+    printf("  library %s, ABI %u\n", linked, (unsigned)tprims_abi_version());
+    check(tprims_abi_version() == major * 10000 + minor * 100 + patch,
+          "ABI version matches the library version string");
+    check(tprims_abi_version() == TPRIMS_ABI_VERSION, "header TPRIMS_ABI_VERSION matches the linked library");
 }
 
 /*

@@ -6,7 +6,7 @@ use std::ffi::c_void;
 use std::os::raw::c_int;
 
 use raw::*;
-use tensorprimitives_tapp::*;
+use tprims::*;
 
 const N: usize = 4;
 
@@ -460,7 +460,7 @@ fn errors_set_a_message_and_none_panics_across_the_abi() {
             ),
             TAPP_SUCCESS
         );
-        let msg = std::ffi::CStr::from_ptr(tprims_core::status::tprims_last_error());
+        let msg = std::ffi::CStr::from_ptr(tprims::status::tprims_last_error());
         assert!(
             !msg.to_bytes().is_empty(),
             "a failed call records a message"

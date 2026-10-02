@@ -1,11 +1,9 @@
 //! Regressions from the Phase 1f review.
 use std::ffi::c_void;
 
-use tprims_core::dlpack::*;
-use tprims_core::status::*;
-use tprims_core::tensor::{
-    layout, tprims_tensor_borrow_raw, tprims_tensor_borrow_versioned, DType,
-};
+use tprims::dlpack::*;
+use tprims::status::*;
+use tprims::tensor::{layout, tprims_tensor_borrow_raw, tprims_tensor_borrow_versioned, DType};
 
 #[test]
 fn misaligned_data_is_rejected_before_any_view() {

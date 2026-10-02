@@ -4,7 +4,7 @@
 mod raw;
 
 use raw::*;
-use tensorprimitives_tapp::*;
+use tprims::*;
 
 struct Problem {
     m: usize,

@@ -1,8 +1,8 @@
 use std::ffi::c_void;
 
-use tprims_core::dlpack::*;
-use tprims_core::status::*;
-use tprims_core::tensor::{dtype_of, layout, tprims_tensor_borrow_raw, view, view_mut, DType};
+use tprims::dlpack::*;
+use tprims::status::*;
+use tprims::tensor::{dtype_of, layout, tprims_tensor_borrow_raw, view, view_mut, DType};
 
 fn tensor(
     data: &mut [f64],
@@ -170,7 +170,7 @@ fn rust_mirror_matches_the_c_layout() {
     use std::mem::{offset_of, size_of};
     assert_eq!(size_of::<DLTensor>(), 48);
     assert_eq!(offset_of!(DLManagedTensorVersioned, dl_tensor), 32);
-    assert_eq!(size_of::<tprims_core::tensor::tprims_tensor>(), 16);
+    assert_eq!(size_of::<tprims::tensor::tprims_tensor>(), 16);
 }
 
 #[test]

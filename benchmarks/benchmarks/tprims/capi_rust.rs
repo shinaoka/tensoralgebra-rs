@@ -32,7 +32,7 @@ fn main() {
     println!("case,variant,threads,median_ns,samples");
     th.with_exec(|exec, _| {
         let ns = median(|| {
-            black_box(tprims_core::ABI_VERSION);
+            black_box(tprims::ABI_VERSION);
         });
         println!("empty_call,rust,{t},{ns:.1},{SAMPLES}");
         let x: Vec<f64> = (0..8).map(|i| i as f64).collect();

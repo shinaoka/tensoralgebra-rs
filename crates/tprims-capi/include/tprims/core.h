@@ -60,6 +60,13 @@ const char *tprims_last_error(void);
 uint32_t tprims_abi_version(void);
 int32_t tprims_has_part(const char *part);
 
+/* Library identity (non-standard TAPP extensions): a static NUL-terminated name
+   and the crate version "major.minor.patch" of the loaded library. Never NULL;
+   do not free. Compare with TPRIMS_ABI_VERSION to detect a header and a library
+   from different versions. */
+const char *TAPP_implementation_name(void);
+const char *TAPP_implementation_version(void);
+
 #ifdef __cplusplus
 }
 #endif

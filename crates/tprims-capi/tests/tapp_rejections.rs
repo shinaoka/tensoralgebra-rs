@@ -24,7 +24,7 @@ use std::ffi::c_void;
 use std::os::raw::{c_char, c_int};
 
 use common::*;
-use tensorprimitives_tapp::*;
+use tprims::*;
 
 type C64 = num_complex::Complex<f64>;
 

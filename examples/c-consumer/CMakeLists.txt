@@ -42,7 +42,7 @@ option(TAPP_USE_CORROSION "Build the Rust library via corrosion" ON)
 
 # The crate root, i.e. the repository root two levels up from this file.
 get_filename_component(TAPP_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
-set(TAPP_CRATE_DIR "${TAPP_REPO_ROOT}/crates/tensorprimitives-tapp")
+set(TAPP_CRATE_DIR "${TAPP_REPO_ROOT}/crates/tprims-capi")
 
 add_executable(tapp-c-consumer main.c)
 
@@ -60,14 +60,14 @@ if(DEFINED TAPP_PREFIX)
     find_package(PkgConfig)
     if(PkgConfig_FOUND)
         set(ENV{PKG_CONFIG_PATH} "${TAPP_PREFIX}/lib/pkgconfig")
-        pkg_check_modules(TAPP REQUIRED IMPORTED_TARGET tensorprimitives-tapp)
+        pkg_check_modules(TAPP REQUIRED IMPORTED_TARGET tprims)
         message(STATUS "Using installed TAPP ${TAPP_VERSION} via pkg-config from ${TAPP_PREFIX}")
         target_link_libraries(tapp-c-consumer PRIVATE PkgConfig::TAPP)
         set(TAPP_RUNTIME_DIR "${TAPP_LIBRARY_DIRS}")
     else()
         message(STATUS "Using installed TAPP from ${TAPP_PREFIX} (no pkg-config)")
         find_library(TAPP_LIBRARY
-            NAMES tensorprimitives_tapp
+            NAMES tprims
             HINTS "${TAPP_PREFIX}/lib" "${TAPP_PREFIX}/bin"
             REQUIRED
         )
@@ -101,17 +101,17 @@ if(TAPP_USE_CORROSION)
     # whose build script wants TBLIS_ROOT -- out of the build entirely.
     corrosion_import_crate(
         MANIFEST_PATH "${TAPP_REPO_ROOT}/Cargo.toml"
-        CRATES tensorprimitives-tapp
+        CRATES tprims-capi
     )
 
-    target_link_libraries(tapp-c-consumer PRIVATE tensorprimitives_tapp)
+    target_link_libraries(tapp-c-consumer PRIVATE tprims)
 else()
     if(NOT DEFINED TAPP_LIBRARY_DIR)
         set(TAPP_LIBRARY_DIR "${TAPP_REPO_ROOT}/target/release")
     endif()
 
     find_library(TAPP_LIBRARY
-        NAMES tensorprimitives_tapp
+        NAMES tprims
         HINTS "${TAPP_LIBRARY_DIR}"
         REQUIRED
         NO_DEFAULT_PATH

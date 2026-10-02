@@ -24,8 +24,8 @@ use std::slice;
 use num_complex::Complex;
 
 use common::explain_status;
-use tensorprimitives_tapp::TAPP_DEFAULT_PREC;
-use tensorprimitives_tapp::TAPP_ERROR_UNSUPPORTED;
+use tprims::TAPP_DEFAULT_PREC;
+use tprims::TAPP_ERROR_UNSUPPORTED;
 
 /// The upstream header, transcribed. Types follow `tapp/*.h`: every handle is
 /// `intptr_t`, `TAPP_error` / `TAPP_datatype` / `TAPP_prectype` /
@@ -300,57 +300,24 @@ fn every_documented_symbol_resolves_and_runs() {
 
 // ------------------------------------------------------------------- versioning
 
-/// The library reports its own version, and the shipped header's macros agree
-/// with it.
+/// The library reports its own version: `TAPP_implementation_version()` is the
+/// crate version and `tprims_abi_version()` is the same number as
+/// `major * 10000 + minor * 100 + patch`.
 ///
-/// Three things now state the version — `Cargo.toml`, the `TAPP_VERSION_*`
-/// macros in `include/tapp.h`, and `TAPP_implementation_version()` — and two of
-/// them are hand-maintained. `Cargo.toml` is the source of truth via
-/// `CARGO_PKG_VERSION`; this test is what makes the header's copy of it a build
-/// failure rather than a downstream one.
-///
-/// The header is parsed as text on purpose. Asking a C preprocessor would need a
-/// C compiler in the loop, which `examples/c-consumer` supplies for the *other*
-/// half of the claim (macro against runtime symbol, both seen by `cc`); this half
-/// has to hold in a bare `cargo test`, on a machine with no C toolchain at all.
+/// (The pinned upstream `tapp.h` carries no `TAPP_VERSION_*` macros; the second
+/// header that did, and the test that compared them with `Cargo.toml`, were
+/// removed with it.)
 #[test]
-fn the_header_version_macros_match_the_crate_version() {
-    let header = include_str!("../include/tapp.h");
-
-    let macro_value = |name: &str| -> String {
-        let needle = format!("#define {name} ");
-        header
-            .lines()
-            .find_map(|l| l.strip_prefix(&needle))
-            .unwrap_or_else(|| panic!("{name} is not defined in include/tapp.h"))
-            .trim()
-            .trim_matches('"')
-            .to_string()
-    };
-
-    let from_header = format!(
-        "{}.{}.{}",
-        macro_value("TAPP_VERSION_MAJOR"),
-        macro_value("TAPP_VERSION_MINOR"),
-        macro_value("TAPP_VERSION_PATCH"),
-    );
-    assert_eq!(
-        from_header,
-        env!("CARGO_PKG_VERSION"),
-        "include/tapp.h's TAPP_VERSION_* macros disagree with Cargo.toml; \
-         bump the header when you bump the crate"
-    );
-    assert_eq!(
-        macro_value("TAPP_VERSION_STRING"),
-        env!("CARGO_PKG_VERSION"),
-        "include/tapp.h's TAPP_VERSION_STRING disagrees with Cargo.toml"
-    );
-
-    // And the symbol a caller actually asks at run time.
+fn the_library_reports_its_crate_version() {
     let reported = unsafe { CStr::from_ptr(c_abi::TAPP_implementation_version()) }
         .to_str()
         .expect("the version string is not UTF-8");
     assert_eq!(reported, env!("CARGO_PKG_VERSION"));
+    let parts: Vec<u32> = reported.split('.').map(|x| x.parse().unwrap()).collect();
+    assert_eq!(
+        tprims::tprims_abi_version(),
+        parts[0] * 10000 + parts[1] * 100 + parts[2]
+    );
 }
 
 /// The C symbols and the Rust paths are the same functions, not two
@@ -359,15 +326,15 @@ fn the_header_version_macros_match_the_crate_version() {
 fn the_c_symbols_are_the_crate_functions() {
     assert_eq!(
         c_abi::TAPP_implementation_name as *const () as usize,
-        tensorprimitives_tapp::TAPP_implementation_name as *const () as usize
+        tprims::TAPP_implementation_name as *const () as usize
     );
     assert_eq!(
         c_abi::TAPP_check_success as *const () as usize,
-        tensorprimitives_tapp::TAPP_check_success as *const () as usize
+        tprims::TAPP_check_success as *const () as usize
     );
     assert_eq!(
         c_abi::TAPP_execute_product as *const () as usize,
-        tensorprimitives_tapp::TAPP_execute_product as *const () as usize
+        tprims::TAPP_execute_product as *const () as usize
     );
 }
 
@@ -388,7 +355,7 @@ fn the_c_symbols_are_the_crate_functions() {
 /// kind of constant that must be pinned rather than assumed.
 #[test]
 fn enumerator_values_match_the_upstream_headers() {
-    use tensorprimitives_tapp::*;
+    use tprims::*;
     assert_eq!(TAPP_F32, 0);
     assert_eq!(TAPP_F64, 1);
     assert_eq!(TAPP_C32, 2);

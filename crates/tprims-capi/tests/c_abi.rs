@@ -20,7 +20,7 @@ fn c_program_links_and_runs() {
         return;
     }
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let include = root.join("../tprims-core/include");
+    let include = root.join("include");
     let lib = target_dir();
     assert!(
         lib.join("libtprims.so").exists() || lib.join("libtprims.dylib").exists(),
@@ -97,7 +97,7 @@ fn only_tprims_symbols_of_the_selected_parts_are_exported() {
     let lib = target_dir().join(name);
     assert!(
         lib.exists(),
-        "{} not built: run `cargo build -p tprims-bundle` with the same profile first",
+        "{} not built: run `cargo build -p tprims-capi` with the same profile first",
         lib.display()
     );
     let out = Command::new("nm")
@@ -160,7 +160,7 @@ fn headers_combine_with_a_real_dlpack_h_in_either_order() {
         return;
     }
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let include = root.join("../tprims-core/include");
+    let include = root.join("include");
     for src in ["headers_dlpack_first.c", "headers_tprims_first.c"] {
         let out = std::env::temp_dir().join(format!("tprims_{src}_{}", std::process::id()));
         let st = Command::new(&cc)
@@ -182,7 +182,7 @@ fn consumer_of_the_pinned_standard_headers_only() {
     let cc = std::env::var("CC").unwrap_or_else(|_| "cc".into());
     let cxx = std::env::var("CXX").unwrap_or_else(|_| "c++".into());
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let include = root.join("../tprims-core/include");
+    let include = root.join("include");
     let lib = target_dir();
     let src = root.join("tests/c/standard_consumer.c");
     for (compiler, lang, std_flag) in [(&cc, "c", "-std=c11"), (&cxx, "c++", "-std=c++17")] {
@@ -227,7 +227,7 @@ fn consumer_of_the_pinned_standard_headers_only() {
 /// (skipped when no `sha256sum`/`shasum` exists).
 #[test]
 fn vendored_tapp_headers_are_the_pinned_ones() {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../tprims-core/include");
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("include");
     let readme = std::fs::read_to_string(root.join("tapp/README.md")).expect("tapp/README.md");
     assert!(readme.contains("77c32d744ee6d339f504620cc80b8679601669bc"));
     let recorded: Vec<(&str, &str)> = readme
