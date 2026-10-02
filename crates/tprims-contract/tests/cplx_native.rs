@@ -1,9 +1,9 @@
-//! The native interleaved complex families through the TBLIS-style contraction
-//! path (`Strategy::Tblis`): a contraction whose operands cannot fuse, forced
-//! onto `avx2.c64.native.4x4`, reported, and equal to the reference.
+//! The native interleaved complex families through the packed contraction
+//! path: a contraction whose operands cannot fuse, forced onto
+//! `avx2.c64.native.4x4`, reported, and equal to the reference.
 use num_complex::Complex64;
-use tprims_blas::{Conj, Engine, GemmConfig};
-use tprims_contract::{ContractPlan, DotGeneral, Flags, Strategy};
+use tprims_contract::api::{AccumulationSource, DType, DotGeneral, LayoutSpec, Op, OperandSpec, Problem};
+use tprims_contract::{Plan, PlanConfig};
 use tprims_exec::Exec;
 use tprims_kernel::KernelChoice;
 
@@ -22,9 +22,9 @@ fn have_isa() -> bool {
 }
 
 #[test]
-fn a_tblis_contraction_runs_the_native_family_and_matches_the_reference() {
-    // Contract A[., 1, 2] with B[2, ., 0] (the copying case of kernel_select),
-    // plus a batch axis; B stored transposed and A reversed so nothing fuses.
+fn a_packed_contraction_runs_the_native_family_and_matches_the_reference() {
+    // Contract A[., 1, 2] with B[2, ., 0] (the copying case of kernel_select);
+    // B stored transposed and A reversed so nothing fuses.
     let cfg = DotGeneral::new(&[1, 2], &[2, 0], &[], &[]);
     let a0 = T::<Complex64>::new(&[5, 4, 6], 1);
     let b0 = T::<Complex64>::new(&[6, 7, 4], 2);
@@ -32,45 +32,43 @@ fn a_tblis_contraction_runs_the_native_family_and_matches_the_reference() {
     let b = b0.restride(&[2, 0, 1]);
     let od = out_dims(&cfg, &a.dims, &b.dims);
     let c0 = T::<Complex64>::new(&od, 3);
-    let gemm = GemmConfig {
-        kernel: KernelChoice::Id("avx2.c64.native.4x4".into()),
-        ..Default::default()
+    let spec = |t: &T<Complex64>, op| {
+        OperandSpec::new(LayoutSpec::new(&t.dims, &t.strides, t.offset).unwrap()).with_op(op)
     };
-    let plan = ContractPlan::<Complex64>::new_with(
-        &gemm,
+    let problem = Problem::from_dot_general(
+        DType::C64,
+        spec(&a, Op::Conjugate),
+        spec(&b, Op::Identity),
+        spec(&c0, Op::Identity),
         &cfg,
-        (&a.dims, &a.strides),
-        (&b.dims, &b.strides),
-        (&c0.dims, &c0.strides),
-        (Conj::Yes, Conj::No),
-        Strategy::Tblis,
-        Flags::default(),
-    );
+    )
+    .unwrap();
+    let config = PlanConfig {
+        kernel: KernelChoice::Id("avx2.c64.native.4x4".into()),
+        ..PlanConfig::default()
+    };
+    let plan = Plan::<Complex64>::new(&problem, &config);
     if !have_isa() {
-        // Refused at plan creation (or execution-time resolution), never run.
-        let refused = match plan {
-            Err(_) => true,
-            Ok(p) => p.selected_gemm().is_err(),
-        };
-        assert!(refused, "an unavailable family must be refused");
+        // Refused at plan creation, never run.
+        assert!(plan.is_err(), "an unavailable family must be refused");
         return;
     }
     let plan = plan.unwrap();
-    let sel = plan.selected_gemm().unwrap().expect("packed plan");
-    assert_eq!(sel.engine, Engine::Packed);
-    assert_eq!(sel.family_id, Some("avx2.c64.native.4x4"));
+    let report = plan.report().packed.as_ref().expect("packed plan");
+    assert_eq!(report.family_id, "avx2.c64.native.4x4");
     let (alpha, beta) = (Complex64::new(0.8, -0.3), Complex64::new(0.4, 0.2));
     let mut c = c0.clone();
-    plan.execute(
+    plan.execute_into_accum(
         &Exec::serial(),
         alpha,
         &a.view(),
         &b.view(),
         beta,
+        AccumulationSource::Output,
         &mut c.view_mut(),
     )
     .unwrap();
-    let want = reference(&cfg, alpha, &a, Conj::Yes, &b, Conj::No, beta, &c0);
+    let want = reference(&cfg, alpha, &a, true, &b, false, beta, &c0);
     let (mut worst, mut scale) = (0.0f64, 0.0f64);
     common::for_each_index(&c.dims, |i| {
         worst = worst.max((c.get(i) - want.get(i)).norm());

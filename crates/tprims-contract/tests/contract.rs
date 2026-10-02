@@ -1,13 +1,35 @@
 use num_complex::Complex64;
-use tensorcontract::Element;
-use tprims_blas::{Conj, Scalar};
-use tprims_contract::{ContractPlan, DotGeneral, Error, Flags, Selected, Strategy};
+use tprims_contract::api::{
+    AccumulationSource, AliasError, ConfigError, DType, DotGeneral, Error, LayoutError, LayoutSpec,
+    Op, OperandSpec, Problem, Scalar, ShapeError,
+};
+use tprims_contract::{Algorithm, Partition, Plan, PlanConfig};
 use tprims_exec::{Exec, Pool};
+use tprims_kernel::Element;
 
 mod common;
 use common::*;
 
-pub const STRATEGIES: [Strategy; 3] = [Strategy::PermuteGemm, Strategy::Tblis, Strategy::Auto];
+/// The configurations every case runs under: the planner's own choice, and
+/// the packed driver forced by an explicit grid request.
+fn configs() -> [PlanConfig; 2] {
+    let mut packed = PlanConfig::default();
+    packed.partition = Some(Partition::StaticGrid {
+        pin: None,
+        align_c_lines: false,
+    });
+    [PlanConfig::default(), packed]
+}
+
+fn spec<S>(t: &T<S>, op: Op) -> OperandSpec {
+    OperandSpec::new(LayoutSpec::new(&t.dims, &t.strides, 0).unwrap()).with_op(op)
+}
+
+fn problem<S: Scalar>(cfg: &DotGeneral, a: &T<S>, ca: bool, b: &T<S>, cb: bool, c: &T<S>) -> Problem {
+    let op = |x: bool| if x { Op::Conjugate } else { Op::Identity };
+    Problem::from_dot_general(S::STORAGE, spec(a, op(ca)), spec(b, op(cb)), spec(c, Op::Identity), cfg)
+        .unwrap()
+}
 
 struct Case {
     name: &'static str,
@@ -90,13 +112,13 @@ fn out_dims(cfg: &DotGeneral, a: &[usize], b: &[usize]) -> Vec<usize> {
 #[allow(clippy::too_many_arguments)]
 fn run<S: Scalar>(
     exec: &Exec<'_>,
-    strategy: Strategy,
+    config: &PlanConfig,
     case: &Case,
     layout: u8,
-    ca: Conj,
-    cb: Conj,
+    ca: bool,
+    cb: bool,
     beta: S,
-) -> Selected {
+) -> Algorithm {
     let base_a = T::<S>::new(&case.a, 1);
     let base_b = T::<S>::new(&case.b, 2);
     // layout 0: column-major, 1: axes reversed in storage order, 2: negative strides
@@ -116,23 +138,22 @@ fn run<S: Scalar>(
         T::<S>::new(&od, 3)
     };
     let alpha = <S as Element>::from_parts(
-        tensorcontract::Real::from_f64(0.75),
-        tensorcontract::Real::from_f64(0.25),
+        tprims_kernel::Real::from_f64(0.75),
+        tprims_kernel::Real::from_f64(0.25),
     );
     let want = reference(&case.cfg, alpha, &a, ca, &b, cb, beta, &c0);
     let mut c = c0.clone();
-    let plan = ContractPlan::<S>::new(
-        &case.cfg,
-        (&a.dims, &a.strides),
-        (&b.dims, &b.strides),
-        (&c.dims, &c.strides),
-        (ca, cb),
-        strategy,
-        Flags::default(),
+    let plan = Plan::<S>::new(&problem(&case.cfg, &a, ca, &b, cb, &c), config).unwrap();
+    plan.execute_into_accum(
+        exec,
+        alpha,
+        &a.view(),
+        &b.view(),
+        beta,
+        AccumulationSource::Output,
+        &mut c.view_mut(),
     )
     .unwrap();
-    plan.execute(exec, alpha, &a.view(), &b.view(), beta, &mut c.view_mut())
-        .unwrap();
     let tol = if std::mem::size_of::<<S as Scalar>::Re>() == 4 {
         1e-4
     } else {
@@ -141,42 +162,35 @@ fn run<S: Scalar>(
     let err = rel_err(&c, &want);
     assert!(
         err < tol,
-        "{strategy:?} {} layout{layout} {ca:?}/{cb:?}: {err}",
+        "{:?} {} layout{layout} {ca:?}/{cb:?}: {err}",
+        plan.report().algorithm,
         case.name
     );
-    plan.selected()
+    plan.report().algorithm
 }
 
 #[test]
 fn corpus_matches_the_reference() {
-    for strategy in STRATEGIES {
+    for config in configs() {
         for case in corpus() {
             for layout in 0..3u8 {
-                run::<f64>(
-                    &Exec::serial(),
-                    strategy,
-                    &case,
-                    layout,
-                    Conj::No,
-                    Conj::No,
-                    1.5,
-                );
+                run::<f64>(&Exec::serial(), &config, &case, layout, false, false, 1.5);
                 run::<Complex64>(
                     &Exec::serial(),
-                    strategy,
+                    &config,
                     &case,
                     layout,
-                    Conj::Yes,
-                    Conj::No,
+                    true,
+                    false,
                     Complex64::new(0.0, 0.0),
                 );
                 run::<Complex64>(
                     &Exec::serial(),
-                    strategy,
+                    &config,
                     &case,
                     layout,
-                    Conj::No,
-                    Conj::Yes,
+                    false,
+                    true,
                     Complex64::new(1.0, -1.0),
                 );
             }
@@ -204,65 +218,60 @@ fn larger_contractions_on_a_pool_match() {
         b: vec![8, 9, 5, 4],
         cfg: DotGeneral::new(&[2, 3], &[0, 1], &[], &[]),
     };
-    for strategy in STRATEGIES {
+    for config in configs() {
         for layout in 0..3u8 {
-            run::<f64>(&exec, strategy, &big, layout, Conj::No, Conj::No, 0.5);
-            run::<f64>(&exec, strategy, &net, layout, Conj::No, Conj::No, 0.0);
+            run::<f64>(&exec, &config, &big, layout, false, false, 0.5);
+            run::<f64>(&exec, &config, &net, layout, false, false, 0.0);
         }
     }
 }
 
+/// The strategy rules, in order: an explicit request forces the packed driver
+/// (even for an all-batch problem); otherwise all-batch is elementwise; a
+/// problem that fuses copy-free runs on faer; the rest runs packed. No
+/// strategy copies a whole operand, so `no_materialize` is always met.
 #[test]
-fn copy_free_detection_and_no_materialize() {
-    // Column-major matmul: every group fuses, nothing is copied.
-    let case = &corpus()[0];
-    let sel = run::<f64>(
-        &Exec::serial(),
-        Strategy::PermuteGemm,
-        case,
-        0,
-        Conj::No,
-        Conj::No,
-        0.0,
-    );
-    assert_eq!(
-        sel,
-        Selected::PermuteGemm {
-            materialized: [false, false, false]
-        }
-    );
-    // Contracted axes in different orders on A and B cannot both fuse.
-    let bad = &corpus()[2];
-    let a = T::<f64>::new(&bad.a, 1);
-    let b = T::<f64>::new(&bad.b, 2);
-    let od = out_dims(&bad.cfg, &bad.a, &bad.b);
-    let c = T::<f64>::new(&od, 3);
-    let strict = Flags {
-        no_materialize: true,
+fn strategy_selection_follows_the_rules() {
+    let algo = |case: &Case, config: &PlanConfig| {
+        let a = T::<f64>::new(&case.a, 1);
+        let b = T::<f64>::new(&case.b, 2);
+        let c = T::<f64>::new(&out_dims(&case.cfg, &case.a, &case.b), 3);
+        Plan::<f64>::new(&problem(&case.cfg, &a, false, &b, false, &c), config)
+            .unwrap()
+            .report()
+            .algorithm
     };
-    let e = ContractPlan::<f64>::new(
-        &bad.cfg,
-        (&a.dims, &a.strides),
-        (&b.dims, &b.strides),
-        (&c.dims, &c.strides),
-        (Conj::No, Conj::No),
-        Strategy::PermuteGemm,
-        strict,
-    );
-    assert!(matches!(e, Err(Error::WouldMaterialize { .. })), "{e:?}");
-    let ok = ContractPlan::<f64>::new(
-        &bad.cfg,
-        (&a.dims, &a.strides),
-        (&b.dims, &b.strides),
-        (&c.dims, &c.strides),
-        (Conj::No, Conj::No),
-        Strategy::PermuteGemm,
-        Flags::default(),
-    )
-    .unwrap();
-    assert!(
-        matches!(ok.selected(), Selected::PermuteGemm { materialized } if materialized.iter().any(|&m| m))
-    );
+    let default = PlanConfig::default();
+    let [_, packed] = configs();
+    let corpus = corpus();
+    // 3. column-major matmul fuses without a copy.
+    assert_eq!(algo(&corpus[0], &default), Algorithm::Faer);
+    // 4. contracted axes in different orders on A and B cannot both fuse.
+    assert_eq!(algo(&corpus[2], &default), Algorithm::Packed);
+    // 2. a Hadamard product is elementwise.
+    assert_eq!(algo(&corpus[5], &default), Algorithm::Elementwise);
+    // 1. an explicit request wins, all-batch included.
+    assert_eq!(algo(&corpus[0], &packed), Algorithm::Packed);
+    assert_eq!(algo(&corpus[5], &packed), Algorithm::Packed);
+    // A kernel id or a complex method is such a request too.
+    let id = PlanConfig {
+        kernel: tprims_kernel::KernelChoice::Id("ref.f64.real.4x4".into()),
+        ..PlanConfig::default()
+    };
+    assert_eq!(algo(&corpus[0], &id), Algorithm::Packed);
+    assert_eq!(algo(&corpus[5], &id), Algorithm::Packed);
+    // Nothing is copied, so a strict requirement is met everywhere.
+    let strict = PlanConfig {
+        no_materialize: true,
+        ..PlanConfig::default()
+    };
+    for case in &corpus {
+        let a = T::<f64>::new(&case.a, 1);
+        let b = T::<f64>::new(&case.b, 2);
+        let c = T::<f64>::new(&out_dims(&case.cfg, &case.a, &case.b), 3);
+        let plan = Plan::<f64>::new(&problem(&case.cfg, &a, false, &b, false, &c), &strict).unwrap();
+        assert_eq!(plan.report().materialized, [false; 3], "{}", case.name);
+    }
 }
 
 #[test]
@@ -272,94 +281,67 @@ fn validation_errors_are_typed_and_nothing_is_written() {
     let cfg = DotGeneral::new(&[1], &[0], &[], &[]);
     assert!(matches!(
         DotGeneral::new(&[1, 1], &[0, 0], &[], &[]).validate(&[3, 4], &[4, 2]),
-        Err(Error::Config(_))
+        Err(Error::Config(ConfigError::AxisRepeated { .. }))
     ));
     assert!(matches!(
         DotGeneral::new(&[2], &[0], &[], &[]).validate(&[3, 4], &[4, 2]),
-        Err(Error::Config(_))
+        Err(Error::Config(ConfigError::AxisOutOfRange { .. }))
     ));
     assert!(matches!(
         DotGeneral::new(&[0], &[0], &[], &[]).validate(&[3, 4], &[4, 2]),
-        Err(Error::Shape(_))
+        Err(Error::Shape(ShapeError::PairedExtent { .. }))
     ));
-    for strategy in [Strategy::PermuteGemm, Strategy::Tblis] {
-        let mut c = T::<f64> {
+    for config in configs() {
+        // A broadcast (stride-zero) output addresses an element more than once.
+        let c = T::<f64> {
             data: vec![7.0; 3],
             dims: vec![3, 2],
             strides: vec![1, 0],
             offset: 0,
         };
-        let e = ContractPlan::<f64>::new(
+        let e = Problem::from_dot_general(
+            DType::F64,
+            spec(&a, Op::Identity),
+            spec(&b, Op::Identity),
+            spec(&c, Op::Identity),
             &cfg,
-            (&a.dims, &a.strides),
-            (&b.dims, &b.strides),
-            (&c.dims, &c.strides),
-            (Conj::No, Conj::No),
-            strategy,
-            Flags::default(),
         );
-        assert!(matches!(e, Err(Error::AliasedOutput)), "{strategy:?}");
-        let plan = ContractPlan::<f64>::new(
-            &cfg,
-            (&a.dims, &a.strides),
-            (&b.dims, &b.strides),
-            (&[3, 2], &[1, 3]),
-            (Conj::No, Conj::No),
-            strategy,
-            Flags::default(),
-        )
-        .unwrap();
-        let e = plan.execute(
+        assert!(matches!(e, Err(Error::Alias(AliasError::OutputNotInjective))));
+        // A view that differs from the planned layout is refused before any write.
+        let planned = T::<f64>::new(&[3, 2], 3);
+        let plan = Plan::<f64>::new(&problem(&cfg, &a, false, &b, false, &planned), &config).unwrap();
+        let mut c = c;
+        let e = plan.execute_into(
             &Exec::serial(),
             1.0,
             &a.view(),
             &b.view(),
-            0.0,
             &mut c.view_mut(),
         );
-        assert!(matches!(e, Err(Error::LayoutMismatch(_))), "{e:?}");
+        assert!(
+            matches!(e, Err(Error::Layout(LayoutError::Mismatch { .. }))),
+            "{e:?}"
+        );
         assert!(c.data.iter().all(|&x| x == 7.0));
     }
 }
 
+/// `execute_into` is the overwrite form: no previous output value is read, so
+/// NaN garbage in the output is replaced, not propagated.
 #[test]
-fn auto_uses_tblis_exactly_when_permute_gemm_would_copy() {
-    // Phase 1e P2 (docs/decision-log.md): permute+GEMM wins copy-free
-    // problems, TBLIS-style wins the ones permute+GEMM must copy.
-    let plan = |case: &Case, flags: Flags| {
-        let a = T::<f64>::new(&case.a, 1);
-        let b = T::<f64>::new(&case.b, 2);
-        let od = out_dims(&case.cfg, &case.a, &case.b);
-        let c = T::<f64>::new(&od, 3);
-        ContractPlan::<f64>::new(
-            &case.cfg,
-            (&a.dims, &a.strides),
-            (&b.dims, &b.strides),
-            (&c.dims, &c.strides),
-            (Conj::No, Conj::No),
-            Strategy::Auto,
-            flags,
-        )
-    };
-    let fusable = &corpus()[0];
-    assert_eq!(
-        plan(fusable, Flags::default()).unwrap().selected(),
-        Selected::PermuteGemm {
-            materialized: [false, false, false]
+fn overwrite_reads_no_previous_output() {
+    for config in configs() {
+        for case in corpus() {
+            let a = T::<f64>::new(&case.a, 1);
+            let b = T::<f64>::new(&case.b, 2);
+            let od = out_dims(&case.cfg, &case.a, &case.b);
+            let mut c = T::<f64>::new(&od, 3);
+            c.data.iter_mut().for_each(|x| *x = f64::NAN);
+            let want = reference(&case.cfg, 2.0, &a, false, &b, false, 0.0, &c);
+            let plan = Plan::<f64>::new(&problem(&case.cfg, &a, false, &b, false, &c), &config).unwrap();
+            plan.execute_into(&Exec::serial(), 2.0, &a.view(), &b.view(), &mut c.view_mut())
+                .unwrap();
+            assert!(rel_err(&c, &want) < 1e-12, "{}", case.name);
         }
-    );
-    let copying = &corpus()[2];
-    assert_eq!(
-        plan(copying, Flags::default()).unwrap().selected(),
-        Selected::Tblis
-    );
-    // TBLIS-style copies nothing, so Auto satisfies `no_materialize` there.
-    let strict = Flags {
-        no_materialize: true,
-    };
-    assert_eq!(plan(copying, strict).unwrap().selected(), Selected::Tblis);
-    assert!(matches!(
-        plan(fusable, strict).unwrap().selected(),
-        Selected::PermuteGemm { .. }
-    ));
+    }
 }

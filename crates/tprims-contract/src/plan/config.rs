@@ -64,7 +64,6 @@ impl Partition {
 
 /// Explicit inputs of the cache-blocking model.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-#[non_exhaustive]
 pub struct CacheModel {
     /// Which blocking derivation is in force. The default is the legacy
     /// constants every committed measurement was taken against.
@@ -102,7 +101,6 @@ pub enum Writeback {
 /// assert!(cfg.requires_packed());
 /// ```
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-#[non_exhaustive]
 pub struct PlanConfig {
     /// A kernel family: `Auto`, or an exact stable id. An explicit id forces
     /// the packed driver.

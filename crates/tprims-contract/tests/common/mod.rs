@@ -1,9 +1,8 @@
 //! Reference contraction and view helpers for the tprims-contract tests.
 #![allow(dead_code)]
 
-use tensorcontract::Element;
-use tprims_blas::{Conj, Scalar};
-use tprims_contract::DotGeneral;
+use tprims_contract::api::{DotGeneral, Scalar};
+use tprims_kernel::{Element, Real};
 
 /// A dense tensor with explicit strides over its own storage.
 #[derive(Clone, Debug)]
@@ -34,8 +33,8 @@ pub fn fill<S: Scalar>(len: usize, seed: u64) -> Vec<S> {
             let re = (s % 1000) as f64 / 1000.0 - 0.5;
             let im = ((s >> 20) % 1000) as f64 / 1000.0 - 0.5;
             <S as Element>::from_parts(
-                tensorcontract::Real::from_f64(re),
-                tensorcontract::Real::from_f64(im),
+                Real::from_f64(re),
+                Real::from_f64(im),
             )
         })
         .collect()
@@ -151,20 +150,20 @@ pub fn reference<S: Scalar>(
     cfg: &DotGeneral,
     alpha: S,
     a: &T<S>,
-    ca: Conj,
+    ca: bool,
     b: &T<S>,
-    cb: Conj,
+    cb: bool,
     beta: S,
     c: &T<S>,
 ) -> T<S> {
-    let op = |x: S, c: Conj| if c == Conj::Yes { Element::conj(x) } else { x };
+    let op = |x: S, c: bool| if c { Element::conj(x) } else { x };
     let a_free: Vec<usize> = (0..a.dims.len())
-        .filter(|x| !cfg.lhs_contract.contains(x) && !cfg.lhs_batch.contains(x))
+        .filter(|x| !cfg.lhs_contract().contains(x) && !cfg.lhs_batch().contains(x))
         .collect();
     let b_free: Vec<usize> = (0..b.dims.len())
-        .filter(|x| !cfg.rhs_contract.contains(x) && !cfg.rhs_batch.contains(x))
+        .filter(|x| !cfg.rhs_contract().contains(x) && !cfg.rhs_batch().contains(x))
         .collect();
-    let kdims: Vec<usize> = cfg.lhs_contract.iter().map(|&x| a.dims[x]).collect();
+    let kdims: Vec<usize> = cfg.lhs_contract().iter().map(|&x| a.dims[x]).collect();
     let mut out = c.clone();
     for_each_index(&c.dims, |o| {
         let (om, rest) = o.split_at(a_free.len());
@@ -180,11 +179,11 @@ pub fn reference<S: Scalar>(
             for (p, &ax) in b_free.iter().enumerate() {
                 bi[ax] = on[p];
             }
-            for (p, (&la, &lb)) in cfg.lhs_batch.iter().zip(&cfg.rhs_batch).enumerate() {
+            for (p, (&la, &lb)) in cfg.lhs_batch().iter().zip(cfg.rhs_batch()).enumerate() {
                 ai[la] = oh[p];
                 bi[lb] = oh[p];
             }
-            for (p, (&la, &lb)) in cfg.lhs_contract.iter().zip(&cfg.rhs_contract).enumerate() {
+            for (p, (&la, &lb)) in cfg.lhs_contract().iter().zip(cfg.rhs_contract()).enumerate() {
                 ai[la] = kidx[p];
                 bi[lb] = kidx[p];
             }
@@ -212,8 +211,8 @@ pub fn reference<S: Scalar>(
 pub fn rel_err<S: Scalar>(x: &T<S>, y: &T<S>) -> f64 {
     let mag = |z: S| {
         let (re, im): (f64, f64) = (
-            tensorcontract::Real::to_f64(Element::re(z)),
-            tensorcontract::Real::to_f64(Element::im(z)),
+            Real::to_f64(Element::re(z)),
+            Real::to_f64(Element::im(z)),
         );
         re.hypot(im)
     };
@@ -226,8 +225,8 @@ pub fn rel_err<S: Scalar>(x: &T<S>, y: &T<S>) -> f64 {
             Element::mul(
                 y.get(i),
                 <S as Element>::from_parts(
-                    tensorcontract::Real::from_f64(-1.0),
-                    tensorcontract::Real::from_f64(0.0),
+                    Real::from_f64(-1.0),
+                    Real::from_f64(0.0),
                 ),
             ),
         )))
@@ -236,6 +235,6 @@ pub fn rel_err<S: Scalar>(x: &T<S>, y: &T<S>) -> f64 {
 }
 
 /// The output extents of a validated contraction.
-pub fn out_dims(cfg: &tprims_contract::DotGeneral, a: &[usize], b: &[usize]) -> Vec<usize> {
+pub fn out_dims(cfg: &DotGeneral, a: &[usize], b: &[usize]) -> Vec<usize> {
     cfg.validate(a, b).unwrap().out_dims
 }
