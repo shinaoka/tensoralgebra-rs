@@ -1,7 +1,0 @@
-# arm bl-kc256-f64c64 on cpu48, L3 domain 12 = cpus 48-51, numa 3
-# window 1337.9s; env TENSORCONTRACT_KC=256
-cpu48 busy 100.0% <- measurement thread
-cpu49 busy 0.0%
-cpu50 busy 0.0%
-cpu51 busy 0.0%
-# domain co-tenancy: none above 5%

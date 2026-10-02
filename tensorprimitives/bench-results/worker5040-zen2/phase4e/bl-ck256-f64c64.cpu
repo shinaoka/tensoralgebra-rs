@@ -1,7 +1,0 @@
-# arm bl-ck256-f64c64 on cpu20, L3 domain 5 = cpus 20-23, numa 1
-# window 1344.5s; env TENSORCONTRACT_KC_COUPLE=256
-cpu20 busy 100.0% <- measurement thread
-cpu21 busy 0.0%
-cpu22 busy 0.0%
-cpu23 busy 0.0%
-# domain co-tenancy: none above 5%

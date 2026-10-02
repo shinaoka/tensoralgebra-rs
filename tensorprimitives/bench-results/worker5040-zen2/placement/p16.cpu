@@ -1,7 +1,0 @@
-# arm p16 on cpu8, L3 domain 2 = cpus 8-11, numa 0
-# window 1344.8s; env (none)
-cpu8 busy 100.0% <- measurement thread
-cpu9 busy 0.0%
-cpu10 busy 0.0%
-cpu11 busy 0.0%
-# domain co-tenancy: none above 5%

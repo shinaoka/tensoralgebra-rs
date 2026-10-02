@@ -1,4 +1,0 @@
-prep       rc=0        0 min
-shapes     rc=0        0 min
-threads    rc=0       74 min
-grid       skipped

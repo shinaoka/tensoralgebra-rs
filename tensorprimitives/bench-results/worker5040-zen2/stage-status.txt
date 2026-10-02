@@ -1,6 +1,0 @@
-prep       rc=0        0 min
-shapes     rc=0        0 min
-threads    rc=0      117 min
-validate   rc=0       26 min
-verdict    accepted
-grid       rc=0       34 min

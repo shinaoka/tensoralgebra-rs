@@ -1,7 +1,0 @@
-# arm bl-base-f64c64 on cpu0, L3 domain 0 = cpus 0-3, numa 0
-# window 1339.8s; env (none)
-cpu0 busy 100.0% <- measurement thread
-cpu1 busy 0.0%
-cpu2 busy 0.0%
-cpu3 busy 0.0%
-# domain co-tenancy: none above 5%

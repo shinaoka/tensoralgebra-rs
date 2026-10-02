@@ -1,5 +1,0 @@
-host        : ccqlin038.flatironinstitute.org
-target      : x86_64 / linux
-cpu features: avx2 fma avx512f avx512dq 
-caches      : L1=32KiB/8-way/2sh L2=1024KiB/16-way/2sh L3=25344KiB/11-way/16sh (via sysfs), blocking=legacy
-baselines   : tblis=false blas=false

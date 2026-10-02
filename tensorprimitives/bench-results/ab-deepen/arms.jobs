@@ -1,9 +1,0 @@
-# warm-up first, and discarded (A31)
-warm-f64c64   f64,c64
-A-f64c64      f64,c64
-B-f64c64      f64,c64  TENSORCONTRACT_DEEPEN=on
-A2-f64c64     f64,c64
-warm-f32c32   f32,c32
-A-f32c32      f32,c32
-B-f32c32      f32,c32  TENSORCONTRACT_DEEPEN=on
-A2-f32c32     f32,c32
