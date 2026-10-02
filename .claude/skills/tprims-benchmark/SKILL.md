@@ -39,7 +39,7 @@ Protocol`, `CPU Threading Contract`); read those sections first.
    add 8T (one full L3 domain) where the experiment calls for it. The binary
    asserts its effective width at startup and rejects conflicting
    `RAYON_NUM_THREADS` / `OMP_NUM_THREADS` / `OPENBLAS_NUM_THREADS` and any
-   removed `TENSORCONTRACT_*` / `TPRIMS_GEMM_*` variable; do not set them.
+   variable of the removed library knobs (the `tcbench` harness knobs are `TCBENCH_*`); do not set them.
 6. **Noise floor:** run the same binary twice on the same cores minutes apart
    (A/A) and report the spread; differences below it are not findings.
 7. **Record** beside every published table: tprims-rs commit (and tenferro-rs /

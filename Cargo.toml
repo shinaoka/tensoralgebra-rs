@@ -3,11 +3,9 @@ resolver = "2"
 members = [
     "crates/tprims-kernel",
     "crates/tprims-exec",
-    "crates/tprims-core",
     "crates/tprims-contract",
     "crates/tprims-testkit",
-    "crates/tprims-bundle",
-    "tensorprimitives/crates/tensorprimitives-tapp",
+    "crates/tprims-capi",
     "benchmarks",
 ]
 exclude = ["experiments"]
@@ -15,7 +13,7 @@ exclude = ["experiments"]
 [workspace.package]
 edition = "2021"
 # 1.89 stabilised the AVX-512 intrinsics and `is_x86_feature_detected!`, which
-# tensorcontract needs (tensorprimitives-rs decision D20).
+# the packed driver's kernels need (imported tensorprimitives-rs decision D20).
 rust-version = "1.89"
 
 [workspace.dependencies]
@@ -26,9 +24,8 @@ strided-view = { git = "https://github.com/tensor4all/strided-rs.git", rev = "25
 strided-perm = { git = "https://github.com/tensor4all/strided-rs.git", rev = "25705339d45583f5eb77bdbde22f2349b48e3f95", version = "0.4.4" }
 strided-kernel = { git = "https://github.com/tensor4all/strided-rs.git", rev = "25705339d45583f5eb77bdbde22f2349b48e3f95", version = "0.4.4" }
 tprims-kernel = { version = "0.1.0", path = "crates/tprims-kernel", default-features = false }
-tensorprimitives-tapp = { version = "0.1.0", path = "tensorprimitives/crates/tensorprimitives-tapp" }
 tprims-exec = { version = "0.1.0", path = "crates/tprims-exec" }
-tprims-core = { version = "0.1.0", path = "crates/tprims-core" }
+tprims-capi = { version = "0.1.0", path = "crates/tprims-capi" }
 tprims-testkit = { version = "0.1.0", path = "crates/tprims-testkit" }
 tprims-contract = { version = "0.1.0", path = "crates/tprims-contract" }
 

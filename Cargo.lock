@@ -1005,18 +1005,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tensorprimitives-tapp"
-version = "0.1.0"
-dependencies = [
- "num-complex",
- "tprims-contract",
- "tprims-core",
- "tprims-exec",
- "tprims-kernel",
- "tprims-testkit",
-]
-
-[[package]]
 name = "thiserror"
 version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1058,18 +1046,23 @@ dependencies = [
  "serde_json",
  "strided-basic",
  "strided-view",
+ "tprims-capi",
  "tprims-contract",
- "tprims-core",
  "tprims-exec",
  "tprims-kernel",
 ]
 
 [[package]]
-name = "tprims-bundle"
+name = "tprims-capi"
 version = "0.1.0"
 dependencies = [
- "tensorprimitives-tapp",
- "tprims-core",
+ "num-complex",
+ "rayon",
+ "strided-view",
+ "tprims-contract",
+ "tprims-exec",
+ "tprims-kernel",
+ "tprims-testkit",
 ]
 
 [[package]]
@@ -1087,15 +1080,6 @@ dependencies = [
  "tprims-exec",
  "tprims-kernel",
  "tprims-testkit",
-]
-
-[[package]]
-name = "tprims-core"
-version = "0.1.0"
-dependencies = [
- "rayon",
- "strided-view",
- "tprims-exec",
 ]
 
 [[package]]

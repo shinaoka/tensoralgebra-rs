@@ -15,7 +15,7 @@ bench = false
 tprims-exec = { workspace = true, features = ["strided"] }
 tprims-kernel = { workspace = true }
 tprims-contract = { workspace = true }
-tprims-core = { workspace = true }
+tprims-capi = { workspace = true }
 strided-basic = { workspace = true }
 strided-view = { workspace = true }
 num-complex = { workspace = true }

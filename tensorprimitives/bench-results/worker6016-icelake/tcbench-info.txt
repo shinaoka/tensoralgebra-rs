@@ -1,5 +1,0 @@
-host        : worker6016
-target      : x86_64 / linux
-cpu features: avx2 fma avx512f avx512dq 
-caches      : L1=48KiB/12-way/1sh L2=1280KiB/20-way/1sh L3=49152KiB/12-way/32sh (via sysfs), blocking=legacy
-baselines   : tblis=false blas=false

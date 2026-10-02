@@ -65,8 +65,8 @@
 //! has made twice.
 //!
 //! The **AVX-512** shapes were chosen by measuring, not by the reasoning above:
-//! `cargo run --release -p tensorcontract --example kernel_shapes`, raw output
-//! in `bench-results/phase3-kernel-shapes.txt`.
+//! the retired `kernel_shapes` example (see `docs/provenance.md`), raw output
+//! in `tensorprimitives/bench-results/phase3-kernel-shapes.txt`.
 //!
 //! The **AVX2** shapes are *provisional and unmeasured* — see
 //! [`cfg_avx2_f64`] — because the reference machine has no AVX2-only CPU to

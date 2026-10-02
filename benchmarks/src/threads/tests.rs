@@ -37,14 +37,22 @@ fn threads_flag_parses_and_rejects_zero() {
 }
 
 #[test]
-fn every_removed_variable_is_rejected() {
-    use super::{forbidden_env, REMOVED_ENV_VARS};
-    for name in REMOVED_ENV_VARS {
+fn removed_variable_prefixes_are_rejected() {
+    use super::{forbidden_env, REMOVED_ENV_PREFIXES};
+    let vars = |pairs: &[(&str, &str)]| {
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect::<Vec<_>>()
+    };
+    for prefix in REMOVED_ENV_PREFIXES {
+        let name = format!("{prefix}ANYTHING");
         assert_eq!(
-            forbidden_env(env(&[(name, "x")])),
-            Some((name.to_string(), "x".into())),
+            forbidden_env(vars(&[("PATH", "/bin"), (&name, "x")])),
+            Some((name.clone(), "x".into())),
             "{name}"
         );
     }
-    assert_eq!(forbidden_env(env(&[])), None);
+    assert_eq!(forbidden_env(vars(&[("TCBENCH_MC", "64")])), None);
+    assert_eq!(forbidden_env(vars(&[])), None);
 }

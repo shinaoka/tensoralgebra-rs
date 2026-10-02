@@ -13,8 +13,8 @@ benchmarks/c/run.sh 57 57-60 /tmp/capi   # 1T cores, 4T cores, output
 
 ## Observation, 2026-09-30 (single run, not a claim; of the removed API)
 
-The 8x8 GEMM row measured `tprims_blas_gemm`, which was removed with
-`tprims-blas-capi` ([#37](https://github.com/tensor4all/tprims-rs/issues/37)); the
+The 8x8 GEMM row measured the removed BLAS C entry point, which went with its C ABI crate
+([#37](https://github.com/tensor4all/tprims-rs/issues/37)); the
 benchmark no longer has that case.
 
 This table was measured with the previous C ABI (`tprims_exec*`,
@@ -43,7 +43,7 @@ Closing the 4-thread pool (joining its workers) took 99 us.
    profiled:* per-operand metadata allocations (the DLPack layout's `Vec`s and
    the `Arc` dims/strides inside `strided_view::StridedView`, about ten per
    GEMM call). `strided-view`'s borrowed-metadata `RawStridedRef` avoids
-   them; accepting it in `tprims-blas`/`tprims-contract` is the follow-up.
+   them; accepting it in `tprims-contract` is the follow-up.
 2. Small calls never enter the pool (4T rows equal 1T rows), as designed.
    A malloc-counting interposer (Phase 1f review) measured about 13
    allocations per 8x8 GEMM call from C, supporting the hypothesis in 1.

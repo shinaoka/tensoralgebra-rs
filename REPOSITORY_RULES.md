@@ -106,8 +106,10 @@ file minimal.
 
 Human/process protocol.
 
-- Reproduce CI lanes locally (fmt, both clippy configurations, workspace
-  tests, `parallel` feature tests, MSRV build, docs) before pushing.
+- Reproduce CI lanes locally (fmt, clippy with `-D warnings`, workspace
+  tests, `tprims-exec` without the `strided` feature, release-profile
+  `tprims-contract` tests, the aarch64 check, the C ABI and c-consumer lanes,
+  MSRV build, docs) before pushing.
 - Batch fix-ups into one push; do not push a stream of small CI-fix commits to
   an open PR.
 
@@ -118,8 +120,8 @@ Maintainer protocol.
 - No crate is published from this repository without the maintainer's
   explicit approval for that specific package; a general request to finish a
   PR does not authorize it.
-- The imported `strided-*` and `tensorcontract` crates keep being published
-  from their upstream repositories until a maintainer moves publication here.
+- strided-rs crates are published from their own repository; the tprims crates
+  are not published yet.
 - Before any `cargo publish`, inspect the packaged files (`cargo package
   --list`) and the metadata: name, version, description, license, repository,
   homepage, documentation, README, `rust-version`, keywords, categories.
@@ -175,8 +177,10 @@ keeps its existing layout until it is otherwise changed.
 
 ## Imported Code
 
-- `tensorprimitives/` and `benchmarks/` were imported with `git subtree`
-  (no squash) and keep upstream history; see `docs/provenance.md`.
+- tensorprimitives-rs (Lukas Devos) and `benchmarks/` were imported with
+  `git subtree` (no squash) and keep upstream history; the tensorprimitives
+  tree was then moved into `crates/` and dissolved (its docs are archived in
+  `docs/archive/tensorprimitives/`); see `docs/provenance.md`.
   strided-rs was imported the same way and later removed again; it is an
   external dependency, and strided changes go to tensor4all/strided-rs.
 - Files there keep their upstream copyright and license notices. A change to
@@ -184,11 +188,11 @@ keeps its existing layout until it is otherwise changed.
   diverges from upstream behaviour.
 - Authorship is never dropped. Imported history is never rewritten
   (no squash merges of import branches, no history filtering). Imported
-  crates keep their upstream `authors` (Lukas Devos for `tensorcontract` and
-  `tensorprimitives-*`; Satoshi Terasaki and Hiroshi Shinaoka for `strided-*`).
+  crates keep their upstream `authors` (Lukas Devos for `tprims-kernel`,
+  `tprims-contract` and `tprims-capi`; Satoshi Terasaki and Hiroshi Shinaoka for `strided-*`).
 - Code moved or ported out of an imported crate into a `tprims-*` crate (for
-  example tensorcontract's packing and micro-kernels into
-  `tprims-kernel`) keeps the original authors in that crate's `authors`,
+  example the packing and micro-kernels of
+  tensorprimitives-rs's driver into `tprims-kernel`) keeps the original authors in that crate's `authors`,
   keeps the upstream copyright and license notice in each moved file's
   header, moves with `git mv` where possible so history follows, and names
   the original author with a `Co-authored-by:` trailer in the commit.

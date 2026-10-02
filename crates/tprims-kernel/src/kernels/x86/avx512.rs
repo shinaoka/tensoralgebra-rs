@@ -130,7 +130,7 @@ pub mod cfg_avx512_f32 {
         // sweep names `32x5` at **210.9 GF/s** against the shipped `32x6`'s
         // **195.7**, 7.8% faster at the operating `kc` and also ahead at
         // `kc = 64`. It is **appended, not inserted**, on purpose — the entries
-        // before it keep the positions `bench-results/phase4c` swept, so that
+        // before it keep the positions `tensorprimitives/bench-results/phase4c` swept, so that
         // grid's `idx=` numbering still means what it meant.
         //
         // It cannot be *chosen by the rule*, which reads `MR` and sees a tie

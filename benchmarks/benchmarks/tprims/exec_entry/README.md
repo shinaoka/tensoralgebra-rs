@@ -37,7 +37,7 @@ GEMM result is checked bitwise against the serial run (`CHECK ... ok`).
 | `broadcast_empty` | w4 | — | 7.62 µs | 1 broadcast per call |
 | `strided_map_f64` | transpose 2^12 (below threshold) | 3.18 µs | 3.15 µs | 0 / 0 |
 | `strided_map_f64` | transpose 2^22 | 14.22 ms | 4.07 ms (3.5x) | 1 per call |
-| `packed_gemm_f64` (recorded as `tensorcontract_gemm_f64`) | 512³ | 5.61 ms | 1.98 ms (2.8x) | 1 broadcast per call |
+| `packed_gemm_f64` (recorded under an earlier name in the CSVs) | 512³ | 5.61 ms | 1.98 ms (2.8x) | 1 broadcast per call |
 
 Width-one requests cost tens of nanoseconds and never touch the pool; a small
 map below strided's `MINTHREADLENGTH` stays on the caller at 4T. Entering the

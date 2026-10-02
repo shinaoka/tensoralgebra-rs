@@ -1,3 +1,0 @@
-prep       rc=0        0 min
-threads    rc=0      141 min
-grid       skipped

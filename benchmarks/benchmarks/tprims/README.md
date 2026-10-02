@@ -8,5 +8,5 @@ session, pinned with `taskset` inside one L3 domain on idle cores.
 
 | Binary | Page |
 | --- | --- |
-| `exec_entry` | [exec_entry](exec_entry/README.md): tprims-exec entry cost, strided map and tensorcontract GEMM through `Exec` |
+| `exec_entry` | [exec_entry](exec_entry/README.md): tprims-exec entry cost, strided map and packed GEMM through `Exec` |
 | `contract` | [contract](contract/README.md): binary contraction corpus, permute+GEMM vs TBLIS-style |

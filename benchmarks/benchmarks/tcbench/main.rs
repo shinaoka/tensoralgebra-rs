@@ -4,7 +4,7 @@
 //!
 //! * `run` -- the corpus across engines and dtypes, reporting GFLOP/s and the
 //!   per-case complex efficiency ratio. Engines: `plan` (the planner's choice
-//!   under the `TENSORCONTRACT_*` knobs), `packed` (the packed driver, forced),
+//!   under the `TCBENCH_*` knobs), `packed` (the packed driver, forced),
 //!   `ttgt` and `tblis` (external baselines).
 //! * `verify` -- the planner's choice, the packed driver, TTGT and TBLIS over the
 //!   whole corpus at benchmark sizes, in every dtype and under every

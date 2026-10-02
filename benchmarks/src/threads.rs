@@ -21,37 +21,16 @@ pub fn conflicting_env(
     })
 }
 
-/// Environment variables the libraries read before tprims-rs#37 and no longer
-/// do. A benchmark that finds one set would silently measure something other
-/// than what the caller asked for, so it refuses to run: use the benchmark's
-/// own flags, or `tcbench` (which parses the `TENSORCONTRACT_*` knobs into plan
-/// configuration).
-pub const REMOVED_ENV_VARS: [&str; 18] = [
-    "TENSORCONTRACT_THREADS",
-    "TENSORCONTRACT_POOL",
-    "TENSORCONTRACT_KERNEL",
-    "TENSORCONTRACT_COMPLEX",
-    "TENSORCONTRACT_MC",
-    "TENSORCONTRACT_KC",
-    "TENSORCONTRACT_NC",
-    "TENSORCONTRACT_MC_PCT",
-    "TENSORCONTRACT_NC_PCT",
-    "TENSORCONTRACT_KC_COUPLE",
-    "TENSORCONTRACT_BLOCKMODEL",
-    "TENSORCONTRACT_L3_DOMAINS",
-    "TENSORCONTRACT_WRITEBACK",
-    "TENSORCONTRACT_ORIENT",
-    "TENSORCONTRACT_ROWBLOCK",
-    "TENSORCONTRACT_PARTITION",
-    "TPRIMS_GEMM_KERNEL",
-    "TPRIMS_GEMM_ENGINE",
-];
+/// Name prefixes of the environment variables the libraries read before
+/// tprims-rs#37 and no longer do. A benchmark that finds one set would silently
+/// measure something other than what the caller asked for, so it refuses to
+/// run: use the benchmark's own flags, or `tcbench`, whose knobs are `TCBENCH_*`.
+pub const REMOVED_ENV_PREFIXES: [&str; 2] = ["TENSORCONTRACT_", "TPRIMS_GEMM_"];
 
-/// The first set variable in [`REMOVED_ENV_VARS`], with its value.
-pub fn forbidden_env(get: impl Fn(&str) -> Option<String>) -> Option<(String, String)> {
-    REMOVED_ENV_VARS
-        .iter()
-        .find_map(|name| get(name).map(|v| (name.to_string(), v)))
+/// The first variable of `vars` with a [`REMOVED_ENV_PREFIXES`] prefix, with its value.
+pub fn forbidden_env(vars: impl IntoIterator<Item = (String, String)>) -> Option<(String, String)> {
+    vars.into_iter()
+        .find(|(name, _)| REMOVED_ENV_PREFIXES.iter().any(|p| name.starts_with(p)))
 }
 
 /// Parse `--threads N` from `args` (default 1).
@@ -89,7 +68,7 @@ impl BenchThreads {
                 "{name}={value} conflicts with --threads {requested}"
             ));
         }
-        if let Some((name, value)) = forbidden_env(|n| std::env::var(n).ok()) {
+        if let Some((name, value)) = forbidden_env(std::env::vars()) {
             fail(&format!(
                 "{name}={value}: this variable was removed in tprims-rs#37 and is not read; use the benchmark's flags"
             ));

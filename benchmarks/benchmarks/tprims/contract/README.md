@@ -67,7 +67,7 @@ and 8T a non-zero noise band, are under
   codegen-units 1), rustc 1.97.1, faer 0.24.4.
 - AMD EPYC 7713P, shared host (load average about 4); cores 57-60 (one L3
   domain) busy fraction <= 0.01 over 3 s before and after. Sub-microsecond
-  rows are within the ~20% A/A noise floor measured for `linalg`.
+  rows are within the ~20% A/A noise floor measured earlier for the removed linalg rows.
 - Raw output: [results/](results/) (CSVs, and `*.selected.log` with the `# selected` and `CHECK` lines). All `CHECK` lines ok (relative
   difference <= 1.5e-15); every case ran copy-free under `pg` except
   `permuted_nonfusable`, where A was materialized.
@@ -93,7 +93,7 @@ and 8T a non-zero noise band, are under
 
 1. **Permute plus batched GEMM wins wherever the operands fuse**: TBLIS-style
    is 1.1-2.0x slower at 1T and 1.1-1.9x at 4T (4.1x for `batched_64_b32` at
-   4T, where the pg path spreads the batch over the pool and tensorcontract's
+   4T, where the pg path spreads the batch over the pool and the packed driver's
    batch axis is serial inside each SPMD team).
 2. **When an operand must be copied, TBLIS-style is competitive and wins at
    4T** (`permuted_nonfusable`: tblis/pg 0.92 f64, 0.88 c64 at 4T), because

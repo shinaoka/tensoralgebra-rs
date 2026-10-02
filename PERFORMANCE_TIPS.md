@@ -24,7 +24,7 @@ is evidence to inspect, not a finding by itself.
 Human/process protocol.
 
 1. Scope: audit the requested paths, or with `full` the crates under
-   `crates/`, `tensorprimitives/crates/`, then
+   `crates/`, then
    `benchmarks/`, examples, and doc snippets. Skip
    `docs/superpowers/` and `docs/worklogs/`.
 2. For each section below, search the scope for its `Detect` patterns and read
@@ -178,14 +178,14 @@ Audit hints:
   temporary dense matrices. Validate shape, bounds, alignment, and aliasing
   before constructing unsafe raw faer views. faer treats zero or overlapping
   strides in a `MatMut` as undefined behaviour: reject them first.
-- Feed faer column-major-friendly layouts. For dense linalg, row stride `1` is
+- Feed faer column-major-friendly layouts. For dense matrices, row stride `1` is
   the preferred contiguous layout; generic-stride inputs that trigger faer
   performance warnings must be justified or converted deliberately at an
   explicit boundary.
 - Take faer parallelism from the `tprims-exec` context passed to the
   operation only; never choose `Par::rayon` or thread counts inside operation
   helpers.
-- Scratch and batching follow the batched linalg rule in Dense Layout And
+- Scratch and batching follow the batched-matrix rule in Dense Layout And
   Linear Algebra.
 
 Audit hints:
@@ -249,7 +249,7 @@ Audit hints:
   for 1T, a bounded four-worker pool borrowed through `Exec` for 4T), asserts
   the effective width at startup, and fails when `RAYON_NUM_THREADS`,
   `OMP_NUM_THREADS` or `OPENBLAS_NUM_THREADS` conflict with it, or when any
-  removed `TENSORCONTRACT_*` / `TPRIMS_GEMM_*` variable is set (nothing reads them). A four-thread time that is not faster than the one-thread
+  variable of the removed library knobs is set (nothing reads them; the `tcbench` harness knobs are `TCBENCH_*`). A four-thread time that is not faster than the one-thread
   time for a tensor-sized case is a finding, even when the one-thread row
   matches the reference. A `--threads 1` flag that left an ambient pool
   running multi-threaded once produced a 7x wrong one-thread row in
@@ -350,7 +350,7 @@ Audit hints:
 
 - Detect: `OnceLock`, `lazy_static`, `thread_local!`, or a `static` map used
   as a cache; a cache type without bound, clear, and stats APIs. (The
-  imported `tensorcontract` crate caches environment and CPU-feature probes in
+  `tprims-kernel` CPU-feature and cache-hierarchy probes are cached in
   `OnceLock`s; those are process-constant facts, not data caches.)
 - Fix: own the cache from the plan or context object with bound/clear/stats
   controls and documentation.
