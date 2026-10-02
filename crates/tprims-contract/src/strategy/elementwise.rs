@@ -18,15 +18,9 @@
 //! pool through [`tprims_exec::strided::run_with_exec`]. This module only
 //! specializes the update *outside* the per-element loop:
 //!
-//! Reading the previous `D` through the destination (in-place accumulation)
-//! cannot be a checked strided-basic call: those take the destination as a
-//! `&mut` view and the old value as a second view over the same elements, which
-//! would be two live references to one allocation. The in-place forms run on
-//! strided-rs's public execution contract (`strided_basic::execution`: fused
-//! plan, blocked inner-block walk, threaded map-reduce) with a raw-pointer
-//! inner loop that is local to this module (`in_place_pass`); the traversal and
-//! threading are still strided-rs's. `axpy` and `fma` cover the unit-scalar
-//! in-place forms through checked calls.
+//! In-place accumulation reads the previous `D` through the destination with
+//! strided-basic's `map_update_into`, `zip_update2_into` and `zip_update3_into`
+//! (no second view over `D`); `axpy` and `fma` cover the unit-scalar forms.
 //!
 //! 1. `op_D` is folded into the other terms, since
 //!    `conj(alpha*a*b + beta*c) = conj(alpha)*conj(a)*conj(b) + conj(beta)*conj(c)`;
@@ -36,13 +30,9 @@
 //!    a monomorphized closure such as `|a, b| alpha * a * b`. No flag is
 //!    tested per element.
 
-use strided_basic::execution::{
-    build_plan_fused, build_plan_fused_small, compute_costs, for_each_inner_block_preordered,
-    mapreduce_threaded, rayon_threads, MINTHREADLENGTH, SMALL_TENSOR_THRESHOLD,
-};
 use strided_basic::{
-    axpy, copy_scale, fma, map_into, mul_into, zip_map2_into, zip_map3_into, Conj, ElementOp,
-    Identity, StridedError,
+    axpy, copy_scale, fma, map_into, map_update_into, mul_into, zip_map2_into, zip_map3_into,
+    zip_update2_into, zip_update3_into, Conj, ElementOp, Identity, StridedError,
 };
 use strided_view::{StridedView, StridedViewMut};
 use tprims_exec::strided::run_with_exec;
@@ -368,10 +358,7 @@ impl<T: Scalar> Job<'_, T> {
                         map_into(&mut dv(), &zv, |x| x)
                     }
                     (Kind::None, Mode::InPlace) => {
-                        let d = self.d;
-                        in_place_pass::<T, _>(plan, &[3], move |o, n, s| {
-                            inner1::<T, OC>(d.get().offset(o[0]), s[0], n, &move |z| beta * z)
-                        })
+                        map_update_into::<T, OC>(&mut dv(), move |z| beta * z)
                     }
                     (Kind::None, Mode::Separate(p)) => {
                         map_into(&mut dv(), &cv(p.get()), move |x| beta * x)
@@ -381,16 +368,8 @@ impl<T: Scalar> Job<'_, T> {
                         axpy(&mut dv(), &av(), alpha)
                     }
                     (Kind::Scaled, Mode::InPlace) => {
-                        let (d, a) = (self.d, self.ptrs[0]);
-                        in_place_pass::<T, _>(plan, &[3, 0], move |o, n, s| {
-                            inner2::<T, OA, OC>(
-                                d.get().offset(o[0]),
-                                s[0],
-                                a.get().offset(o[1]),
-                                s[1],
-                                n,
-                                &move |x, z| alpha * x + beta * z,
-                            )
+                        zip_update2_into::<T, T, OC, OA>(&mut dv(), &av(), move |z, x| {
+                            alpha * x + beta * z
                         })
                     }
                     (Kind::Scaled, Mode::Separate(p)) => {
@@ -409,21 +388,12 @@ impl<T: Scalar> Job<'_, T> {
                     {
                         fma(&mut dv(), &av(), &bv())
                     }
-                    (Kind::Product, Mode::InPlace) => {
-                        let (d, a, b) = (self.d, self.ptrs[0], self.ptrs[1]);
-                        in_place_pass::<T, _>(plan, &[3, 0, 1], move |o, n, s| {
-                            inner3::<T, OA, OB, OC>(
-                                d.get().offset(o[0]),
-                                s[0],
-                                a.get().offset(o[1]),
-                                s[1],
-                                b.get().offset(o[2]),
-                                s[2],
-                                n,
-                                &move |x, y, z| alpha * x * y + beta * z,
-                            )
-                        })
-                    }
+                    (Kind::Product, Mode::InPlace) => zip_update3_into::<T, T, T, OC, OA, OB>(
+                        &mut dv(),
+                        &av(),
+                        &bv(),
+                        move |z, x, y| alpha * x * y + beta * z,
+                    ),
                     (Kind::Product, Mode::Separate(p)) => {
                         zip_map3_into(&mut dv(), &av(), &bv(), &cv(p.get()), move |x, y, z| {
                             alpha * x * y + beta * z
@@ -432,144 +402,5 @@ impl<T: Scalar> Job<'_, T> {
                 }
             }
         })
-    }
-}
-
-/// Walk the plan's axes with strided-rs's fused, blocked, optionally threaded
-/// traversal (`lists` names the stride vectors, the destination first) and call
-/// `body(offsets, len, strides)` once per inner block.
-///
-/// # Safety
-///
-/// `body` accesses only the offsets of validated layouts; the destination
-/// offsets of different blocks are disjoint (the destination is injective), so
-/// blocks may run on different threads.
-unsafe fn in_place_pass<T, F>(
-    plan: &ElementPlan,
-    lists: &[usize],
-    body: F,
-) -> core::result::Result<(), StridedError>
-where
-    F: Fn(&[isize], usize, &[isize]) + Sync,
-{
-    let strides: Vec<&[isize]> = lists.iter().map(|&j| plan.strides[j].as_slice()).collect();
-    let (fused, ordered, kp) = if plan.total <= SMALL_TENSOR_THRESHOLD {
-        // SAFETY: matching ranks, bounded validated layouts.
-        unsafe { build_plan_fused_small(&plan.dims, &strides) }
-    } else {
-        // SAFETY: as above; destination is list 0.
-        unsafe { build_plan_fused(&plan.dims, &strides, Some(0), core::mem::size_of::<T>()) }
-    };
-    let walk = |dims: &[usize], blocks: &[usize], sl: &[Vec<isize>], offs: &[isize]| {
-        // SAFETY: the blocks the plan generates stay inside the layouts.
-        unsafe {
-            for_each_inner_block_preordered(dims, blocks, sl, offs, |o, n, s| {
-                body(o, n, s);
-                Ok(())
-            })
-        }
-    };
-    let origin = vec![0isize; lists.len()];
-    let threads = rayon_threads();
-    if plan.total > MINTHREADLENGTH && threads > 1 {
-        // SAFETY: disjoint destination regions per partition (injective D).
-        unsafe {
-            let costs = compute_costs(&ordered);
-            return mapreduce_threaded(
-                &fused, &kp.block, &ordered, &origin, &costs, threads, 0, 1, &walk,
-            );
-        }
-    }
-    walk(&fused, &kp.block, &ordered, &origin)
-}
-
-/// `d[i] = f(OC(d[i]))` over one inner block.
-///
-/// # Safety
-///
-/// `d` addresses `n` live, exclusively owned elements at stride `ds`.
-unsafe fn inner1<T: Scalar, OC: ElementOp<T>>(d: *mut T, ds: isize, n: usize, f: &impl Fn(T) -> T) {
-    // SAFETY: the caller's contract.
-    unsafe {
-        if ds == 1 {
-            for z in core::slice::from_raw_parts_mut(d, n) {
-                *z = f(OC::apply(*z));
-            }
-        } else {
-            for i in 0..n as isize {
-                let q = d.offset(i * ds);
-                *q = f(OC::apply(*q));
-            }
-        }
-    }
-}
-
-/// `d[i] = f(OA(a[i]), OC(d[i]))` over one inner block.
-///
-/// # Safety
-///
-/// As [`inner1`], and `a` addresses `n` live elements disjoint from `d`.
-unsafe fn inner2<T: Scalar, OA: ElementOp<T>, OC: ElementOp<T>>(
-    d: *mut T,
-    ds: isize,
-    a: *const T,
-    sa: isize,
-    n: usize,
-    f: &impl Fn(T, T) -> T,
-) {
-    // SAFETY: the caller's contract.
-    unsafe {
-        if ds == 1 && sa == 1 {
-            let a = core::slice::from_raw_parts(a, n);
-            for (z, &x) in core::slice::from_raw_parts_mut(d, n).iter_mut().zip(a) {
-                *z = f(OA::apply(x), OC::apply(*z));
-            }
-        } else {
-            for i in 0..n as isize {
-                let q = d.offset(i * ds);
-                *q = f(OA::apply(*a.offset(i * sa)), OC::apply(*q));
-            }
-        }
-    }
-}
-
-/// `d[i] = f(OA(a[i]), OB(b[i]), OC(d[i]))` over one inner block.
-///
-/// # Safety
-///
-/// As [`inner2`], with `b` likewise.
-#[allow(clippy::too_many_arguments)] // INVARIANT: three strided operands, length and body.
-unsafe fn inner3<T: Scalar, OA: ElementOp<T>, OB: ElementOp<T>, OC: ElementOp<T>>(
-    d: *mut T,
-    ds: isize,
-    a: *const T,
-    sa: isize,
-    b: *const T,
-    sb: isize,
-    n: usize,
-    f: &impl Fn(T, T, T) -> T,
-) {
-    // SAFETY: the caller's contract.
-    unsafe {
-        if ds == 1 && sa == 1 && sb == 1 {
-            let a = core::slice::from_raw_parts(a, n);
-            let b = core::slice::from_raw_parts(b, n);
-            for ((z, &x), &y) in core::slice::from_raw_parts_mut(d, n)
-                .iter_mut()
-                .zip(a)
-                .zip(b)
-            {
-                *z = f(OA::apply(x), OB::apply(y), OC::apply(*z));
-            }
-        } else {
-            for i in 0..n as isize {
-                let q = d.offset(i * ds);
-                *q = f(
-                    OA::apply(*a.offset(i * sa)),
-                    OB::apply(*b.offset(i * sb)),
-                    OC::apply(*q),
-                );
-            }
-        }
     }
 }
