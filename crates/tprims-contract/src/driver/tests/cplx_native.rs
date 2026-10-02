@@ -568,14 +568,12 @@ fn the_default_selection_does_not_change() {
     }
     // An explicit id is honoured, or refused at plan creation on a host
     // without the instructions: never silently replaced.
-    let r = plan(1).with_kernel(KernelChoice::Id("avx2.c64.native.4x4".into()));
+    let r = plan(1)
+        .with_kernel(KernelChoice::Id("avx2.c64.native.4x4".into()))
+        .unwrap()
+        .resolved::<C64>();
     match r {
-        Ok(p) => {
-            assert_eq!(
-                p.resolved::<C64>().unwrap().family().id,
-                "avx2.c64.native.4x4"
-            )
-        }
+        Ok(rg) => assert_eq!(rg.family().id, "avx2.c64.native.4x4"),
         Err(_) => assert!(all_families::<C64>()
             .iter()
             .all(|id| !(id.starts_with("avx2.") && id.contains(".native.")))),

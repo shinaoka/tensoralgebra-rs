@@ -15,7 +15,7 @@ strided-basic = { workspace = true }
 strided-view = { workspace = true }
 thiserror = { workspace = true }
 tprims-exec = { workspace = true, features = ["strided"] }
-tprims-kernel = { workspace = true, default-features = false }
+tprims-kernel = { workspace = true, features = ["std"] }
 
 [dev-dependencies]
 rand = { workspace = true }
