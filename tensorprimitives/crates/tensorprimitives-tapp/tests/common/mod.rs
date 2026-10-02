@@ -9,7 +9,7 @@
 //! wrong length, a `beta` honoured on the wrong operand, a handle cast that
 //! loses a bit.
 //!
-//! The numerical oracle is `tensorcontract::reference::contract_reference`,
+//! The numerical oracle is `tprims_testkit::oracle::contract_reference`,
 //! which shares no code with the fast path — it walks the raw layouts and label
 //! lists and so independently defines what a diagonal, a reduction, a Hadamard
 //! index and a conjugation mean. Where a shape is small enough to check by hand,
@@ -20,11 +20,9 @@
 use std::ffi::{c_void, CStr};
 use std::os::raw::{c_char, c_int};
 
-use tensorcontract::element::{Element, Real};
-use tensorcontract::layout::Layout;
-use tensorcontract::plan::ElementOp;
-use tensorcontract::reference::{contract_reference, RefOperand};
 use tensorprimitives_tapp::*;
+use tprims_kernel::{Element, Real};
+use tprims_testkit::oracle::{contract_reference, RefOperand, RefOutput};
 
 // ----------------------------------------------------------------- datatypes
 
@@ -66,7 +64,7 @@ pub fn tol<T: Dtype>() -> f64 {
 
 /// A deterministic value sequence.
 ///
-/// Not random: `tensorcontract`'s own suite owns the randomised sweep, and here
+/// Not random: `tprims-contract`'s own suite owns the randomised sweep, and here
 /// a failure should be reproducible from the test name alone. Values are
 /// multiples of `1/2048` in `[-1, 1)`, so they are exact in `f32` as well as
 /// `f64` and a single-precision failure is arithmetic rather than rounding of
@@ -152,13 +150,25 @@ impl<'a> CTensor<'a> {
         self.extents.len() as c_int
     }
 
-    pub fn layout(&self) -> Layout {
-        Layout::new(self.extents.to_vec(), self.strides.to_vec()).unwrap()
+    /// Extents as `usize` (the oracle's vocabulary).
+    pub fn dims(&self) -> Vec<usize> {
+        self.extents.iter().map(|&e| e as usize).collect()
+    }
+
+    /// Strides as `isize`.
+    pub fn strides_isize(&self) -> Vec<isize> {
+        self.strides.iter().map(|&s| s as isize).collect()
     }
 
     /// Smallest buffer this layout can be read through, base pointer at zero.
     pub fn storage(&self) -> usize {
-        self.layout().storage_len().max(1) as usize
+        let mut n = 1i64;
+        for (&e, &s) in self.extents.iter().zip(self.strides) {
+            if e > 0 {
+                n += (e - 1) * s.abs();
+            }
+        }
+        n.max(1) as usize
     }
 
     /// `NULL` for a rank-zero tensor, which is what a C caller passes and what
@@ -378,10 +388,13 @@ impl<'a, T: Dtype> Case<'a, T> {
 
     /// The oracle's answer, given `D`'s contents before the call.
     pub fn expected(&self, d_initial: &[T]) -> Vec<T> {
-        let la = self.a.layout();
-        let lb = self.b.layout();
-        let lc = self.c.layout();
-        let ld = self.d.layout();
+        let (da, db, dc, dd) = (self.a.dims(), self.b.dims(), self.c.dims(), self.d.dims());
+        let (sa, sb, sc, sd) = (
+            self.a.strides_isize(),
+            self.b.strides_isize(),
+            self.c.strides_isize(),
+            self.d.strides_isize(),
+        );
         let mut out = d_initial.to_vec();
         let cdata: Option<&[T]> = match self.cv {
             CData::Buf(s) => Some(s),
@@ -390,30 +403,40 @@ impl<'a, T: Dtype> Case<'a, T> {
         };
         let cref = cdata.map(|data| RefOperand {
             data,
-            layout: &lc,
-            idx: self.c.labels,
-            op: op_of(self.c.op),
+            dims: &dc,
+            strides: &sc,
+            offset: 0,
+            labels: self.c.labels,
+            conj: self.c.op == TAPP_CONJUGATE,
         });
         contract_reference::<T>(
             self.alpha,
             &RefOperand {
                 data: self.av,
-                layout: &la,
-                idx: self.a.labels,
-                op: op_of(self.a.op),
+                dims: &da,
+                strides: &sa,
+                offset: 0,
+                labels: self.a.labels,
+                conj: self.a.op == TAPP_CONJUGATE,
             },
             &RefOperand {
                 data: self.bv,
-                layout: &lb,
-                idx: self.b.labels,
-                op: op_of(self.b.op),
+                dims: &db,
+                strides: &sb,
+                offset: 0,
+                labels: self.b.labels,
+                conj: self.b.op == TAPP_CONJUGATE,
             },
             self.beta,
             cref.as_ref(),
-            &mut out,
-            &ld,
-            self.d.labels,
-            op_of(self.d.op),
+            &mut RefOutput {
+                data: &mut out,
+                dims: &dd,
+                strides: &sd,
+                offset: 0,
+                labels: self.d.labels,
+                conj: self.d.op == TAPP_CONJUGATE,
+            },
         )
         .expect("the oracle rejected a case the C ABI accepted");
         out
@@ -458,14 +481,6 @@ pub unsafe fn create_executor() -> isize {
     assert_eq!(TAPP_create_executor(&mut x), TAPP_SUCCESS);
     assert_ne!(x, 0);
     x
-}
-
-pub fn op_of(op: c_int) -> ElementOp {
-    if op == TAPP_CONJUGATE {
-        ElementOp::Conjugate
-    } else {
-        ElementOp::Identity
-    }
 }
 
 /// A status code plus the message the ABI itself gives for it, so a failing

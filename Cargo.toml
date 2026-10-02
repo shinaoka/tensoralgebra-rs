@@ -6,6 +6,8 @@ members = [
     "crates/tprims-core",
     "crates/tprims-contract",
     "crates/tprims-testkit",
+    "crates/tprims-bundle",
+    "tensorprimitives/crates/tensorprimitives-tapp",
 ]
 exclude = ["experiments"]
 

@@ -2,7 +2,7 @@
 //!
 //! One test per claim the crate's coverage table makes, driven entirely through
 //! the `extern "C"` entry points and checked against
-//! `tensorcontract::reference`, which shares no code with the engine. The
+//! `tprims_testkit::oracle`, which shares no code with the engine. The
 //! rejections, the error paths and the handle lifecycle are in
 //! `rejections.rs`; the layout and symbol assumptions are in `abi_layout.rs`.
 //!

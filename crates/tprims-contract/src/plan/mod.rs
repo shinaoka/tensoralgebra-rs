@@ -367,17 +367,75 @@ impl<T: Scalar> Plan<T> {
         unsafe { self.run(exec, alpha, a.ptr(), b.ptr(), beta, c, d.as_mut_ptr()) }
     }
 
+    /// The semantic preflight of a raw call, from the pointers' addresses alone
+    /// (nothing is dereferenced): `D` overlapping `A` or `B`, a separate `C`
+    /// overlapping `D` without being the same mapping at the same origin.
+    ///
+    /// Overlap is judged on the address range each operand's layout can reach,
+    /// whether or not the call ends up reading it (`alpha == 0`, `beta == 0`),
+    /// so the verdict depends on the arguments' placement only. A null pointer is
+    /// treated as absent: null handling is the caller's (an FFI status, not a
+    /// contraction error). For a problem built with [`CSpec::Output`] or
+    /// [`CSpec::Absent`], `c` is ignored.
+    ///
+    /// # Errors
+    ///
+    /// [`AliasError::OutputOverlapsInput`] and [`AliasError::CDOverlap`].
+    pub fn check_raw(&self, a: *const T, b: *const T, c: *const T, d: *const T) -> Result<()> {
+        let p = &self.problem;
+        if p.out_empty() || d.is_null() {
+            return Ok(());
+        }
+        let range = |o: OperandId, origin: *const T| -> Option<(usize, usize)> {
+            if origin.is_null() {
+                return None;
+            }
+            let span = p.span(o)?;
+            let off = match o {
+                OperandId::A => p.a().layout().offset(),
+                OperandId::B => p.b().layout().offset(),
+                OperandId::D => p.d().layout().offset(),
+                OperandId::C => match p.c_spec() {
+                    CSpec::Separate(c) => c.layout().offset(),
+                    _ => p.d().layout().offset(),
+                },
+            } as i128;
+            let base = origin as usize as i128;
+            let size = core::mem::size_of::<T>() as i128;
+            let lo = base + (span.lo() - off) * size;
+            let hi = base + (span.hi() - off + 1) * size;
+            Some((usize::try_from(lo).ok()?, usize::try_from(hi).ok()?))
+        };
+        let overlap = |x: Option<(usize, usize)>, y: Option<(usize, usize)>| match (x, y) {
+            (Some(x), Some(y)) => x.0 < y.1 && y.0 < x.1,
+            _ => false,
+        };
+        let rd = range(OperandId::D, d);
+        for (operand, ptr) in [(OperandId::A, a), (OperandId::B, b)] {
+            if overlap(rd, range(operand, ptr)) {
+                return Err(AliasError::OutputOverlapsInput { operand }.into());
+            }
+        }
+        if matches!(p.c_spec(), CSpec::Separate(_)) && !c.is_null() {
+            // A separate C may be D itself only as the same mapping at the
+            // same origin (an in-place update).
+            let same = core::ptr::eq(c, d) && p.c_matches_d();
+            if !same && overlap(rd, range(OperandId::C, c)) {
+                return Err(AliasError::CDOverlap.into());
+            }
+        }
+        Ok(())
+    }
+
     /// Execute on raw origins: the pointers are the elements at logical index
     /// zero of each operand. This is the entry of the C adapter, which holds
     /// pointers and no Rust references.
     ///
-    /// The same semantic preflight as the safe path runs first: `D`
-    /// overlapping an input, `C` and `D` overlapping without being the same
-    /// mapping at the same origin. Input errors leave `D` untouched. Null
-    /// pointers are the caller's to refuse (they are an FFI status, not a
-    /// contraction error): `a` and `b` must be non-null unless the call reads
-    /// neither, `c` unless it reads a separate C, and `d` unless the output is
-    /// empty.
+    /// [`Plan::check_raw`] runs first, so input errors leave `D` untouched. Null
+    /// pointers are the caller's to refuse: `a` and `b` must be non-null unless
+    /// the call reads neither (`alpha == 0` or an empty contraction), `c` unless
+    /// it reads a separate C (`beta == 0` reads none), and `d` unless the output
+    /// is empty.
     ///
     /// `c` is read only for a problem built with [`CSpec::Separate`] and a
     /// nonzero `beta`; for [`CSpec::Output`] the previous `D` is read through
@@ -401,62 +459,14 @@ impl<T: Scalar> Plan<T> {
         c: *const T,
         d: *mut T,
     ) -> Result<()> {
-        let p = &self.problem;
-        if p.out_empty() {
-            return Ok(());
-        }
+        self.check_raw(a, b, c, d)?;
         let zero = <T as Element>::zero();
-        let reads_ab = !(p.k_empty() || alpha == zero);
-        let c_read = match p.c_spec() {
+        let c_read = match self.problem.c_spec() {
             CSpec::Absent => CRead::None,
             CSpec::Output(_) => CRead::InPlace,
             CSpec::Separate(_) if beta == zero => CRead::None,
             CSpec::Separate(_) => CRead::Separate(c),
         };
-        let range = |o: OperandId, origin: *const T| -> Option<(usize, usize)> {
-            let span = p.span(o)?;
-            let off = match o {
-                OperandId::A => p.a().layout().offset(),
-                OperandId::B => p.b().layout().offset(),
-                OperandId::D => p.d().layout().offset(),
-                OperandId::C => match p.c_spec() {
-                    CSpec::Separate(c) => c.layout().offset(),
-                    _ => p.d().layout().offset(),
-                },
-            } as i128;
-            let base = origin as usize as i128;
-            let size = core::mem::size_of::<T>() as i128;
-            let lo = base + (span.lo() - off) * size;
-            let hi = base + (span.hi() - off + 1) * size;
-            Some((usize::try_from(lo).ok()?, usize::try_from(hi).ok()?))
-        };
-        let overlap = |x: Option<(usize, usize)>, y: Option<(usize, usize)>| match (x, y) {
-            (Some(x), Some(y)) => x.0 < y.1 && y.0 < x.1,
-            _ => false,
-        };
-        let rd = range(OperandId::D, d);
-        if reads_ab {
-            if overlap(rd, range(OperandId::A, a)) {
-                return Err(AliasError::OutputOverlapsInput {
-                    operand: OperandId::A,
-                }
-                .into());
-            }
-            if overlap(rd, range(OperandId::B, b)) {
-                return Err(AliasError::OutputOverlapsInput {
-                    operand: OperandId::B,
-                }
-                .into());
-            }
-        }
-        if let CRead::Separate(cp) = c_read {
-            // A separate C may be D itself only as the same mapping at the
-            // same origin (an in-place update).
-            let same = core::ptr::eq(cp, d as *const T) && p.c_matches_d();
-            if !same && overlap(rd, range(OperandId::C, cp)) {
-                return Err(AliasError::CDOverlap.into());
-            }
-        }
         // SAFETY: preflight passed; the caller's contract covers the rest.
         unsafe { self.run(exec, alpha, a, b, beta, c_read, d) }
     }

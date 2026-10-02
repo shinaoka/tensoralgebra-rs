@@ -18,13 +18,17 @@ name = "tensorprimitives_tapp"
 crate-type = ["lib", "cdylib", "staticlib"]
 
 [dependencies]
-tensorcontract.workspace = true
+tprims-contract.workspace = true
 num-complex.workspace = true
 # tprims additions: the executor, status codes and panic boundary are shared
 # with the other parts of libtprims (tprims-core), and the executor is run
 # through `tprims_exec::Exec`.
 tprims-core.workspace = true
 tprims-exec.workspace = true
+
+[dev-dependencies]
+tprims-kernel.workspace = true
+tprims-testkit.workspace = true
 
 [package.metadata.docs.rs]
 all-features = true

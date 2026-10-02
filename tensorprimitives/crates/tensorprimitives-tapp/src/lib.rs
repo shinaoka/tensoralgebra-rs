@@ -2,7 +2,7 @@
 //!
 //! Implements the C interface of the Tensor Algebra Processing Primitives
 //! standard (arXiv:2601.07827, <https://github.com/TAPPorg/reference-implementation>)
-//! on top of [`tensorcontract`], so that this engine, TBLIS and cuTENSOR are
+//! on top of [`tprims_contract`], so that this engine, TBLIS and cuTENSOR are
 //! drop-in swappable behind one header.
 //!
 //! The symbols exported here are ABI-compatible with the upstream
@@ -133,7 +133,7 @@
 //! * Data pointers must be valid for every offset the extents and strides
 //!   recorded in the tensor infos generate: the raw ABI carries no allocation
 //!   lengths. Overflow of the addressed range and output aliasing are checked;
-//!   see [`tensorcontract::Plan::run_raw_with`], which is what they reach.
+//!   see [`tprims_contract::Plan::execute_raw`], which is what they reach.
 //!
 //! Handles are `Box::into_raw` pointers cast to `isize`, so they are *not*
 //! interchangeable between processes and must not be serialised.
@@ -143,14 +143,14 @@ use std::ffi::c_void;
 use std::os::raw::c_int;
 
 use num_complex::Complex;
-use tensorcontract::{Element, ElementOp, Layout, Operand, Plan};
+use tprims_contract::api::{self, CSpec, DType, Labels, LayoutSpec, Op, OperandSpec, Problem};
+use tprims_contract::{Plan, PlanConfig};
 use tprims_core::exec::with_executor;
 use tprims_core::status::{
     ffi, FfiError, TPRIMS_BUSY, TPRIMS_ERR_ALIASED, TPRIMS_ERR_DTYPE, TPRIMS_ERR_INTERNAL,
     TPRIMS_ERR_INVALID_ARGUMENT, TPRIMS_ERR_LABELS, TPRIMS_ERR_PANIC, TPRIMS_ERR_SHAPE,
-    TPRIMS_ERR_UNSUPPORTED, TPRIMS_ERR_WOULD_DEADLOCK,
+    TPRIMS_ERR_UNSUPPORTED, TPRIMS_ERR_WOULD_DEADLOCK, TPRIMS_ERR_WOULD_MATERIALIZE,
 };
-use tprims_exec::{Exec, WidthPolicy};
 
 // The executor, the status codes and `TAPP_check_success` / `TAPP_explain_error`
 // live in `tprims-core`, so every part of `libtprims` shares one definition.
@@ -167,7 +167,7 @@ pub use tprims_core::status::{TAPP_check_success, TAPP_explain_error};
 // by exactly such a reordering of their own `type_t`, which produces plausible
 // wrong answers rather than an error.
 
-/// `TAPP_F32`: single-precision real. Handled by [`tensorcontract`] as `f32`.
+/// `TAPP_F32`: single-precision real. Handled by [`tprims_contract`] as `f32`.
 pub const TAPP_F32: c_int = 0;
 /// `TAPP_F64`: double-precision real, i.e. `f64`.
 pub const TAPP_F64: c_int = 1;
@@ -177,7 +177,7 @@ pub const TAPP_C32: c_int = 2;
 /// `TAPP_C64`: double-precision complex, interleaved.
 pub const TAPP_C64: c_int = 3;
 /// `TAPP_F16`: accepted by the enumeration, rejected by this implementation
-/// with [`TAPP_ERROR_DATATYPE`]. There is no [`tensorcontract::Element`] for it.
+/// with [`TAPP_ERROR_DATATYPE`]. There is no storage scalar for it.
 pub const TAPP_F16: c_int = 4;
 /// `TAPP_BF16`: as [`TAPP_F16`], rejected.
 pub const TAPP_BF16: c_int = 5;
@@ -239,16 +239,26 @@ fn null(what: &str) -> FfiError {
     )
 }
 
-fn map_err(e: tensorcontract::Error) -> FfiError {
-    use tensorcontract::Error::*;
+/// The C status of a contraction error: the one table of the ABI.
+///
+/// A label count or a `C`/`D` label-set mismatch is `LABELS`; extents, checked
+/// sizes and layout-range incompatibilities are `SHAPE`; an output (or `C`)
+/// that overlaps itself or an input is `ALIASED`; an unsupported operation
+/// (including an output-only label) or an unusable forced family is
+/// `UNSUPPORTED`; a wrong storage scalar is `DTYPE`.
+fn map_err(e: api::Error) -> FfiError {
+    use api::{ConfigError, Error as E, ShapeError, Unsupported};
     let status = match &e {
-        RankMismatch { .. } | LabelCountMismatch { .. } | OutputLabelMismatch => TPRIMS_ERR_LABELS,
-        ExtentMismatch { .. } | NegativeExtent { .. } | ExtentProductOverflow { .. } => {
-            TPRIMS_ERR_SHAPE
+        E::Shape(ShapeError::LabelCount { .. } | ShapeError::OutputLabelMismatch) => {
+            TPRIMS_ERR_LABELS
         }
-        BroadcastIndexUnsupported { .. } => TPRIMS_ERR_UNSUPPORTED,
-        UnsupportedDatatype => TPRIMS_ERR_DTYPE,
-        NullPointer { .. } => TPRIMS_ERR_INVALID_ARGUMENT,
+        E::Shape(_) | E::Layout(_) => TPRIMS_ERR_SHAPE,
+        E::Alias(_) => TPRIMS_ERR_ALIASED,
+        E::Unsupported(Unsupported::WouldMaterialize { .. }) => TPRIMS_ERR_WOULD_MATERIALIZE,
+        E::Unsupported(_) | E::Select(_) | E::Exec(_) => TPRIMS_ERR_UNSUPPORTED,
+        E::Config(ConfigError::DtypeMismatch { .. }) => TPRIMS_ERR_DTYPE,
+        E::Config(ConfigError::CLabels) => TPRIMS_ERR_LABELS,
+        E::Config(_) => TPRIMS_ERR_INVALID_ARGUMENT,
         _ => TPRIMS_ERR_INTERNAL,
     };
     fail(status, e.to_string())
@@ -388,9 +398,30 @@ pub unsafe extern "C" fn TAPP_destroy_status(_status: isize) -> c_int {
 
 // ------------------------------------------------------------- tensor infos
 
+/// One tensor as the caller described it: extents and strides in elements,
+/// kept as `i64` because the setters can change them after creation. Everything
+/// is validated, once, when a product is created.
+#[derive(Clone, Debug, Default)]
+struct TapLayout {
+    extents: Vec<i64>,
+    strides: Vec<i64>,
+}
+
+impl TapLayout {
+    fn ndim(&self) -> usize {
+        self.extents.len()
+    }
+
+    /// Truncate or extend; new modes get extent 1 and stride 0.
+    fn resize(&mut self, ndim: usize) {
+        self.extents.resize(ndim, 1);
+        self.strides.resize(ndim, 0);
+    }
+}
+
 struct TensorInfo {
     dtype: c_int,
-    layout: Layout,
+    layout: TapLayout,
 }
 
 /// Bytes per element of a supported datatype.
@@ -447,7 +478,10 @@ pub unsafe extern "C" fn TAPP_create_tensor_info(
                 )
             }
         };
-        let layout = Layout::new(e, s).map_err(map_err)?;
+        let layout = TapLayout {
+            extents: e,
+            strides: s,
+        };
         // SAFETY: non-null and writable per the contract.
         unsafe { *info = Box::into_raw(Box::new(TensorInfo { dtype, layout })) as isize };
         Ok(())
@@ -522,7 +556,7 @@ pub unsafe extern "C" fn TAPP_get_extents(info: isize, extents: *mut i64) {
         if !extents.is_null() {
             // SAFETY: `ndim` writes are valid per the contract.
             unsafe {
-                std::ptr::copy_nonoverlapping(t.layout.extents().as_ptr(), extents, t.layout.ndim())
+                std::ptr::copy_nonoverlapping(t.layout.extents.as_ptr(), extents, t.layout.ndim())
             };
         }
     }
@@ -544,7 +578,7 @@ pub unsafe extern "C" fn TAPP_set_extents(info: isize, extents: *const i64) -> c
         let n = t.layout.ndim();
         // SAFETY: `n` reads are valid per the contract.
         t.layout
-            .extents_mut()
+            .extents
             .copy_from_slice(unsafe { std::slice::from_raw_parts(extents, n) });
         Ok(())
     })
@@ -563,7 +597,7 @@ pub unsafe extern "C" fn TAPP_get_strides(info: isize, strides: *mut i64) {
         if !strides.is_null() {
             // SAFETY: `ndim` writes are valid per the contract.
             unsafe {
-                std::ptr::copy_nonoverlapping(t.layout.strides().as_ptr(), strides, t.layout.ndim())
+                std::ptr::copy_nonoverlapping(t.layout.strides.as_ptr(), strides, t.layout.ndim())
             };
         }
     }
@@ -585,7 +619,7 @@ pub unsafe extern "C" fn TAPP_set_strides(info: isize, strides: *const i64) -> c
         let n = t.layout.ndim();
         // SAFETY: `n` reads are valid per the contract.
         t.layout
-            .strides_mut()
+            .strides
             .copy_from_slice(unsafe { std::slice::from_raw_parts(strides, n) });
         Ok(())
     })
@@ -593,102 +627,22 @@ pub unsafe extern "C" fn TAPP_set_strides(info: isize, strides: *const i64) -> c
 
 // ----------------------------------------------------------------- products
 
-/// The element offsets an operand can address, inclusive, relative to its
-/// pointer; `None` when the tensor has no elements.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct Span {
-    lo: i128,
-    hi: i128,
+/// The prepared contraction of one storage type.
+enum Prepared {
+    F32(Plan<f32>),
+    F64(Plan<f64>),
+    C32(Plan<Complex<f32>>),
+    C64(Plan<Complex<f64>>),
 }
 
 struct Product {
-    plan: Plan,
-    dtype: c_int,
-    elem: i128,
-    /// A, B, C, D.
-    spans: [Option<Span>; 4],
-    /// Whether `C` addresses every element exactly as `D` does, so that
-    /// `C == D` is an in-place update rather than two overlapping views.
-    c_matches_d: bool,
-    /// Real floating-point operations of one execution, for the width choice.
-    flops: f64,
+    plan: Prepared,
 }
 
-/// The addressed range of a tensor, checked so that every byte offset fits
-/// `isize` (the shape/stride overflow rejection of the ABI).
-fn span_of(t: &TensorInfo, name: &str) -> Result<Option<Span>, FfiError> {
-    let elem =
-        elem_size(t.dtype).ok_or_else(|| fail(TPRIMS_ERR_DTYPE, "unsupported datatype"))? as i128;
-    let (mut lo, mut hi) = (0i128, 0i128);
-    for (&e, &s) in t.layout.extents().iter().zip(t.layout.strides()) {
-        if e < 0 {
-            return Err(fail(
-                TPRIMS_ERR_SHAPE,
-                format!("{name} has a negative extent"),
-            ));
-        }
-        if e == 0 {
-            return Ok(None);
-        }
-        // INVARIANT: |e - 1| < 2^63 and |s| <= 2^63, so the product and the
-        // running sums over at most 2^31 modes stay far inside i128.
-        let reach = (e as i128 - 1) * s as i128;
-        if reach < 0 {
-            lo += reach;
-        } else {
-            hi += reach;
-        }
-    }
-    let limit = isize::MAX as i128;
-    if lo.abs() * elem > limit || (hi + 1) * elem > limit {
-        return Err(fail(
-            TPRIMS_ERR_SHAPE,
-            format!("{name}: extents and strides overflow the address space"),
-        ));
-    }
-    Ok(Some(Span { lo, hi }))
-}
-
-/// Per label, `(label, extent, sum of the strides of its modes)`: repeated
-/// labels address a diagonal, whose stride is the sum.
-fn reduced(t: &TensorInfo, idx: &[i64]) -> Vec<(i64, i64, i128)> {
-    let mut out: Vec<(i64, i64, i128)> = Vec::new();
-    for ((&l, &e), &s) in idx.iter().zip(t.layout.extents()).zip(t.layout.strides()) {
-        match out.iter_mut().find(|x| x.0 == l) {
-            Some(x) => x.2 += s as i128,
-            None => out.push((l, e, s as i128)),
-        }
-    }
-    out
-}
-
-/// Whether distinct index tuples of `D` address distinct elements: after
-/// sorting by `|stride|`, each stride must clear the extent of the previous
-/// ones. Conservative, like the BLAS ABI's output check.
-fn injective(modes: &[(i64, i64, i128)]) -> bool {
-    let mut axes: Vec<(i128, i128)> = modes
-        .iter()
-        .filter(|m| m.1 > 1)
-        .map(|m| (m.1 as i128, m.2.abs()))
-        .collect();
-    if modes.iter().any(|m| m.1 == 0) {
-        return true;
-    }
-    axes.sort_by_key(|a| a.1);
-    let mut reach = 1i128;
-    for (e, s) in axes {
-        if s < reach {
-            return false;
-        }
-        reach = s.saturating_mul(e);
-    }
-    true
-}
-
-fn op_of(op: c_int, name: &str) -> Result<ElementOp, FfiError> {
+fn op_of(op: c_int, name: &str) -> Result<Op, FfiError> {
     match op {
-        TAPP_IDENTITY => Ok(ElementOp::Identity),
-        TAPP_CONJUGATE => Ok(ElementOp::Conjugate),
+        TAPP_IDENTITY => Ok(Op::Identity),
+        TAPP_CONJUGATE => Ok(Op::Conjugate),
         _ => Err(fail(
             TPRIMS_ERR_UNSUPPORTED,
             format!("element operation {op} on {name} is not supported"),
@@ -696,14 +650,28 @@ fn op_of(op: c_int, name: &str) -> Result<ElementOp, FfiError> {
     }
 }
 
+/// One operand as the problem describes it: validated extents and strides at
+/// the pointer's own origin (TAPP has no logical offsets), and the element
+/// operation.
+fn spec(t: &TensorInfo, op: Op) -> Result<OperandSpec, FfiError> {
+    let layout =
+        LayoutSpec::from_signed(&t.layout.extents, &t.layout.strides, 0).map_err(map_err)?;
+    Ok(OperandSpec::new(layout).with_op(op))
+}
+
+fn build<T: api::Scalar>(problem: &Problem) -> Result<Plan<T>, FfiError> {
+    // Standard calls use the default configuration: no tuning API in the C ABI.
+    Plan::<T>::new(problem, &PlanConfig::default()).map_err(map_err)
+}
+
 /// Plan `D = op_D(alpha * op_A(A) * op_B(B) + beta * op_C(C))` from four tensor
 /// infos and their index labels.
 ///
 /// All the work that depends only on shapes, strides and labels happens here —
-/// index classification, folding, and building the scatter vectors — so this is
-/// the call to hoist out of a loop. The plan snapshots the metadata, owns no
-/// data pointer and no executor, and can be executed against different buffers
-/// and serial or Rayon executors.
+/// the problem is lowered and validated once, and the index classification,
+/// folding and scatter vectors are built — so this is the call to hoist out of a
+/// loop. The plan snapshots the metadata, owns no data pointer and no executor,
+/// and can be executed against different buffers and serial or Rayon executors.
 ///
 /// `handle` must be a live library handle (zero is rejected). `prec` must be
 /// [`TAPP_DEFAULT_PREC`] or the precision of the storage type
@@ -715,9 +683,8 @@ fn op_of(op: c_int, name: &str) -> Result<ElementOp, FfiError> {
 /// are `TAPP_ERROR_SHAPE`, and a `D` whose elements overlap one another is
 /// `TAPP_ERROR_ALIASED`.
 ///
-/// `C` is required, unlike [`tensorcontract::Plan::new`], because the C
-/// signature has no way to omit it — pass `beta == 0` at execution time to have
-/// it ignored, or pass `D`'s info for it.
+/// `C` is required, because the C signature has no way to omit it — pass
+/// `beta == 0` at execution time to have it ignored, or pass `D`'s info for it.
 ///
 /// # Safety
 /// `plan_out` must be a valid, writable `*mut isize`. `a`, `b`, `c`, `d` must be
@@ -807,64 +774,32 @@ pub unsafe extern "C" fn TAPP_create_tensor_product(
             labels(idx_d, td, "D")?,
         );
 
-        let spans = [
-            span_of(ta, "A")?,
-            span_of(tb, "B")?,
-            span_of(tc, "C")?,
-            span_of(td, "D")?,
-        ];
-
-        let plan = Plan::new(
-            Operand {
-                layout: &ta.layout,
-                idx: &la,
-                op: oa,
-            },
-            Operand {
-                layout: &tb.layout,
-                idx: &lb,
-                op: ob,
-            },
-            Some(Operand {
-                layout: &tc.layout,
-                idx: &lc,
-                op: oc,
-            }),
-            Operand {
-                layout: &td.layout,
-                idx: &ld,
-                op: od,
-            },
+        // The one lowering: labels, diagonals, reductions, extents, address
+        // ranges and output injectivity are all checked by the problem.
+        let dtype = match ta.dtype {
+            TAPP_F32 => DType::F32,
+            TAPP_F64 => DType::F64,
+            TAPP_C32 => DType::C32,
+            TAPP_C64 => DType::C64,
+            _ => return Err(fail(TPRIMS_ERR_DTYPE, "unsupported datatype")),
+        };
+        let problem = Problem::from_labels(
+            dtype,
+            spec(ta, oa)?,
+            spec(tb, ob)?,
+            CSpec::Separate(spec(tc, oc)?),
+            spec(td, od)?,
+            &Labels::new(&la, &lb, &ld).with_c(&lc),
         )
         .map_err(map_err)?;
-
-        let (rc, rd) = (reduced(tc, &lc), reduced(td, &ld));
-        if !injective(&rd) {
-            return Err(fail(
-                TPRIMS_ERR_ALIASED,
-                "D addresses an element more than once (zero or overlapping strides)",
-            ));
-        }
-        // Plan::new proved C and D carry the same label set and extents.
-        let c_matches_d = rd
-            .iter()
-            .all(|m| rc.iter().any(|x| x.0 == m.0 && x.2 == m.2));
-        let flops_per_mac = if matches!(ta.dtype, TAPP_C32 | TAPP_C64) {
-            8.0
-        } else {
-            2.0
-        };
-
-        let product = Product {
-            flops: plan.stats.macs() as f64 * flops_per_mac,
-            plan,
-            dtype: ta.dtype,
-            elem: elem_size(ta.dtype).unwrap_or(8) as i128,
-            spans,
-            c_matches_d,
+        let plan = match dtype {
+            DType::F32 => Prepared::F32(build(&problem)?),
+            DType::F64 => Prepared::F64(build(&problem)?),
+            DType::C32 => Prepared::C32(build(&problem)?),
+            DType::C64 => Prepared::C64(build(&problem)?),
         };
         // SAFETY: non-null and writable per the contract.
-        unsafe { *plan_out = Box::into_raw(Box::new(product)) as isize };
+        unsafe { *plan_out = Box::into_raw(Box::new(Product { plan })) as isize };
         Ok(())
     })
 }
@@ -885,11 +820,6 @@ pub unsafe extern "C" fn TAPP_destroy_tensor_product(plan: isize) -> c_int {
     })
 }
 
-/// Estimated serial time per real flop; the same provisional 20 GFLOP/s as
-/// `tprims_blas::GemmPolicy`, which sets the width of the other contraction
-/// paths on this driver.
-const NS_PER_FLOP: f64 = 0.05;
-
 /// Data pointers of one execution, as the caller passed them.
 #[derive(Clone, Copy)]
 struct Item {
@@ -899,91 +829,58 @@ struct Item {
     d: *mut c_void,
 }
 
-/// A byte interval `[lo, hi)` as addresses.
-fn interval(base: *const c_void, s: Span, elem: i128) -> (i128, i128) {
-    let b = base as usize as i128;
-    (b + s.lo * elem, b + (s.hi + 1) * elem)
+/// Everything an execution checks before it writes anything, the same for a
+/// single call and for each item of a batch: the FFI-only null handling here,
+/// then the plan's own semantic preflight (output overlap and `C`/`D`
+/// aliasing), which is the one definition the safe API shares.
+fn validate<T: api::Scalar>(plan: &Plan<T>, it: Item, beta_is_zero: bool) -> Result<(), FfiError> {
+    if it.a.is_null() || it.b.is_null() || it.d.is_null() {
+        return Err(null("A, B or D data pointer"));
+    }
+    if it.c.is_null() && !beta_is_zero {
+        return Err(fail(
+            TPRIMS_ERR_UNSUPPORTED,
+            "a null C (TAPP_IN_PLACE) with a nonzero beta is ambiguous in TAPP and not supported; pass D as C to accumulate in place",
+        ));
+    }
+    plan.check_raw(
+        it.a as *const T,
+        it.b as *const T,
+        it.c as *const T,
+        it.d as *const T,
+    )
+    .map_err(map_err)
 }
 
-fn overlap(x: (i128, i128), y: (i128, i128)) -> bool {
-    x.0 < y.1 && y.0 < x.1
-}
-
-impl Product {
-    /// Everything an execution checks before it writes anything, the same for
-    /// a single call and for each item of a batch.
-    fn validate(&self, it: Item, beta_is_zero: bool) -> Result<(), FfiError> {
-        if it.a.is_null() || it.b.is_null() || it.d.is_null() {
-            return Err(null("A, B or D data pointer"));
-        }
-        if it.c.is_null() && !beta_is_zero {
-            return Err(fail(
-                TPRIMS_ERR_UNSUPPORTED,
-                "a null C (TAPP_IN_PLACE) with a nonzero beta is ambiguous in TAPP and not supported; pass D as C to accumulate in place",
-            ));
-        }
-        let [sa, sb, sc, sd] = self.spans;
-        let Some(sd) = sd else {
-            return Ok(()); // D has no elements: nothing is written
-        };
-        let d = interval(it.d, sd, self.elem);
-        for (name, ptr, span) in [("A", it.a, sa), ("B", it.b, sb)] {
-            if let Some(s) = span {
-                if overlap(d, interval(ptr, s, self.elem)) {
-                    return Err(fail(TPRIMS_ERR_ALIASED, format!("D overlaps {name}")));
-                }
-            }
-        }
-        if !it.c.is_null() {
-            if let Some(s) = sc {
-                if std::ptr::eq(it.c, it.d as *const c_void) {
-                    if !self.c_matches_d {
-                        return Err(fail(
-                            TPRIMS_ERR_ALIASED,
-                            "C and D share a base pointer but map their elements differently",
-                        ));
-                    }
-                } else if overlap(d, interval(it.c, s, self.elem)) {
-                    return Err(fail(TPRIMS_ERR_ALIASED, "C and D overlap partially"));
-                }
-            }
-        }
-        Ok(())
+/// Run one validated item on the executor's threads. The plan chooses the actual
+/// width from its work estimate and the executor's budget.
+///
+/// # Safety
+///
+/// The pointers address every offset of this plan's operands, and `validate`
+/// accepted `it`.
+unsafe fn run<T: api::Scalar>(
+    plan: &Plan<T>,
+    exec: &tprims_exec::Exec<'_>,
+    alpha: T,
+    beta: T,
+    it: Item,
+    zero: T,
+) -> Result<(), FfiError> {
+    let beta = if it.c.is_null() { zero } else { beta };
+    // SAFETY: forwarded; the executor lends the threads, none are spawned.
+    unsafe {
+        plan.execute_raw(
+            exec,
+            alpha,
+            it.a as *const T,
+            it.b as *const T,
+            beta,
+            it.c as *const T,
+            it.d as *mut T,
+        )
     }
-
-    /// Run one validated item on the executor's threads.
-    ///
-    /// # Safety
-    ///
-    /// The pointers address every offset of this plan's operands, `alpha` and
-    /// `beta` are `T`s, and `validate` accepted `it`.
-    unsafe fn run<T>(&self, exec: &Exec<'_>, alpha: T, beta: T, it: Item)
-    where
-        T: Element,
-        T::Real: tensorcontract::kernel::KernelSet,
-    {
-        let c_read = if it.c.is_null() {
-            it.d as *const c_void
-        } else {
-            it.c
-        };
-        let beta = if it.c.is_null() { T::zero() } else { beta };
-        let width = exec.width_for(self.flops * NS_PER_FLOP, &WidthPolicy::default());
-        let exec = exec.with_budget(width).unwrap_or(*exec);
-        // SAFETY: forwarded; the executor lends the threads, none are spawned.
-        unsafe {
-            self.plan.run_raw_with::<T>(
-                &exec,
-                None,
-                alpha,
-                it.a as *const T,
-                it.b as *const T,
-                beta,
-                c_read as *const T,
-                it.d as *mut T,
-            )
-        }
-    }
+    .map_err(map_err)
 }
 
 /// Read a scalar of the plan's element type.
@@ -998,16 +895,12 @@ unsafe fn scalar<T: Copy>(p: *const c_void, name: &str) -> Result<T, FfiError> {
     Ok(unsafe { std::ptr::read_unaligned(p as *const T) })
 }
 
-fn is_zero<T: Element>(x: T) -> bool {
-    x == T::zero()
-}
-
 /// Execute `items` (validated first, as a whole, before any is written).
 ///
 /// # Safety
 /// As [`TAPP_execute_product`], for each item.
 unsafe fn execute_items<T>(
-    p: &Product,
+    plan: &Plan<T>,
     exec: isize,
     alpha: *const c_void,
     beta: *const c_void,
@@ -1015,22 +908,22 @@ unsafe fn execute_items<T>(
     count: usize,
 ) -> Result<(), FfiError>
 where
-    T: Element,
-    T::Real: tensorcontract::kernel::KernelSet,
+    T: api::Scalar + Default,
 {
+    let zero = T::default();
     // SAFETY: `alpha` and `beta` are `T`s per the contract.
     let (al, be) = unsafe { (scalar::<T>(alpha, "alpha")?, scalar::<T>(beta, "beta")?) };
     // Validate every item before the first write; nothing is allocated, so a
     // single product costs no more than it did before batches existed.
     for i in 0..count {
-        p.validate(item(i), is_zero(be))?;
+        validate(plan, item(i), be == zero)?;
     }
     // SAFETY: `exec` is zero or a live executor per the contract.
     unsafe {
         with_executor(exec, |x| {
             for i in 0..count {
                 // SAFETY: validated above; the caller's pointer contract.
-                p.run::<T>(x, al, be, item(i));
+                run(plan, x, al, be, item(i), zero)?;
             }
             Ok(())
         })
@@ -1051,12 +944,11 @@ unsafe fn dispatch(
 ) -> Result<(), FfiError> {
     // SAFETY: forwarded.
     unsafe {
-        match p.dtype {
-            TAPP_F32 => execute_items::<f32>(p, exec, alpha, beta, item, count),
-            TAPP_F64 => execute_items::<f64>(p, exec, alpha, beta, item, count),
-            TAPP_C32 => execute_items::<Complex<f32>>(p, exec, alpha, beta, item, count),
-            TAPP_C64 => execute_items::<Complex<f64>>(p, exec, alpha, beta, item, count),
-            _ => Err(fail(TPRIMS_ERR_DTYPE, "unsupported datatype")),
+        match &p.plan {
+            Prepared::F32(plan) => execute_items(plan, exec, alpha, beta, item, count),
+            Prepared::F64(plan) => execute_items(plan, exec, alpha, beta, item, count),
+            Prepared::C32(plan) => execute_items(plan, exec, alpha, beta, item, count),
+            Prepared::C64(plan) => execute_items(plan, exec, alpha, beta, item, count),
         }
     }
 }
@@ -1068,7 +960,7 @@ unsafe fn dispatch(
 /// default serial executor), or an executor of this library; the call uses at
 /// most its budget (read once, here), runs small work on the calling thread
 /// without entering the pool, and runs wider work on the executor's pool through
-/// `Exec::broadcast` — never through `TENSORCONTRACT_THREADS` or a pool of its own.
+/// `Exec::broadcast` — never through an environment variable or a pool of its own.
 /// `alpha` and `beta` are read as the plan's element type, so they are pointers
 /// to an `f32`, `f64`, `float _Complex` or `double _Complex` accordingly.
 ///
@@ -1199,7 +1091,7 @@ pub unsafe extern "C" fn TAPP_execute_batched_product(
 /// several TAPP implementations are linked into one benchmark driver.
 #[no_mangle]
 pub extern "C" fn TAPP_implementation_name() -> *const std::os::raw::c_char {
-    c"tensorprimitives-rs: tensorcontract (planar-complex BSMTC)".as_ptr()
+    c"tprims-rs: tprims-contract (packed BSMTC, faer, elementwise)".as_ptr()
 }
 
 /// The crate version of the *loaded library*, as a static NUL-terminated

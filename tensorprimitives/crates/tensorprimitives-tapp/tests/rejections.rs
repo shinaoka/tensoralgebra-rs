@@ -1028,11 +1028,11 @@ fn implementation_name_is_a_nul_terminated_string() {
     // choosing between TAPP providers wants to know which implementation it got,
     // and the family will eventually contain more than one.
     assert!(
-        s.contains("tensorcontract"),
+        s.contains("tprims-contract"),
         "the name should identify the engine: {s:?}"
     );
     assert!(
-        s.contains("tensorprimitives"),
+        s.contains("tprims"),
         "the name should identify the project: {s:?}"
     );
     // Static storage: two calls give the same pointer, so a C caller may keep it.
