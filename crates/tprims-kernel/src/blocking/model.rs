@@ -80,7 +80,7 @@
 //!
 //! # What the model still cannot see
 //!
-//! `mc` is bounded from *both* sides (assumption A13 in `docs/notebook/`): from
+//! `mc` is bounded from *both* sides (assumption A13 in `docs/archive/tensorprimitives/notebook/`): from
 //! below by packed-`A` residency in L2, which is what this model computes, and
 //! from above by the strip of `D` that one `jr` pass revisits, which it does
 //! not model at all. A pending measurement (Phase 4 report part 7) is designed
@@ -106,7 +106,7 @@ pub enum BlockModel {
     /// default **on evidence**. The pending `MC`/`KC`/`NC` grid defines its arms
     /// *relative to the derived defaults*, so changing the derivation would
     /// silently change what that measurement means; and every performance
-    /// number in `docs/notebook/` was taken against these constants, which the
+    /// number in `docs/archive/tensorprimitives/notebook/` was taken against these constants, which the
     /// project requires be comparable through a run-time switch rather than a
     /// build-to-build diff (A15). Flip the default only after an end-to-end A/B
     /// in the configuration that ships (A20).

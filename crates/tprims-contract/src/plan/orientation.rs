@@ -192,7 +192,7 @@ impl PackedPlan {
     /// affects correctness. The mirror-family table the rule was derived
     /// from, the scoring against both forced arms of all 392 corpus
     /// case-dtype-methods, and the 21 cases still on the slower arm are in
-    /// `docs/notebook/` — the write-back chapter, Phase 4.1d.
+    /// `docs/archive/tensorprimitives/notebook/` — the write-back chapter, Phase 4.1d.
     pub fn transposes_gemm(&self, mr: usize) -> bool {
         match self.orient {
             Orient::Rule => self.transposes_gemm_rule(mr),
@@ -274,7 +274,7 @@ impl PackedPlan {
     /// Take the first shape on the menu that makes *every* output row block a
     /// single run, but only when both of these hold. (A third guard existed and
     /// was removed in Phase 4.1d; see below.) Each guard is there
-    /// because the grid in `bench-results/phase4c` measured what happens
+    /// because the grid in `tensorprimitives/bench-results/phase4c` measured what happens
     /// without it; none is a plausibility argument.
     ///
     /// 1. **The contraction is shallow** (`k <= 32`). The write-back costs a
@@ -292,8 +292,8 @@ impl PackedPlan {
     /// scores 0.936 in `f32`. This is a **tier-2** answer: stable signature,
     /// tuning-output value. Both thresholds, what each guard is worth, the
     /// corpus firing count and the gain an oracle leaves on the table are in
-    /// `docs/notebook/` (the write-back chapter, Phase 4.1c and 4.1d); the grid
-    /// they were scored against is `bench-results/phase4c`.
+    /// `docs/archive/tensorprimitives/notebook/` (the write-back chapter, Phase 4.1c and 4.1d); the grid
+    /// they were scored against is `tensorprimitives/bench-results/phase4c`.
     ///
     /// # What `menu` is, and what comes back
     ///

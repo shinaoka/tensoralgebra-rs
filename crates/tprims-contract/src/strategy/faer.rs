@@ -9,7 +9,7 @@
 //! The approach follows tenferro-rs's CPU `dot_general`
 //! (`tenferro-cpu/src/{dot_runtime.rs, gemm/mod.rs}` at `5a4e7fd`),
 //! reimplemented on the validated [`Problem`] roles. The batched loop, with
-//! its outer or inner parallel schedule, moved here from `tprims-blas`.
+//! its outer or inner parallel schedule, moved here from the former BLAS crate.
 //!
 //! # Semantics
 //!

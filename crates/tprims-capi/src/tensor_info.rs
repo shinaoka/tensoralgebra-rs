@@ -99,7 +99,7 @@ pub unsafe extern "C" fn TAPP_create_tensor_info(
 
 /// Release a tensor info from [`TAPP_create_tensor_info`].
 ///
-/// A [`TAPP_create_tensor_product`] built from it does **not** borrow it — the
+/// A [`TAPP_create_tensor_product`](crate::product::TAPP_create_tensor_product) built from it does **not** borrow it — the
 /// plan copies everything it needs — so an info may be destroyed while products
 /// derived from it are still in use.
 ///

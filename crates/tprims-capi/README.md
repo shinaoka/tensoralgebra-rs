@@ -45,8 +45,8 @@ cc myprog.c $(PKG_CONFIG_PATH=/opt/tapp/lib/pkgconfig \
 ```
 
 `examples/c-consumer` in the repository is a CMake project that consumes this
-three ways — corrosion, a prebuilt library, and an installed prefix — and CI
-compiles and runs all three, because they fail differently.
+three ways (corrosion, a prebuilt library, an installed prefix); CI runs the
+last two, because they fail differently.
 
 ## Verification
 

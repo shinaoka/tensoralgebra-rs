@@ -97,7 +97,7 @@
 //! * **The serial path is unchanged.** With `pm == pn == 1` the only difference
 //!   from the pre-threading driver is two `Option` checks and a handful of
 //!   integer divisions per `(jc, pc)` iteration, nowhere near the hot loops.
-//!   Every measurement committed in `docs/notebook/` was taken single-threaded and
+//!   Every measurement committed in `docs/archive/tensorprimitives/notebook/` was taken single-threaded and
 //!   stays comparable.
 //!
 //! Known limits, in the order they will bite (see the Phase 4 report):

@@ -49,7 +49,7 @@ fn c_program_links_and_runs() {
     );
 }
 
-/// The bundle's file name and the `nm` arguments listing its exported,
+/// The library's file name and the `nm` arguments listing its exported,
 /// defined symbols on this platform.
 fn library_and_nm_args() -> (&'static str, &'static [&'static str]) {
     if cfg!(target_os = "macos") {

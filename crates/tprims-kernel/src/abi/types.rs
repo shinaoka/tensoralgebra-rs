@@ -335,7 +335,7 @@ pub struct Blocking {
     /// Rows of the packed `A` block, sized so `mc x kc` reals fit the L2.
     /// Also bounds the strip of `D` that one pass over the `jr` loop revisits,
     /// which is a *second*, opposing constraint the derivation does not model —
-    /// see A13 in `docs/notebook/`.
+    /// see A13 in `docs/archive/tensorprimitives/notebook/`.
     pub mc: usize,
     /// Contraction depth of one pass. First-order for the complex method
     /// ranking, because it decides whether the `A` sliver is an L1 resident or
@@ -573,12 +573,12 @@ mod tests {
 
     /// The shipped blocking, spelled out.
     ///
-    /// Every performance number in `docs/notebook/` was taken against exactly
+    /// Every performance number in `docs/archive/tensorprimitives/notebook/` was taken against exactly
     /// these, and the pending `MC`/`KC`/`NC` grid defines its arms relative to
     /// them, so changing one is changing what those measurements mean. The
     /// analytical model is the reason to have this test: it must stay opt-in,
     /// and if it ever becomes the default that is a decision recorded in
-    /// `docs/notebook/`, not a diff that slips through here.
+    /// `docs/archive/tensorprimitives/notebook/`, not a diff that slips through here.
     #[test]
     fn legacy_blocking_is_unchanged() {
         let d = |real_bytes, a, b| {

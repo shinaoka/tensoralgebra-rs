@@ -1,9 +1,9 @@
 //! Scaffolding shared by the TAPP C-ABI conformance suite.
 //!
-//! Everything here drives `tensorprimitives-tapp` the way a C caller does:
+//! Everything here drives `libtprims` the way a C caller does:
 //! `intptr_t` handles, `int64_t*` extent / stride / label arrays, `void*` data
 //! and scalars, an `int` status back, and one `TAPP_*` call per step. Nothing
-//! reaches for the `tensorcontract::Plan` API behind the shims, deliberately —
+//! reaches for the `tprims_contract::Plan` API behind the shims, deliberately —
 //! the bugs this crate can have are exactly the ones invisible from there: a
 //! datatype tag dispatched to the wrong element type, a label array read at the
 //! wrong length, a `beta` honoured on the wrong operand, a handle cast that

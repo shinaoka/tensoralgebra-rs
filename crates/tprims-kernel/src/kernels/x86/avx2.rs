@@ -109,8 +109,8 @@ simd_kernels!(
 ///   halves, which moves everything. These shapes are a starting point on
 ///   whatever machine gets measured first, not a tuning.
 ///
-/// Calibrate with `cargo run --release -p tensorcontract --example
-/// kernel_shapes` **on an AVX2 machine** — the example sweeps the AVX2 grid too
+/// Calibrate with the retired `kernel_shapes` example (deleted in the source
+/// integration, see `docs/provenance.md`) **on an AVX2 machine** — it swept the AVX2 grid too
 /// and prints `acc`/`load`/`FMA`/`bytes-per-flop` next to measured GF/s, so the
 /// menus below can be replaced from its output the way the AVX-512 ones were.
 ///
@@ -130,7 +130,7 @@ simd_kernels!(
 /// AVX2, which is one reason these menus can stay short.
 ///
 /// `tcbench shapes` says so quantitatively, and it costs no CPU to re-check
-/// (`TENSORCONTRACT_KERNEL=avx2 tcbench shapes`, which tcbench parses into a pinned-ISA tuning). Over the 392 corpus
+/// (a pinned-AVX2 run of the retired `tcbench shapes`). Over the 392 corpus
 /// case-dtype-methods, `Plan::row_block` would change shape on **26 under
 /// AVX-512 and 12 under AVX2**, and the 12 are all `f32` — it is inert in `f64`
 /// and in all three complex methods in both precisions. The sharper number is

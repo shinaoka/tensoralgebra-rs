@@ -183,4 +183,4 @@ with one microarchitecture measured end to end. The C surface is verified — th
 conformance suite drives the C symbols, and this example checks numerical
 results through the shipped header — but do not read that as a claim that the
 performance is competitive everywhere. See the top-level `README.md` for what is
-measured and what is not, and `docs/notebook/` for why.
+measured and what is not, and `docs/archive/tensorprimitives/notebook/` for why.

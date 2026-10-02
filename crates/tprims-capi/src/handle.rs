@@ -73,7 +73,7 @@ pub unsafe extern "C" fn TAPP_destroy_handle(handle: isize) -> c_int {
 // Prototypes verified against the upstream header (TAPPorg/reference-implementation,
 // api/include/tapp/attributes.h), not reconstructed.
 
-/// Set an attribute. Always fails with [`TAPP_ERROR_UNSUPPORTED`]: this
+/// Set an attribute. Always fails with [`TAPP_ERROR_UNSUPPORTED`](crate::abi::TAPP_ERROR_UNSUPPORTED): this
 /// implementation defines no attribute keys, and upstream specifies none.
 ///
 /// # Safety
@@ -89,7 +89,7 @@ pub unsafe extern "C" fn TAPP_attr_set(_attr: isize, _key: c_int, _value: *mut c
     })
 }
 
-/// Get an attribute. Always fails with [`TAPP_ERROR_UNSUPPORTED`]; `value` is
+/// Get an attribute. Always fails with [`TAPP_ERROR_UNSUPPORTED`](crate::abi::TAPP_ERROR_UNSUPPORTED); `value` is
 /// set to null first if it is non-null, so a caller that ignores the return code
 /// reads a defined value rather than whatever was on its stack.
 ///
@@ -113,7 +113,7 @@ pub unsafe extern "C" fn TAPP_attr_get(
     })
 }
 
-/// Clear an attribute. Always fails with [`TAPP_ERROR_UNSUPPORTED`].
+/// Clear an attribute. Always fails with [`TAPP_ERROR_UNSUPPORTED`](crate::abi::TAPP_ERROR_UNSUPPORTED).
 ///
 /// # Safety
 /// Trivially safe; `unsafe` only to match the declared C signature.

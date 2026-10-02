@@ -140,7 +140,7 @@ impl CacheHierarchy {
     /// How many *physical cores* share `lvl`.
     ///
     /// The model assumes one thread per physical core, which is what every
-    /// BLIS-shaped library assumes and what `scripts/env.sh` pins. Under that
+    /// BLIS-shaped library assumes and what `tensorprimitives/scripts/env.sh` pins. Under that
     /// assumption a private-but-hyperthread-shared L2 (`shared_by == 2` on this
     /// machine) is one core's to itself, while a socket L3 (`shared_by == 16`)
     /// is contended by 8. Oversubscribing the siblings would halve the L2 and
@@ -607,7 +607,7 @@ pub(crate) fn from_sysctl(raw: &SysctlCaches) -> Option<CacheHierarchy> {
 fn sysctl_usize(name: &str) -> Option<usize> {
     use core::ffi::{c_char, c_int, c_void};
 
-    // Declared rather than taken from `libc`: `tensorcontract` has one
+    // Declared rather than taken from `libc`: this crate has one
     // dependency (`num-complex`) and adding a second for four cache sizes is the
     // wrong trade. `sysctlbyname` is in libSystem, which every Darwin target
     // links unconditionally, and the bench crate already binds its C baselines
