@@ -104,7 +104,9 @@ pub struct BatchItem<'a, T: Scalar> {
 /// let a1 = [5.0f64, 6.0, 7.0, 8.0];
 /// let identity = [1.0f64, 0.0, 0.0, 1.0];
 /// let (mut d0, mut d1) = ([0.0f64; 4], [0.0f64; 4]);
-/// let view = |x: &[f64]| StridedView::new(x, &[2, 2], &[1, 2], 0).unwrap();
+/// fn view(x: &[f64]) -> StridedView<'_, f64> {
+///     StridedView::new(x, &[2, 2], &[1, 2], 0).unwrap()
+/// }
 ///
 /// // The outputs are distinct `&mut` borrows, which is what proves them
 /// // disjoint: no unsafe on the caller's side.
