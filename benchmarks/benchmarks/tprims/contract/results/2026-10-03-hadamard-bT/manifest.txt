@@ -1,0 +1,7 @@
+Hadamard bT fix: tprims-rs hadamard-bt-f64 (strided-rs pin 0a94a7a = PR #285 head) vs base fbc83f5 (tprims-rs-smoke-base)
+date: 2026-10-02/03, host shared EPYC, rustc 1.97.1, release, build -j 16, 1T, harness-default runs/warmup (20 runs, 3 warmup)
+driver: drive.sh (per case: one idle CPU via idle_cpus.py, new then base back to back, pinned.sh); cores per case: cpus.csv; pinned.err has pinned.sh messages
+corpus: benchmarks/benchmarks/tprims/corpus/hadamard.json (identical in both trees), 24 cases, none skipped
+variant mapping: new plan_exec vs base pg_exec
+correctness: 24 CHECK lines in new-hadamard.log, all ok; all 24 cases select 'elementwise'
+analysis.txt: per-case ratios (analysis script not committed; ratio = new plan_exec / base pg_exec)
