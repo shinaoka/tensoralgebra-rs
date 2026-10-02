@@ -49,6 +49,7 @@
 //! plan.execute(&Exec::serial(), 1.0, &av, &bv, 0.0, &mut cv).unwrap();
 //! assert_eq!(c, a);
 //! ```
+pub mod api;
 mod backend;
 mod host;
 mod permute_gemm;
