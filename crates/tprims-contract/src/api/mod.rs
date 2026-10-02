@@ -6,7 +6,7 @@ mod dot_general;
 mod error;
 mod labels;
 mod problem;
-mod scalar;
+pub(crate) mod scalar;
 mod validate;
 
 pub use backend::{

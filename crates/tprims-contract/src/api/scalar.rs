@@ -6,12 +6,59 @@ use tprims_kernel::{Element, Families};
 
 use crate::api::DType;
 
-mod sealed {
-    pub trait Sealed {}
-    impl Sealed for f32 {}
-    impl Sealed for f64 {}
-    impl Sealed for num_complex::Complex<f32> {}
-    impl Sealed for num_complex::Complex<f64> {}
+pub(crate) mod sealed {
+    use crate::strategy::elementwise::{CRead, ElementPlan, Expr, Inputs};
+    use tprims_exec::Exec;
+
+    /// The sealed marker, plus the per-dtype hooks that keep the elementwise
+    /// strategy instantiated once, inside this crate, instead of once per
+    /// consumer of `Plan<T>` (share-generics is off in release builds, and
+    /// that pass monomorphizes dozens of strided-basic kernels).
+    pub trait Sealed: Sized + Copy {
+        /// The type-level conjugation: `Conj` for a complex type, `Identity`
+        /// for a real one (so a real type has a single operand-op instance).
+        type Cj: strided_basic::ElementOp<Self>;
+
+        /// Run an elementwise update; one non-generic instance per dtype.
+        ///
+        /// # Safety
+        ///
+        /// As [`ElementPlan::run`].
+        unsafe fn elementwise(
+            plan: &ElementPlan,
+            exec: &Exec<'_>,
+            e: Expr<Self>,
+            inputs: Inputs<Self>,
+            c: CRead<Self>,
+            d: *mut Self,
+        ) -> crate::api::Result<()>;
+    }
+
+    macro_rules! impl_sealed {
+        ($($t:ty => $cj:ty),*) => {$(
+            impl Sealed for $t {
+                type Cj = $cj;
+                #[inline(never)]
+                unsafe fn elementwise(
+                    plan: &ElementPlan,
+                    exec: &Exec<'_>,
+                    e: Expr<Self>,
+                    inputs: Inputs<Self>,
+                    c: CRead<Self>,
+                    d: *mut Self,
+                ) -> crate::api::Result<()> {
+                    // SAFETY: the caller's contract.
+                    unsafe { plan.run_impl::<$t>(exec, e, inputs, c, d) }
+                }
+            }
+        )*};
+    }
+    impl_sealed!(
+        f32 => strided_basic::Identity,
+        f64 => strided_basic::Identity,
+        num_complex::Complex<f32> => strided_basic::Conj,
+        num_complex::Complex<f64> => strided_basic::Conj
+    );
 }
 
 /// The storage and accumulation type of a contraction: `f32`, `f64`,
