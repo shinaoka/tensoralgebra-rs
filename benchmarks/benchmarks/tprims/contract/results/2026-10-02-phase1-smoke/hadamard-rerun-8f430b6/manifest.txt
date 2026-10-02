@@ -1,0 +1,7 @@
+Hadamard rerun after elementwise reimplementation on strided-rs (tprims-rs#46)
+date: 2026-10-02T10:15:25Z
+new: 8f430b6 (tprims-rs-smoke, detached; local branch phase1-smoke-results untouched)   base: fbc83f5 (tprims-rs-smoke-base)
+Same host, rustc 1.97.1, release profile, build -j 16 under taskset -c 16-31, 1T, harness-default runs/warmup, same per-case back-to-back driver and pinned.sh idle checks as the main run (see ../manifest.txt); driver: drive3.sh (hadamard only).
+variant mapping: new plan_exec vs base pg_exec (secondary: packed_exec vs tblis_exec).
+corpus: hadamard.json (identical in both trees), 24 cases, none skipped. Cores per case: cpus.csv. pinned.err has all pinned.sh messages.
+correctness: 48 CHECK lines (24 new, 24 base), all ok. New side selected 'elementwise' for all 24 cases.

@@ -1,0 +1,7 @@
+Hadamard rerun, 1T release: new 8f430b6 vs base fbc83f5. Smoke screen only, no parity claim; single sample per case on a shared host.
+Calls-weighted workload ratio new/base: 0.336 (24 cases; all calls=1). Per-case: see analysis.txt.
+Per-case ratio range 0.09 to 1.32; median ~0.14.
+Cases > 2.0: none. (Previous main-run outlier hadamard_mat_2048_bT_c64 is now 0.61.)
+Slowest-relative cases, all below 2x and not investigated: hadamard_mat_2048_bT_f64 1.32 (32.3 vs 24.4 ms), hadamard_rank4_32_bT_f64 1.02. The bT (transposed-B, strided) f64 cases are the only ones not clearly faster.
+Compare with the earlier run at 863de81 (workload 1.070): the strided-rs elementwise path is ~5-10x faster on contiguous cases.
+Correctness: all CHECK ok. Skipped: none.
