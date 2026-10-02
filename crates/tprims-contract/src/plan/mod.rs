@@ -518,7 +518,7 @@ impl<T: Scalar> Plan<T> {
                 return Ok(());
             }
             // SAFETY: the caller's contract.
-            unsafe { self.output.run(exec, expr, Inputs::None, c, d) };
+            unsafe { self.output.run(exec, expr, Inputs::None, c, d) }?;
             return Ok(());
         }
         match &self.strategy {
@@ -556,7 +556,7 @@ impl<T: Scalar> Plan<T> {
             }
             Strategy::Elementwise(e) => {
                 // SAFETY: the caller's contract.
-                unsafe { e.run(exec, expr, Inputs::Product(a, b), c, d) };
+                unsafe { e.run(exec, expr, Inputs::Product(a, b), c, d) }?;
             }
         }
         Ok(())

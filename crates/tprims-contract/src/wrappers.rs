@@ -122,6 +122,5 @@ pub fn add<T: Scalar>(
             CRead::InPlace,
             c.as_mut_ptr(),
         )
-    };
-    Ok(())
+    }
 }

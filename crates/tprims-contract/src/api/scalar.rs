@@ -37,6 +37,9 @@ pub trait Scalar:
     + Families
     + Copy
     + PartialEq
+    + strided_basic::ElementOpApply
+    + core::ops::Add<Output = Self>
+    + core::ops::Mul<Output = Self>
     + Send
     + Sync
     + 'static

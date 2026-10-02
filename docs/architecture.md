@@ -7,7 +7,7 @@ tprims is a CPU library for dense binary tensor contraction, usable from Rust an
 ## Working hypotheses
 
 - **Contraction:** one validated `Problem` is planned once and run by one of three strategies: a packed, block-scatter (TBLIS-style) driver that packs general strides straight into microkernel panels, faer on problems that fuse into one copy-free batched GEMM, and an elementwise pass for all-batch problems. Measurement, not assertion, decides which one a plan selects.
-- **Phase 2 goal:** optimize the packed driver until it replaces faer and the elementwise pass, leaving one execution route that differs only by kernel family. Small, Hadamard-like and batched shapes (`hadamard.json`) must not regress while doing so.
+- **Phase 2 goal:** optimize the packed driver until it replaces faer, leaving one route for contractions with a K role that differs only by kernel family; all-batch problems stay delegated to strided-rs. Small, Hadamard-like and batched shapes (`hadamard.json`) must not regress while doing so.
 - **Execution ownership:** the effective thread budget, pool and scratch lifetime are explicit. A Rust caller supplies an execution context. A C, Julia or Python caller creates, uses and closes a pool through the C ABI, without the library taking over the host's threads.
 - **No configuration through the environment.** No library crate reads an environment variable; every knob is an explicit input (`PlanConfig`).
 
@@ -309,7 +309,7 @@ A contraction is one lowered, role-grouped `Problem`; `Labels` and `DotGeneral` 
 | --- | --- | --- |
 | Packed (block-scatter) | the imported upstream project (see [provenance](provenance.md)), by Lukas Devos; [Matthews, TBLIS](https://arxiv.org/abs/1607.00291) | Pack tensor panels with general strides directly into the `tprims-kernel` format, run the microkernels, and scatter bounded output tiles. No full operand transpose. |
 | faer | tenferro-rs `dot_general` (`tenferro-cpu/src/dot_runtime.rs`, `gemm/`), MIT OR Apache-2.0 | Fold compatible strides into a batched matrix view without copying; run faer's GEMM per batch item. Declined when it would need a copy, a separate C, or a reduction over an axis one input lacks. |
-| Elementwise | project code | An all-batch problem is a fused elementwise pass with full `op_C`, `op_D` and separate-C semantics. |
+| Elementwise | project code | An all-batch problem is one strided-rs pass (`map_into`, `zip_map2_into`, `zip_map3_into`, with `axpy`, `fma`, `mul_into` and `copy_scale` for unit-scalar forms; in-place accumulation reads D through the destination, so it runs on strided-rs's public `execution` contract (fused plan, blocked walk, threaded map-reduce) with a small raw-pointer inner loop rather than a second view of D) with full `op_C`, `op_D` and separate-C semantics. `op_D` is folded into the other conjugations and one dispatch per execution picks a monomorphized closure, so no flag is tested per element. |
 
 `alpha == 0` or an empty contraction computes `op_D(beta * op_C(C))` in one output pass for every strategy, reading no input; beta zero reads neither C nor D.
 
@@ -322,7 +322,7 @@ The packed driver runs cooperating workers with barriers inside one contraction.
 | Component | Role here |
 | --- | --- |
 | `strided-view` | Reused unchanged as the shared view contract. |
-| `strided-basic` (and `strided-perm`, `strided-kernel` through it) | Copies, permutations and elementwise work. `tprims_exec::strided::run_with_exec` bridges an `Exec` to strided's `ExecContext`. |
+| `strided-basic` (and `strided-perm`, `strided-kernel` through it) | Copies, permutations and every elementwise pass (the all-batch strategy and the `alpha == 0` / empty-`K` output update). `tprims_exec::strided::run_with_exec` bridges an `Exec` to strided's `ExecContext`. |
 
 ## Implementation order
 
@@ -337,7 +337,7 @@ Phase 1 put being usable as the tenferro-rs CPU backend first, with a thin C ABI
 | 1d | Dense linear algebra (faer per item plus batched loops). | Done, then removed in #37 (no retained consumer). |
 | 1e | tenferro-rs integration behind a feature, with an explicit per-op fallback to the current backend, A/B correctness and a same-run performance gate. | The injection points and optional providers are merged in tenferro-rs and selectable in tenferro-benchmark; acceptance runs are deferred until Phase 2 optimization. |
 | 1f | A thin C ABI slice and C benchmarks; the contraction part is the standard TAPP interface ([#26](https://github.com/tensor4all/tprims-rs/issues/26)), consolidated into `tprims-capi` in #37. | Done. |
-| 2 | Optimize the packed driver (small, Hadamard-like and batched shapes included) until faer and the elementwise pass can be deleted: one route that differs only by kernel family. Then wider C ABI coverage and Windows. | Goal; `hadamard.json` must not regress. |
+| 2 | Optimize the packed driver (small, Hadamard-like and batched shapes included) until faer can be deleted: one route for contractions with a K role that differs only by kernel family (all-batch problems stay on strided-rs). Then wider C ABI coverage and Windows. | Goal; `hadamard.json` must not regress. |
 
 Crates are published only after an interface and a consumer exist, consistent with [tenferro #1927](https://github.com/tensor4all/tenferro-rs/issues/1927).
 
