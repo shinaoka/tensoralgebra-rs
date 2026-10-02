@@ -11,7 +11,7 @@ The experiments are separate prototypes. None is a production crate. Keep raw me
 - Predeclare the representative case list and comparison statistic. Use paired runs and a within-session noise estimate for small differences. Retain unfavorable and inconclusive results.
 - Test at least serial and several requested thread counts. Compare a caller-owned outer pool with provider-owned inner threading and measure oversubscription rather than assuming it is harmless.
 
-These rules follow the [tensorprimitives-rs measurement discussion](https://github.com/lkdvos/tensorprimitives-rs/blob/main/docs/results.md) and the [shared tensor4all performance protocol](https://github.com/tensor4all/tensor4all-agent-rules/blob/main/rules/common/performance.md). They are a starting protocol, not a substitute for a pre-registered case list for each comparison.
+These rules follow the [archived tensorprimitives-rs measurement discussion](archive/tensorprimitives/results.md) and the [shared tensor4all performance protocol](https://github.com/tensor4all/tensor4all-agent-rules/blob/main/rules/common/performance.md). They are a starting protocol, not a substitute for a pre-registered case list for each comparison.
 
 ## Prototype 1: execution and FFI boundary
 
@@ -39,17 +39,17 @@ Cover at least small square and rectangular cases, batch sizes from one to many 
 
 **Question:** When does TBLIS-style packing of general strides beat reshape/transpose-then-GEMM, and can the execution contract be shared with Prototype 2?
 
-Build a small fixed corpus of labeled binary contractions with contiguous, permuted, and irregular strides. Include real and complex cases and report input/output bytes, conversion bytes, scratch, and end-to-end time. Compare the two strategies ported in Phase 1 (tenferro-rs permute plus batched GEMM, tensorprimitives-rs TBLIS-style direct) with TBLIS itself. Include tiny contractions where executor entry dominates and larger contractions where packing and cache behavior dominate.
+Build a small fixed corpus of labeled binary contractions with contiguous, permuted, and irregular strides. Include real and complex cases and report input/output bytes, conversion bytes, scratch, and end-to-end time. Compare the two strategies ported in Phase 1 (tenferro-rs permute plus batched GEMM, the TBLIS-style direct driver from tensorprimitives-rs) with TBLIS itself. Include tiny contractions where executor entry dominates and larger contractions where packing and cache behavior dominate.
 
-Use [Matthews's TBLIS paper](https://arxiv.org/abs/1607.00291) for the algorithmic idea and [tensorprimitives-rs](https://github.com/lkdvos/tensorprimitives-rs) as an independent point of comparison. Its [D49/D50](https://github.com/lkdvos/tensorprimitives-rs/blob/main/docs/decisions.md) makes an important distinction: a barrier-driven inner path has different scheduler needs from a barrier-free batch.
+Use [Matthews's TBLIS paper](https://arxiv.org/abs/1607.00291) for the algorithmic idea and the archived [tensorprimitives-rs notes](archive/tensorprimitives/README.md) as an independent point of comparison. Its D49/D50 ([decisions](archive/tensorprimitives/decisions.md)) make an important distinction: a barrier-driven inner path has different scheduler needs from a barrier-free batch.
 
 **Decision gate:** A reproducible win on a predeclared shape family, or a measured reason to use an existing provider. If direct contraction adds no meaningful value, do not build another general engine merely to have one.
 
 ## Prototype 4: C ABI slice
 
-**Question:** Does the design hold across the C boundary: an explicit executor (`tprims_exec*` then, `TAPP_executor` since 2026-10-01) per call, DLPack views, one bundled library?
+**Question:** Does the design hold across the C boundary: an explicit executor (`tprims_exec*` then, `TAPP_executor` since 2026-10-01) per call, DLPack views, one shared library?
 
-Build the Phase 1f slice (`tprims-core`, `tprims-blas-capi`, `tprims-contract-capi`, `tprims-bundle`; the contraction part is now TAPP) and a C benchmark program. Measure per-call fixed cost of an empty call, a small GEMM and a small contraction through C against the same calls from Rust, both serial and with a pool created from C. Verify zero copy for strided and column-major `DLTensor` inputs by pointer identity, pool create, use and close (including `TPRIMS_BUSY`), and that a handle from one part is accepted by another. Record per-call validation cost separately from kernel time.
+Build the Phase 1f slice (a C ABI crate; it is now `tprims-capi`, whose contraction part is TAPP) and a C benchmark program. Measure per-call fixed cost of an empty call and a small contraction through C against the same calls from Rust, both serial and with a pool created from C. Verify zero copy for strided and column-major `DLTensor` inputs by pointer identity, pool create, use and close (including `TPRIMS_BUSY`), and that an executor handle is accepted by every plan of the library. Record per-call validation cost separately from kernel time.
 
 **Decision gate:** C-side fixed cost within a small, recorded margin of the Rust call, no hidden copies, and no ABI change forced by the benchmark. Otherwise revise the design before Phase 2.
 

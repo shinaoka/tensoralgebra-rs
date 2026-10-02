@@ -1,3 +1,14 @@
+> **Historical archive.** This directory is the documentation of the former
+> `tensorprimitives/` tree (tensorprimitives-rs by Lukas Devos), kept as a record
+> of its measurements and decisions. It describes crates, commands and
+> environment variables that no longer exist in this repository (the old
+> `tensorcontract`, `tensorprimitives-tapp` and `tensorprimitives-bench` crates,
+> the `TENSORCONTRACT_*` knobs, the BLAS engines); see
+> [the migration guide](../../migration-2026-10.md) for the current names and
+> [provenance](../../provenance.md) for the commit that still contains the
+> deleted `bench-results/` and `scripts/`. Links to those trees point at that
+> commit. Do not edit these files except to fix links.
+
 # tensorprimitives-rs
 
 A native-Rust, transpose-free dense tensor contraction engine for real and
@@ -14,9 +25,9 @@ algorithm is Matthews' block-scatter-matrix tensor contraction
 
 | crate | what |
 |---|---|
-| [`tensorcontract`](crates/tensorcontract) | the contraction engine |
-| [`tensorprimitives-tapp`](crates/tensorprimitives-tapp) | TAPP C-ABI front end (`lib` / `cdylib` / `staticlib`) |
-| [`tensorprimitives-bench`](crates/tensorprimitives-bench) | `tcbench`: the correctness and benchmark harness (not published) |
+| [`tensorcontract`](https://github.com/tensor4all/tprims-rs/tree/6edb664f0b02fbc6fc27072b83f41479561db593/tensorprimitives/crates/tensorcontract) | the contraction engine |
+| [`tensorprimitives-tapp`](https://github.com/tensor4all/tprims-rs/tree/6edb664f0b02fbc6fc27072b83f41479561db593/tensorprimitives/crates/tensorprimitives-tapp) | TAPP C-ABI front end (`lib` / `cdylib` / `staticlib`) |
+| [`tensorprimitives-bench`](https://github.com/tensor4all/tprims-rs/tree/6edb664f0b02fbc6fc27072b83f41479561db593/tensorprimitives/crates/tensorprimitives-bench) | `tcbench`: the correctness and benchmark harness (not published) |
 
 `tensorprimitives` is the project and the repository, not a crate. Depend on the
 operation crate you need.
@@ -27,7 +38,7 @@ operation crate you need.
 >
 > **Tuning is per-microarchitecture**, and the honest account of what is measured
 > — on which machine, and what is not claimed at all — is
-> [`docs/results.md`](docs/results.md). Register blocks are measured on Cascade
+> [`docs/results.md`](results.md). Register blocks are measured on Cascade
 > Lake (AVX-512), Zen2 (AVX2) and an M3 Max (NEON); on other hardware they are
 > reasonable, not optimal. The NEON menu is the only one measured with an error
 > bar, and six of its eight winners were ties — which is also what the AVX-512 and
@@ -39,7 +50,7 @@ operation crate you need.
 > Anything without AVX-512, AVX2 or NEON runs a portable scalar path: correct,
 > and slow by design — though "slow" turned out to be a good deal less slow than
 > this project assumed before measuring it, because LLVM vectorises that path
-> unasked. [`docs/results.md`](docs/results.md) has the figure.
+> unasked. [`docs/results.md`](results.md) has the figure.
 
 ## Usage
 
@@ -119,7 +130,7 @@ gives it a correspondingly looser tolerance rather than hiding it.
 
 **Which is fastest is not a property of the engine.** Planar wins the corpus on
 both AVX-512 machines measured; everything below that changes with the
-microarchitecture. See [`docs/results.md`](docs/results.md) before quoting a
+microarchitecture. See [`docs/results.md`](results.md) before quoting a
 ranking.
 
 ## Performance
@@ -130,9 +141,9 @@ different microarchitectures — so what the optimisation work bought end to end
 still unmeasured. Publishing a headline figure without that context is the exact
 mistake the measurement rules here exist to prevent.
 
-[`docs/results.md`](docs/results.md) has the numbers, each with its machine, its
+[`docs/results.md`](results.md) has the numbers, each with its machine, its
 date, its noise floor and its raw data — and says plainly what is *not* claimed.
-[`docs/refuted.md`](docs/refuted.md) has the ideas that were measured and lost,
+[`docs/refuted.md`](refuted.md) has the ideas that were measured and lost,
 each with what would reopen it; it is the fastest way to find out whether an
 obvious-looking optimisation here has already failed.
 
@@ -165,7 +176,7 @@ environment variable, and `TENSORCONTRACT_THREADS` / `TENSORCONTRACT_POOL` no lo
 | `TENSORCONTRACT_MC` / `_KC` / `_NC` | override cache blocking, with `_MC_PCT` / `_NC_PCT` / `_KC_COUPLE` relatives |
 
 Why each default is what it is, and what it cost to find out, is in
-[`docs/results.md`](docs/results.md). `Plan::with_complex_method`,
+[`docs/results.md`](results.md). `Plan::with_complex_method`,
 `Plan::with_threads` and `Plan::with_blocking` are the programmatic equivalents
 and take precedence.
 
@@ -227,20 +238,20 @@ tiers, and nothing below is needed to call the engine:
 |---|---|
 | [`tensorcontract`](https://docs.rs/tensorcontract) | the engine's API documentation |
 | [`tensorprimitives-tapp`](https://docs.rs/tensorprimitives-tapp) | the TAPP C ABI, and its coverage of the specification |
-| [`examples/contract.rs`](crates/tensorcontract/examples/contract.rs) | runnable: a batch index, a reduction, a diagonal, complex with plan reuse |
+| [`examples/contract.rs`](https://github.com/tensor4all/tprims-rs/blob/6edb664f0b02fbc6fc27072b83f41479561db593/tensorprimitives/crates/tensorcontract/examples/contract.rs) | runnable: a batch index, a reduction, a diagonal, complex with plan reuse |
 
 **To audit the measurements**, or before proposing a performance idea:
 
 | | |
 |---|---|
-| [`docs/results.md`](docs/results.md) | what is measured, on which machine, and what is not claimed |
-| [`docs/refuted.md`](docs/refuted.md) | ideas measured and lost, each with what would reopen it |
-| [`docs/open-questions.md`](docs/open-questions.md) | what is still unknown |
-| [`docs/design.md`](docs/design.md) | the architecture |
-| [`docs/decisions.md`](docs/decisions.md) | every decision and standing assumption |
-| [`docs/notebook/`](docs/notebook/README.md) | the full measurement narrative |
-| [`bench-results/`](bench-results/README.md) | raw CSVs for every number, one `PROVENANCE.txt` per directory |
-| [`CONTRIBUTING.md`](CONTRIBUTING.md) | building, testing, and running the benchmarks |
+| [`docs/results.md`](results.md) | what is measured, on which machine, and what is not claimed |
+| [`docs/refuted.md`](refuted.md) | ideas measured and lost, each with what would reopen it |
+| [`docs/open-questions.md`](open-questions.md) | what is still unknown |
+| [`docs/design.md`](design.md) | the architecture |
+| [`docs/decisions.md`](decisions.md) | every decision and standing assumption |
+| [`docs/notebook/`](notebook/README.md) | the full measurement narrative |
+| [`bench-results/`](https://github.com/tensor4all/tprims-rs/blob/0fc06f4578e20017e510807ccaaa72ab4bab08f4/tensorprimitives/bench-results/README.md) | raw CSVs for every number, one `PROVENANCE.txt` per directory |
+| [`CONTRIBUTING.md`](https://github.com/tensor4all/tprims-rs/blob/0fc06f4578e20017e510807ccaaa72ab4bab08f4/tensorprimitives/CONTRIBUTING.md) | building, testing, and running the benchmarks |
 
 ## License
 

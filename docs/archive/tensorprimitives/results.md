@@ -83,7 +83,7 @@ itself probed), full 49-case TCCG corpus at 64 MiB nominal size, planar method,
 GF/s counting 2 flops per real MAC and 8 per complex one. **Measured 2026-08-04/05**
 on an exclusive cluster node against **TBLIS 2.0-dev** (`develop` @ `555320c`) and
 **TBLIS v1.3.0** in the same runs. Raw data:
-[`bench-results/worker6156-icelake/`](../bench-results/README.md).
+[`bench-results/worker6156-icelake/`](https://github.com/tensor4all/tprims-rs/blob/0fc06f4578e20017e510807ccaaa72ab4bab08f4/tensorprimitives/bench-results/README.md).
 
 | dtype | min | median | geomean | max |
 |---|---|---|---|---|
@@ -135,7 +135,7 @@ L1d per core, 16 MiB L2 per cluster, no L3 Darwin will name), 12-case premise se
 64 MiB nominal size, GF/s on the same counting convention as §3. **Measured
 2026-08-06** against **TBLIS 2.0-dev** (`develop` @ `555320c`, `BLIS_CONFIG_FAMILY=arm64`,
 BLIS selecting its `firestorm` sub-configuration) and OpenBLAS 0.3.34. Raw data:
-[`bench-results/CKF6QCDVPD-m3max/`](../bench-results/README.md).
+[`bench-results/CKF6QCDVPD-m3max/`](https://github.com/tensor4all/tprims-rs/blob/0fc06f4578e20017e510807ccaaa72ab4bab08f4/tensorprimitives/bench-results/README.md).
 
 **Read every number in this section with two caveats.** It is **not a pinned
 measurement** — Darwin has no CPU affinity API, so nothing here is the pinned

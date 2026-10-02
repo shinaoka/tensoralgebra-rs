@@ -1,3 +1,14 @@
+> **Historical archive.** This directory is the documentation of the former
+> `tensorprimitives/` tree (tensorprimitives-rs by Lukas Devos), kept as a record
+> of its measurements and decisions. It describes crates, commands and
+> environment variables that no longer exist in this repository (the old
+> `tensorcontract`, `tensorprimitives-tapp` and `tensorprimitives-bench` crates,
+> the `TENSORCONTRACT_*` knobs, the BLAS engines); see
+> [the migration guide](../../migration-2026-10.md) for the current names and
+> [provenance](../../provenance.md) for the commit that still contains the
+> deleted `bench-results/` and `scripts/`. Links to those trees point at that
+> commit. Do not edit these files except to fix links.
+
 # The measurement record
 
 This directory is the evidence behind every performance claim the project makes.
@@ -6,7 +17,7 @@ because roughly half of the obvious ideas here have already been measured and
 lost.
 
 If you are here to *use* the library, you want the [top-level
-README](../README.md) instead. Nothing below is needed to call the engine.
+README](original-README.md) instead. Nothing below is needed to call the engine.
 
 ## Where to look
 
@@ -18,7 +29,7 @@ README](../README.md) instead. Nothing below is needed to call the engine.
 | before designing a measurement | [`measurement-rules.md`](measurement-rules.md) — machines, baselines, noise floors, and nine rules that each cost a measurement |
 | the full account behind any `A<n>` or `D<n>` | [`decisions.md`](decisions.md), then the [`notebook/`](notebook/README.md) chapter its last column names |
 | the architecture | [`design.md`](design.md) |
-| the raw data | [`../bench-results/`](../bench-results/README.md), one `PROVENANCE.txt` per directory |
+| the raw data | [`../bench-results/`](https://github.com/tensor4all/tprims-rs/blob/0fc06f4578e20017e510807ccaaa72ab4bab08f4/tensorprimitives/bench-results/README.md), one `PROVENANCE.txt` per directory |
 
 ## If you read nothing else
 

@@ -7,8 +7,7 @@ relevant to the task and do not vendor them here. Then read
 `REPOSITORY_RULES.md`. Read `PERFORMANCE_TIPS.md` in full before implementing
 or reviewing kernels, planning, caches, execution/threading code or
 benchmarks, and before creating a PR that touches them. Work inside
-`tensorprimitives/` or `benchmarks/` also follows that directory's own
-`AGENTS.md`; where it conflicts with this file, this file and
+`benchmarks/` also follows that directory's own `AGENTS.md`; where it conflicts with this file, this file and
 `PERFORMANCE_TIPS.md` win for cross-cutting execution and benchmark rules.
 
 This is a research repository, not a production tensor-algebra library. Read `README.md`, `docs/research-map.md`, `docs/experiments.md`, and `docs/provenance.md` before adding an experiment.
@@ -21,9 +20,11 @@ This is a research repository, not a production tensor-algebra library. Read `RE
 
 ## Layout
 
-- `crates/`: new `tprims-*` crates.
-- `tensorprimitives/`: tensorprimitives-rs by Lukas Devos, imported with
-  history (`tensorcontract`, `tensorprimitives-tapp`, `tensorprimitives-bench`).
+- `crates/`: `tprims-exec`, `tprims-kernel`, `tprims-contract`, `tprims-testkit`
+  and `tprims-capi` (libtprims). Much of the kernel, driver and C ABI code is
+  tensorprimitives-rs by Lukas Devos, moved here with history and authorship
+  (`docs/provenance.md`); the old tree is archived in
+  `docs/archive/tensorprimitives/`.
 - `benchmarks/`: package `tprims-bench` (started as an import of
   strided-rs-benchmark-suite). Every new operation adds rows here at 1T and 4T.
 - `experiments/`: standalone measurement probes, excluded from the workspace.
@@ -42,11 +43,13 @@ This is a research repository, not a production tensor-algebra library. Read `RE
   shared 64-core EPYC workstation); scripts and CI do not hardcode `-j`.
 - Local gate before a PR: `cargo fmt --all -- --check`,
   `cargo clippy --workspace --all-targets -- -D warnings`,
-  `cargo test --workspace`, `cargo test -p tprims-exec` (without
-  the `strided` feature the workspace unifies on), and
-  `cargo test -p tensorcontract --release`. Build `cargo build -p tprims-bundle`
-  before the workspace tests (the C ABI test links the built `libtprims.so`). CI uses stable clippy,
-  which may be newer than a local toolchain.
+  `cargo test --workspace`, `cargo test -p tprims-exec` (without the `strided`
+  feature the workspace unifies on), `cargo test -p tprims-contract --release`,
+  `cargo check --workspace --all-targets --target aarch64-apple-darwin` and a
+  build on the MSRV (`cargo +1.89.0 build --workspace --all-targets`). Build
+  `cargo build -p tprims-capi` before the workspace tests (the C ABI test links
+  the built `libtprims.so`). CI uses stable clippy, which may be newer than a
+  local toolchain.
 - Before a PR, also check README and `docs/` against the implementation
   (REPOSITORY_RULES.md, Public Surface Drift): diagrams and dependency tables
   against `cargo tree`, names, features, commands and status against the code.

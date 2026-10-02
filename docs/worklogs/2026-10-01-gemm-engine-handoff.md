@@ -1,3 +1,5 @@
+> Historical note: a stale session handoff from 2026-10-01, kept as a record; it names crates, features and paths removed in the source integration (#37, see docs/migration-2026-10.md).
+
 # HANDOFF — switchable GEMM engine (issue #23)
 
 Date: 2026-09-30. Branch: `gemm-engine-spec` (spec pushed earlier;

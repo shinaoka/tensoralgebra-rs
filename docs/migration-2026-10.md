@@ -2,8 +2,8 @@
 
 Tracking issue: [#37](https://github.com/tensor4all/tprims-rs/issues/37). This file records what a
 consumer of the old crates, family ids, environment variables and C symbols has to change. Each
-integration PR extends it; this version covers PR 1 (removals), PR 2 (kernel consolidation) and PR 3 (contract
-consolidation).
+integration PR extends it; this version covers PR 1 (removals), PR 2 (kernel consolidation), PR 3 (contract
+consolidation) and PR 4 (C ABI, testkit and benchmarks, and the dissolution of `tensorprimitives/`).
 
 ## Crates
 
@@ -14,8 +14,10 @@ consolidation).
 | `tprims-linalg`, `tprims-blas-capi`, `tprims-kernel-gemm`, `tprims-kernel-pgx86` | removed in PR 1 (no retained consumer) |
 | `tensorcontract` (the packed driver and its labels-based `Plan`), `tprims-contract-traits`, the old `tprims-contract` | `tprims-contract` (one crate: `api`, `plan`, `driver`, `strategy`; see PR 3 below) |
 | `tprims-blas` | removed in PR 3: GEMM, batched GEMM and grouped GEMM are contractions; `trsm` is gone |
+| `tprims-core`, `tprims-bundle`, `tensorprimitives-tapp` | `tprims-capi` (PR 4): one crate building `libtprims`; features `blas` and `tapp` are gone, the TAPP surface is always present |
 | `tprims-contract-testkit` | `tprims-testkit` (label oracle, seeded fixtures, naive second backend, custom-kernel fixtures) |
 | `tensorprimitives-bench` (`tcbench`) | `benchmarks/` (`tprims-bench`, binary `tcbench`) |
+| the `tensorprimitives/` directory | dissolved in PR 4: docs in `docs/archive/tensorprimitives/`, licences at the root, the rest deleted (see [provenance](provenance.md)) |
 
 Module paths: `tprims_gemm_kernel::cache` is `tprims_kernel::blocking`; `tprims_kernel_tensorcontract::{scalar, x86, aarch64}`
 are `tprims_kernel::kernels::{reference::scalar, x86, aarch64}`; the `KernelSet` trait is gone (PR 3); the workspace provider moved to `tprims_exec`.
@@ -259,13 +261,15 @@ No library reads the environment any more. Every knob is an explicit input:
 | `TPRIMS_GEMM_KERNEL` | `PlanConfig::kernel` (`KernelChoice`) |
 | `TPRIMS_GEMM_ENGINE` | none: the planner chooses the strategy (PR 3); an explicit kernel, partition, method, blocking, cache model or write-back request forces the packed driver |
 
-`tcbench` still accepts the `TENSORCONTRACT_*` spellings of the table (except `THREADS`, `POOL` and the retired partition
-spellings) and parses them into `PlanConfig`; an unparseable value or a removed variable is an error. The `tprims-bench`
-binaries refuse to run with any removed variable set.
+`tcbench` accepts the knobs of the table (except `THREADS` and `POOL`) under the prefix `TCBENCH_` instead of
+`TENSORCONTRACT_` (for example `TCBENCH_KERNEL`, `TCBENCH_MC`, `TCBENCH_PARTITION`) and parses them into `PlanConfig`; an
+unparseable value is an error. Since PR 4 every `tprims-bench` binary, `tcbench` included, refuses to run when any
+variable with the prefix `TENSORCONTRACT_` or `TPRIMS_GEMM_` is set, so a stale sweep script cannot silently measure
+the wrong configuration; the retired partition spellings (`m`, `n`, `rows`, `cols`, `legacy`) stay rejected.
 
 ## Removed C symbols (PR 1)
 
-`tprims_blas_gemm`, `tprims_blas_gemm_batched` and `tprims/blas.h` are gone; `tprims_has_part("blas")` returns 0.
+`tprims_blas_gemm`, `tprims_blas_gemm_batched` and `tprims/blas.h` are gone; `tprims_has_part("blas")` returns 0 (it answers 1 only for `"core"` and `"tapp"`).
 
 ## Contraction API (PR 3)
 
@@ -363,3 +367,49 @@ engine internals the contract crate no longer exposes. The three complex methods
 (`TENSORCONTRACT_COMPLEX`) rather than three engine columns. The `contract` bench rows are `plan`/`packed` (formerly
 `pg`/`tblis`), and `tenferro-p1-gemm` and `large-batched-gemm` are `dot_general` corpora; `benchmarks/.../blas` is
 deleted.
+
+## C ABI (PR 4)
+
+`libtprims` is built by `cargo build --release -p tprims-capi` (crate types `cdylib`, `staticlib`, `rlib`; the library
+name is `tprims`). The ABI keeps the semantics of #26: handles are `isize`, every entry point is panic-safe, errors are
+`TPRIMS_*` status codes, a TAPP `TAPP_error` is a `tprims_status`, and there is no C tuning API.
+
+| Old | New |
+|---|---|
+| `cargo build -p tprims-bundle` (features `tapp`, `blas`) | `cargo build -p tprims-capi` |
+| `libtensorprimitives_tapp.{so,dylib}` and `tensorprimitives-tapp.pc` | `libtprims.{so,dylib}` and `tprims.pc` (`pkg-config --cflags --libs tprims`) |
+| the second `tapp.h` of `tensorprimitives-tapp` (with `TAPP_VERSION_STRING` and `TAPP_VERSION_AT_LEAST`) | deleted; `include/tapp.h` and `include/tapp/*.h` are the pinned upstream headers, verbatim. Check versions at run time: `TAPP_implementation_version()` (crate version) and `tprims_abi_version()`, compared with `TPRIMS_ABI_VERSION` of `<tprims/core.h>` |
+| `TAPP_implementation_version` / `TAPP_implementation_name` declared in `tapp.h` | declared in `<tprims/core.h>` (and so in `<tprims/tprims.h>`) |
+| `TAPP_ERROR_UNSUPPORTED` of the old header | `TPRIMS_ERR_UNSUPPORTED` of `<tprims/core.h>` |
+| `crates/tensorprimitives-tapp/install.sh` | `crates/tprims-capi/install.sh`: installs the whole include tree (`tapp.h`, `tapp/`, `dlpack/`, `tprims/`), `libtprims`, `tprims.pc` and the licences |
+| `examples/c-consumer` (`TAPP_CRATE_DIR`, corrosion crate `tensorprimitives-tapp`) | same example, crate `tprims-capi`, target `tprims` |
+
+The version test that read `TAPP_VERSION_*` out of the old header became `the_library_reports_its_crate_version`
+(run-time check); no other test was removed.
+
+### Source moves (PR 4)
+
+The pure-move commits are `Move tprims-core, tprims-bundle and tensorprimitives-tapp into crates/tprims-capi (pure git
+mv)` and `Move tensorprimitives docs, README and CHANGELOG into docs/archive/tensorprimitives; licences to the root (pure
+git mv)`; the edits and splits are separate commits.
+
+| Old path | New path |
+|---|---|
+| `crates/tprims-core/src/{dlpack,status,tensor}.rs` | `crates/tprims-capi/src/{dlpack,status,tensor}.rs` (unchanged bodies) |
+| `crates/tprims-core/src/exec.rs` | `crates/tprims-capi/src/executor.rs` |
+| `crates/tprims-core/src/lib.rs`, `crates/tprims-bundle/src/lib.rs` | `crates/tprims-capi/src/lib.rs` (crate documentation, `ABI_VERSION`, `tprims_abi_version`, `tprims_has_part`) |
+| `tensorprimitives/crates/tensorprimitives-tapp/src/lib.rs` | `src/abi.rs` (constants and the one contract-error to status table), `src/handle.rs` (handles, attributes, status release, implementation identification), `src/tensor_info.rs` (tensor infos), `src/product.rs` (the product lowered once to a `Problem`), `src/execute.rs` (single and batched execution) |
+| `crates/tprims-core/tests/*`, `tensorprimitives/crates/tensorprimitives-tapp/tests/*`, `crates/tprims-bundle/tests/*` | `crates/tprims-capi/tests/*` (`tapp_raw.rs` is `raw.rs`) |
+| `crates/tprims-core/include`, `crates/tprims-bundle/include` | `crates/tprims-capi/include` |
+| `tensorprimitives/{LICENSE-MIT,LICENSE-APACHE}` | `LICENSE-MIT`, `LICENSE-APACHE` (copyright "Lukas Devos and tensor4all contributors") |
+| `tensorprimitives/docs/**`, `README.md`, `CHANGELOG.md` | `docs/archive/tensorprimitives/` (`original-README.md`, `original-CHANGELOG.md`) |
+| `tensorprimitives/{CONTRIBUTING,CLAUDE,RELEASING}.md`, `.gitignore`, `scripts/`, `bench-results/` | deleted; recoverable at the parent of the deletion commit pinned in [provenance](provenance.md) |
+
+### Documentation and rules
+
+`README.md` is rewritten (its Rust and C examples are the compiled files `crates/tprims-contract/examples/readme.rs` and
+`crates/tprims-capi/tests/c/standard_consumer.c`, and `tests/readme_examples.rs` checks that the README shows them
+verbatim). `docs/architecture.md`, `docs/design-principles.md`, `docs/research-map.md`, `docs/experiments.md` and the
+decision log were rewritten for the new crate set; `HANDOFF.md` moved to `docs/worklogs/`. `AGENTS.md`,
+`REPOSITORY_RULES.md`, the skills and CI name only existing packages; CI gained a `c-consumer` job and runs the README
+example.

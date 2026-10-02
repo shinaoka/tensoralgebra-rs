@@ -2,12 +2,12 @@
 
 All notable changes to `tensorcontract` and `tensorprimitives-tapp`. The reasoning
 behind every entry, and all of the data, lives in
-[`docs/`](docs/README.md) — this file records *what* changed and how well
+[`docs/`](README.md) — this file records *what* changed and how well
 it is known, not why.
 
 The two crates share a version. `tensorprimitives-bench` is not published.
 
-**Conventions for this file are in [`RELEASING.md`](RELEASING.md)**, which CI
+**Conventions for this file are in [`RELEASING.md`](https://github.com/tensor4all/tprims-rs/blob/0fc06f4578e20017e510807ccaaa72ab4bab08f4/tensorprimitives/RELEASING.md)**, which CI
 enforces. It is deliberately not Keep a Changelog: the *Confidence* section is
 the part a prospective dependant most needs, and it has no KaC category.
 
@@ -41,7 +41,7 @@ race against the workflow that uploads to the release.
 
 First public prerelease. The engine is correct and framework-complete, the
 x86 micro-kernels are real, and performance work is partly done and
-[documented case by case](docs/results.md). Read "Confidence" below before quoting
+[documented case by case](results.md). Read "Confidence" below before quoting
 a number.
 
 ### Added — crate layout
@@ -167,7 +167,7 @@ The distinction matters more than the numbers, so it is stated per item.
 | **The TBLIS 2.0 baseline's build** | **Measured, and it does not matter at these sizes — but it decides whether the baseline runs at all.** The install every number here used was configured `BLIS_CONFIG_FAMILY=auto`, hence skx-only, and **SIGILLs on any machine without AVX-512**. Rebuilt multi-config it is identical at 64 MiB and 200 MiB (0.997–1.000 against a 0.998–1.003 floor), so the comparison numbers stand; an earlier claim that the skx build understated TBLIS 2.0 by up to 1.68x was measured at 8 MiB and is withdrawn (A45, A46) |
 
 `K`-parallelism is deliberately absent, on evidence rather than by omission —
-see [`docs/decisions.md`](docs/decisions.md) A21.
+see [`docs/decisions.md`](decisions.md) A21.
 
 ### Performance
 
@@ -302,7 +302,7 @@ is a separate confound from time (A46).
   inversion that would have justified it is a Cascade Lake result, absent on Ice
   Lake, where the same rule would be a pessimisation — and not explained by the
   register-block error either, since 3m already runs its Ice Lake-optimal shape
-  (A44). See [`docs/refuted.md`](docs/refuted.md).
+  (A44). See [`docs/refuted.md`](refuted.md).
 * No `pc`-loop fusion, no pack-free fast path for already unit-stride block
   scatter, no software prefetch. `pc` fusion is **not** the general enabler earlier
   notes implied — at `K = 3744` and `mc = 256` the fused packed `A` block is 7.7 MB

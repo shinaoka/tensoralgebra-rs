@@ -13,7 +13,7 @@ exclude = ["experiments"]
 [workspace.package]
 edition = "2021"
 # 1.89 stabilised the AVX-512 intrinsics and `is_x86_feature_detected!`, which
-# tensorcontract needs (tensorprimitives-rs decision D20).
+# the packed driver's kernels need (imported tensorprimitives-rs decision D20).
 rust-version = "1.89"
 
 [workspace.dependencies]

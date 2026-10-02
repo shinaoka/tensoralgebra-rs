@@ -52,7 +52,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       # The C ABI test links a C program to libtprims.so, which `cargo test`
       # does not build (it only builds the rlib the harness needs).
-      - run: cargo build --profile ci -p tprims-bundle
+      - run: cargo build --profile ci -p tprims-capi
       - run: cargo test --profile ci --workspace --no-fail-fast
       # tprims-exec alone, without the `strided` adapter the workspace unifies on.
       - run: cargo test --profile ci -p tprims-exec --no-fail-fast
@@ -60,6 +60,8 @@ jobs:
       # (thin LTO, one codegen unit); upstream CI tests both.
       - run: cargo test -p tprims-contract --release
       - run: cargo run --release -p tprims-bench --bin tcbench -- info
+      # The README's Rust example.
+      - run: cargo run --release -p tprims-contract --example readme
 
   capi:
     strategy:
@@ -73,8 +75,8 @@ jobs:
       # The C test (tests/c_abi.rs) compiles and runs C and C++ programs
       # against the built libtprims.so, one of them against the pinned upstream
       # TAPP headers alone.
-      - run: cargo build -p tprims-bundle
-      - run: cargo test -p tprims-bundle
+      - run: cargo build -p tprims-capi
+      - run: cargo test -p tprims-capi
       # Exported symbols: ELF `nm -D` on Linux; Mach-O `nm -gU` on macOS, where
       # C names carry a leading underscore (` _name`).
       - run: |
@@ -87,6 +89,24 @@ jobs:
           echo "$syms" | grep -q ' TAPP_destroy_executor$'
           echo "$syms" | grep -q ' TAPP_create_tensor_product$'
           ! echo "$syms" | grep -q ' tprims_blas_'
+
+  c-consumer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build --release -p tprims-capi
+      # A prebuilt library, then an installed prefix (the layout install.sh
+      # produces), each consumed by the CMake example.
+      - run: |
+          cmake -S examples/c-consumer -B build/prebuilt -DTAPP_USE_CORROSION=OFF
+          cmake --build build/prebuilt
+          ./build/prebuilt/tapp-c-consumer
+      - run: |
+          crates/tprims-capi/install.sh --prefix="$PWD/build/prefix"
+          cmake -S examples/c-consumer -B build/installed -DTAPP_PREFIX="$PWD/build/prefix"
+          cmake --build build/installed
+          LD_LIBRARY_PATH="$PWD/build/prefix/lib" ./build/installed/tapp-c-consumer
 
   msrv:
     runs-on: ubuntu-latest

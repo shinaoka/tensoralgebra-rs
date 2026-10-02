@@ -15,7 +15,7 @@ its thread count.
   session. See [measurement rules](#measurement-rules); floors are per session
   *and per thread count*.
 * Raw CSVs for every number are committed under
-  [`bench-results/`](../bench-results/README.md), one `PROVENANCE.txt` per directory.
+  [`bench-results/`](https://github.com/tensor4all/tprims-rs/blob/0fc06f4578e20017e510807ccaaa72ab4bab08f4/tensorprimitives/bench-results/README.md), one `PROVENANCE.txt` per directory.
 * Sanity check on a fresh checkout, in this order:
 
 ```bash
