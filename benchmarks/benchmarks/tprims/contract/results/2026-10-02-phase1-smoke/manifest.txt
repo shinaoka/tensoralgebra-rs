@@ -1,0 +1,27 @@
+Phase 1 completion smoke benchmark (tensor4all/tprims-rs #37; spec section 11)
+date: 2026-10-02T04:55:11Z
+new commit : 863de81 (tprims-rs-smoke, detached, clean)
+base commit: fbc83f5 (tprims-rs-smoke-base, detached, clean)
+cpu: AMD EPYC 7713P (shared 64-core host; user itoh runs unpinned 10-thread jobs that roam all cores)
+rustc: 1.97.1 (8bab26f4f 2026-07-14); faer 0.24.4
+profile: cargo build --release -j 16 (opt-level 3, thin LTO, codegen-units 1, debug=1); built under taskset -c 16-31
+threads: --threads 1 (1T), harness defaults BENCH_RUNS/BENCH_WARMUP (samples column = runs used by harness)
+pinning: benchmarks/scripts/pinned.sh, one idle core per case (idle_cpus.py pick 1 --seconds 2; pinned.sh checks idle 3 s before and after, PINNED_RETRIES=1 per pick, up to 60 picks per case).
+  The stock paired.sh with one fixed core could not be used: its core went busy (foreign roaming jobs) and it aborts on the first spoiled run.
+  Driver: per case, pick a core, run NEW then BASE back to back on that same core; a case whose pair is not fully valid is discarded and retried (scripts/drive.sh for the first two corpora and the discarded first GEMM pass, scripts/drive2.sh for the final GEMM pass, scripts/analyze.py).
+  Cores used per case: cpus.csv (case,cpu,attempt). 150 cases, none skipped; 46 needed >1 attempt.
+  pinned.err = all pinned.sh messages (including discarded spoiled runs).
+commands:
+  new : target/release/contract --threads 1 --corpus <corpus>.json   (BENCH_CASE=<case>)   for all four corpora
+  base: contract bench (tenferro-p1, hadamard) / blas bench (tenferro-p1-gemm, large-batched-gemm), same flags, base-tree corpora
+corpora: tenferro-p1 and hadamard are byte-identical in both trees. tenferro-p1-gemm / large-batched-gemm: base = gemm_batched entries, new = rewritten dot_general entries; case names and m/n/k/batch/dims identical (checked), 53 + 16 cases.
+variant mapping (default route on each side):
+  tenferro-p1, hadamard : new plan_exec  vs base pg_exec  (base Auto became pg -> plan per contract README). Secondary: packed_exec vs tblis_exec (last column of analysis.txt).
+  GEMM corpora          : new plan_exec  vs base blas 'faer' row (faer loop = Auto strategy). Secondary: packed_exec vs base 'tblis'.
+  Only exec time compared; plan time is in the raw CSVs.
+correctness: every harness CHECK line (plan vs packed / pg vs tblis / faer vs tblis) is ok in all 300 runs (150 new + 150 base).
+files:
+  new-<corpus>.csv/.log, base-<corpus>.csv/.log  raw rows; .log has '# selected' and CHECK lines tagged with case and cpu
+  analysis.txt  per-case table and ratios; decision.txt  summary
+  pass1-wrong-base-corpus/  first pass of the two GEMM corpora, discarded: the base blas bench was mistakenly given the new rewritten corpus and emitted no rows. Kept only for provenance.
+  recheck-hadamard_mat_2048_bT_c64.txt  3 alternating re-runs of the one case above 2.0
