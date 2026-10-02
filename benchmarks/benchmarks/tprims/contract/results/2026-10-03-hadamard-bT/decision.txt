@@ -1,0 +1,13 @@
+Hadamard transposed-B f64 slowdown: fixed in strided-rs (PR #285), tprims bumps the pin.
+
+Root cause: strided-basic mul_into tries try_contiguous_range_mul first. It runs any mul whose destination is contiguous row by row with no cache blocking. With D and A column-major and B row-major (the _bT cases) B is read at stride n along the destination's fast axis, so every row sweeps B at a 16 KB stride (one new cache line per element, re-touched next row). The blocked kernel was never reached. Evidence (standalone probe, 2048^2 f64, one pinned core): mul_into 32 ms vs the same plan's blocks [40,32] through for_each_inner_block_preordered 15-17 ms; hand-tiled scalar loop with bi=2048 (one row) 22.6 ms. c64 only looked better because the baseline c64 was 34 ms.
+Fix: the range path declines when an input's fast-axis stride is not 0 or 1 (SIMD transposed-scalar tile under 'parallel' kept); the blocked kernel runs. No per-element branch, decision once per call.
+
+Result (1T, same idle core per case, new vs base fbc83f5, calls-weighted workload ratio 0.297 over 24 cases):
+  hadamard_mat_2048_bT_f64   17.7 ms vs 29.6 ms  0.60  (was 32.3 vs 24.4, 1.32)
+  hadamard_rank4_32_bT_f64   3.73 ms vs 4.84 ms  0.77  (was 1.02)
+  hadamard_mat_2048_bT_c64   0.60, hadamard_rank4_32_bT_c64 0.62 (were 0.61, 0.58; unchanged within noise)
+  every other case 0.09 to 0.29. Two cases looked higher than the previous run (mat_256_f64 64.6 us, mat_2048_f64 3.74 ms vs 32 us, 3.09 ms); a pinned rerun gives 26-31 us and 2.65-2.88 ms, so that is noise. Base times in this run are noisier than the previous run's (e.g. bT_f64 base 29.6 vs 24.4 ms); the standalone probe (32 -> 15.4 ms) is the cleaner before/after.
+CHECKs: 24/24 ok.
+
+Follow-up, not done here: the blocked kernel's tile for this layout is [40,32] (f64), about 1.5x off a hand-tiled optimum ([8,64], ~10 ms in a scalar probe). compute_block_sizes is the Strided.jl port with wide blast radius; separate strided-rs issue. strided-rs fast-path rule asks for benchmark-suite rows for fast-path changes: transposed-B mul rows belong in strided-rs-benchmark-suite.

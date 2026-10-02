@@ -30,7 +30,7 @@ AI-assisted contributions are welcome; see [AGENTS.md](AGENTS.md) and
 | `tprims-bench` (`benchmarks/`) | Benchmark harness (`tcbench`, C and Rust ABI rows); not part of the library. |
 
 strided-rs (`strided-view`, `strided-basic`) is an external dependency pinned to
-a post-v0.4.4 main commit (strided-rs#283, in-place update ops); tenferro-rs still pins v0.4.4 and must follow.
+a post-v0.4.4 main commit (strided-rs#283 in-place update ops, #285 blocked transposed mul); tenferro-rs still pins v0.4.4 and must follow.
 
 Arrows mean "depends on" and are drawn from `cargo tree` (normal and build
 dependencies; `tprims-testkit` is a dev-dependency of `tprims-contract` and
