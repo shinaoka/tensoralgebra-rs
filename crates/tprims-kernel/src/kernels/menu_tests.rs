@@ -1,70 +1,25 @@
-//! The legacy `KernelSet` menu: one trait implementation per real type that
-//! hands the packed driver a micro-kernel configuration, for element types the
-//! typed registry does not cover. Lukas Devos's scalar and SIMD microkernels,
-//! moved from tensorcontract.
+//! Test-only: the register-block menus of the built-in kernels, checked against
+//! the reference at every entry point.
+//!
+//! The legacy `KernelSet` trait that used to hand these menus to the contraction
+//! planner is gone: the planner resolves families from the registry. What
+//! remains is the one thing the trait's test module was for -- every kernel
+//! configuration the SIMD modules build must agree with the mathematical
+//! definition, whatever packing and tile format it uses -- so the dispatch is
+//! kept here as a private test trait over `f32` and `f64`.
+//!
 //! Source: lkdvos/tensorprimitives-rs, tensorcontract/src/kernel; MIT OR Apache-2.0.
 
 use super::{reference::scalar, simd_isa};
-#[cfg(test)]
 use crate::cache;
 use crate::*;
 
-/// Real scalar types for which the engine has a micro-kernel.
-///
-/// `f32` and `f64` get runtime-dispatched vectorised kernels: AVX-512F if the
-/// CPU has it, else AVX2+FMA, else the portable path in [`scalar`].
-/// [`Tuning::kernel_force`](crate::Tuning) pins one (`scalar` | `avx2` | `avx512`).
-///
-/// Any other [`Real`] type can opt in by returning the generic scalar kernels.
-/// In sketch — this is the shape of the impl, not a compiling example:
-///
-/// ```ignore
-/// // `MyDual` stands for a type that already implements `Real` and `Element`;
-/// // those two impls, not this one, are the bulk of the work.
-/// impl KernelSet for MyDual {
-///     fn config_real(_: KernelForce) -> KernelConfig<Self> { scalar::config_real::<Self, 4, 4>() }
-///     fn config_cplx(_: KernelForce, m: ComplexMethod) -> KernelConfig<Self> {
-///         scalar::config_cplx::<Self, 4, 4>(m)
-///     }
-/// }
-/// ```
-///
-/// **[`scalar`]'s module docs have the real thing**: the same two methods over a
-/// concrete element type, as a doctest that compiles and runs a contraction.
-/// This block stays `ignore`d because making it compile means carrying that
-/// type's `Real` and `Element` impls a second time, which would bury the two
-/// lines it is here to show.
-///
-/// The two `row_block`-related methods are optional and exist only for kernel
-/// sets that have more than one shape to offer.
-pub trait KernelSet: Real + Sized {
-    /// The kernel to use when the element type is this real type itself.
-    ///
-    /// `force` is the caller's ISA preference ([`Tuning::kernel_force`](crate::Tuning)); a set
-    /// with a single scalar kernel ignores it. The returned configuration is
-    /// raw: the caller applies [`KernelConfig::normalise_for`] once.
+/// The per-real-type menu dispatch the tests drive: a vectorised module when the
+/// target has one and the force selects it, the portable scalar kernels
+/// otherwise.
+trait KernelSet: Real + Sized {
     fn config_real(force: KernelForce) -> KernelConfig<Self>;
-    /// The kernel to use when the element type is complex over this real type.
-    ///
-    /// Must honour `method`: the packed formats the driver produces and the
-    /// tile format the write-back reads are taken from the returned [`Ukr`], so
-    /// returning a planar kernel for [`ComplexMethod::ThreeM`] would not be
-    /// slow, it would be wrong.
     fn config_cplx(force: KernelForce, method: ComplexMethod) -> KernelConfig<Self>;
-
-    /// Logical `(MR, NR)` shapes this kernel set can run, default first.
-    ///
-    /// More than one entry is an invitation to `tensorcontract::Plan::row_block` to
-    /// pick a shape that suits the output's stride pattern rather than the
-    /// kernel's own peak. An empty menu means "no choice", which is what the
-    /// portable path returns.
-    ///
-    /// The menu is addressed by **position**. It was addressed by `MR` until
-    /// A35, which found a measured shape the engine could not reach: `planar`
-    /// `f32`/`c32` wants `32x5` and ships `32x6`, and an `MR`-keyed menu cannot
-    /// hold two entries of the same height. Positions also make
-    /// the row-block request `RowBlock::Index(i)` mean what its name always
-    /// implied.
     fn row_blocks(
         force: KernelForce,
         complex: bool,
@@ -73,9 +28,6 @@ pub trait KernelSet: Real + Sized {
         let _ = (force, complex, method);
         &[]
     }
-
-    /// The configuration at a menu position, or `None` past the end. Only ever
-    /// called with an index into [`KernelSet::row_blocks`].
     fn config_at(
         force: KernelForce,
         complex: bool,
@@ -588,6 +540,54 @@ mod tests {
         for m in ComplexMethod::ALL {
             check::<f64>(true, m, shape(cplx::<f64>(m)));
             check::<f32>(true, m, shape(cplx::<f32>(m)));
+        }
+    }
+
+    /// The contraction planner builds its default menu from the registry: the
+    /// built-in families of the preferred ISA and the requested complex scheme,
+    /// in registry order. That must be the menu the dispatch above offers, entry
+    /// for entry, or a row-block index would name a different shape than it
+    /// always did.
+    #[test]
+    fn the_registry_menu_is_the_dispatch_menu() {
+        use crate::{Families, Method, Origin, Registry};
+        fn check<T: Families>(method: ComplexMethod, want_method: Method)
+        where
+            T::Real: KernelSet,
+        {
+            for force in [KernelForce::Auto, KernelForce::Scalar] {
+                let want = <T::Real as KernelSet>::row_blocks(force, T::IS_COMPLEX, method);
+                let isa = super::super::menu_isa(force);
+                let got: Vec<(usize, usize)> =
+                    Registry::families::<T>(CpuFeatures::detect(), false)
+                        .into_iter()
+                        .filter(|f| {
+                            f.imp != KernelImpl::Induced
+                                && f.origin == Origin::Tensorcontract
+                                && f.isa == isa
+                                && (!T::IS_COMPLEX
+                                    || f.complex.is_some_and(|s| s.method == want_method))
+                        })
+                        .map(|f| (f.mr, f.nr))
+                        .collect();
+                // The dispatch menu is empty exactly when no vectorised module
+                // answers; the registry then offers only the portable family.
+                if !want.is_empty() {
+                    assert_eq!(got, want, "{} {method:?} {force:?}", T::DTYPE);
+                } else {
+                    assert!(got.len() <= 1, "{} {method:?} {force:?}: {got:?}", T::DTYPE);
+                }
+            }
+        }
+        check::<f32>(ComplexMethod::Planar, Method::Native);
+        check::<f64>(ComplexMethod::Planar, Method::Native);
+        for (m, kind) in [
+            (ComplexMethod::Planar, Method::Native),
+            (ComplexMethod::OneM, Method::OneM),
+            (ComplexMethod::ThreeM, Method::ThreeM),
+        ] {
+            check::<C32>(m, kind);
+            check::<C64>(m, kind);
         }
     }
 

@@ -4,7 +4,7 @@
 //! guarantee, on the same terms as `kernel::x86`: public only so that
 //! `examples/kernel_shapes` can measure one kernel family at a time, and the
 //! register-block menus are re-measured whenever the machine changes. Reach the
-//! kernels through [`super::KernelSet`].
+//! kernels through the registered families.
 //!
 //! The bodies are not written here. They come from `simd_kernels!` in
 //! `kernel::simd`, the same macro that generates the AVX-512 and AVX2 kernels,
@@ -319,7 +319,7 @@ impl<T> core::fmt::Debug for IsaConfigs<T> {
     }
 }
 
-/// The five entry points the [`super::KernelSet`] impls call, per type. Mirrors
+/// The five entry points the default menu is built from, per type. Mirrors
 /// `x86`'s `dispatch!` and yields `None`/`&[]` under
 /// `KernelForce::Scalar`, which sends the caller to the portable path.
 macro_rules! dispatch {

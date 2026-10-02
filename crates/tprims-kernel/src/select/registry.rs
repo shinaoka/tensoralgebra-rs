@@ -16,7 +16,7 @@ mod sealed {
 }
 
 /// Real types supported by the built-in registration slots.
-/// Sealed: foreign scalar types keep using tensorcontract's legacy `KernelSet`.
+/// Sealed: the four storage types are the only scalars the registry serves.
 /// Mutable registration storage is not part of the public API.
 ///
 /// ```compile_fail

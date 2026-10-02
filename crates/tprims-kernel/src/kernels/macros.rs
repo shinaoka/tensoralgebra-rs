@@ -472,8 +472,7 @@ macro_rules! configs {
             }
         }
 
-        /// The menu for either domain, which is the shape `IsaConfigs` and the
-        /// `KernelSet::row_blocks` impls both want.
+        /// The menu for either domain, which is the shape `IsaConfigs` wants.
         pub fn row_blocks(complex: bool, method: ComplexMethod) -> &'static [(usize, usize)] {
             if complex {
                 cplx_row_blocks(method)

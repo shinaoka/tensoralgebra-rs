@@ -21,33 +21,23 @@ fn every_tc_family_validates_and_ids_are_unique() {
     assert!(list_kernels::<C64>().iter().all(|f| !real.contains(f.id)));
 }
 
+/// Unqualified Auto resolves to the head of the default menu: a built-in family
+/// of the preferred instruction set, in its native complex scheme.
 #[test]
-fn auto_head_matches_legacy_default() {
+fn auto_head_is_the_head_of_the_default_menu() {
     let cpu = CpuFeatures::detect();
+    let isa = menu_isa(KernelForce::Auto);
     let head = Registry::families::<f64>(cpu, false)
         .into_iter()
         .find(|f| f.allow_auto)
         .unwrap();
-    let legacy =
-        <f64 as tprims_kernel::kernels::KernelSet>::config_real(tprims_kernel::KernelForce::Auto);
-    assert_eq!(
-        (head.mr, head.nr),
-        (legacy.ukr.mr, legacy.ukr.nr),
-        "{}",
-        head.id
-    );
+    assert_eq!(head.origin, Origin::Tensorcontract, "{}", head.id);
+    assert_eq!(head.isa, isa, "{}", head.id);
     let chead = Registry::families::<C64>(cpu, false)
         .into_iter()
         .find(|f| f.allow_auto)
         .unwrap();
-    let clegacy = <f64 as tprims_kernel::kernels::KernelSet>::config_cplx(
-        tprims_kernel::KernelForce::Auto,
-        ComplexMethod::Planar,
-    );
-    assert_eq!(
-        (chead.mr, chead.nr, chead.complex.unwrap().method),
-        (clegacy.ukr.mr, clegacy.ukr.nr, Method::Native)
-    );
+    assert_eq!(chead.complex.unwrap().method, Method::Native, "{}", chead.id);
 }
 
 #[test]
@@ -57,7 +47,7 @@ fn every_available_family_matches_a_packed_product_oracle() {
             f.validate().unwrap();
             // The oracle drives the packed-product arm directly, so it covers
             // the scratch-tile families; a Direct family's behaviour is pinned
-            // in `tensorcontract/tests/direct.rs` and an induced family's
+            // in the contraction driver's `direct.rs` tests and an induced family's
             // packing, arithmetic and write-back in `tests/induced.rs`, with
             // the full driver path covered by the all-family sweeps.
             let Some(u) = f.as_ukr() else {

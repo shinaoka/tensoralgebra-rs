@@ -17,11 +17,11 @@ use num_complex::Complex;
 
 /// A real scalar usable as the arithmetic base of a contraction.
 ///
-/// Implemented here for `f32`/`f64`. Downstream types (extended precision,
-/// dual numbers for forward-mode AD, `bf16`, ...) can implement this and get a
-/// correct — if unvectorised — contraction engine for free by also
-/// implementing `tensorcontract::kernel::KernelSet`; there is a worked example in
-/// `tensorcontract::kernel::scalar`.
+/// Implemented here for `f32`/`f64`. The generic kernel builders in
+/// [`portable`](crate::portable) work for any `Real`, but the family registry and
+/// the contraction planner are sealed to the four storage types: a downstream
+/// scalar (extended precision, dual numbers for forward-mode AD, `bf16`, ...)
+/// no longer gets a contraction engine by implementing a kernel-set trait.
 ///
 /// The supertrait list is the whole arithmetic requirement, and it is
 /// deliberately short: the engine never divides and never compares for

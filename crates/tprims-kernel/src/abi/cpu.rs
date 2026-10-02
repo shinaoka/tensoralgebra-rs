@@ -126,9 +126,9 @@ pub enum Isa {
 }
 
 // Moved from tprims-kernel-tensorcontract; the legacy ISA control of the
-// KernelSet menu and of the legacy Auto selection, now an explicit input
+// default family menu and of the legacy Auto selection, now an explicit input
 // (`Tuning::kernel_force`) instead of a process-wide startup fact.
-/// Legacy ISA preference for the tensorcontract family menu.
+/// ISA preference for the default family menu.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum KernelForce {
     /// Widest available instruction set. The default.

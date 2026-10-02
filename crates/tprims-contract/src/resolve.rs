@@ -10,23 +10,6 @@ use tprims_kernel::{
 
 use crate::plan::{PackedPlan, PlanConfig};
 
-/// The ISA the default family menu is built from under a [`KernelForce`].
-fn legacy_isa(force: KernelForce) -> Isa {
-    if force == KernelForce::Scalar {
-        return Isa::Portable;
-    }
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    return match tprims_kernel::kernels::x86::selected_isa(force) {
-        Some(tprims_kernel::kernels::x86::Isa::Avx2) => Isa::Avx2,
-        Some(tprims_kernel::kernels::x86::Isa::Avx512) => Isa::Avx512,
-        None => Isa::Portable,
-    };
-    #[cfg(target_arch = "aarch64")]
-    return Isa::Neon;
-    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")))]
-    Isa::Portable
-}
-
 /// The complex scheme the default menu uses when the config names none.
 const DEFAULT_METHOD: Method = Method::Native;
 
@@ -37,7 +20,7 @@ fn default_menu<T: Families>(
     cfg: &PlanConfig,
 ) -> Vec<&'static tprims_kernel::KernelFamily<T::Real>> {
     let method = cfg.method.unwrap_or(DEFAULT_METHOD);
-    let isa = legacy_isa(cfg.isa);
+    let isa = tprims_kernel::menu_isa(cfg.isa);
     Registry::families::<T>(CpuFeatures::detect(), false)
         .into_iter()
         .filter(|f| {

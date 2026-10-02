@@ -7,7 +7,7 @@
 //! wins depends on the shape, the element type and the machine — and because
 //! the whole point of the project is to be able to measure them against each
 //! other on equal footing. Select with [`ComplexMethod`], per plan via
-//! `tensorcontract::Plan::with_complex_method` (`planar` | `1m` | `3m`); the
+//! `PlanConfig::method` of `tprims-contract` (`planar` | `1m` | `3m`); the
 //! default is [`ComplexMethod::Planar`].
 //!
 //! All three share the *same* index analysis, scatter machinery, five-loop
@@ -77,7 +77,7 @@ use crate::cache;
 /// sweep script's arm list, a benchmark flag or a CSV column. One
 /// type for both, because the failure is the same one ("that is not a spelling
 /// I know") and only the accepted list differs; and deliberately *not*
-/// `tensorcontract::Error`, which is `#[non_exhaustive]` and enumerates the ways a
+/// `tprims_contract::Error`, which is `#[non_exhaustive]` and enumerates the ways a
 /// *contraction* is ill-formed. A misspelled method name is not one of those.
 ///
 /// Keeps no copy of the offending string, so it stays `Copy` and
@@ -114,7 +114,7 @@ impl core::error::Error for ParseError {}
 /// How to induce complex arithmetic from real micro-kernels.
 ///
 /// Deliberately **not** `#[non_exhaustive]`, unlike [`cache::BlockModel`] and
-/// [`cache::CacheSource`]. A downstream `tensorcontract::KernelSet` implementor must match on
+/// [`cache::CacheSource`]. A downstream kernel provider must match on
 /// this to hand back a kernel per method, and a variant it cannot name is one it
 /// cannot service: the catch-all arm that `#[non_exhaustive]` would force could
 /// only panic or return a kernel in the wrong packed format, which the driver
@@ -293,7 +293,7 @@ pub struct Ukr<T> {
     /// belongs to whoever built the [`Ukr`], not to the caller.
     pub func: unsafe fn(kc: usize, a: *const T, b: *const T, ab: *mut T),
     /// Kernel name, e.g. `"avx512-planar"`. Reported by
-    /// `tensorcontract::selected_kernel_name` and used to label measurements, so a number can
+    /// the plan report's family id and used to label measurements, so a number can
     /// always be traced to the code that produced it.
     pub name: &'static str,
 }
@@ -417,10 +417,10 @@ impl Blocking {
 
 /// Everything the driver needs for one element type and complex method.
 ///
-/// This is what a `tensorcontract::KernelSet` implementation returns, and the two halves are
+/// This is what the built-in kernel menus return, and the two halves are
 /// not independent: the blocking is derived from the packed footprint *this*
 /// micro-kernel produces, and `mc`/`nc` must stay aligned to its register
-/// block. Build one with `tensorcontract::scalar::config_real` or `tensorcontract::scalar::config_cplx`
+/// block. Build one with [`scalar::config_real`](crate::kernels::reference::scalar::config_real) or `config_cplx`
 /// rather than by hand.
 #[derive(Clone, Copy, Debug)]
 pub struct KernelConfig<T> {
@@ -549,7 +549,7 @@ impl BlockingOverride {
 /// with all of them unset.
 ///
 /// Used by the typed resolver ([`ResolvedGemm::with_tuning`](crate::ResolvedGemm::with_tuning))
-/// and by the legacy `KernelSet` menu; a planner owns one and passes it down.
+/// and by the default-menu normalisation; a planner owns one and passes it down.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Tuning {
     /// Instruction-set preference for the tensorcontract menu and the legacy
