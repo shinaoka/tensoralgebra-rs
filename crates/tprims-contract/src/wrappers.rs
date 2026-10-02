@@ -3,8 +3,8 @@ use tprims_exec::strided::run_with_exec;
 use tprims_exec::Exec;
 use tprims_kernel::Element;
 
-use crate::strategy::elementwise::{CRead, ElementPlan, Expr, Inputs};
 use crate::api::{is_injective_layout, AliasError, ConfigError, Error, Result, Scalar, ShapeError};
+use crate::strategy::elementwise::{CRead, ElementPlan, Expr, Inputs};
 
 fn check_out<T>(c: &StridedViewMut<'_, T>) -> Result<()> {
     if is_injective_layout(c.dims(), c.strides()) {

@@ -1,11 +1,15 @@
-//! A pinned tensorcontract partition (`PartitionMode::Pin`) must not widen the
-//! SPMD team beyond the `Exec`'s budget, nor make a declined broadcast spawn
-//! threads. Own test binary: it counts the process's OS threads.
+//! A pinned static grid (`Partition::StaticGrid { pin: Some(..) }`) must not
+//! widen the SPMD team beyond the `Exec`'s budget, nor make a declined
+//! broadcast spawn threads. Own test binary: it counts the process's OS threads.
 
 use std::time::Duration;
 
-use tensorcontract::{Layout, Operand, PartitionMode, Plan, TensorView, TensorViewMut};
+use strided_view::{StridedView, StridedViewMut};
+use tprims_contract::{Partition, Plan, PlanConfig};
 use tprims_exec::{Exec, Pool};
+
+mod common;
+use common::plans::matmul_problem;
 
 fn os_threads() -> usize {
     std::fs::read_dir("/proc/self/task")
@@ -17,27 +21,21 @@ fn gemm(exec: &Exec<'_>) -> Vec<f64> {
     let (m, n, k) = (256usize, 240usize, 200usize);
     let av: Vec<f64> = (0..m * k).map(|x| (x % 13) as f64).collect();
     let bv: Vec<f64> = (0..k * n).map(|x| (x % 7) as f64).collect();
-    let la = Layout::col_major(&[m as i64, k as i64]);
-    let lb = Layout::col_major(&[k as i64, n as i64]);
-    let ld = Layout::col_major(&[m as i64, n as i64]);
-    let (ia, ib, id) = ([0i64, 2], [2i64, 1], [0i64, 1]);
-    let plan = Plan::new(
-        Operand::new(&la, &ia),
-        Operand::new(&lb, &ib),
-        None,
-        Operand::new(&ld, &id),
-    )
-    .unwrap()
-    .with_partition_mode(PartitionMode::Pin(4, 2));
+    let config = PlanConfig {
+        partition: Some(Partition::StaticGrid {
+            pin: Some((4, 2)),
+            align_c_lines: false,
+        }),
+        ..PlanConfig::default()
+    };
+    let plan = Plan::<f64>::new(&matmul_problem(m, n, k), &config).unwrap();
     let mut out = vec![0.0; m * n];
-    plan.run_with(
+    plan.execute_into(
         exec,
         1.0,
-        TensorView::new(&av, &la, &ia),
-        TensorView::new(&bv, &lb, &ib),
-        0.0,
-        None,
-        TensorViewMut::new(&mut out, &ld, &id),
+        &StridedView::new(&av, &[m, k], &[1, m as isize], 0).unwrap(),
+        &StridedView::new(&bv, &[k, n], &[1, k as isize], 0).unwrap(),
+        &mut StridedViewMut::new(&mut out, &[m, n], &[1, m as isize], 0).unwrap(),
     )
     .unwrap();
     out

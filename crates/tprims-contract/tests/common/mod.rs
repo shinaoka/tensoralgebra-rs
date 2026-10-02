@@ -32,10 +32,7 @@ pub fn fill<S: Scalar>(len: usize, seed: u64) -> Vec<S> {
             s ^= s << 17;
             let re = (s % 1000) as f64 / 1000.0 - 0.5;
             let im = ((s >> 20) % 1000) as f64 / 1000.0 - 0.5;
-            <S as Element>::from_parts(
-                Real::from_f64(re),
-                Real::from_f64(im),
-            )
+            <S as Element>::from_parts(Real::from_f64(re), Real::from_f64(im))
         })
         .collect()
 }
@@ -183,7 +180,12 @@ pub fn reference<S: Scalar>(
                 ai[la] = oh[p];
                 bi[lb] = oh[p];
             }
-            for (p, (&la, &lb)) in cfg.lhs_contract().iter().zip(cfg.rhs_contract()).enumerate() {
+            for (p, (&la, &lb)) in cfg
+                .lhs_contract()
+                .iter()
+                .zip(cfg.rhs_contract())
+                .enumerate()
+            {
                 ai[la] = kidx[p];
                 bi[lb] = kidx[p];
             }
@@ -210,10 +212,7 @@ pub fn reference<S: Scalar>(
 /// max |x - y| / max(1, max |y|) over the logical elements.
 pub fn rel_err<S: Scalar>(x: &T<S>, y: &T<S>) -> f64 {
     let mag = |z: S| {
-        let (re, im): (f64, f64) = (
-            Real::to_f64(Element::re(z)),
-            Real::to_f64(Element::im(z)),
-        );
+        let (re, im): (f64, f64) = (Real::to_f64(Element::re(z)), Real::to_f64(Element::im(z)));
         re.hypot(im)
     };
     let mut scale = 1.0f64;
@@ -224,10 +223,7 @@ pub fn rel_err<S: Scalar>(x: &T<S>, y: &T<S>) -> f64 {
             x.get(i),
             Element::mul(
                 y.get(i),
-                <S as Element>::from_parts(
-                    Real::from_f64(-1.0),
-                    Real::from_f64(0.0),
-                ),
+                <S as Element>::from_parts(Real::from_f64(-1.0), Real::from_f64(0.0)),
             ),
         )))
     });
@@ -238,3 +234,4 @@ pub fn rel_err<S: Scalar>(x: &T<S>, y: &T<S>) -> f64 {
 pub fn out_dims(cfg: &DotGeneral, a: &[usize], b: &[usize]) -> Vec<usize> {
     cfg.validate(a, b).unwrap().out_dims
 }
+pub mod plans;

@@ -1,31 +1,29 @@
 //! The neutral contraction interface, exercised through trait objects with two
 //! independent implementations: the tprims backend and the test-only naive one.
 
-use std::sync::atomic::{AtomicUsize, Ordering};
-
 use num_complex::{Complex32, Complex64};
-use tensorcontract::Element;
-use tprims_blas::Scalar;
-use tprims_contract::{ExecHost, Strategy, TprimsBackend};
-use tprims_contract_testkit::{Field, NaiveBackend};
-use tprims_contract_traits::{
-    Conj, ContractionBackend, DotGeneral, Error, HostError, HostExecution, Layout, Par,
-    PlanningBudget, Problem, Requirements,
+use tprims_contract::api::{
+    AccumulationSource, AliasError, BoxedPlan, ContractionBackend, DotGeneral, Error, LayoutError,
+    LayoutSpec, Op, OperandSpec, PlanningBudget, Problem, Requirements, Scalar, ShapeError,
 };
+use tprims_contract::{Partition, PlanConfig, TprimsBackend};
 use tprims_exec::{Exec, Pool};
+use tprims_kernel::{Element, KernelChoice, Real, SelectError};
+use tprims_testkit::NaiveBackend;
 
 mod common;
 use common::*;
 
-fn conj_pair(ca: tprims_blas::Conj, cb: tprims_blas::Conj) -> (Conj, Conj) {
-    let f = |c| {
-        if c == tprims_blas::Conj::Yes {
-            Conj::Yes
-        } else {
-            Conj::No
-        }
-    };
-    (f(ca), f(cb))
+fn op(c: bool) -> Op {
+    if c {
+        Op::Conjugate
+    } else {
+        Op::Identity
+    }
+}
+
+fn spec<S>(t: &T<S>, o: Op) -> OperandSpec {
+    OperandSpec::new(LayoutSpec::new(&t.dims, &t.strides, 0).unwrap()).with_op(o)
 }
 
 fn problem<S: Scalar>(
@@ -33,35 +31,34 @@ fn problem<S: Scalar>(
     a: &T<S>,
     b: &T<S>,
     c: &T<S>,
-    conj: (Conj, Conj),
+    conj: (bool, bool),
 ) -> Problem {
-    Problem::new(
-        cfg.clone(),
-        Layout::new(&a.dims, &a.strides),
-        Layout::new(&b.dims, &b.strides),
-        Layout::new(&c.dims, &c.strides),
-        conj,
+    Problem::from_dot_general(
+        S::STORAGE,
+        spec(a, op(conj.0)),
+        spec(b, op(conj.1)),
+        spec(c, Op::Identity),
+        cfg,
     )
+    .unwrap()
 }
 
-fn backends<S: Scalar + Field>() -> Vec<Box<dyn ContractionBackend<S>>> {
-    let t = |strategy| TprimsBackend {
-        strategy,
-        ..TprimsBackend::default()
-    };
+/// The planner's own choice, the packed driver forced, and the naive loop nest.
+fn backends<S: Scalar>() -> Vec<Box<dyn ContractionBackend<S>>> {
+    let mut packed = PlanConfig::default();
+    packed.partition = Some(Partition::StaticGrid {
+        pin: None,
+        align_c_lines: false,
+    });
     vec![
-        Box::new(t(Strategy::Auto)),
-        Box::new(t(Strategy::PermuteGemm)),
-        Box::new(t(Strategy::Tblis)),
+        Box::new(TprimsBackend::default()),
+        Box::new(TprimsBackend { config: packed }),
         Box::new(NaiveBackend),
     ]
 }
 
 fn scalar<S: Scalar>(re: f64, im: f64) -> S {
-    <S as Element>::from_parts(
-        tensorcontract::Real::from_f64(re),
-        tensorcontract::Real::from_f64(im),
-    )
+    <S as Element>::from_parts(Real::from_f64(re), Real::from_f64(im))
 }
 
 struct Case {
@@ -143,16 +140,12 @@ fn layouts<S: Scalar>(t: &T<S>) -> Vec<T<S>> {
     vec![t.clone(), t.restride(&rev), t.reversed()]
 }
 
-fn check_all<S: Scalar + Field>(tol: f64) {
+fn check_all<S: Scalar>(tol: f64) {
     let scalars = [
         (scalar::<S>(1.0, 0.0), scalar::<S>(0.0, 0.0)),
         (scalar::<S>(0.5, 0.25), scalar::<S>(-0.75, 0.5)),
     ];
-    let conjs = [
-        (tprims_blas::Conj::No, tprims_blas::Conj::No),
-        (tprims_blas::Conj::Yes, tprims_blas::Conj::No),
-        (tprims_blas::Conj::Yes, tprims_blas::Conj::Yes),
-    ];
+    let conjs = [(false, false), (true, false), (true, true)];
     for case in corpus() {
         let out = out_dims(&case.cfg, &case.a, &case.b);
         let a0 = T::<S>::new(&case.a, 1);
@@ -163,19 +156,19 @@ fn check_all<S: Scalar + Field>(tol: f64) {
             for &(alpha, beta) in &scalars {
                 for &(ca, cb) in &conjs {
                     let want = reference(&case.cfg, alpha, &la, ca, &lb, cb, beta, &lc);
-                    let p = problem(&case.cfg, &la, &lb, &lc, conj_pair(ca, cb));
+                    let p = problem(&case.cfg, &la, &lb, &lc, (ca, cb));
                     for be in backends::<S>() {
                         let plan = be
                             .prepare(&p, &Requirements::new(), &PlanningBudget::serial())
                             .unwrap_or_else(|e| panic!("{} {}: {e}", case.name, be.id()));
                         let mut got = lc.clone();
-                        let host = ExecHost::new(&Exec::serial());
                         plan.execute_into_accum(
-                            &host,
+                            &Exec::serial(),
                             alpha,
                             &la.view(),
                             &lb.view(),
                             beta,
+                            AccumulationSource::Output,
                             &mut got.view_mut(),
                         )
                         .unwrap();
@@ -189,19 +182,19 @@ fn check_all<S: Scalar + Field>(tol: f64) {
 }
 
 #[test]
-fn both_backends_match_the_reference_f64() {
+fn all_backends_match_the_reference_f64() {
     check_all::<f64>(1e-12);
 }
 #[test]
-fn both_backends_match_the_reference_f32() {
+fn all_backends_match_the_reference_f32() {
     check_all::<f32>(2e-5);
 }
 #[test]
-fn both_backends_match_the_reference_c64() {
+fn all_backends_match_the_reference_c64() {
     check_all::<Complex64>(1e-12);
 }
 #[test]
-fn both_backends_match_the_reference_c32() {
+fn all_backends_match_the_reference_c32() {
     check_all::<Complex32>(2e-5);
 }
 
@@ -214,10 +207,30 @@ fn matmul_problem(m: usize, k: usize, n: usize) -> (DotGeneral, T<f64>, T<f64>, 
     )
 }
 
+fn accum(
+    plan: &BoxedPlan<f64>,
+    exec: &Exec<'_>,
+    alpha: f64,
+    a: &T<f64>,
+    b: &T<f64>,
+    beta: f64,
+    out: &mut T<f64>,
+) -> Result<(), Error> {
+    plan.execute_into_accum(
+        exec,
+        alpha,
+        &a.view(),
+        &b.view(),
+        beta,
+        AccumulationSource::Output,
+        &mut out.view_mut(),
+    )
+}
+
 #[test]
 fn beta_zero_reads_no_output_and_zero_alpha_or_empty_k_reads_no_inputs() {
     let (cfg, a, b, c) = matmul_problem(4, 3, 5);
-    let p = problem(&cfg, &a, &b, &c, (Conj::No, Conj::No));
+    let p = problem(&cfg, &a, &b, &c, (false, false));
     let nan = |t: &T<f64>| T {
         data: vec![f64::NAN; t.data.len()],
         ..t.clone()
@@ -226,102 +239,78 @@ fn beta_zero_reads_no_output_and_zero_alpha_or_empty_k_reads_no_inputs() {
         let plan = be
             .prepare(&p, &Requirements::new(), &PlanningBudget::serial())
             .unwrap();
-        let host = ExecHost::new(&Exec::serial());
+        let exec = Exec::serial();
         // beta == 0: previous C values (NaN) must not leak.
         let mut out = nan(&c);
-        plan.execute_into_accum(&host, 1.0, &a.view(), &b.view(), 0.0, &mut out.view_mut())
-            .unwrap();
-        let want = reference(
-            &cfg,
-            1.0,
-            &a,
-            tprims_blas::Conj::No,
-            &b,
-            tprims_blas::Conj::No,
-            0.0,
-            &c,
-        );
+        accum(&plan, &exec, 1.0, &a, &b, 0.0, &mut out).unwrap();
+        let want = reference(&cfg, 1.0, &a, false, &b, false, 0.0, &c);
         assert!(rel_err(&out, &want) < 1e-12, "{}", be.id());
+        // The overwrite form reads no previous output either.
+        let mut out = nan(&c);
+        plan.execute_into(&exec, 1.0, &a.view(), &b.view(), &mut out.view_mut())
+            .unwrap();
+        assert!(rel_err(&out, &want) < 1e-12, "{} overwrite", be.id());
         // alpha == 0: A and B (NaN) must not be read.
         let mut out = c.clone();
-        plan.execute_into_accum(
-            &host,
-            0.0,
-            &nan(&a).view(),
-            &nan(&b).view(),
-            2.0,
-            &mut out.view_mut(),
-        )
-        .unwrap();
+        accum(&plan, &exec, 0.0, &nan(&a), &nan(&b), 2.0, &mut out).unwrap();
         for_each_index(&c.dims, |i| {
             assert_eq!(out.get(i), 2.0 * c.get(i), "{}", be.id())
         });
     }
     // Empty contraction: C = beta * C, inputs untouched.
     let (cfg, a, b, c) = matmul_problem(3, 0, 2);
-    let p = problem(&cfg, &a, &b, &c, (Conj::No, Conj::No));
+    let p = problem(&cfg, &a, &b, &c, (false, false));
     for be in backends::<f64>() {
         let plan = be
             .prepare(&p, &Requirements::new(), &PlanningBudget::serial())
             .unwrap();
         let mut out = c.clone();
-        plan.execute_into_accum(
-            &ExecHost::new(&Exec::serial()),
-            1.0,
-            &a.view(),
-            &b.view(),
-            3.0,
-            &mut out.view_mut(),
-        )
-        .unwrap();
+        accum(&plan, &Exec::serial(), 1.0, &a, &b, 3.0, &mut out).unwrap();
         for_each_index(&c.dims, |i| {
             assert_eq!(out.get(i), 3.0 * c.get(i), "{}", be.id())
         });
     }
 }
 
+/// Validation happens when the problem is described, once, before any backend
+/// or any no-op shortcut sees it.
 #[test]
 fn invalid_metadata_is_rejected_before_the_no_op_shortcuts() {
-    // Empty contraction plus an aliased output: prepare must fail, not shortcut.
+    // Empty contraction plus an aliased output: refused, not shortcut.
     let cfg = DotGeneral::new(&[1], &[0], &[], &[]);
-    let p = Problem::new(
-        cfg.clone(),
-        Layout::new(&[3, 0], &[1, 3]),
-        Layout::new(&[0, 2], &[1, 1]),
-        Layout::new(&[3, 2], &[1, 1]),
-        (Conj::No, Conj::No),
+    let s = |d: &[usize], st: &[isize]| OperandSpec::new(LayoutSpec::new(d, st, 0).unwrap());
+    let e = Problem::from_dot_general(
+        tprims_contract::api::DType::F64,
+        s(&[3, 0], &[1, 3]),
+        s(&[0, 2], &[1, 1]),
+        s(&[3, 2], &[1, 1]),
+        &cfg,
+    )
+    .unwrap_err();
+    assert!(
+        matches!(e, Error::Alias(AliasError::OutputNotInjective)),
+        "{e:?}"
     );
-    for be in backends::<f64>() {
-        let e = be
-            .prepare(&p, &Requirements::new(), &PlanningBudget::serial())
-            .err();
-        assert!(
-            matches!(e, Some(Error::AliasedOutput)),
-            "{}: {e:?}",
-            be.id()
-        );
-    }
     // Empty output with mismatching extents of B.
-    let p = Problem::new(
-        cfg,
-        Layout::new(&[0, 3], &[1, 1]),
-        Layout::new(&[4, 2], &[1, 4]),
-        Layout::new(&[0, 2], &[1, 1]),
-        (Conj::No, Conj::No),
+    let e = Problem::from_dot_general(
+        tprims_contract::api::DType::F64,
+        s(&[0, 3], &[1, 1]),
+        s(&[4, 2], &[1, 4]),
+        s(&[0, 2], &[1, 1]),
+        &cfg,
+    )
+    .unwrap_err();
+    assert!(
+        matches!(e, Error::Shape(ShapeError::PairedExtent { .. })),
+        "{e:?}"
     );
-    for be in backends::<f64>() {
-        let e = be
-            .prepare(&p, &Requirements::new(), &PlanningBudget::serial())
-            .err();
-        assert!(matches!(e, Some(Error::Shape(_))), "{}: {e:?}", be.id());
-    }
 }
 
 #[test]
 fn plans_outlive_problem_and_backend_and_reject_other_layouts_before_writing() {
     let (cfg, a, b, c) = matmul_problem(4, 3, 5);
     let plans: Vec<_> = {
-        let p = problem(&cfg, &a, &b, &c, (Conj::No, Conj::No));
+        let p = problem(&cfg, &a, &b, &c, (false, false));
         let bes = backends::<f64>();
         bes.iter()
             .map(|be| {
@@ -331,25 +320,14 @@ fn plans_outlive_problem_and_backend_and_reject_other_layouts_before_writing() {
             .collect()
         // problem and backends dropped here
     };
-    let host = ExecHost::new(&Exec::serial());
     for plan in &plans {
         // Different buffers with the planned layouts, run repeatedly.
         for seed in [1u64, 2, 3] {
             let a2 = T::<f64>::new(&a.dims, seed);
             let b2 = T::<f64>::new(&b.dims, seed + 10);
             let mut out = c.clone();
-            plan.execute_into_accum(&host, 1.0, &a2.view(), &b2.view(), 0.5, &mut out.view_mut())
-                .unwrap();
-            let want = reference(
-                &cfg,
-                1.0,
-                &a2,
-                tprims_blas::Conj::No,
-                &b2,
-                tprims_blas::Conj::No,
-                0.5,
-                &c,
-            );
+            accum(plan, &Exec::serial(), 1.0, &a2, &b2, 0.5, &mut out).unwrap();
+            let want = reference(&cfg, 1.0, &a2, false, &b2, false, 0.5, &c);
             assert!(
                 rel_err(&out, &want) < 1e-12,
                 "{}",
@@ -359,56 +337,40 @@ fn plans_outlive_problem_and_backend_and_reject_other_layouts_before_writing() {
         // A transposed C layout is another problem: rejected, C untouched.
         let wrong = c.restride(&[1, 0]);
         let mut out = wrong.clone();
-        let e = plan
-            .execute_into_accum(&host, 1.0, &a.view(), &b.view(), 0.0, &mut out.view_mut())
-            .unwrap_err();
-        assert!(matches!(e, Error::LayoutMismatch(_)), "{e}");
+        let e = accum(plan, &Exec::serial(), 1.0, &a, &b, 0.0, &mut out).unwrap_err();
+        assert!(
+            matches!(e, Error::Layout(LayoutError::Mismatch { .. })),
+            "{e}"
+        );
         assert_eq!(out.data, wrong.data);
+        // An accumulation source that does not match the planned C mode.
+        let mut out = c.clone();
+        let e = plan
+            .execute_into_accum(
+                &Exec::serial(),
+                1.0,
+                &a.view(),
+                &b.view(),
+                0.5,
+                AccumulationSource::Separate(&c.view()),
+                &mut out.view_mut(),
+            )
+            .unwrap_err();
+        assert!(matches!(e, Error::Layout(LayoutError::CMode)), "{e}");
     }
 }
 
+/// No strategy copies a whole operand, so the shared flag is always met, and
+/// every backend reports that it materializes nothing.
 #[test]
-fn materialization_is_reported_and_refused_under_the_shared_flag() {
+fn materialization_is_reported_and_the_shared_flag_is_met() {
     // Contracted axes in different orders on A and B cannot both fuse.
     let cfg = DotGeneral::new(&[1, 2], &[2, 0], &[], &[]);
     let a = T::<f64>::new(&[3, 4, 5], 1);
     let b = T::<f64>::new(&[5, 6, 4], 2);
     let c = T::<f64>::new(&[3, 6], 3);
-    let p = problem(&cfg, &a, &b, &c, (Conj::No, Conj::No));
-    let pg = TprimsBackend {
-        strategy: Strategy::PermuteGemm,
-        ..TprimsBackend::default()
-    };
-    let plan = ContractionBackend::<f64>::prepare(
-        &pg,
-        &p,
-        &Requirements::new(),
-        &PlanningBudget::serial(),
-    )
-    .unwrap();
-    assert!(
-        plan.diagnostics().materialized.iter().any(|&m| m),
-        "{:?}",
-        plan.diagnostics()
-    );
-    assert_eq!(plan.diagnostics().algorithm, "permute-gemm");
-    let e = ContractionBackend::<f64>::prepare(
-        &pg,
-        &p,
-        &Requirements::new().no_materialize(true),
-        &PlanningBudget::serial(),
-    )
-    .err()
-    .unwrap();
-    assert!(
-        matches!(e, Error::WouldMaterialize { .. }) && e.is_unsupported(),
-        "{e}"
-    );
-    // The other implementations never copy for this problem.
-    for be in [
-        Box::new(NaiveBackend) as Box<dyn ContractionBackend<f64>>,
-        Box::new(TprimsBackend::default()),
-    ] {
+    let p = problem(&cfg, &a, &b, &c, (false, false));
+    for be in backends::<f64>() {
         let plan = be
             .prepare(
                 &p,
@@ -418,18 +380,25 @@ fn materialization_is_reported_and_refused_under_the_shared_flag() {
             .unwrap();
         assert_eq!(plan.diagnostics().materialized, [false; 3], "{}", be.id());
     }
+    let plan = ContractionBackend::<f64>::prepare(
+        &TprimsBackend::default(),
+        &p,
+        &Requirements::new(),
+        &PlanningBudget::serial(),
+    )
+    .unwrap();
+    assert_eq!(plan.diagnostics().algorithm, "packed");
+    assert_eq!(plan.diagnostics().backend, "tprims-contract");
 }
 
 #[test]
-fn a_forced_unsupported_requirement_fails_at_preparation_without_output() {
-    // permute+GEMM computes with faer: asking it for a named kernel is unsupported.
+fn a_forced_unusable_kernel_fails_at_preparation_without_output() {
     let (cfg, a, b, c) = matmul_problem(4, 3, 5);
-    let p = problem(&cfg, &a, &b, &c, (Conj::No, Conj::No));
+    let p = problem(&cfg, &a, &b, &c, (false, false));
     let be = TprimsBackend {
-        strategy: Strategy::PermuteGemm,
-        gemm: tprims_blas::GemmConfig {
-            kernel: tprims_blas::KernelChoice::Id("not.a.kernel".into()),
-            ..Default::default()
+        config: PlanConfig {
+            kernel: KernelChoice::Id("not.a.kernel".into()),
+            ..PlanConfig::default()
         },
     };
     let e = ContractionBackend::<f64>::prepare(
@@ -440,111 +409,58 @@ fn a_forced_unsupported_requirement_fails_at_preparation_without_output() {
     )
     .err()
     .unwrap();
-    assert!(e.is_unsupported(), "{e}");
-}
-
-/// A host that is not an `ExecHost`: scoped threads, no pool.
-struct ThreadsHost {
-    width: usize,
-    calls: AtomicUsize,
-}
-
-impl HostExecution for ThreadsHost {
-    fn budget(&self) -> usize {
-        self.width
-    }
-    fn install(&self, _k: usize, op: &mut (dyn FnMut(Par) + Send)) {
-        op(Par::Seq)
-    }
-    fn for_each_partition(&self, k: usize, f: &(dyn Fn(usize) + Sync)) {
-        self.calls.fetch_add(1, Ordering::Relaxed);
-        std::thread::scope(|s| {
-            for i in 0..k {
-                s.spawn(move || f(i));
-            }
-        });
-    }
-    fn broadcast(&self, _w: usize, _f: &(dyn Fn(usize) + Sync)) -> Result<(), HostError> {
-        Err(HostError::Unavailable)
-    }
-}
-
-#[test]
-fn a_foreign_host_serves_the_naive_backend_and_is_refused_explicitly_by_tprims() {
-    let (cfg, a, b, c) = matmul_problem(8, 5, 7);
-    let p = problem(&cfg, &a, &b, &c, (Conj::No, Conj::No));
-    let want = reference(
-        &cfg,
-        1.0,
-        &a,
-        tprims_blas::Conj::No,
-        &b,
-        tprims_blas::Conj::No,
-        0.0,
-        &c,
-    );
-    let wide = ThreadsHost {
-        width: 4,
-        calls: AtomicUsize::new(0),
-    };
-
-    let naive = ContractionBackend::<f64>::prepare(
-        &NaiveBackend,
-        &p,
-        &Requirements::new(),
-        &PlanningBudget::new(4),
-    )
-    .unwrap();
-    let mut out = c.clone();
-    naive
-        .execute_into_accum(&wide, 1.0, &a.view(), &b.view(), 0.0, &mut out.view_mut())
-        .unwrap();
-    assert!(rel_err(&out, &want) < 1e-12);
-    assert!(wide.calls.load(Ordering::Relaxed) >= 1);
-
-    // tprims needs an ExecHost for width > 1: explicit failure, C untouched.
-    let tp = ContractionBackend::<f64>::prepare(
-        &TprimsBackend::default(),
-        &p,
-        &Requirements::new(),
-        &PlanningBudget::new(4),
-    )
-    .unwrap();
-    let mut out = c.clone();
-    let e = tp
-        .execute_into_accum(&wide, 1.0, &a.view(), &b.view(), 0.0, &mut out.view_mut())
-        .unwrap_err();
     assert!(
-        matches!(e, Error::Host(HostError::MissingCapability(_))) && e.is_unsupported(),
+        matches!(e, Error::Select(SelectError::UnknownId { .. })),
         "{e}"
     );
-    assert_eq!(out.data, c.data);
-
-    // A foreign host of width one is served on the calling thread.
-    let one = ThreadsHost {
-        width: 1,
-        calls: AtomicUsize::new(0),
-    };
-    let mut out = c.clone();
-    tp.execute_into_accum(&one, 1.0, &a.view(), &b.view(), 0.0, &mut out.view_mut())
-        .unwrap();
-    assert!(rel_err(&out, &want) < 1e-12);
+    // The factory is not mutated by a requirement: no_materialize ORs in per call.
+    assert!(!be.config.no_materialize);
+    let _ = ContractionBackend::<f64>::prepare(
+        &TprimsBackend::default(),
+        &p,
+        &Requirements::new().no_materialize(true),
+        &PlanningBudget::serial(),
+    )
+    .unwrap();
 }
 
 #[test]
-fn one_thread_host_enters_no_pool_and_a_four_thread_host_stays_in_budget() {
+fn a_plan_for_another_dtype_is_a_configuration_error() {
+    let (cfg, a, b, c) = matmul_problem(4, 3, 5);
+    let p = problem(&cfg, &a, &b, &c, (false, false));
+    for e in [
+        ContractionBackend::<f32>::prepare(
+            &TprimsBackend::default(),
+            &p,
+            &Requirements::new(),
+            &PlanningBudget::serial(),
+        )
+        .err()
+        .unwrap(),
+        ContractionBackend::<f32>::prepare(
+            &NaiveBackend,
+            &p,
+            &Requirements::new(),
+            &PlanningBudget::serial(),
+        )
+        .err()
+        .unwrap(),
+    ] {
+        assert!(
+            matches!(
+                e,
+                Error::Config(tprims_contract::api::ConfigError::DtypeMismatch { .. })
+            ),
+            "{e}"
+        );
+    }
+}
+
+#[test]
+fn one_thread_exec_enters_no_pool_and_a_four_thread_exec_stays_in_budget() {
     let (cfg, a, b, c) = matmul_problem(96, 80, 72);
-    let p = problem(&cfg, &a, &b, &c, (Conj::No, Conj::No));
-    let want = reference(
-        &cfg,
-        1.0,
-        &a,
-        tprims_blas::Conj::No,
-        &b,
-        tprims_blas::Conj::No,
-        0.5,
-        &c,
-    );
+    let p = problem(&cfg, &a, &b, &c, (false, false));
+    let want = reference(&cfg, 1.0, &a, false, &b, false, 0.5, &c);
     let tp = rayon::ThreadPoolBuilder::new()
         .num_threads(4)
         .build()
@@ -556,10 +472,9 @@ fn one_thread_host_enters_no_pool_and_a_four_thread_host_stays_in_budget() {
             .unwrap();
         // 1T on a pool-backed context: no entry, no broadcast.
         let before = pool.stats();
-        let host = ExecHost::new(&Exec::rayon(&pool).with_budget(1).unwrap());
+        let exec = Exec::rayon(&pool).with_budget(1).unwrap();
         let mut out = c.clone();
-        plan.execute_into_accum(&host, 1.0, &a.view(), &b.view(), 0.5, &mut out.view_mut())
-            .unwrap();
+        accum(&plan, &exec, 1.0, &a, &b, 0.5, &mut out).unwrap();
         assert!(rel_err(&out, &want) < 1e-12, "{}", be.id());
         let after = pool.stats();
         assert_eq!(
@@ -569,18 +484,14 @@ fn one_thread_host_enters_no_pool_and_a_four_thread_host_stays_in_budget() {
             be.id()
         );
         // The same plan at 4T.
-        let host = ExecHost::new(&Exec::rayon(&pool));
-        assert_eq!(host.budget(), 4);
+        let exec = Exec::rayon(&pool);
+        assert_eq!(exec.budget(), 4);
         let mut out = c.clone();
-        plan.execute_into_accum(&host, 1.0, &a.view(), &b.view(), 0.5, &mut out.view_mut())
-            .unwrap();
+        accum(&plan, &exec, 1.0, &a, &b, 0.5, &mut out).unwrap();
         assert!(rel_err(&out, &want) < 1e-12, "{}", be.id());
         // Nested entry from inside the pool completes (no deadlock) and agrees.
         let mut out = c.clone();
-        tp.install(|| {
-            plan.execute_into_accum(&host, 1.0, &a.view(), &b.view(), 0.5, &mut out.view_mut())
-                .unwrap()
-        });
+        tp.install(|| accum(&plan, &exec, 1.0, &a, &b, 0.5, &mut out).unwrap());
         assert!(rel_err(&out, &want) < 1e-12, "{} nested", be.id());
     }
 }
@@ -588,17 +499,8 @@ fn one_thread_host_enters_no_pool_and_a_four_thread_host_stays_in_budget() {
 #[test]
 fn a_shared_plan_runs_concurrently_on_independent_outputs() {
     let (cfg, a, b, c) = matmul_problem(64, 48, 40);
-    let p = problem(&cfg, &a, &b, &c, (Conj::No, Conj::No));
-    let want = reference(
-        &cfg,
-        1.0,
-        &a,
-        tprims_blas::Conj::No,
-        &b,
-        tprims_blas::Conj::No,
-        0.0,
-        &c,
-    );
+    let p = problem(&cfg, &a, &b, &c, (false, false));
+    let want = reference(&cfg, 1.0, &a, false, &b, false, 0.0, &c);
     let tp = rayon::ThreadPoolBuilder::new()
         .num_threads(4)
         .build()
@@ -618,18 +520,9 @@ fn a_shared_plan_runs_concurrently_on_independent_outputs() {
                     } else {
                         Exec::serial()
                     };
-                    let host = ExecHost::new(&exec);
                     for _ in 0..3 {
                         let mut out = c.clone();
-                        plan.execute_into_accum(
-                            &host,
-                            1.0,
-                            &a.view(),
-                            &b.view(),
-                            0.0,
-                            &mut out.view_mut(),
-                        )
-                        .unwrap();
+                        accum(plan, &exec, 1.0, a, b, 0.0, &mut out).unwrap();
                         assert!(rel_err(&out, want) < 1e-12);
                     }
                 });

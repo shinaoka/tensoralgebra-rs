@@ -1,7 +1,12 @@
 //! One pool is one workspace owner: every operation on it shares the storage,
 //! and no other pool can see it.
-use tensorcontract::{Layout, Operand, Plan};
+use strided_view::{StridedView, StridedViewMut};
+use tprims_contract::{Plan, PlanConfig};
 use tprims_exec::{Exec, Pool};
+use tprims_kernel::KernelChoice;
+
+mod common;
+use common::plans::matmul_problem;
 
 const M: usize = 192;
 const N: usize = 160;
@@ -12,40 +17,20 @@ fn run(exec: &Exec<'_>, width: usize) {
     let exec = exec.with_budget(width).unwrap();
     let av: Vec<f64> = (0..M * K).map(|x| (x % 11) as f64 - 5.0).collect();
     let bv: Vec<f64> = (0..K * N).map(|x| (x % 7) as f64 * 0.5).collect();
-    let la = Layout::col_major(&[M as i64, K as i64]);
-    let lb = Layout::col_major(&[K as i64, N as i64]);
-    let ld = Layout::col_major(&[M as i64, N as i64]);
-    let (ia, ib, id) = ([0i64, 2], [2i64, 1], [0i64, 1]);
-    let plan = Plan::new(
-        Operand::new(&la, &ia),
-        Operand::new(&lb, &ib),
-        None,
-        Operand::new(&ld, &id),
-    )
-    .unwrap()
-    .with_kernel(tensorcontract::KernelChoice::Id(
-        "ref.f64.real-scalar.4x4".into(),
-    ))
-    .unwrap()
-    .with_threads(width);
-    let rg = plan.resolved::<f64>().unwrap();
-    let mut out = vec![0.0; M * N];
-    // SAFETY: the buffers are sized by their layouts and `beta` is zero, so `C`
-    // is never read.
-    unsafe {
-        tensorcontract::execute_resolved(
-            &plan,
-            &rg,
-            &exec,
-            None,
-            1.0,
-            av.as_ptr(),
-            bv.as_ptr(),
-            0.0,
-            std::ptr::null(),
-            out.as_mut_ptr(),
-        )
+    let config = PlanConfig {
+        kernel: KernelChoice::Id("ref.f64.real-scalar.4x4".into()),
+        ..PlanConfig::default()
     };
+    let plan = Plan::<f64>::new(&matmul_problem(M, N, K), &config).unwrap();
+    let mut out = vec![0.0; M * N];
+    plan.execute_into(
+        &exec,
+        1.0,
+        &StridedView::new(&av, &[M, K], &[1, M as isize], 0).unwrap(),
+        &StridedView::new(&bv, &[K, N], &[1, K as isize], 0).unwrap(),
+        &mut StridedViewMut::new(&mut out, &[M, N], &[1, M as isize], 0).unwrap(),
+    )
+    .unwrap();
 }
 
 #[test]

@@ -31,7 +31,12 @@ pub fn seeded<T: Element>(seed: u64, len: usize) -> Vec<T> {
 /// point and an equality check needs no tolerance.
 pub fn small_ints<T: Element>(seed: usize, len: usize) -> Vec<T> {
     (0..len)
-        .map(|x| T::from_parts(T::Real::from_f64(((x * 5 + seed * 3) % 13) as f64 - 6.0), T::Real::ZERO))
+        .map(|x| {
+            T::from_parts(
+                T::Real::from_f64(((x * 5 + seed * 3) % 13) as f64 - 6.0),
+                T::Real::ZERO,
+            )
+        })
         .collect()
 }
 

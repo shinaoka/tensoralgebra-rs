@@ -4,7 +4,7 @@
 use super::common::{all_families, check_family_vs_oracle, Opts};
 use super::compat::{Layout, Operand, Plan};
 use crate::api::Scalar;
-use tprims_kernel::{Element, KernelChoice, SelectError};
+use tprims_kernel::{KernelChoice, SelectError};
 
 fn run_family<T>(id: &'static str)
 where

@@ -250,8 +250,7 @@ unsafe impl<T: Send> Sync for Shared<T> {}
 /// Everything one thread of the loop nest needs that does not vary with its
 /// row strip. Exists so that the nest can be written once and run either
 /// serially or on `p` threads, rather than duplicated.
-struct Ctx<'a, T: Element>
-{
+struct Ctx<'a, T: Element> {
     plan: &'a PackedPlan,
     fam: DriverFamily<T::Real>,
     packers: (tprims_kernel::PackFn<T>, tprims_kernel::PackFn<T>),

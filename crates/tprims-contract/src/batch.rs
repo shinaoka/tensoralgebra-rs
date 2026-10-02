@@ -166,5 +166,8 @@ pub fn contract_batched<T: Scalar>(items: &mut [BatchItem<'_, T>], exec: &Exec<'
 fn run_item<T: Scalar>(it: &mut BatchItem<'_, T>, c: CRead<T>, exec: &Exec<'_>) -> Result<()> {
     // SAFETY: the views were validated for every item before any of them ran;
     // `d` is an exclusive borrow, so it cannot alias `a`, `b` or a separate C.
-    unsafe { it.plan.run_validated(exec, it.alpha, &it.a, &it.b, it.beta, c, &mut it.d) }
+    unsafe {
+        it.plan
+            .run_validated(exec, it.alpha, &it.a, &it.b, it.beta, c, &mut it.d)
+    }
 }

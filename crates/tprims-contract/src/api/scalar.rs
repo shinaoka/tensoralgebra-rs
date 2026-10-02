@@ -127,4 +127,9 @@ macro_rules! faer_gemm {
         }
     )*};
 }
-faer_gemm!(f32, f64, num_complex::Complex<f32>, num_complex::Complex<f64>);
+faer_gemm!(
+    f32,
+    f64,
+    num_complex::Complex<f32>,
+    num_complex::Complex<f64>
+);

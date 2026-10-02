@@ -53,7 +53,6 @@
 //! claim on contiguity; `K` only affects the packing of `A` and `B`. This is a
 //! heuristic and a Phase 4 tuning knob.
 
-
 use tprims_kernel::scatter::{build_scatter, run_structure};
 
 use super::config::PlanConfig;
@@ -80,7 +79,6 @@ pub struct Axis {
     /// Stride in `D`.
     pub sd: i64,
 }
-
 
 /// Diagnostics about a plan, useful for benchmarking write-ups and for
 /// dispatch heuristics.
@@ -196,15 +194,8 @@ fn axis_of(r: &RoleAxis) -> Axis {
 
 /// The axes of one role: extent-1 axes dropped (their strides are
 /// unconstrained), the rest sorted by `key` and folded.
-fn role_axes(
-    role: &[RoleAxis],
-    key: impl Fn(&Axis) -> (u64, u64),
-) -> Vec<Axis> {
-    let mut axes: Vec<Axis> = role
-        .iter()
-        .map(axis_of)
-        .filter(|a| a.extent != 1)
-        .collect();
+fn role_axes(role: &[RoleAxis], key: impl Fn(&Axis) -> (u64, u64)) -> Vec<Axis> {
+    let mut axes: Vec<Axis> = role.iter().map(axis_of).filter(|a| a.extent != 1).collect();
     axes.sort_by_key(|x| key(x));
     fold_axes(axes)
 }
@@ -229,7 +220,10 @@ impl PackedPlan {
             let len = axes
                 .iter()
                 .try_fold(1usize, |acc, x| acc.checked_mul(x.extent as usize))
-                .filter(|&l| l.checked_mul(core::mem::size_of::<i64>()).is_some_and(|b| b <= isize::MAX as usize));
+                .filter(|&l| {
+                    l.checked_mul(core::mem::size_of::<i64>())
+                        .is_some_and(|b| b <= isize::MAX as usize)
+                });
             if len.is_none() {
                 return Err(ShapeError::Overflow {
                     what: "role extent product",

@@ -44,7 +44,13 @@ fn a_plan_resolves_and_reports_its_kernel() {
         ..PlanConfig::default()
     };
     assert_eq!(
-        plan_with(&forced).unwrap().report().packed.as_ref().unwrap().family_id,
+        plan_with(&forced)
+            .unwrap()
+            .report()
+            .packed
+            .as_ref()
+            .unwrap()
+            .family_id,
         "ref.f64.real.4x4"
     );
 
@@ -68,7 +74,8 @@ fn a_plan_that_does_not_use_the_packed_driver_reports_no_family() {
     let a = T::<f64>::new(&[5, 4], 1);
     let b = T::<f64>::new(&[4, 3], 2);
     let c = T::<f64>::new(&out_dims(&cfg, &a.dims, &b.dims), 3);
-    let problem = Problem::from_dot_general(DType::F64, spec(&a), spec(&b), spec(&c), &cfg).unwrap();
+    let problem =
+        Problem::from_dot_general(DType::F64, spec(&a), spec(&b), spec(&c), &cfg).unwrap();
     let plan = Plan::<f64>::new(&problem, &PlanConfig::default()).unwrap();
     assert_eq!(plan.report().algorithm, Algorithm::Faer);
     assert!(plan.report().packed.is_none());

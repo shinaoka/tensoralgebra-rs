@@ -33,7 +33,9 @@ const DEFAULT_METHOD: Method = Method::Native;
 /// The default family menu: the Lukas Devos kernel families of the preferred
 /// ISA and the requested complex scheme, default first. Its `(MR, NR)` shapes
 /// are what [`PackedPlan::row_block`] chooses among.
-fn default_menu<T: Families>(cfg: &PlanConfig) -> Vec<&'static tprims_kernel::KernelFamily<T::Real>> {
+fn default_menu<T: Families>(
+    cfg: &PlanConfig,
+) -> Vec<&'static tprims_kernel::KernelFamily<T::Real>> {
     let method = cfg.method.unwrap_or(DEFAULT_METHOD);
     let isa = legacy_isa(cfg.isa);
     Registry::families::<T>(CpuFeatures::detect(), false)
@@ -156,7 +158,11 @@ fn check_family<T: Families>(
     rg: &ResolvedGemm<T::Real>,
 ) -> Result<(), SelectError> {
     let family = rg.family();
-    if T::IS_COMPLEX && cfg.method.is_some_and(|m| family.complex.is_none_or(|s| s.method != m)) {
+    if T::IS_COMPLEX
+        && cfg
+            .method
+            .is_some_and(|m| family.complex.is_none_or(|s| s.method != m))
+    {
         return Err(SelectError::Incompatible {
             id: family.id.into(),
             reason: "family implements a different complex method",

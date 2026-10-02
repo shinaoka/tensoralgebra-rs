@@ -13,10 +13,9 @@
 use core::ops::Deref;
 
 use tprims_exec::{Exec, WorkspaceProvider};
-use tprims_kernel::blocking::BlockModel;
 use tprims_kernel::{
-    Blocking, ComplexMethod, KernelChoice, KernelForce, Method, PartitionOpts, PartitionPolicy,
-    ResolvedGemm, SelectError, Tuning,
+    Blocking, ComplexMethod, KernelChoice, Method, PartitionOpts, PartitionPolicy, ResolvedGemm,
+    SelectError,
 };
 use tprims_testkit::oracle;
 
@@ -24,9 +23,7 @@ use crate::api::{
     CSpec, DType, Error, Labels, LayoutSpec, Op, OperandSpec, Problem, Result, Scalar,
 };
 use crate::driver::{self, ResolvedCall};
-use crate::plan::{
-    CacheModel, Orient, PackedPlan, Partition, PlanConfig, RowBlock, Writeback,
-};
+use crate::plan::{PackedPlan, Partition, PlanConfig};
 use crate::resolve;
 
 /// Extents and strides with the old `i64` vocabulary.
@@ -78,21 +75,6 @@ impl Layout {
             extents: extents.to_vec(),
             strides,
         }
-    }
-
-    /// The extents.
-    pub fn extents(&self) -> &[i64] {
-        &self.extents
-    }
-
-    /// The strides.
-    pub fn strides(&self) -> &[i64] {
-        &self.strides
-    }
-
-    /// Number of modes.
-    pub fn ndim(&self) -> usize {
-        self.extents.len()
     }
 
     /// The smallest allocation that backs this layout (non-negative strides,
@@ -216,7 +198,9 @@ impl Deref for Plan {
 
 impl core::fmt::Debug for Plan {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("Plan").field("stats", &self.packed.stats).finish()
+        f.debug_struct("Plan")
+            .field("stats", &self.packed.stats)
+            .finish()
     }
 }
 
@@ -239,12 +223,6 @@ impl Plan {
             ),
         };
         Problem::from_labels(dtype, a, b, c_spec, d, &labels)
-    }
-
-    fn rebuild(mut self) -> Self {
-        let problem = self.problem_for(DType::F64).expect("validated at construction");
-        self.packed = PackedPlan::from_problem(&problem, &self.cfg).expect("role products fit");
-        self
     }
 
     /// Analyse a contraction (validated as for `f64`; the analysis does not
@@ -334,50 +312,6 @@ impl Plan {
         self
     }
 
-    /// Kernel-layer tuning inputs.
-    #[must_use]
-    pub fn with_tuning(mut self, t: Tuning) -> Self {
-        self.cfg.isa = t.kernel_force;
-        self.cfg.blocking = t.blocking;
-        self.cfg.cache_model = CacheModel {
-            block_model: t.block_model,
-            ..self.cfg.cache_model
-        };
-        self.cfg.cache_model.kc_couple = t.kc_couple;
-        self.cfg.writeback = if t.writeback_gather {
-            Writeback::Gather
-        } else {
-            Writeback::Auto
-        };
-        self.rebuild()
-    }
-
-    /// The orientation request.
-    #[must_use]
-    pub fn with_orientation(mut self, o: Orient) -> Self {
-        self.cfg.orientation = o;
-        self.rebuild()
-    }
-
-    /// The row-block request.
-    #[must_use]
-    pub fn with_row_block(mut self, r: RowBlock) -> Self {
-        self.cfg.row_block = r;
-        self.rebuild()
-    }
-
-    /// A forced L3 domain count.
-    #[must_use]
-    pub fn with_l3_domains(mut self, n: usize) -> Self {
-        self.cfg.cache_model.l3_domains = Some(n);
-        self.rebuild()
-    }
-
-    /// The plan configuration.
-    pub fn config(&self) -> &PlanConfig {
-        &self.cfg
-    }
-
     /// The grid at the requested width.
     pub fn partition(&self, mr: usize, nr: usize) -> (usize, usize) {
         self.packed.partition_with(mr, nr, self.threads)
@@ -387,7 +321,9 @@ impl Plan {
     pub fn resolved<T: Scalar>(
         &self,
     ) -> core::result::Result<ResolvedGemm<<T as Scalar>::Re>, SelectError> {
-        let problem = self.problem_for(T::STORAGE).expect("validated at construction");
+        let problem = self
+            .problem_for(T::STORAGE)
+            .expect("validated at construction");
         let packed = PackedPlan::from_problem(&problem, &self.cfg).expect("role products fit");
         let mut rg = resolve::resolve::<T>(&packed, &self.cfg, None)?;
         if let Some(blk) = self.blocking {
@@ -520,14 +456,16 @@ pub fn contract_reference<T: tprims_kernel::Element>(
         labels: &bl,
         conj: bc,
     };
-    let rc = c.zip(cc.as_ref()).map(|(c, (d, s, l, cj))| oracle::RefOperand {
-        data: c.data,
-        dims: d,
-        strides: s,
-        offset: 0,
-        labels: l,
-        conj: *cj,
-    });
+    let rc = c
+        .zip(cc.as_ref())
+        .map(|(c, (d, s, l, cj))| oracle::RefOperand {
+            data: c.data,
+            dims: d,
+            strides: s,
+            offset: 0,
+            labels: l,
+            conj: *cj,
+        });
     let (dd, ds) = (d_layout.dims(), d_layout.strides_isize());
     oracle::contract_reference(
         alpha,
@@ -544,15 +482,6 @@ pub fn contract_reference<T: tprims_kernel::Element>(
             conj: op_d.is_conj(),
         },
     )
-}
-
-/// The baseline tuning.
-pub fn default_tuning() -> Tuning {
-    Tuning {
-        kernel_force: KernelForce::Auto,
-        block_model: BlockModel::Legacy,
-        ..Tuning::default()
-    }
 }
 
 impl Plan {
@@ -584,7 +513,18 @@ pub unsafe fn execute_resolved<T: Scalar>(
 ) {
     // SAFETY: forwarded.
     unsafe {
-        driver::execute_packed(&plan.packed_for::<T>(), rg, exec, workspace, alpha, a, b, beta, c, d)
+        driver::execute_packed(
+            &plan.packed_for::<T>(),
+            rg,
+            exec,
+            workspace,
+            alpha,
+            a,
+            b,
+            beta,
+            c,
+            d,
+        )
     }
 }
 

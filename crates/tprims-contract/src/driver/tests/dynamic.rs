@@ -6,7 +6,6 @@
 #![allow(clippy::too_many_arguments)]
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering::SeqCst};
 
-use tprims_kernel::{Element, Real};
 use super::compat::{contract_reference, RefOperand};
 use super::compat::{
     dynamic_report, execute_resolved, execute_resolved_instrumented, Layout, Operand, Plan,
@@ -17,6 +16,7 @@ use tprims_exec::{ArenaProvider, Exec, Pool, WorkspaceProvider};
 use tprims_kernel::{
     Blocking, KernelChoice, PartitionOpts, PartitionPolicy, SelectError, C32, C64,
 };
+use tprims_kernel::{Element, Real};
 
 /// A team of `width` workers on a pool of its own, and optionally a lent
 /// workspace. A refusing team runs the whole execution on one of its own

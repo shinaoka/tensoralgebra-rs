@@ -135,7 +135,10 @@ fn the_selected_plan_outlives_its_selector_and_catalog() {
         let (got, want) = run(&p, 1.0, 0.0);
         assert_eq!(got, want);
     }
-    assert_eq!(p.report().packed.as_ref().unwrap().family_id, "custom.f64.2x2");
+    assert_eq!(
+        p.report().packed.as_ref().unwrap().family_id,
+        "custom.f64.2x2"
+    );
     // The family was never registered process-wide: nothing could have looked
     // it up by id.
     assert!(matches!(
@@ -241,7 +244,12 @@ fn all_batch_and_zero_size_problems_still_select_or_refuse() {
     .unwrap();
     let foreign = other.get("custom.f64.2x2").unwrap();
     let zero = |h: KernelHandle<f64>| {
-        Plan::<f64>::new_with_selector(&zero_problem, &PlanConfig::default(), &cat, &mut move |_, _| Ok(h))
+        Plan::<f64>::new_with_selector(
+            &zero_problem,
+            &PlanConfig::default(),
+            &cat,
+            &mut move |_, _| Ok(h),
+        )
     };
     assert!(matches!(
         zero(foreign),

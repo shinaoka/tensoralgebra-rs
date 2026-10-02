@@ -1,10 +1,10 @@
 //! Direct-C and direct-B families: the plan-level guard, the per-tile fallback
 //! and the in-place column operand all have to agree with the oracle.
 use super::common::{check_family_vs_oracle, Opts};
-use tprims_kernel::Element;
-use super::compat::{ElementOp, Operand};
 use super::compat::{contract_reference, RefOperand};
+use super::compat::{ElementOp, Operand};
 use super::compat::{Layout, Plan};
+use tprims_kernel::Element;
 use tprims_kernel::{CpuFeatures, KernelChoice, Registry, SelectError, C64};
 
 const DIRECT: &str = "ref.f64.direct.4x4";
@@ -74,8 +74,7 @@ fn direct_family_scatter_output_falls_back_per_tile() {
     let rg = plan.resolved::<f64>().unwrap();
     // beta == 0, so the guard allows a direct write; only the column scatter
     // can send the tiles back through the scratch path.
-    let calls =
-        plan.decisions::<f64>(&rg, std::ptr::null(), got.as_mut_ptr(), 0.0);
+    let calls = plan.decisions::<f64>(&rg, std::ptr::null(), got.as_mut_ptr(), 0.0);
     assert!(calls.direct_c_allowed);
 
     // SAFETY: full buffers per their layouts, no C read with beta = 0, and `D`

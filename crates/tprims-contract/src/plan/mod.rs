@@ -49,15 +49,15 @@ use strided_view::{StridedView, StridedViewMut};
 use tprims_exec::{ArenaProvider, Exec, WidthPolicy, WorkspaceProvider};
 use tprims_kernel::{Element, KernelCatalog, ResolvedGemm, SelectError};
 
-pub use analysis::{Axis, PlanStats};
 pub(crate) use analysis::PackedPlan;
+pub use analysis::{Axis, PlanStats};
 pub use config::{CacheModel, Partition, PlanConfig, Writeback};
 pub use orientation::{Orient, RowBlock};
 pub use report::{Algorithm, PackedReport, PlanReport};
 
 use crate::api::{
-    AccumulationSource, AliasError, CSpec, ConfigError, Diagnostics, LayoutError,
-    OperandId, PreparedContraction, Problem, Result, Scalar,
+    AccumulationSource, AliasError, CSpec, ConfigError, Diagnostics, LayoutError, OperandId,
+    PreparedContraction, Problem, Result, Scalar,
 };
 use crate::driver;
 use crate::resolve;
@@ -223,9 +223,9 @@ impl<T: Scalar> Plan<T> {
     ) -> Result<Packed<T>> {
         let plan = PackedPlan::from_problem(problem, config)?;
         let handle = match selection {
-            Some((catalog, selector)) => {
-                Some(crate::select::choose::<T>(problem, &plan, config, catalog, selector)?)
-            }
+            Some((catalog, selector)) => Some(crate::select::choose::<T>(
+                problem, &plan, config, catalog, selector,
+            )?),
             None => None,
         };
         let rg = resolve::resolve::<T>(&plan, config, handle.as_ref())?;
@@ -504,11 +504,7 @@ impl<T: Scalar> Plan<T> {
         if p.k_empty() || alpha == zero {
             // D = op_D(beta * op_C(C)); A and B are not referenced. An
             // in-place identity update changes nothing.
-            if matches!(c, CRead::InPlace)
-                && beta == <T as Element>::one()
-                && !conj_c
-                && !conj_d
-            {
+            if matches!(c, CRead::InPlace) && beta == <T as Element>::one() && !conj_c && !conj_d {
                 return Ok(());
             }
             // SAFETY: the caller's contract.
@@ -521,8 +517,7 @@ impl<T: Scalar> Plan<T> {
                 // A borrowed pool lends its own arena; a serial context uses the
                 // plan's, which is why a serial plan's steady state allocates
                 // nothing either.
-                let workspace: &dyn WorkspaceProvider =
-                    exec.workspace().unwrap_or(&self.workspace);
+                let workspace: &dyn WorkspaceProvider = exec.workspace().unwrap_or(&self.workspace);
                 let cp = match c {
                     CRead::Separate(c) => c,
                     _ => d as *const T,

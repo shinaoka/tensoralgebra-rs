@@ -1,39 +1,30 @@
-//! tensorcontract's SPMD driver on a borrowed pool through `Exec::broadcast`.
+//! The packed SPMD driver on a borrowed pool through `Exec::broadcast`.
 
 use std::time::Duration;
 
-use tensorcontract::{Layout, Operand, Plan, TensorView, TensorViewMut};
+use strided_view::{StridedView, StridedViewMut};
 use tprims_exec::{Exec, Pool};
+
+mod common;
+use common::plans::packed_plan;
 
 const M: usize = 256;
 const N: usize = 240;
 const K: usize = 200;
 
-fn gemm(exec: Option<&Exec<'_>>) -> Vec<f64> {
+fn gemm(exec: &Exec<'_>) -> Vec<f64> {
     let av: Vec<f64> = (0..M * K).map(|x| (x % 13) as f64 - 6.0).collect();
     let bv: Vec<f64> = (0..K * N).map(|x| (x % 7) as f64 * 0.5).collect();
-    let la = Layout::col_major(&[M as i64, K as i64]);
-    let lb = Layout::col_major(&[K as i64, N as i64]);
-    let ld = Layout::col_major(&[M as i64, N as i64]);
-    let (ia, ib, id) = ([0i64, 2], [2i64, 1], [0i64, 1]);
-    let plan = Plan::new(
-        Operand::new(&la, &ia),
-        Operand::new(&lb, &ib),
-        None,
-        Operand::new(&ld, &id),
-    )
-    .unwrap()
-    .with_threads(1);
+    let plan = packed_plan(M, N, K);
     let mut out = vec![0.0; M * N];
-    let (a, b) = (
-        TensorView::new(&av, &la, &ia),
-        TensorView::new(&bv, &lb, &ib),
-    );
-    let d = TensorViewMut::new(&mut out, &ld, &id);
-    match exec {
-        Some(e) => plan.run_with(e, 1.0, a, b, 0.0, None, d).unwrap(),
-        None => plan.run(1.0, a, b, 0.0, None, d).unwrap(),
-    }
+    plan.execute_into(
+        exec,
+        1.0,
+        &StridedView::new(&av, &[M, K], &[1, M as isize], 0).unwrap(),
+        &StridedView::new(&bv, &[K, N], &[1, K as isize], 0).unwrap(),
+        &mut StridedViewMut::new(&mut out, &[M, N], &[1, M as isize], 0).unwrap(),
+    )
+    .unwrap();
     out
 }
 
@@ -45,8 +36,8 @@ fn contraction_runs_spmd_on_the_borrowed_pool() {
         .unwrap();
     let pool = Pool::borrow(&tp);
     let exec = Exec::rayon(&pool);
-    let serial = gemm(None);
-    let par = gemm(Some(&exec));
+    let serial = gemm(&Exec::serial());
+    let par = gemm(&exec);
     assert_eq!(par, serial);
     assert_eq!(pool.stats().broadcasts, 1);
 }
@@ -61,8 +52,8 @@ fn nested_contraction_on_a_worker_falls_back_serially() {
             .unwrap();
         let pool = Pool::borrow(&tp);
         let exec = Exec::rayon(&pool);
-        let serial = gemm(None);
-        let nested = exec.install(2, |_| gemm(Some(&exec)));
+        let serial = gemm(&Exec::serial());
+        let nested = exec.install(2, |_| gemm(&exec));
         assert_eq!(nested, serial);
         assert_eq!(pool.stats().broadcasts, 0);
         let _ = tx.send(());

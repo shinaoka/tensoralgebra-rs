@@ -99,10 +99,7 @@ pub fn contract_reference<T: Element>(
 ) -> Result<(), OracleError> {
     // Collect label extents, checking consistency.
     let mut labels: Vec<(i64, usize)> = Vec::new();
-    let mut add = |name: &'static str,
-                   ls: &[i64],
-                   dims: &[usize]|
-     -> Result<(), OracleError> {
+    let mut add = |name: &'static str, ls: &[i64], dims: &[usize]| -> Result<(), OracleError> {
         if ls.len() != dims.len() {
             return Err(OracleError::LabelCount {
                 operand: name,

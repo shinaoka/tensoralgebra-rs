@@ -16,13 +16,13 @@ use num_complex::Complex;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 
-use tprims_kernel::{Element, Real};
-use tprims_kernel::{Blocking, ComplexMethod};
-use super::compat::{ElementOp, Operand};
 use super::compat::{contract_reference, RefOperand};
+use super::compat::{ElementOp, Operand};
 use super::compat::{Layout, Plan};
 use crate::api::Scalar;
 use tprims_exec::{Exec, Pool};
+use tprims_kernel::{Blocking, ComplexMethod};
+use tprims_kernel::{Element, Real};
 
 /// One pool for every thread-count sweep, wide enough for the widest of them,
 /// so each run takes a budget of it instead of building threads.
@@ -1278,9 +1278,7 @@ fn conjugation_belongs_to_the_plan() {
     use crate::api::{CSpec, DType, Labels, LayoutSpec, Op, OperandSpec, Problem};
     use strided_view::{StridedView, StridedViewMut};
 
-    let spec = |op| {
-        OperandSpec::new(LayoutSpec::new(&[2, 2], &[1, 2], 0).unwrap()).with_op(op)
-    };
+    let spec = |op| OperandSpec::new(LayoutSpec::new(&[2, 2], &[1, 2], 0).unwrap()).with_op(op);
     let (ia, ib, id) = (
         [b'i' as i64, b'k' as i64],
         [b'k' as i64, b'j' as i64],

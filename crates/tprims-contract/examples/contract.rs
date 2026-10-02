@@ -1,25 +1,48 @@
 //! Using the engine: four contractions a matrix multiply cannot express.
 //!
 //! ```text
-//! cargo run --release -p tensorcontract --example contract
+//! cargo run --release -p tprims-contract --example contract
 //! ```
 //!
 //! This is **documentation that compiles**, not a measurement: the tensors are
 //! tiny, nothing is timed, and every result is checked against a value written
 //! out by hand. It costs no CPU and is safe to run while a benchmark is in
-//! flight. For what the engine's performance actually is, see `docs/results.md`.
+//! flight.
 //!
-//! Each section is the smallest case that shows one feature of the index
-//! notation, in the order the crate documentation introduces them: a batch
-//! index, a reduction, a diagonal, and complex conjugation with plan reuse.
+//! Each section is the smallest case that shows one feature of the label
+//! notation: a batch index, a reduction, a diagonal, and complex conjugation
+//! with plan reuse.
 
-use tensorcontract::kernel::ComplexMethod;
-use tensorcontract::plan::Operand;
-use tensorcontract::{contract, parse_einsum, Layout, Plan, TensorView, TensorViewMut, C64};
+use num_complex::Complex64 as C64;
+use strided_view::{StridedView, StridedViewMut};
+use tprims_contract::api::{CSpec, DType, Labels, LayoutSpec, Op, OperandSpec, Problem};
+use tprims_contract::{Plan, PlanConfig, Result};
+use tprims_exec::Exec;
+
+/// Column-major extents and strides, as a validated operand description.
+fn col_major(dims: &[usize], op: Op) -> Result<OperandSpec> {
+    let mut strides = Vec::new();
+    let mut acc = 1isize;
+    for &d in dims {
+        strides.push(acc);
+        acc *= d as isize;
+    }
+    Ok(OperandSpec::new(LayoutSpec::new(dims, &strides, 0)?).with_op(op))
+}
+
+/// Labels from an einsum-like spelling such as `"hik,hkj->hij"`.
+fn parse(spec: &str) -> (Vec<i64>, Vec<i64>, Vec<i64>) {
+    let (lhs, d) = spec
+        .split_once("->")
+        .expect("output labels are not optional");
+    let (a, b) = lhs.split_once(',').expect("two input operands");
+    let lab = |s: &str| s.chars().map(|c| c as i64).collect();
+    (lab(a), lab(b), lab(d))
+}
 
 // Every fallible call below is `?`, not `.unwrap()`, because this file is read
 // as an example of how to call the crate and the difference is visible.
-fn main() -> tensorcontract::Result<()> {
+fn main() -> Result<()> {
     batch_index()?;
     reduction()?;
     diagonal()?;
@@ -30,25 +53,26 @@ fn main() -> tensorcontract::Result<()> {
 
 /// A label in `A`, `B` *and* `D` is a batch index: the contraction runs
 /// independently for each of its values, with no reshaping and no loop here.
-fn batch_index() -> tensorcontract::Result<()> {
+fn batch_index() -> Result<()> {
     // D[h,i,j] = sum_k A[h,i,k] * B[h,k,j], for each h.
-    let (ia, ib, id) = parse_einsum("hik,hkj->hij")?;
-    let l = Layout::col_major(&[2, 2, 2]);
+    let (ia, ib, id) = parse("hik,hkj->hij");
+    let dims = [2, 2, 2];
+    let problem = Problem::from_labels(
+        DType::F64,
+        col_major(&dims, Op::Identity)?,
+        col_major(&dims, Op::Identity)?,
+        CSpec::Absent,
+        col_major(&dims, Op::Identity)?,
+        &Labels::new(&ia, &ib, &id),
+    )?;
+    let plan = Plan::<f64>::new(&problem, &PlanConfig::default())?;
 
     // A[h,i,k] = h + 2i + 4k + 1, since the layout is column-major over (h,i,k).
     let a: Vec<f64> = (1..=8).map(|x| x as f64).collect();
     // Per batch, B is diag(2, 1) over (k, j): it doubles k=0 and passes k=1.
     let b = vec![2.0f64, 2.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0];
     let mut d = vec![0.0f64; 8];
-
-    contract(
-        1.0,
-        TensorView::new(&a, &l, &ia),
-        TensorView::new(&b, &l, &ib),
-        0.0,
-        None,
-        TensorViewMut::new(&mut d, &l, &id),
-    )?;
+    execute(&plan, &dims, &dims, &dims, &a, &b, &mut d)?;
 
     // B being diagonal means only k=j contributes, so D[h,i,j] = B[h,j,j]*A[h,i,j]:
     // the j=0 half of D (offsets 0..4) doubles, and the j=1 half passes through.
@@ -60,26 +84,25 @@ fn batch_index() -> tensorcontract::Result<()> {
 /// A label in one input only is summed over, and needs no temporary: it becomes
 /// a contraction index with stride 0 in the other operand, which the
 /// block-scatter machinery treats as a perfectly regular access.
-fn reduction() -> tensorcontract::Result<()> {
-    // D[i,j] = sum_{k,l} A[i,k,l] * B[k,j] — `l` appears nowhere else.
-    let (ia, ib, id) = parse_einsum("ikl,kj->ij")?;
-    let la = Layout::col_major(&[2, 2, 3]);
-    let lb = Layout::col_major(&[2, 2]);
-    let ld = Layout::col_major(&[2, 2]);
+fn reduction() -> Result<()> {
+    // D[i,j] = sum_{k,l} A[i,k,l] * B[k,j] -- `l` appears nowhere else.
+    let (ia, ib, id) = parse("ikl,kj->ij");
+    let (da, db, dd) = ([2, 2, 3], [2, 2], [2, 2]);
+    let problem = Problem::from_labels(
+        DType::F64,
+        col_major(&da, Op::Identity)?,
+        col_major(&db, Op::Identity)?,
+        CSpec::Absent,
+        col_major(&dd, Op::Identity)?,
+        &Labels::new(&ia, &ib, &id),
+    )?;
+    let plan = Plan::<f64>::new(&problem, &PlanConfig::default())?;
 
     // Every element 1.0, so summing over l (extent 3) triples each entry.
     let a = vec![1.0f64; 12];
     let identity = vec![1.0f64, 0.0, 0.0, 1.0];
     let mut d = vec![0.0f64; 4];
-
-    contract(
-        1.0,
-        TensorView::new(&a, &la, &ia),
-        TensorView::new(&identity, &lb, &ib),
-        0.0,
-        None,
-        TensorViewMut::new(&mut d, &ld, &id),
-    )?;
+    execute(&plan, &da, &db, &dd, &a, &identity, &mut d)?;
 
     assert_eq!(d, vec![3.0, 3.0, 3.0, 3.0]);
     report("reduction", "ikl,kj->ij", &d);
@@ -88,25 +111,25 @@ fn reduction() -> tensorcontract::Result<()> {
 
 /// A label repeated *within one operand* selects that operand's diagonal, again
 /// with no copy: the two modes' strides are simply summed.
-fn diagonal() -> tensorcontract::Result<()> {
-    // D[i] = sum_j A[i,j,j] * B[i] — `j` twice in A takes its diagonal.
-    let la = Layout::col_major(&[2, 2, 2]);
-    let lv = Layout::col_major(&[2]);
+fn diagonal() -> Result<()> {
+    // D[i] = sum_j A[i,j,j] * B[i] -- `j` twice in A takes its diagonal.
+    let (da, dv) = ([2, 2, 2], [2]);
     let (i, j) = (b'i' as i64, b'j' as i64);
+    let problem = Problem::from_labels(
+        DType::F64,
+        col_major(&da, Op::Identity)?,
+        col_major(&dv, Op::Identity)?,
+        CSpec::Absent,
+        col_major(&dv, Op::Identity)?,
+        &Labels::new(&[i, j, j], &[i], &[i]),
+    )?;
+    let plan = Plan::<f64>::new(&problem, &PlanConfig::default())?;
 
-    // A[i,j,j] picks offsets i + 2j + 4j = i, i+6 → elements 0,1 and 6,7.
+    // A[i,j,j] picks offsets i + 2j + 4j = i, i+6 -> elements 0,1 and 6,7.
     let a: Vec<f64> = (0..8).map(|x| x as f64).collect();
     let b = vec![1.0f64, 1.0];
     let mut d = vec![0.0f64; 2];
-
-    contract(
-        1.0,
-        TensorView::new(&a, &la, &[i, j, j]),
-        TensorView::new(&b, &lv, &[i]),
-        0.0,
-        None,
-        TensorViewMut::new(&mut d, &lv, &[i]),
-    )?;
+    execute(&plan, &da, &dv, &dv, &a, &b, &mut d)?;
 
     // i=0: A[0,0,0] + A[0,1,1] = 0 + 6. i=1: A[1,0,0] + A[1,1,1] = 1 + 7.
     assert_eq!(d, vec![6.0, 8.0]);
@@ -116,19 +139,19 @@ fn diagonal() -> tensorcontract::Result<()> {
 
 /// Complex contraction, conjugation, and the reason to build a [`Plan`] by hand:
 /// planning is `O(M + N + K)`, so a repeated shape should pay it once.
-fn complex_with_plan_reuse() -> tensorcontract::Result<()> {
-    let (ia, ib, id) = parse_einsum("ik,kj->ij")?;
-    let l = Layout::col_major(&[2, 2]);
-
-    // Conjugation is folded into packing, so it is fixed when the plan is built.
-    // The views handed to `run` must agree, or `run` rejects the call.
-    let plan = Plan::new(
-        Operand::new(&l, &ia).conj(),
-        Operand::new(&l, &ib),
-        None,
-        Operand::new(&l, &id),
-    )?
-    .with_complex_method(ComplexMethod::Planar);
+fn complex_with_plan_reuse() -> Result<()> {
+    let (ia, ib, id) = parse("ik,kj->ij");
+    let dims = [2, 2];
+    // Conjugation is part of the problem, fixed when the plan is built.
+    let problem = Problem::from_labels(
+        DType::C64,
+        col_major(&dims, Op::Conjugate)?,
+        col_major(&dims, Op::Identity)?,
+        CSpec::Absent,
+        col_major(&dims, Op::Identity)?,
+        &Labels::new(&ia, &ib, &id),
+    )?;
+    let plan = Plan::<C64>::new(&problem, &PlanConfig::default())?;
 
     let identity = vec![
         C64::new(1.0, 0.0),
@@ -143,15 +166,7 @@ fn complex_with_plan_reuse() -> tensorcontract::Result<()> {
             .map(|x| C64::new(x as f64 * scale, x as f64))
             .collect();
         let mut d = vec![C64::new(0.0, 0.0); 4];
-
-        plan.run(
-            C64::new(1.0, 0.0),
-            TensorView::new(&a, &l, &ia).conj(),
-            TensorView::new(&identity, &l, &ib),
-            C64::new(0.0, 0.0),
-            None,
-            TensorViewMut::new(&mut d, &l, &id),
-        )?;
+        execute(&plan, &dims, &dims, &dims, &a, &identity, &mut d)?;
 
         let want: Vec<C64> = a.iter().map(|z| z.conj()).collect();
         assert_eq!(d, want);
@@ -163,23 +178,38 @@ fn complex_with_plan_reuse() -> tensorcontract::Result<()> {
                 .join(", ")
         );
     }
-
-    // Handing `run` a view that disagrees with its plan is an error, not a
-    // silently unconjugated result.
-    let a = vec![C64::new(1.0, 1.0); 4];
-    let mut d = vec![C64::new(0.0, 0.0); 4];
-    let err = plan
-        .run(
-            C64::new(1.0, 0.0),
-            TensorView::new(&a, &l, &ia), // plan says conjugate; this does not
-            TensorView::new(&identity, &l, &ib),
-            C64::new(0.0, 0.0),
-            None,
-            TensorViewMut::new(&mut d, &l, &id),
-        )
-        .unwrap_err();
-    println!("mismatched op rejected: {err}");
     Ok(())
+}
+
+/// Run `plan` on column-major buffers of the given extents (`beta = 0`).
+fn execute<T: tprims_contract::api::Scalar>(
+    plan: &Plan<T>,
+    da: &[usize],
+    db: &[usize],
+    dd: &[usize],
+    a: &[T],
+    b: &[T],
+    d: &mut [T],
+) -> Result<()> {
+    let strides = |dims: &[usize]| -> Vec<isize> {
+        let mut s = Vec::new();
+        let mut acc = 1isize;
+        for &x in dims {
+            s.push(acc);
+            acc *= x as isize;
+        }
+        s
+    };
+    let (sa, sb, sd) = (strides(da), strides(db), strides(dd));
+    let view =
+        |x, dims, st| StridedView::new(x, dims, st, 0).map_err(tprims_contract::Error::backend);
+    plan.execute_into(
+        &Exec::serial(),
+        <T as tprims_kernel::Element>::one(),
+        &view(a, da, &sa)?,
+        &view(b, db, &sb)?,
+        &mut StridedViewMut::new(d, dd, &sd, 0).map_err(tprims_contract::Error::backend)?,
+    )
 }
 
 fn report(what: &str, spec: &str, d: &[f64]) {

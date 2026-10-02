@@ -1,5 +1,7 @@
 //! Regressions from the Phase 1c review.
-use tprims_contract::api::{DType, DotGeneral, Error, LayoutSpec, OperandSpec, Problem, ShapeError};
+use tprims_contract::api::{
+    DType, DotGeneral, Error, LayoutSpec, OperandSpec, Problem, ShapeError,
+};
 use tprims_contract::{add, Algorithm, Partition, Plan, PlanConfig};
 use tprims_exec::Exec;
 
@@ -70,13 +72,7 @@ fn overflowing_element_counts_are_shape_errors() {
     let d = [1usize << 33, 1 << 33];
     let s = [1isize, 1 << 33];
     let cfg = DotGeneral::new(&[0, 1], &[0, 1], &[], &[]);
-    let e = Problem::from_dot_general(
-        DType::F64,
-        spec(&d, &s),
-        spec(&d, &s),
-        spec(&[], &[]),
-        &cfg,
-    );
+    let e = Problem::from_dot_general(DType::F64, spec(&d, &s), spec(&d, &s), spec(&[], &[]), &cfg);
     assert!(
         matches!(e, Err(Error::Shape(ShapeError::Overflow { .. }))),
         "{e:?}"

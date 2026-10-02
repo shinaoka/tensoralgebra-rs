@@ -126,5 +126,8 @@ fn executing_from_inside_a_worker_of_the_same_pool_falls_back_serially_on_the_sa
     let inside = tp.install(|| run(&plan, &exec));
     assert_eq!(outside, reference);
     assert_eq!(inside, reference);
-    assert_eq!(plan.report().packed.as_ref().unwrap().family_id, "custom.f64.3x4");
+    assert_eq!(
+        plan.report().packed.as_ref().unwrap().family_id,
+        "custom.f64.3x4"
+    );
 }

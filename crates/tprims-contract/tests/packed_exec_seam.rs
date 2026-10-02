@@ -4,8 +4,13 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use tensorcontract::{Layout, Operand, Plan, TensorView, TensorViewMut};
+use strided_view::{StridedView, StridedViewMut};
+use tprims_contract::{Plan, PlanConfig};
 use tprims_exec::{Exec, Pool};
+use tprims_kernel::KernelChoice;
+
+mod common;
+use common::plans::{matmul_problem, packed};
 
 const M: usize = 256;
 const N: usize = 240;
@@ -24,74 +29,54 @@ fn pool4() -> rayon::ThreadPool {
         .unwrap()
 }
 
-fn plan_for(la: &Layout, lb: &Layout, ld: &Layout, threads: usize) -> Plan {
-    Plan::new(
-        Operand::new(la, &[0, 2]),
-        Operand::new(lb, &[2, 1]),
-        None,
-        Operand::new(ld, &[0, 1]),
-    )
-    .unwrap()
-    .with_threads(threads)
-}
-
-fn layouts() -> (Layout, Layout, Layout) {
-    (
-        Layout::col_major(&[M as i64, K as i64]),
-        Layout::col_major(&[K as i64, N as i64]),
-        Layout::col_major(&[M as i64, N as i64]),
-    )
-}
-
-fn run_on(plan: &Plan, exec: Option<&Exec<'_>>, la: &Layout, lb: &Layout, ld: &Layout) -> Vec<f64> {
+fn run_on(plan: &Plan<f64>, exec: &Exec<'_>) -> Vec<f64> {
     let (av, bv) = inputs();
-    let (ia, ib, id) = ([0i64, 2], [2i64, 1], [0i64, 1]);
     let mut out = vec![0.0; M * N];
-    let (a, b) = (TensorView::new(&av, la, &ia), TensorView::new(&bv, lb, &ib));
-    let d = TensorViewMut::new(&mut out, ld, &id);
-    match exec {
-        Some(e) => plan.run_with(e, 1.0, a, b, 0.0, None, d).unwrap(),
-        None => plan.run(1.0, a, b, 0.0, None, d).unwrap(),
-    }
+    plan.execute_into(
+        exec,
+        1.0,
+        &StridedView::new(&av, &[M, K], &[1, M as isize], 0).unwrap(),
+        &StridedView::new(&bv, &[K, N], &[1, K as isize], 0).unwrap(),
+        &mut StridedViewMut::new(&mut out, &[M, N], &[1, M as isize], 0).unwrap(),
+    )
+    .unwrap();
     out
 }
 
 #[test]
 fn exec_matches_serial_bitwise_and_a_refused_broadcast_falls_back_serially() {
-    let (la, lb, ld) = layouts();
-    let plan = plan_for(&la, &lb, &ld, 1);
-    let serial = run_on(&plan, None, &la, &lb, &ld);
+    let plan = Plan::<f64>::new(&matmul_problem(M, N, K), &packed()).unwrap();
+    let serial = run_on(&plan, &Exec::serial());
 
     let tp = pool4();
     let pool = Pool::borrow(&tp);
     let exec = Exec::rayon(&pool);
-    assert_eq!(run_on(&plan, Some(&exec), &la, &lb, &ld), serial);
+    assert_eq!(run_on(&plan, &exec), serial);
     assert_eq!(pool.stats().broadcasts, 1);
 
     // Called from one of the pool's own workers, the broadcast is refused
     // before any work starts; the same contraction runs serially.
     pool.reset_stats();
-    let nested = exec.install(2, |_| run_on(&plan, Some(&exec), &la, &lb, &ld));
+    let nested = exec.install(2, |_| run_on(&plan, &exec));
     assert_eq!(nested, serial);
     assert_eq!(pool.stats().broadcasts, 0);
 }
 
 #[test]
-fn width_one_never_broadcasts_whatever_the_plan_asks_for() {
-    let (la, lb, ld) = layouts();
-    let plan = plan_for(&la, &lb, &ld, 8);
+fn width_one_never_broadcasts_whatever_the_pool_could_do() {
+    let plan = Plan::<f64>::new(&matmul_problem(M, N, K), &packed()).unwrap();
     let tp = pool4();
     let pool = Pool::borrow(&tp);
     let exec = Exec::rayon(&pool).with_budget(1).unwrap();
-    let serial = run_on(&plan, None, &la, &lb, &ld);
-    assert_eq!(run_on(&plan, Some(&exec), &la, &lb, &ld), serial);
+    let serial = run_on(&plan, &Exec::serial());
+    assert_eq!(run_on(&plan, &exec), serial);
     assert_eq!(pool.stats().broadcasts, 0);
     assert_eq!(pool.stats().entries, 0);
 }
 
 #[test]
-fn explicit_resolution_survives_a_refused_broadcast_without_reselection() {
-    use tprims_kernel::{KernelChoice, KernelFamily, ResolvedGemm, UkrFn};
+fn a_plan_never_reselects_its_family_for_a_different_budget() {
+    use tprims_kernel::{KernelFamily, UkrFn};
     static CALLS: AtomicUsize = AtomicUsize::new(0);
     unsafe fn traced(k: usize, a: *const f64, b: *const f64, out: *mut f64) {
         CALLS.fetch_add(1, Ordering::Relaxed);
@@ -121,70 +106,19 @@ fn explicit_resolution_survives_a_refused_broadcast_without_reselection() {
     unsafe {
         tprims_kernel::register::<f64>(manifest);
     }
-    let (a, b) = inputs();
-    let la = Layout::col_major(&[M as i64, K as i64]);
-    let lb = Layout::col_major(&[K as i64, N as i64]);
-    let ld = Layout::col_major(&[M as i64, N as i64]);
-    let p = Plan::new(
-        Operand::new(&la, &[0, 2]),
-        Operand::new(&lb, &[2, 1]),
-        None,
-        Operand::new(&ld, &[0, 1]),
-    )
-    .unwrap()
-    .with_threads(1);
-    let rg =
-        ResolvedGemm::<f64>::resolve::<f64>(&KernelChoice::Id("test.traced.f64.4x4".into()), 4)
-            .unwrap();
-    rg.with_threads(1).unwrap();
-    let mut expected = vec![0.; M * N];
-    let mut actual = vec![0.; M * N];
-    // SAFETY: full disjoint buffers and validated matching real scratch ABI.
-    unsafe {
-        tensorcontract::execute_resolved(
-            &p,
-            &rg,
-            &Exec::Serial,
-            None,
-            1.,
-            a.as_ptr(),
-            b.as_ptr(),
-            0.,
-            std::ptr::null(),
-            expected.as_mut_ptr(),
-        );
-    }
+    let config = PlanConfig {
+        kernel: KernelChoice::Id("test.traced.f64.4x4".into()),
+        ..PlanConfig::default()
+    };
+    let plan = Plan::<f64>::new(&matmul_problem(M, N, K), &config).unwrap();
+    let expected = run_on(&plan, &Exec::serial());
     CALLS.store(0, Ordering::Relaxed);
     // Refused: the caller is a worker of the pool, so the broadcast runs
     // nothing and the contraction is retried serially, same frozen family.
     let tp = pool4();
     let pool = Pool::borrow(&tp);
     let exec = Exec::rayon(&pool);
-    struct SendPtrs(*const f64, *const f64, *mut f64);
-    // SAFETY: the pointers address buffers that outlive the call and are used
-    // by exactly one thread, the worker the closure runs on.
-    unsafe impl Send for SendPtrs {}
-    impl SendPtrs {
-        fn run(self, p: &Plan, rg: &ResolvedGemm<f64>, exec: &Exec<'_>) {
-            // SAFETY: same valid buffers, resolution and serial bound as above.
-            unsafe {
-                tensorcontract::execute_resolved(
-                    p,
-                    rg,
-                    exec,
-                    None,
-                    1.,
-                    self.0,
-                    self.1,
-                    0.,
-                    std::ptr::null(),
-                    self.2,
-                );
-            }
-        }
-    }
-    let ptrs = SendPtrs(a.as_ptr(), b.as_ptr(), actual.as_mut_ptr());
-    exec.install(2, |_| ptrs.run(&p, &rg, &exec));
+    let actual = exec.install(2, |_| run_on(&plan, &exec));
     assert_eq!(actual, expected);
     assert_eq!(pool.stats().broadcasts, 0);
     assert!(

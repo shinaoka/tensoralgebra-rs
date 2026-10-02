@@ -84,16 +84,12 @@ fn custom_selection_adds_no_steady_state_allocation() {
     // meet the family contract (checked by their own tests).
     let cat = unsafe { KernelCatalog::<f64>::from_static_families(own::f64_families()) }.unwrap();
     let calls = Cell::new(0);
-    let custom = Plan::<f64>::new_with_selector(
-        &problem,
-        &PlanConfig::default(),
-        &cat,
-        &mut |_, cands| {
+    let custom =
+        Plan::<f64>::new_with_selector(&problem, &PlanConfig::default(), &cat, &mut |_, cands| {
             calls.set(calls.get() + 1);
             Ok(cands[0].handle)
-        },
-    )
-    .unwrap();
+        })
+        .unwrap();
     // The same plan with the equivalent *built-in* geometry by id.
     let builtin = Plan::<f64>::new(
         &problem,

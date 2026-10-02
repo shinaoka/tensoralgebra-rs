@@ -117,7 +117,6 @@ fn columns_beat_rows(blocks: usize, k: usize, p: usize, domains: usize) -> bool 
 }
 
 impl PackedPlan {
-
     /// [`Plan::partition`] at a caller-supplied thread count.
     ///
     /// Exists because the driver may run at a width other than the requested
@@ -354,7 +353,7 @@ impl PackedPlan {
             return 0.0;
         }
         unbroken_fraction(rows.len(), run.0, mr)
-}
+    }
 }
 
 #[cfg(test)]

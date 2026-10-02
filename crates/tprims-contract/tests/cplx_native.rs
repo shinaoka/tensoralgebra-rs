@@ -2,7 +2,9 @@
 //! path: a contraction whose operands cannot fuse, forced onto
 //! `avx2.c64.native.4x4`, reported, and equal to the reference.
 use num_complex::Complex64;
-use tprims_contract::api::{AccumulationSource, DType, DotGeneral, LayoutSpec, Op, OperandSpec, Problem};
+use tprims_contract::api::{
+    AccumulationSource, DType, DotGeneral, LayoutSpec, Op, OperandSpec, Problem,
+};
 use tprims_contract::{Plan, PlanConfig};
 use tprims_exec::Exec;
 use tprims_kernel::KernelChoice;

@@ -25,10 +25,23 @@ fn spec<S>(t: &T<S>, op: Op) -> OperandSpec {
     OperandSpec::new(LayoutSpec::new(&t.dims, &t.strides, 0).unwrap()).with_op(op)
 }
 
-fn problem<S: Scalar>(cfg: &DotGeneral, a: &T<S>, ca: bool, b: &T<S>, cb: bool, c: &T<S>) -> Problem {
+fn problem<S: Scalar>(
+    cfg: &DotGeneral,
+    a: &T<S>,
+    ca: bool,
+    b: &T<S>,
+    cb: bool,
+    c: &T<S>,
+) -> Problem {
     let op = |x: bool| if x { Op::Conjugate } else { Op::Identity };
-    Problem::from_dot_general(S::STORAGE, spec(a, op(ca)), spec(b, op(cb)), spec(c, Op::Identity), cfg)
-        .unwrap()
+    Problem::from_dot_general(
+        S::STORAGE,
+        spec(a, op(ca)),
+        spec(b, op(cb)),
+        spec(c, Op::Identity),
+        cfg,
+    )
+    .unwrap()
 }
 
 struct Case {
@@ -269,7 +282,8 @@ fn strategy_selection_follows_the_rules() {
         let a = T::<f64>::new(&case.a, 1);
         let b = T::<f64>::new(&case.b, 2);
         let c = T::<f64>::new(&out_dims(&case.cfg, &case.a, &case.b), 3);
-        let plan = Plan::<f64>::new(&problem(&case.cfg, &a, false, &b, false, &c), &strict).unwrap();
+        let plan =
+            Plan::<f64>::new(&problem(&case.cfg, &a, false, &b, false, &c), &strict).unwrap();
         assert_eq!(plan.report().materialized, [false; 3], "{}", case.name);
     }
 }
@@ -306,10 +320,14 @@ fn validation_errors_are_typed_and_nothing_is_written() {
             spec(&c, Op::Identity),
             &cfg,
         );
-        assert!(matches!(e, Err(Error::Alias(AliasError::OutputNotInjective))));
+        assert!(matches!(
+            e,
+            Err(Error::Alias(AliasError::OutputNotInjective))
+        ));
         // A view that differs from the planned layout is refused before any write.
         let planned = T::<f64>::new(&[3, 2], 3);
-        let plan = Plan::<f64>::new(&problem(&cfg, &a, false, &b, false, &planned), &config).unwrap();
+        let plan =
+            Plan::<f64>::new(&problem(&cfg, &a, false, &b, false, &planned), &config).unwrap();
         let mut c = c;
         let e = plan.execute_into(
             &Exec::serial(),
@@ -338,9 +356,16 @@ fn overwrite_reads_no_previous_output() {
             let mut c = T::<f64>::new(&od, 3);
             c.data.iter_mut().for_each(|x| *x = f64::NAN);
             let want = reference(&case.cfg, 2.0, &a, false, &b, false, 0.0, &c);
-            let plan = Plan::<f64>::new(&problem(&case.cfg, &a, false, &b, false, &c), &config).unwrap();
-            plan.execute_into(&Exec::serial(), 2.0, &a.view(), &b.view(), &mut c.view_mut())
-                .unwrap();
+            let plan =
+                Plan::<f64>::new(&problem(&case.cfg, &a, false, &b, false, &c), &config).unwrap();
+            plan.execute_into(
+                &Exec::serial(),
+                2.0,
+                &a.view(),
+                &b.view(),
+                &mut c.view_mut(),
+            )
+            .unwrap();
             assert!(rel_err(&c, &want) < 1e-12, "{}", case.name);
         }
     }

@@ -5,12 +5,12 @@
 //! untouched padding, residuals scaled to `K` and `|A||B|`, and bitwise
 //! equality across worker counts for one family.
 use super::common::{all_families, check_family_vs_oracle, run_with_width, Opts, Shape};
-use tprims_kernel::{Element, Real};
-use super::compat::{ElementOp, Operand};
 use super::compat::{contract_reference, RefOperand};
+use super::compat::{ElementOp, Operand};
 use super::compat::{Layout, Plan};
 use crate::api::Scalar;
 use tprims_kernel::{Blocking, KernelChoice, C32, C64};
+use tprims_kernel::{Element, Real};
 
 fn cplx_ids<T: Scalar>() -> Vec<&'static str> {
     let ids: Vec<_> = all_families::<T>()

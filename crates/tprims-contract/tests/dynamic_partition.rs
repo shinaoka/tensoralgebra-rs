@@ -166,7 +166,8 @@ fn an_explicit_partition_on_an_all_batch_problem_runs_packed() {
             partition: Some(partition),
             ..PlanConfig::default()
         };
-        let problem = Problem::from_dot_general(DType::F64, spec(&a), spec(&b), spec(&c0), &dg).unwrap();
+        let problem =
+            Problem::from_dot_general(DType::F64, spec(&a), spec(&b), spec(&c0), &dg).unwrap();
         let plan = Plan::<f64>::new(&problem, &config).unwrap();
         assert_eq!(plan.report().algorithm, Algorithm::Packed, "{partition:?}");
         let tp = rayon::ThreadPoolBuilder::new()
@@ -190,7 +191,8 @@ fn an_explicit_partition_on_an_all_batch_problem_runs_packed() {
         }
     }
     // The planner's own choice for the same problem stays elementwise.
-    let problem = Problem::from_dot_general(DType::F64, spec(&a), spec(&b), spec(&c0), &dg).unwrap();
+    let problem =
+        Problem::from_dot_general(DType::F64, spec(&a), spec(&b), spec(&c0), &dg).unwrap();
     assert_eq!(
         Plan::<f64>::new(&problem, &PlanConfig::default())
             .unwrap()

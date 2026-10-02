@@ -44,10 +44,7 @@ pub enum Partition {
 impl Partition {
     pub(crate) fn policy(self) -> (PartitionPolicy, PartitionOpts) {
         match self {
-            Partition::StaticGrid {
-                pin,
-                align_c_lines,
-            } => {
+            Partition::StaticGrid { pin, align_c_lines } => {
                 let (pm, pn) = pin.unwrap_or((0, 0));
                 (
                     PartitionPolicy::StaticGrid { pm, pn },
@@ -188,10 +185,9 @@ impl PlanConfig {
             Some(Partition::StaticGrid {
                 pin: Some((pm, pn)),
                 ..
-            }) if pm == 0 || pn == 0 => Err(ConfigError::Option(
-                "a pinned static grid needs positive pm and pn",
-            )
-            .into()),
+            }) if pm == 0 || pn == 0 => {
+                Err(ConfigError::Option("a pinned static grid needs positive pm and pn").into())
+            }
             Some(Partition::DynamicTiles { job_m, job_n }) if job_m == 0 || job_n == 0 => {
                 Err(ConfigError::NotPositive {
                     what: "dynamic tile job extent",
