@@ -8,13 +8,11 @@
 #![allow(dead_code)]
 //! edge tile and second `MR`/`NR` block are always exercised, and the
 //! reduction is cut into two `KC` blocks so the accumulate path runs too.
-use tensorcontract::element::{Element, Real};
-use tensorcontract::kernel::KernelSet;
-use tensorcontract::plan::{ElementOp, Operand};
-use tensorcontract::reference::{contract_reference, RefOperand};
-use tensorcontract::{driver_decisions, Blocking, KernelChoice, Layout, Plan, ResolvedCall};
+use super::compat::{contract_reference, ElementOp, Layout, Operand, Plan, RefOperand};
+use crate::api::Scalar;
+use crate::driver::ResolvedCall;
 use tprims_kernel::ResolvedGemm;
-use tprims_kernel::{CpuFeatures, Families, Registry};
+use tprims_kernel::{Blocking, CpuFeatures, Element, Families, KernelChoice, Real, Registry};
 
 /// One case's operand and call options.
 #[derive(Clone, Copy, Debug)]
@@ -112,8 +110,7 @@ where
 /// pin them from the same run it measured.
 pub fn check_family_vs_oracle<T>(id: &'static str, opts: Opts, tol: f64) -> ResolvedCall
 where
-    T: Element + Families,
-    T::Real: KernelSet,
+    T: Scalar,
 {
     // Probe the family's tile before sizing the operands: the interesting
     // shapes are one row past `MR` and several columns past `NR`.
@@ -204,7 +201,7 @@ where
         separate_c.as_ptr()
     };
     // Pin the decisions the driver will take, on the real pointers.
-    let calls = driver_decisions(&plan, &rg, c_ptr, got.as_mut_ptr(), beta);
+    let calls = plan.decisions::<T>(&rg, c_ptr, got.as_mut_ptr(), beta);
 
     // SAFETY: every buffer is at least as long as its layout's storage, all
     // offsets come from the plan, and `D` is borrowed exclusively here.
@@ -289,8 +286,7 @@ pub fn run_with_width<T>(
     align_c_lines: bool,
 ) -> Vec<T>
 where
-    T: Element + Families,
-    T::Real: KernelSet,
+    T: Scalar,
 {
     let Shape { m, n, k } = shape;
     let la = Layout::col_major(&[m as i64, k as i64]);
@@ -299,7 +295,7 @@ where
     let (ia, ib, idd) = (vec![0i64, 2], vec![2i64, 1], vec![0i64, 1]);
     let a: Vec<T> = (0..la.storage_len() as usize).map(value).collect();
     let b: Vec<T> = (0..lb.storage_len() as usize).map(value).collect();
-    let mut d = vec![T::zero(); ld.storage_len() as usize];
+    let mut d = vec![<T as Element>::zero(); ld.storage_len() as usize];
     let choice = KernelChoice::Id(id.into());
     let plan = Plan::new(
         Operand::new(&la, &ia),
@@ -328,15 +324,15 @@ where
     // SAFETY: every buffer is sized by its layout, `beta` is zero so `C` is
     // never read, and `D` is exclusively borrowed here.
     unsafe {
-        tensorcontract::execute_resolved(
+        super::compat::execute_resolved(
             &plan,
             &rg,
             &exec,
             None,
-            T::one(),
+            <T as Element>::one(),
             a.as_ptr(),
             b.as_ptr(),
-            T::zero(),
+            <T as Element>::zero(),
             std::ptr::null(),
             d.as_mut_ptr(),
         )

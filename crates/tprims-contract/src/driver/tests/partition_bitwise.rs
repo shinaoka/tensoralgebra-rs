@@ -1,8 +1,6 @@
 //! Any partition must be bitwise identical to the serial run: every output
 //! element owns one thread and accumulates over the whole of `K` in order.
-mod common;
-
-use common::{run_with_width, Shape};
+use super::common::{run_with_width, Shape};
 
 const SHAPE: Shape = Shape {
     m: 203,

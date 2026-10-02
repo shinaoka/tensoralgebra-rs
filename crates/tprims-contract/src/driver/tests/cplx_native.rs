@@ -4,17 +4,15 @@
 //! ones and offsets), genuine block-scatter contraction with batch labels,
 //! untouched padding, residuals scaled to `K` and `|A||B|`, and bitwise
 //! equality across worker counts for one family.
-mod common;
+use super::common::{all_families, check_family_vs_oracle, run_with_width, Opts, Shape};
+use tprims_kernel::{Element, Real};
+use super::compat::{ElementOp, Operand};
+use super::compat::{contract_reference, RefOperand};
+use super::compat::{Layout, Plan};
+use crate::api::Scalar;
+use tprims_kernel::{Blocking, KernelChoice, C32, C64};
 
-use common::{all_families, check_family_vs_oracle, run_with_width, Opts, Shape};
-use tensorcontract::element::{Element, Real};
-use tensorcontract::kernel::KernelSet;
-use tensorcontract::plan::{ElementOp, Operand};
-use tensorcontract::reference::{contract_reference, RefOperand};
-use tensorcontract::{Blocking, KernelChoice, Layout, Plan, C32, C64};
-use tprims_kernel::Families;
-
-fn cplx_ids<T: Element + Families>() -> Vec<&'static str> {
+fn cplx_ids<T: Scalar>() -> Vec<&'static str> {
     let ids: Vec<_> = all_families::<T>()
         .into_iter()
         .filter(|id| id.starts_with("avx2.") && id.contains(".native."))
@@ -47,8 +45,7 @@ fn eps<T: Element>() -> f64 {
 fn every_conjugation_orientation_and_scalar_combination_matches_the_oracle() {
     fn run<T>(tol: f64)
     where
-        T: Element + Families,
-        T::Real: KernelSet,
+        T: Scalar,
     {
         let ids = cplx_ids::<T>();
         if ids.is_empty() {
@@ -129,7 +126,7 @@ impl<T: Element> Tensor<T> {
         };
         let mut n = 0usize;
         t.walk(|t, off, _| {
-            t.buf[off] = common::value::<T>(seed + n);
+            t.buf[off] = super::common::value::<T>(seed + n);
             n += 1;
         });
         t
@@ -238,8 +235,7 @@ fn op(c: bool) -> ElementOp {
 
 fn run_case<T>(c: &Case<'_>)
 where
-    T: Element + Families,
-    T::Real: KernelSet,
+    T: Scalar,
 {
     let a = Tensor::<T>::new(c.a.0, c.a.1, c.a.2, 1);
     let b = Tensor::<T>::new(c.b.0, c.b.1, c.b.2, 101);
@@ -484,8 +480,7 @@ fn cases<'a>(id: &'static str, mr: usize, nr: usize) -> Vec<(String, Case<'a>)> 
 fn strided_scatter_and_batched_cases_meet_the_k_scaled_residual_bound() {
     fn run<T>(mr_nr: impl Fn(&str) -> (usize, usize))
     where
-        T: Element + Families,
-        T::Real: KernelSet,
+        T: Scalar,
     {
         for id in cplx_ids::<T>() {
             let (mr, nr) = mr_nr(id);
@@ -525,8 +520,7 @@ fn case_clone<'a>(c: &Case<'a>) -> Case<'a> {
 fn one_family_is_bitwise_identical_across_worker_counts() {
     fn run<T>()
     where
-        T: Element + Families,
-        T::Real: KernelSet,
+        T: Scalar,
     {
         for id in cplx_ids::<T>() {
             let shape = Shape {

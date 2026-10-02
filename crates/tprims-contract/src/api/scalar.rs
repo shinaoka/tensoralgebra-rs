@@ -1,5 +1,7 @@
 //! The sealed storage-scalar vocabulary.
 
+use faer::linalg::matmul::matmul_with_conj;
+use faer::{Accum, Conj, MatMut, MatRef};
 use tprims_kernel::{Element, Families};
 
 use crate::api::DType;
@@ -15,13 +17,10 @@ mod sealed {
 /// The storage and accumulation type of a contraction: `f32`, `f64`,
 /// `Complex<f32>` or `Complex<f64>` (identical to `faer::c32` / `faer::c64`).
 ///
-/// Sealed. The supertraits (the kernel registry's [`Families`] and faer's
-/// element trait) are implementation vocabulary of this crate; a caller or a
+/// Sealed. The supertraits (the kernel registry's [`Families`] and a hidden
+/// faer adapter) are implementation vocabulary of this crate; a caller or a
 /// second backend only names `T: Scalar`, and the neutral backend trait does
 /// not require a kernel family or faer bound of its own.
-///
-/// Both element traits share method names, so call them as
-/// `<T as tprims_kernel::Element>::zero()`.
 ///
 /// # Examples
 ///
@@ -33,7 +32,7 @@ mod sealed {
 /// ```
 pub trait Scalar:
     sealed::Sealed
-    + faer::traits::ComplexField<Real = <Self as Scalar>::Re>
+    + FaerGemm
     + Element<Real = <Self as Scalar>::Re>
     + Families
     + Copy
@@ -42,8 +41,8 @@ pub trait Scalar:
     + Sync
     + 'static
 {
-    /// The real type: faer's field and the kernels' arithmetic type.
-    type Re: faer::traits::RealField + tprims_kernel::Real;
+    /// The real type of the kernels' arithmetic.
+    type Re: tprims_kernel::Real;
     /// The problem-level name of the type.
     const STORAGE: DType;
 }
@@ -64,3 +63,68 @@ impl Scalar for num_complex::Complex<f64> {
     type Re = f64;
     const STORAGE: DType = DType::C64;
 }
+
+/// The one faer call this strategy makes, per storage type.
+///
+/// A hidden supertrait of [`Scalar`](crate::api::Scalar): it keeps faer's
+/// element traits out of the public bounds while letting the strategy stay
+/// generic. Implemented for exactly the four storage types.
+#[doc(hidden)]
+pub trait FaerGemm: Sized {
+    /// `D = alpha * op(A) * op(B)` (`accumulate` adds into `D`, otherwise `D`
+    /// is overwritten without being read) on strided matrices.
+    ///
+    /// # Safety
+    ///
+    /// The pointers with these strides address valid elements of the stated
+    /// extents; `d` is exclusive and does not alias `a` or `b`.
+    #[allow(clippy::too_many_arguments)]
+    unsafe fn matmul(
+        accumulate: bool,
+        mnk: (usize, usize, usize),
+        d: *mut Self,
+        d_strides: (isize, isize),
+        a: *const Self,
+        a_strides: (isize, isize),
+        conj_a: bool,
+        b: *const Self,
+        b_strides: (isize, isize),
+        conj_b: bool,
+        alpha: Self,
+        par: faer::Par,
+    );
+}
+
+macro_rules! faer_gemm {
+    ($($t:ty),*) => {$(
+        impl FaerGemm for $t {
+            unsafe fn matmul(
+                accumulate: bool,
+                (m, n, k): (usize, usize, usize),
+                d: *mut Self,
+                (drs, dcs): (isize, isize),
+                a: *const Self,
+                (ars, acs): (isize, isize),
+                conj_a: bool,
+                b: *const Self,
+                (brs, bcs): (isize, isize),
+                conj_b: bool,
+                alpha: Self,
+                par: faer::Par,
+            ) {
+                // SAFETY: the caller's contract.
+                let (am, bm, dm) = unsafe {
+                    (
+                        MatRef::<$t>::from_raw_parts(a, m, k, ars, acs),
+                        MatRef::<$t>::from_raw_parts(b, k, n, brs, bcs),
+                        MatMut::<$t>::from_raw_parts_mut(d, m, n, drs, dcs),
+                    )
+                };
+                let conj = |c: bool| if c { Conj::Yes } else { Conj::No };
+                let accum = if accumulate { Accum::Add } else { Accum::Replace };
+                matmul_with_conj(dm, accum, am, conj(conj_a), bm, conj(conj_b), alpha, par);
+            }
+        }
+    )*};
+}
+faer_gemm!(f32, f64, num_complex::Complex<f32>, num_complex::Complex<f64>);

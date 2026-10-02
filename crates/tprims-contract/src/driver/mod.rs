@@ -119,6 +119,8 @@ use tprims_exec::{Exec, WorkspaceProvider, WorkspaceReq};
 
 use crate::buffer::Panel;
 mod dynamic;
+#[cfg(test)]
+mod tests;
 use crate::plan::PackedPlan;
 pub(crate) use dynamic::dynamic_report;
 pub use dynamic::{Assignment, DynSnapshot, DynStats, DynamicReport};

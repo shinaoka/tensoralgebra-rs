@@ -23,8 +23,7 @@
 //! * `beta * op_C(D_old)` is applied to D in one in-place pass when it is not
 //!   the identity, then faer accumulates the product.
 
-use faer::linalg::matmul::matmul_with_conj;
-use faer::{Accum, Conj, MatMut, MatRef};
+use faer::Accum;
 use tprims_exec::{Exec, Par, WidthPolicy};
 use tprims_kernel::Element;
 
@@ -229,15 +228,22 @@ impl FaerPlan {
             Accum::Add
         };
         // SAFETY: the caller's contract; views are read-only / exclusive as faer requires.
-        let (am, bm, dm) = unsafe {
-            (
-                MatRef::<T>::from_raw_parts(a, m, k, self.m.a, self.k.a),
-                MatRef::<T>::from_raw_parts(b, k, n, self.k.b, self.n.b),
-                MatMut::<T>::from_raw_parts_mut(d, m, n, self.m.d, self.n.d),
+        unsafe {
+            T::matmul(
+                accum == Accum::Add,
+                (m, n, k),
+                d,
+                (self.m.d, self.n.d),
+                a,
+                (self.m.a, self.k.a),
+                ca,
+                b,
+                (self.k.b, self.n.b),
+                cb,
+                alpha,
+                par,
             )
         };
-        let conj = |c: bool| if c { Conj::Yes } else { Conj::No };
-        matmul_with_conj(dm, accum, am, conj(ca), bm, conj(cb), alpha, par);
     }
 }
 

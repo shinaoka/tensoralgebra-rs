@@ -19,5 +19,7 @@ pub use error::{
 };
 pub use labels::Labels;
 pub use problem::{CSpec, DType, LayoutSpec, Op, OperandSpec, Problem, RoleAxis, Roles, Span};
+#[doc(hidden)]
+pub use scalar::FaerGemm;
 pub use scalar::Scalar;
 pub use validate::is_injective_layout;

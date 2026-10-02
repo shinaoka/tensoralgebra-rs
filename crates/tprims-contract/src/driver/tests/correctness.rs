@@ -16,13 +16,13 @@ use num_complex::Complex;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 
-use tensorcontract::element::{Element, Real};
-use tensorcontract::kernel::{Blocking, ComplexMethod, KernelSet, Tuning};
-use tensorcontract::plan::{ElementOp, Operand};
-use tensorcontract::reference::{contract_reference, RefOperand};
-use tensorcontract::{Layout, Plan};
+use tprims_kernel::{Element, Real};
+use tprims_kernel::{Blocking, ComplexMethod};
+use super::compat::{ElementOp, Operand};
+use super::compat::{contract_reference, RefOperand};
+use super::compat::{Layout, Plan};
+use crate::api::Scalar;
 use tprims_exec::{Exec, Pool};
-use tprims_kernel::KernelForce;
 
 /// One pool for every thread-count sweep, wide enough for the widest of them,
 /// so each run takes a budget of it instead of building threads.
@@ -220,8 +220,7 @@ fn check_problem<T>(
     method: ComplexMethod,
 ) -> f64
 where
-    T: Element,
-    T::Real: KernelSet,
+    T: Scalar,
 {
     let a: Vec<T> = fill(p.la.storage_len() as usize, rng);
     let b: Vec<T> = fill(p.lb.storage_len() as usize, rng);
@@ -311,8 +310,7 @@ const TINY: Blocking = Blocking {
 
 fn randomised_sweep<T>(seed: u64, iters: usize, complex: bool)
 where
-    T: Element,
-    T::Real: KernelSet,
+    T: Scalar,
 {
     // Every complex method must produce the same answer as the oracle on the
     // same problem. Running all three over the same generated problems is the
@@ -366,15 +364,31 @@ impl std::fmt::Display for Problem {
 /// type and complex method, at a given thread count.
 fn model_blocking<T>(method: ComplexMethod, threads: usize) -> Blocking
 where
-    T: Element,
-    T::Real: KernelSet,
+    T: Scalar,
 {
-    let ukr = if T::IS_COMPLEX {
-        <T::Real as KernelSet>::config_cplx(KernelForce::Auto, method).ukr
-    } else {
-        <T::Real as KernelSet>::config_real(KernelForce::Auto).ukr
-    };
-    Blocking::model(&ukr, threads)
+    use tprims_kernel::blocking::{analytical, hierarchy, PanelGeom};
+    let t = Layout::col_major(&[2, 2]);
+    let probe = Plan::new(
+        Operand::new(&t, &[0, 2]),
+        Operand::new(&t, &[2, 1]),
+        None,
+        Operand::new(&t, &[0, 1]),
+    )
+    .unwrap()
+    .with_complex_method(method);
+    let rg = probe.resolved::<T>().unwrap();
+    let f = rg.family();
+    analytical(
+        PanelGeom {
+            real_bytes: core::mem::size_of::<T::Real>(),
+            a_reals: f.a_per_k / f.mr,
+            b_reals: f.b_per_k / f.nr,
+            mr: f.mr,
+            nr: f.nr,
+        },
+        threads,
+        &hierarchy(),
+    )
 }
 
 /// Run the oracle against the analytical model's blocking.
@@ -389,8 +403,7 @@ where
 /// the model derives a different `nc` for each.
 fn model_blocking_sweep<T>(seed: u64, iters: usize, complex: bool)
 where
-    T: Element,
-    T::Real: KernelSet,
+    T: Scalar,
 {
     let methods: &[ComplexMethod] = if complex {
         &ComplexMethod::ALL
@@ -464,8 +477,7 @@ fn naive_gemm<T: Element>(m: usize, n: usize, k: usize, a: &[T], b: &[T]) -> Vec
 /// in different places).
 fn large_gemm_case<T>(m: usize, n: usize, k: usize, seed: u64)
 where
-    T: Element,
-    T::Real: KernelSet,
+    T: Scalar,
 {
     large_gemm_case_oriented::<T>(m, n, k, seed, false);
     // Same product with a row-major `D`, which is what makes the driver
@@ -477,8 +489,7 @@ where
 
 fn large_gemm_case_oriented<T>(m: usize, n: usize, k: usize, seed: u64, row_major_d: bool)
 where
-    T: Element,
-    T::Real: KernelSet,
+    T: Scalar,
 {
     let mut rng = ChaCha8Rng::seed_from_u64(seed);
     let a: Vec<T> = fill(m * k, &mut rng);
@@ -519,7 +530,7 @@ where
         // The point of the row-major variant is that it takes the swapped
         // path; if the heuristic stops firing here the test still passes but
         // has quietly stopped testing anything.
-        let (mr, ..) = tensorcontract::kernel::selected_config::<T>(&Tuning::default(), method);
+        let (mr, ..) = plan.selected_config::<T>();
         assert_eq!(
             plan.transposes_gemm(mr),
             row_major_d,
@@ -844,8 +855,7 @@ fn threaded_case<T>(
     want: Split,
     seed: u64,
 ) where
-    T: Element,
-    T::Real: KernelSet,
+    T: Scalar,
 {
     let (m, n, k, batch) = shape;
     let mut rng = ChaCha8Rng::seed_from_u64(seed);
@@ -880,7 +890,7 @@ fn threaded_case<T>(
         // `plan_config` and not `selected_config`: the row-block rule can pick a
         // shape other than the kernel set's default, and the partition is
         // quantised to the shape the driver will actually run.
-        let (mr, nr, _) = tensorcontract::kernel::plan_config::<T>(&plan);
+        let (mr, nr, _) = plan.selected_config::<T>();
         // Both axes are the *oriented* ones: when the plan computes
         // `D^T = B^T A^T` the row strips run along `n` and the column groups
         // along `m`. Getting this wrong is how the first version of this
@@ -1202,10 +1212,17 @@ fn thread_partition_rule() {
     // `case(40, 40, 8)` would answer `1x8` on a chiplet CI runner and `8x1` on
     // a one-L3-per-socket one, and the test would be a machine detector.
     let case = |panels: usize, blocks: usize, p: usize| -> (usize, usize) {
-        let (mr, nr, _) = tensorcontract::kernel::selected_config::<f64>(
-            &Tuning::default(),
-            ComplexMethod::Planar,
-        );
+        let probe = {
+            let t = Layout::col_major(&[2, 2]);
+            Plan::new(
+                Operand::new(&t, &[0, 2]),
+                Operand::new(&t, &[2, 1]),
+                None,
+                Operand::new(&t, &[0, 1]),
+            )
+            .expect("plan")
+        };
+        let (mr, nr, _) = probe.selected_config::<f64>();
         let (m, n, k) = ((panels * mr) as i64, (blocks * nr) as i64, 128);
         let la = Layout::col_major(&[m, k]);
         let lb = Layout::col_major(&[k, n]);
@@ -1218,7 +1235,7 @@ fn thread_partition_rule() {
         )
         .expect("plan")
         .with_threads(p);
-        let (mr2, nr2, _) = tensorcontract::kernel::plan_config::<f64>(&plan);
+        let (mr2, nr2, _) = plan.selected_config::<f64>();
         assert_eq!((mr, nr), (mr2, nr2), "row-block rule moved the shape");
         assert!(
             !plan.transposes_gemm(mr),
@@ -1250,24 +1267,37 @@ fn thread_partition_rule() {
     assert!(pm * pn <= 64);
 }
 
-/// A view whose element-wise op differs from the plan's is rejected rather than
-/// silently computing the other contraction.
+/// Conjugation is a property of the problem, fixed when the plan is built: a
+/// conjugated plan and an unconjugated one compute different contractions on
+/// the same buffers, and each gives its own answer.
 ///
-/// `Plan::run` used to read only each view's `data`, so a `.conj()` that the
-/// plan did not also carry was dropped on the floor and the caller got the
-/// unconjugated result with no indication. Conjugation is folded into the
-/// packing and write-back traversals, so it genuinely cannot be varied per call
-/// — which leaves rejecting the mismatch as the only honest option.
+/// (The views carry no element operation, so a per-call mismatch -- which the
+/// old label-based `Plan::run` had to detect and reject -- cannot be expressed.)
 #[test]
-fn element_op_must_match_the_plan() {
-    use tensorcontract::{Error, TensorView, TensorViewMut};
+fn conjugation_belongs_to_the_plan() {
+    use crate::api::{CSpec, DType, Labels, LayoutSpec, Op, OperandSpec, Problem};
+    use strided_view::{StridedView, StridedViewMut};
 
-    let l = Layout::col_major(&[2, 2]);
+    let spec = |op| {
+        OperandSpec::new(LayoutSpec::new(&[2, 2], &[1, 2], 0).unwrap()).with_op(op)
+    };
     let (ia, ib, id) = (
         [b'i' as i64, b'k' as i64],
         [b'k' as i64, b'j' as i64],
         [b'i' as i64, b'j' as i64],
     );
+    let make = |conj_a: bool| {
+        let problem = Problem::from_labels(
+            DType::C64,
+            spec(if conj_a { Op::Conjugate } else { Op::Identity }),
+            spec(Op::Identity),
+            CSpec::Absent,
+            spec(Op::Identity),
+            &Labels::new(&ia, &ib, &id),
+        )
+        .unwrap();
+        crate::Plan::<Complex<f64>>::new(&problem, &crate::PlanConfig::default()).unwrap()
+    };
 
     let a = vec![
         Complex::new(1.0f64, 2.0),
@@ -1281,50 +1311,18 @@ fn element_op_must_match_the_plan() {
         Complex::new(0.0, 0.0),
         Complex::new(1.0, 0.0),
     ];
-
-    let run = |plan: &Plan, conj_a: bool, d: &mut Vec<Complex<f64>>| {
-        let va = TensorView::new(&a, &l, &ia);
-        plan.run(
-            Complex::new(1.0, 0.0),
-            if conj_a { va.conj() } else { va },
-            TensorView::new(&identity, &l, &ib),
-            Complex::new(0.0, 0.0),
-            None,
-            TensorViewMut::new(d, &l, &id),
-        )
+    let run = |plan: &crate::Plan<Complex<f64>>| {
+        let mut d = vec![Complex::new(0.0f64, 0.0); 4];
+        let av = StridedView::new(&a, &[2, 2], &[1, 2], 0).unwrap();
+        let bv = StridedView::new(&identity, &[2, 2], &[1, 2], 0).unwrap();
+        let mut dv = StridedViewMut::new(&mut d, &[2, 2], &[1, 2], 0).unwrap();
+        plan.execute_into(&Exec::serial(), Complex::new(1.0, 0.0), &av, &bv, &mut dv)
+            .unwrap();
+        d
     };
-
-    let plain = Plan::new(
-        Operand::new(&l, &ia),
-        Operand::new(&l, &ib),
-        None,
-        Operand::new(&l, &id),
-    )
-    .unwrap();
-    let conjugated = Plan::new(
-        Operand::new(&l, &ia).conj(),
-        Operand::new(&l, &ib),
-        None,
-        Operand::new(&l, &id),
-    )
-    .unwrap();
-
-    // Both mismatch directions are errors, and they name the offending operand.
-    let mut d = vec![Complex::new(0.0f64, 0.0); 4];
+    assert_eq!(run(&make(false)), a);
     assert_eq!(
-        run(&plain, true, &mut d),
-        Err(Error::ElementOpMismatch { tensor: "A" })
+        run(&make(true)),
+        a.iter().map(|z| z.conj()).collect::<Vec<_>>()
     );
-    assert_eq!(
-        run(&conjugated, false, &mut d),
-        Err(Error::ElementOpMismatch { tensor: "A" })
-    );
-    // Nothing was written on the rejected paths.
-    assert!(d.iter().all(|z| *z == Complex::new(0.0, 0.0)));
-
-    // And each plan run with the argument it was built for gives its own answer.
-    run(&plain, false, &mut d).unwrap();
-    assert_eq!(d, a);
-    run(&conjugated, true, &mut d).unwrap();
-    assert_eq!(d, a.iter().map(|z| z.conj()).collect::<Vec<_>>());
 }

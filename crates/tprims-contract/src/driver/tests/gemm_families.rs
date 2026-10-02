@@ -1,19 +1,14 @@
 //! Every registered CPU-available family gets the same small, non-trivial GEMM,
 //! in both orientations and with every conjugation combination, against the
 //! reference oracle.
-mod common;
-
-use common::{all_families, check_family_vs_oracle, Opts};
-use tensorcontract::element::Element;
-use tensorcontract::kernel::KernelSet;
-use tensorcontract::plan::Operand;
-use tensorcontract::{KernelChoice, Layout, Plan};
-use tprims_kernel::{Families, SelectError};
+use super::common::{all_families, check_family_vs_oracle, Opts};
+use super::compat::{Layout, Operand, Plan};
+use crate::api::Scalar;
+use tprims_kernel::{Element, KernelChoice, SelectError};
 
 fn run_family<T>(id: &'static str)
 where
-    T: Element + Families,
-    T::Real: KernelSet,
+    T: Scalar,
 {
     let tol = if core::mem::size_of::<T::Real>() == 4 {
         3e-5
@@ -51,8 +46,8 @@ macro_rules! families_test {
 
 families_test!(all_f32_families, f32);
 families_test!(all_f64_families, f64);
-families_test!(all_c32_families, tensorcontract::C32);
-families_test!(all_c64_families, tensorcontract::C64);
+families_test!(all_c32_families, tprims_kernel::C32);
+families_test!(all_c64_families, tprims_kernel::C64);
 
 #[test]
 fn selection_rejects_unknown_and_wrong_dtype() {
@@ -65,10 +60,10 @@ fn selection_rejects_unknown_and_wrong_dtype() {
     .unwrap();
     assert!(matches!(
         plan.clone()
-            .with_kernel(KernelChoice::Id("definitely-not-a-family".into())),
-        Err(tensorcontract::Error::KernelSelection(
-            SelectError::UnknownId { .. }
-        ))
+            .with_kernel(KernelChoice::Id("definitely-not-a-family".into()))
+            .unwrap()
+            .resolved::<f64>(),
+        Err(SelectError::UnknownId { .. })
     ));
     let id = all_families::<f32>()[0];
     assert!(matches!(

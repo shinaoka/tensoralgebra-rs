@@ -20,7 +20,7 @@ use tprims_kernel::{
 
 /// How this crate reports itself in diagnostics.
 pub const ORIGIN: Origin = Origin::External {
-    crate_name: "tprims-contract-testkit",
+    crate_name: "tprims-testkit",
     license: "MIT OR Apache-2.0",
 };
 

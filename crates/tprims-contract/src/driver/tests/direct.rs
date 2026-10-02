@@ -1,13 +1,11 @@
 //! Direct-C and direct-B families: the plan-level guard, the per-tile fallback
 //! and the in-place column operand all have to agree with the oracle.
-mod common;
-
-use common::{check_family_vs_oracle, Opts};
-use tensorcontract::element::Element;
-use tensorcontract::plan::{ElementOp, Operand};
-use tensorcontract::reference::{contract_reference, RefOperand};
-use tensorcontract::{KernelChoice, Layout, Plan};
-use tprims_kernel::{CpuFeatures, Registry, SelectError, C64};
+use super::common::{check_family_vs_oracle, Opts};
+use tprims_kernel::Element;
+use super::compat::{ElementOp, Operand};
+use super::compat::{contract_reference, RefOperand};
+use super::compat::{Layout, Plan};
+use tprims_kernel::{CpuFeatures, KernelChoice, Registry, SelectError, C64};
 
 const DIRECT: &str = "ref.f64.direct.4x4";
 const DIRECT_B: &str = "ref.f64.direct-b.4x4";
@@ -49,9 +47,10 @@ fn direct_family_scatter_output_falls_back_per_tile() {
     let (m, k, n1, n2) = (2usize, 7usize, 2usize, 2usize);
     let la = Layout::new(vec![m as i64, k as i64], vec![1, 2]).unwrap();
     let lb = Layout::new(vec![k as i64, n1 as i64, n2 as i64], vec![1, 7, 14]).unwrap();
-    // Label 1 and label 2 both index columns, with strides 3 and 5, so their
-    // mixed-radix group is `[0, 3, 5, 8]`: not one arithmetic progression.
-    let ld = Layout::new(vec![m as i64, n1 as i64, n2 as i64], vec![1, 3, 5]).unwrap();
+    // Label 1 and label 2 both index columns, with strides 3 and 8, so their
+    // mixed-radix group is `[0, 3, 8, 11]`: not one arithmetic progression, and
+    // still an output the problem's injectivity test accepts.
+    let ld = Layout::new(vec![m as i64, n1 as i64, n2 as i64], vec![1, 3, 8]).unwrap();
     let (ia, ib, idd) = (vec![0i64, 3], vec![3i64, 1, 2], vec![0i64, 1, 2]);
     let a: Vec<f64> = (0..la.storage_len() as usize)
         .map(|i| i as f64 * 0.25)
@@ -76,7 +75,7 @@ fn direct_family_scatter_output_falls_back_per_tile() {
     // beta == 0, so the guard allows a direct write; only the column scatter
     // can send the tiles back through the scratch path.
     let calls =
-        tensorcontract::driver_decisions(&plan, &rg, std::ptr::null(), got.as_mut_ptr(), 0.0);
+        plan.decisions::<f64>(&rg, std::ptr::null(), got.as_mut_ptr(), 0.0);
     assert!(calls.direct_c_allowed);
 
     // SAFETY: full buffers per their layouts, no C read with beta = 0, and `D`

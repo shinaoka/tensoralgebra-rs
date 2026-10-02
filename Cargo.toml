@@ -5,6 +5,7 @@ members = [
     "crates/tprims-exec",
     "crates/tprims-core",
     "crates/tprims-contract",
+    "crates/tprims-testkit",
 ]
 exclude = ["experiments"]
 
@@ -25,7 +26,7 @@ tprims-kernel = { version = "0.1.0", path = "crates/tprims-kernel", default-feat
 tensorprimitives-tapp = { version = "0.1.0", path = "tensorprimitives/crates/tensorprimitives-tapp" }
 tprims-exec = { version = "0.1.0", path = "crates/tprims-exec" }
 tprims-core = { version = "0.1.0", path = "crates/tprims-core" }
-tprims-contract-testkit = { version = "0.1.0", path = "crates/tprims-contract-testkit" }
+tprims-testkit = { version = "0.1.0", path = "crates/tprims-testkit" }
 tprims-contract = { version = "0.1.0", path = "crates/tprims-contract" }
 
 approx = "0.5"

@@ -6,15 +6,17 @@
 #![allow(clippy::too_many_arguments)]
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering::SeqCst};
 
-use tensorcontract::element::{Element, Real};
-use tensorcontract::kernel::KernelSet;
-use tensorcontract::reference::{contract_reference, RefOperand};
-use tensorcontract::{
-    dynamic_report, execute_resolved, execute_resolved_instrumented, Assignment, Blocking,
-    DynStats, KernelChoice, Layout, Operand, Plan, C32, C64,
+use tprims_kernel::{Element, Real};
+use super::compat::{contract_reference, RefOperand};
+use super::compat::{
+    dynamic_report, execute_resolved, execute_resolved_instrumented, Layout, Operand, Plan,
 };
+use crate::api::Scalar;
+use crate::driver::{Assignment, DynStats};
 use tprims_exec::{ArenaProvider, Exec, Pool, WorkspaceProvider};
-use tprims_kernel::{Families, PartitionOpts, PartitionPolicy, SelectError};
+use tprims_kernel::{
+    Blocking, KernelChoice, PartitionOpts, PartitionPolicy, SelectError, C32, C64,
+};
 
 /// A team of `width` workers on a pool of its own, and optionally a lent
 /// workspace. A refusing team runs the whole execution on one of its own
@@ -142,8 +144,7 @@ fn run<T>(
     stats: Option<&DynStats>,
 ) -> Vec<T>
 where
-    T: Element + Families + Send,
-    T::Real: KernelSet,
+    T: Scalar,
 {
     if team.refuse {
         team.exec()
@@ -161,8 +162,7 @@ fn run_on_team<T>(
     stats: Option<&DynStats>,
 ) -> Vec<T>
 where
-    T: Element + Families,
-    T::Real: KernelSet,
+    T: Scalar,
 {
     let exec = team.exec();
     let workspace = team.ws.as_ref().map(|w| w as &dyn WorkspaceProvider);
@@ -236,8 +236,7 @@ const F64: &str = "ref.f64.real.4x4";
 /// Dynamic equals static equals serial, bitwise, at every width.
 fn assert_bitwise<T>(id: &str, s: Spec, job: (usize, usize))
 where
-    T: Element + Families + Send,
-    T::Real: KernelSet,
+    T: Scalar,
 {
     let serial = run::<T>(id, &s, None, &Team::new(1), None);
     let grid = Some(PartitionPolicy::StaticGrid { pm: 2, pn: 2 });
@@ -332,25 +331,25 @@ fn results_match_the_reference_oracle() {
             data: &a,
             layout: &b.la,
             idx: &b.idx[0],
-            op: tensorcontract::ElementOp::Conjugate,
+            op: super::compat::ElementOp::Conjugate,
         },
         &RefOperand {
             data: &bv,
             layout: &b.lb,
             idx: &b.idx[1],
-            op: tensorcontract::ElementOp::Identity,
+            op: super::compat::ElementOp::Identity,
         },
         C64::from_parts(-0.4, 0.0),
         Some(&RefOperand {
             data: &c0,
             layout: &b.ld,
             idx: &b.idx[2],
-            op: tensorcontract::ElementOp::Identity,
+            op: super::compat::ElementOp::Identity,
         }),
         &mut want,
         &b.ld,
         &b.idx[2],
-        tensorcontract::ElementOp::Identity,
+        super::compat::ElementOp::Identity,
     )
     .unwrap();
     let got = run::<C64>("ref.c64.native.4x4", &s, dynamic(8, 8), &Team::new(4), None);
@@ -668,15 +667,8 @@ fn invalid_policies_are_rejected_at_resolution_even_for_empty_problems() {
                 SelectError::Incompatible { .. }
             ));
         }
-        assert!(matches!(
-            bad(
-                PartitionPolicy::DynamicTiles { job_m: 8, job_n: 8 },
-                PartitionOpts {
-                    align_c_lines: true
-                }
-            ),
-            SelectError::Incompatible { .. }
-        ));
+        // DynamicTiles with `align_c_lines` is unrepresentable now: the typed
+        // `Partition::DynamicTiles` carries no alignment option.
         assert!(base()
             .with_partition(PartitionPolicy::DynamicTiles { job_m: 8, job_n: 8 }, d)
             .resolved::<f64>()

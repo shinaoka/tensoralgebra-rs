@@ -1,53 +1,33 @@
-//! A **test-only** second implementation of the contraction interface.
+//! Test support for the tprims stack.
 //!
-//! [`NaiveBackend`] is a plain loop nest over the output elements. It exists
-//! to show that `tprims-contract-traits` can be implemented by a crate that
-//! depends on nothing but the interface and neutral building blocks (strided
-//! views, `num-complex`), and to serve as an independent backend in
-//! consumer-selection tests. It is not a production fallback and is never
-//! selected by default.
+//! | Module | What it is |
+//! |---|---|
+//! | [`oracle`] | an independent label oracle: brute force over label assignments, sharing no code with the planner |
+//! | [`fixtures`] | seeded data and layout helpers |
+//! | [`NaiveBackend`] | a second implementation of the contraction interface: a plain loop nest over the validated problem's roles |
+//! | [`custom_kernels`] | a downstream crate's own packed micro-kernels, for the selection and ownership contracts |
 //!
-//! It copies nothing, so it never materializes; it splits the output range
-//! over the host's barrier-free partitions.
+//! [`NaiveBackend`] exists to show that the whole-backend trait can be
+//! implemented from read-only [`Problem`] roles and an [`Exec`], and to serve as
+//! an independent backend in consumer-selection tests. It is not a production
+//! fallback and is never selected by default. It copies nothing, so it never
+//! materializes; it splits the output range over the host's barrier-free
+//! partitions.
+//!
+//! The oracle takes the original test case (layouts and labels), not the
+//! production scatter or lowering output, so it can check the lowering itself.
 
 pub mod custom_kernels;
+pub mod fixtures;
+pub mod oracle;
 
-use std::ops::{Add, Mul};
-
-use num_complex::Complex;
 use strided_view::{StridedView, StridedViewMut};
-use tprims_contract_traits::{
-    BoxedPlan, Conj, ContractionBackend, Diagnostics, HostExecution, PlanningBudget,
-    PreparedContraction, Problem, Requirements, Result, Validated,
+use tprims_contract::api::{
+    AccumulationSource, BoxedPlan, CSpec, ContractionBackend, Diagnostics, Error, LayoutError,
+    OperandId, PlanningBudget, PreparedContraction, Problem, Requirements, Result, Scalar,
 };
-
-/// The arithmetic the naive loop needs.
-pub trait Field: tprims_contract_traits::Scalar + Add<Output = Self> + Mul<Output = Self> {
-    /// Additive identity.
-    const ZERO: Self;
-    /// Complex conjugate (identity for real types).
-    fn conj(self) -> Self;
-}
-
-macro_rules! real {
-    ($($t:ty),*) => {$(
-        impl Field for $t {
-            const ZERO: Self = 0.0;
-            fn conj(self) -> Self { self }
-        }
-    )*};
-}
-real!(f32, f64);
-
-macro_rules! complex {
-    ($($t:ty),*) => {$(
-        impl Field for Complex<$t> {
-            const ZERO: Self = Complex::new(0.0, 0.0);
-            fn conj(self) -> Self { Complex::conj(&self) }
-        }
-    )*};
-}
-complex!(f32, f64);
+use tprims_exec::Exec;
+use tprims_kernel::Element;
 
 /// The naive loop-nest backend.
 #[derive(Clone, Copy, Debug, Default)]
@@ -55,12 +35,32 @@ pub struct NaiveBackend;
 
 const ID: &str = "naive-loop-nest";
 
-struct NaivePlan {
-    problem: Problem,
-    valid: Validated,
+/// One axis of the loop nest: extent and the `[A, B, C, D]` strides.
+#[derive(Clone, Copy, Debug)]
+struct Ax {
+    extent: usize,
+    s: [isize; 4],
 }
 
-impl<T: Field> ContractionBackend<T> for NaiveBackend {
+struct NaivePlan {
+    problem: Problem,
+    /// Output axes (M, N, batch), first axis fastest.
+    out: Vec<Ax>,
+    /// Contracted axes.
+    sum: Vec<Ax>,
+    diag: Diagnostics,
+}
+
+fn axes<'a>(roles: impl Iterator<Item = &'a tprims_contract::api::RoleAxis>) -> Vec<Ax> {
+    roles
+        .map(|r| Ax {
+            extent: r.extent(),
+            s: [OperandId::A, OperandId::B, OperandId::C, OperandId::D].map(|o| r.stride(o)),
+        })
+        .collect()
+}
+
+impl<T: Scalar> ContractionBackend<T> for NaiveBackend {
     fn id(&self) -> &'static str {
         ID
     }
@@ -72,20 +72,22 @@ impl<T: Field> ContractionBackend<T> for NaiveBackend {
         _budget: &PlanningBudget,
     ) -> Result<BoxedPlan<T>> {
         // Never copies, so `no_materialize` is always met.
-        let valid = problem.validate::<T>()?;
-        Ok(Box::new(NaiveBoxed {
-            plan: NaivePlan {
-                problem: problem.clone(),
-                valid,
-            },
+        if problem.dtype() != T::STORAGE {
+            return Err(Error::Config(
+                tprims_contract::api::ConfigError::DtypeMismatch {
+                    plan: T::STORAGE.name(),
+                    problem: problem.dtype().name(),
+                },
+            ));
+        }
+        let r = problem.roles();
+        Ok(Box::new(NaivePlan {
+            out: axes(r.m().iter().chain(r.n()).chain(r.h())),
+            sum: axes(r.k().iter()),
+            problem: problem.clone(),
             diag: Diagnostics::new(ID, "loop-nest"),
         }))
     }
-}
-
-struct NaiveBoxed {
-    plan: NaivePlan,
-    diag: Diagnostics,
 }
 
 #[derive(Clone, Copy)]
@@ -102,104 +104,87 @@ impl<T> Raw<T> {
     }
 }
 
-impl<T: Field> PreparedContraction<T> for NaiveBoxed {
-    fn execute_into_accum(
+impl NaivePlan {
+    fn check<T: Scalar>(&self, which: OperandId, dims: &[usize], strides: &[isize]) -> Result<()> {
+        let l = match which {
+            OperandId::A => self.problem.a().layout(),
+            OperandId::B => self.problem.b().layout(),
+            OperandId::D => self.problem.d().layout(),
+            OperandId::C => match self.problem.c_spec() {
+                CSpec::Separate(c) => c.layout(),
+                _ => self.problem.d().layout(),
+            },
+        };
+        if l.dims() != dims || l.strides() != strides {
+            return Err(LayoutError::Mismatch { operand: which }.into());
+        }
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn run<T: Scalar>(
         &self,
-        host: &dyn HostExecution,
+        exec: &Exec<'_>,
         alpha: T,
         a: &StridedView<'_, T>,
         b: &StridedView<'_, T>,
         beta: T,
-        c: &mut StridedViewMut<'_, T>,
+        c: Option<*const T>,
+        in_place: bool,
+        d: &mut StridedViewMut<'_, T>,
     ) -> Result<()> {
-        let NaivePlan { problem, valid } = &self.plan;
-        problem.check_views(
-            (a.dims(), a.strides()),
-            (b.dims(), b.strides()),
-            (c.dims(), c.strides()),
-        )?;
-        let out_dims = &valid.shape.out_dims;
-        let n_out: usize = out_dims.iter().product();
-        if n_out == 0 {
+        let p = &self.problem;
+        self.check::<T>(OperandId::A, a.dims(), a.strides())?;
+        self.check::<T>(OperandId::B, b.dims(), b.strides())?;
+        self.check::<T>(OperandId::D, d.dims(), d.strides())?;
+        if p.out_empty() {
             return Ok(());
         }
-        let skip_ab = valid.k_empty || alpha == T::ZERO;
-        let (nlf, nrf) = (valid.shape.lhs_free.len(), valid.shape.rhs_free.len());
-        // Per output axis: stride into A and into B (zero when the axis is not theirs).
-        let mut sa = Vec::new();
-        let mut sb = Vec::new();
-        for &x in &valid.shape.lhs_free {
-            sa.push(problem.a.strides[x]);
-            sb.push(0isize);
-        }
-        for &x in &valid.shape.rhs_free {
-            sa.push(0);
-            sb.push(problem.b.strides[x]);
-        }
-        for (&la, &lb) in problem.dot.lhs_batch.iter().zip(&problem.dot.rhs_batch) {
-            sa.push(problem.a.strides[la]);
-            sb.push(problem.b.strides[lb]);
-        }
-        debug_assert_eq!(sa.len(), nlf + nrf + problem.dot.lhs_batch.len());
-        let kdims: Vec<usize> = problem
-            .dot
-            .lhs_contract
-            .iter()
-            .map(|&x| problem.a.dims[x])
-            .collect();
-        let ka: Vec<isize> = problem
-            .dot
-            .lhs_contract
-            .iter()
-            .map(|&x| problem.a.strides[x])
-            .collect();
-        let kb: Vec<isize> = problem
-            .dot
-            .rhs_contract
-            .iter()
-            .map(|&x| problem.b.strides[x])
-            .collect();
-        let cs = problem.c.strides.clone();
-        let (ap, bp, cp) = (
+        let n_out: usize = self.out.iter().map(|x| x.extent).product();
+        let zero = <T as Element>::zero();
+        let skip_ab = p.k_empty() || alpha == zero;
+        let read_c = beta != zero && (c.is_some() || in_place);
+        let (ca, cb) = (p.a().op().is_conj(), p.b().op().is_conj());
+        let (cc, cd) = (p.op_c().is_conj(), p.d().op().is_conj());
+        let (ap, bp, dp) = (
             Raw(a.ptr() as *mut T),
             Raw(b.ptr() as *mut T),
-            Raw(c.as_mut_ptr()),
+            Raw(d.as_mut_ptr()),
         );
-        let (ca, cb) = problem.conj;
-        let lanes = host.budget().min(n_out).max(1);
+        let cp = Raw(c.unwrap_or(core::ptr::null()) as *mut T);
+        let op = |x: T, conj: bool| if conj { Element::conj(x) } else { x };
+        let lanes = exec.budget().min(n_out).max(1);
         let body = |lane: usize| {
             let (lo, hi) = (lane * n_out / lanes, (lane + 1) * n_out / lanes);
             for t in lo..hi {
                 // Unravel t over the output extents (first axis fastest).
-                let (mut rem, mut oa, mut ob, mut oc) = (t, 0isize, 0isize, 0isize);
-                for (k, &d) in out_dims.iter().enumerate() {
-                    let i = (rem % d) as isize;
-                    rem /= d;
-                    oa += i * sa[k];
-                    ob += i * sb[k];
-                    oc += i * cs[k];
+                let (mut rem, mut off) = (t, [0isize; 4]);
+                for ax in &self.out {
+                    let i = (rem % ax.extent) as isize;
+                    rem /= ax.extent;
+                    for (o, s) in off.iter_mut().zip(ax.s) {
+                        *o += i * s;
+                    }
                 }
-                let mut acc = T::ZERO;
+                let mut acc = zero;
                 if !skip_ab {
-                    let mut kidx = vec![0usize; kdims.len()];
+                    let mut kidx = vec![0usize; self.sum.len()];
                     'k: loop {
-                        let (mut pa, mut pb) = (oa, ob);
+                        let (mut pa, mut pb) = (off[0], off[1]);
                         for (q, &i) in kidx.iter().enumerate() {
-                            pa += i as isize * ka[q];
-                            pb += i as isize * kb[q];
+                            pa += i as isize * self.sum[q].s[0];
+                            pb += i as isize * self.sum[q].s[1];
                         }
                         // SAFETY: offsets are inside the bounds-checked views.
                         let (x, y) = unsafe { (*ap.get().offset(pa), *bp.get().offset(pb)) };
-                        let x = if ca == Conj::Yes { x.conj() } else { x };
-                        let y = if cb == Conj::Yes { y.conj() } else { y };
-                        acc = acc + x * y;
+                        acc = Element::add(acc, Element::mul(op(x, ca), op(y, cb)));
                         let mut q = 0;
                         loop {
                             if q == kidx.len() {
                                 break 'k;
                             }
                             kidx[q] += 1;
-                            if kidx[q] < kdims[q] {
+                            if kidx[q] < self.sum[q].extent {
                                 break;
                             }
                             kidx[q] = 0;
@@ -207,20 +192,60 @@ impl<T: Field> PreparedContraction<T> for NaiveBoxed {
                         }
                     }
                 }
-                // SAFETY: `oc` is a distinct in-bounds output position; C is
-                // exclusively borrowed and injective.
+                // SAFETY: `off[3]` is a distinct in-bounds output position; D is
+                // exclusively borrowed and injective; a separate C is in bounds.
                 unsafe {
-                    let p = cp.get().offset(oc);
-                    *p = if beta == T::ZERO {
-                        alpha * acc
-                    } else {
-                        alpha * acc + beta * *p
-                    };
+                    let q = dp.get().offset(off[3]);
+                    let mut v = Element::mul(alpha, acc);
+                    if read_c {
+                        let old = if in_place {
+                            *q
+                        } else {
+                            *cp.get().offset(off[2])
+                        };
+                        v = Element::add(v, Element::mul(beta, op(old, cc)));
+                    }
+                    *q = op(v, cd);
                 }
             }
         };
-        host.for_each_partition(lanes, &body);
+        exec.for_each_partition(lanes, &body);
         Ok(())
+    }
+}
+
+impl<T: Scalar> PreparedContraction<T> for NaivePlan {
+    fn execute_into(
+        &self,
+        exec: &Exec<'_>,
+        alpha: T,
+        a: &StridedView<'_, T>,
+        b: &StridedView<'_, T>,
+        d: &mut StridedViewMut<'_, T>,
+    ) -> Result<()> {
+        self.run(exec, alpha, a, b, <T as Element>::zero(), None, false, d)
+    }
+
+    fn execute_into_accum(
+        &self,
+        exec: &Exec<'_>,
+        alpha: T,
+        a: &StridedView<'_, T>,
+        b: &StridedView<'_, T>,
+        beta: T,
+        source: AccumulationSource<'_, T>,
+        d: &mut StridedViewMut<'_, T>,
+    ) -> Result<()> {
+        match (self.problem.c_spec(), source) {
+            (CSpec::Output(_), AccumulationSource::Output) => {
+                self.run(exec, alpha, a, b, beta, None, true, d)
+            }
+            (CSpec::Separate(_), AccumulationSource::Separate(c)) => {
+                self.check::<T>(OperandId::C, c.dims(), c.strides())?;
+                self.run(exec, alpha, a, b, beta, Some(c.ptr()), false, d)
+            }
+            _ => Err(LayoutError::CMode.into()),
+        }
     }
 
     fn diagnostics(&self) -> &Diagnostics {
@@ -231,5 +256,5 @@ impl<T: Field> PreparedContraction<T> for NaiveBoxed {
 // Plans are shared across threads: the plan holds only owned metadata.
 const _: fn() = || {
     fn assert<X: Send + Sync>() {}
-    assert::<NaiveBoxed>();
+    assert::<NaivePlan>();
 };
