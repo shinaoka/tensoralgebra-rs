@@ -335,7 +335,8 @@ listed here.
 | Old path | New path |
 |---|---|
 | `tensorprimitives/crates/tensorcontract/src/plan.rs` | `crates/tprims-contract/src/plan/analysis.rs` (index analysis: roles, folding, scatter vectors, `PackedPlan`) and `plan/orientation.rs` (orientation, row block, partition rule, with their tests) |
-| `tensorprimitives/crates/tensorcontract/src/driver.rs`, `driver/dynamic.rs` | `crates/tprims-contract/src/driver/mod.rs`, `driver/dynamic.rs` (the loop nest; resolution is mandatory, the foreign-scalar path is gone) |
+| `tensorprimitives/crates/tensorcontract/src/driver.rs` | `driver/mod.rs` (entry points, the per-call decisions, `Ctx`, `execute_capped`), `driver/static_grid.rs` (`BPart`, the static team's `run_strip`) and `driver/tile.rs` (`Epoch`, `Bufs`, panel packing, `compute_block`, `emit_tile`); resolution is mandatory and the foreign-scalar path is gone |
+| `tensorprimitives/crates/tensorcontract/src/driver/dynamic.rs` | `crates/tprims-contract/src/driver/dynamic.rs` |
 | `tensorprimitives/crates/tensorcontract/tests/*.rs` (`common`, `correctness`, `cplx_native`, `direct`, `dynamic`, `gemm_families`, `partition_bitwise`, `selection_boundary`, `traits`) | `crates/tprims-contract/src/driver/tests/*.rs` (unit tests over a test-only adapter, `compat.rs`) |
 | `tensorprimitives/crates/tensorcontract/tests/{exec_pin,exec_pool,exec_seam,explicit_config,pool_workspace,workspace_alloc}.rs` | `crates/tprims-contract/tests/packed_*.rs` |
 | `tensorprimitives/crates/tensorcontract/src/{select,resolve,batch,buffer}.rs` | `crates/tprims-contract/src/{select,resolve,batch,buffer}.rs` |

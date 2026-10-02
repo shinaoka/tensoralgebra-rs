@@ -3,7 +3,7 @@ use std::cell::Cell;
 
 use strided_view::{StridedView, StridedViewMut};
 use tprims_contract::api::{
-    AccumulationSource, ConfigError, DType, DotGeneral, Error, LayoutSpec, OperandSpec, Problem,
+    AccumulationSource, ConfigError, DType, DotGeneral, Error, LayoutSpec, Op, OperandSpec, Problem,
 };
 use tprims_contract::{Algorithm, Plan, PlanConfig};
 use tprims_exec::Exec;
@@ -293,4 +293,165 @@ fn a_selected_plan_is_bound_to_its_storage_dtype() {
         })
     ));
     assert!(!called.get());
+}
+
+/// A direct-update, direct-B custom family: the selector is shown that B can be
+/// read in place, the family updates `D` itself (with `C` accumulated in place)
+/// and the plan reports it.
+#[test]
+fn a_direct_b_custom_kernel_updates_c_in_place_and_reports_itself() {
+    let cat = catalog(own::f64_direct_families());
+    let (m, n, k) = (23usize, 21usize, 13usize);
+    let (a, b) = (ints::<f64>(7, m * k), ints::<f64>(8, k * n));
+    let mut c = ints::<f64>(9, m * n);
+    let mut want = c.clone();
+    for i in 0..m {
+        for j in 0..n {
+            let mut s = 0.0;
+            for p in 0..k {
+                s += a[i + p * m] * b[p + j * k];
+            }
+            want[i + j * m] = s + 3.0 * want[i + j * m];
+        }
+    }
+    let spec = |d: &[usize], s: &[isize]| OperandSpec::new(LayoutSpec::new(d, s, 0).unwrap());
+    let problem = Problem::from_dot_general(
+        DType::F64,
+        spec(&[m, k], &[1, m as isize]),
+        spec(&[k, n], &[1, k as isize]),
+        spec(&[m, n], &[1, m as isize]),
+        &DotGeneral::new(&[1], &[0], &[], &[]),
+    )
+    .unwrap();
+    let saw_direct = Cell::new(false);
+    let plan =
+        Plan::<f64>::new_with_selector(&problem, &PlanConfig::default(), &cat, &mut |_, cands| {
+            saw_direct.set(cands[0].direct_b);
+            Ok(cands[0].handle)
+        })
+        .unwrap();
+    plan.execute_into_accum(
+        &Exec::serial(),
+        1.0,
+        &StridedView::new(&a, &[m, k], &[1, m as isize], 0).unwrap(),
+        &StridedView::new(&b, &[k, n], &[1, k as isize], 0).unwrap(),
+        3.0,
+        AccumulationSource::Output,
+        &mut StridedViewMut::new(&mut c, &[m, n], &[1, m as isize], 0).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(c, want);
+    assert!(
+        saw_direct.get(),
+        "unit-stride B is eligible for in-place reads"
+    );
+    assert_eq!(
+        plan.report().packed.as_ref().unwrap().family_id,
+        "custom.f64.4x4.direct-b"
+    );
+}
+
+/// Complex storage: a custom complex family runs a conjugated product, the
+/// selector sees the complex facts, and a catalog of the wrong dtype is refused
+/// at admission.
+#[test]
+fn custom_complex_families_need_a_dtype_correct_catalog() {
+    use num_complex::Complex;
+    let (m, n, k) = (7usize, 5usize, 6usize);
+    let z = |len: usize, s: usize| -> Vec<Complex<f64>> {
+        ints::<f64>(s, len)
+            .into_iter()
+            .zip(ints::<f64>(s + 50, len))
+            .map(|(re, im)| Complex::new(re, im))
+            .collect()
+    };
+    let (a, b) = (z(m * k, 1), z(k * n, 2));
+    let mut c = vec![Complex::new(0.0, 0.0); m * n];
+    let mut want = c.clone();
+    for i in 0..m {
+        for j in 0..n {
+            let mut s = Complex::new(0.0, 0.0);
+            for p in 0..k {
+                s += a[i + p * m].conj() * b[p + j * k];
+            }
+            want[i + j * m] = s;
+        }
+    }
+    let cat = unsafe { KernelCatalog::<Complex<f64>>::from_static_families(own::c64_families()) }
+        .unwrap();
+    let spec = |d: &[usize], s: &[isize], op: Op| {
+        OperandSpec::new(LayoutSpec::new(d, s, 0).unwrap()).with_op(op)
+    };
+    let problem = Problem::from_dot_general(
+        DType::C64,
+        spec(&[m, k], &[1, m as isize], Op::Conjugate),
+        spec(&[k, n], &[1, k as isize], Op::Identity),
+        spec(&[m, n], &[1, m as isize], Op::Identity),
+        &DotGeneral::new(&[1], &[0], &[], &[]),
+    )
+    .unwrap();
+    let plan = Plan::<Complex<f64>>::new_with_selector(
+        &problem,
+        &PlanConfig::default(),
+        &cat,
+        &mut |ctx, cands| {
+            assert!(ctx.is_complex);
+            assert_eq!(ctx.dtype, "c64");
+            assert!(ctx.operands[0].conj);
+            Ok(cands[0].handle)
+        },
+    )
+    .unwrap();
+    plan.execute_into(
+        &Exec::serial(),
+        Complex::new(1.0, 0.0),
+        &StridedView::new(&a, &[m, k], &[1, m as isize], 0).unwrap(),
+        &StridedView::new(&b, &[k, n], &[1, k as isize], 0).unwrap(),
+        &mut StridedViewMut::new(&mut c, &[m, n], &[1, m as isize], 0).unwrap(),
+    )
+    .unwrap();
+    let report = plan.report().packed.as_ref().unwrap();
+    assert_eq!(report.family_id, "custom.c64.native.2x2");
+    assert!(report.complex.is_some());
+    assert_eq!(c, want);
+
+    // c32 admits its own complex family; a real list is refused for complex
+    // storage and vice versa.
+    let admit32 =
+        unsafe { KernelCatalog::<Complex<f32>>::from_static_families(own::c32_families()) };
+    assert!(admit32.is_ok());
+    assert!(matches!(
+        unsafe { KernelCatalog::<Complex<f64>>::from_static_families(own::f64_families()) },
+        Err(SelectError::DtypeMismatch { dtype: "c64", .. })
+    ));
+    assert!(matches!(
+        unsafe { KernelCatalog::<f64>::from_static_families(own::c64_families()) },
+        Err(SelectError::DtypeMismatch { dtype: "f64", .. })
+    ));
+}
+
+/// A built-in family is available to a selector only when the caller's catalog
+/// holds it: the fallback is a handle the selector chooses, never an implicit
+/// default.
+#[test]
+fn a_builtin_fallback_is_explicit() {
+    let own_cat = catalog(own::f64_families());
+    let both = own_cat.union(&KernelCatalog::<f64>::builtin()).unwrap();
+    let plan = Plan::<f64>::new_with_selector(
+        &problem(),
+        &PlanConfig::default(),
+        &both,
+        &mut |_, cands| {
+            // Prefer a built-in kernel when asked to; the report says so.
+            Ok(cands
+                .iter()
+                .find(|c| c.handle.id() == "ref.f64.real.4x4")
+                .unwrap()
+                .handle)
+        },
+    )
+    .unwrap();
+    let report = plan.report().packed.as_ref().unwrap();
+    assert_eq!(report.family_id, "ref.f64.real.4x4");
+    assert_eq!(report.origin, tprims_kernel::Origin::Portable);
 }

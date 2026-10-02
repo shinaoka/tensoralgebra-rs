@@ -317,7 +317,7 @@ selection policy without editing tprims or touching the process defaults.
 
 Errors are `SelectError` variants (`DuplicateId`, `ForeignHandle`,
 `NotACandidate`, `NoCandidates`, `SelectorFailed`, plus the existing
-`CpuUnsupported`, `DtypeMismatch`, `Incompatible`, `EngineUnsupported`); the
+`CpuUnsupported`, `DtypeMismatch`, `Incompatible`); the
 contract crate preserves the typed `SelectError` as the source of `Error::Backend` (downcast it). `PlanReport`
 reports the chosen family, its geometry and its provenance (`origin`);
 downstream kernels report `Origin::External { crate_name, license }`.
@@ -367,7 +367,7 @@ Solves live in the same crate as the factorizations because they operate on each
 
 - Factor-object solves: `lu.solve`, `cholesky.solve`, `ldl.solve` (LAPACK `GETRS`/`POTRS`/`SYTRS` equivalents), with transpose and conjugate-transpose variants.
 - One-shot `solve(A, B)`, least squares `lstsq` (QR for full rank, SVD or pivoted QR for rank-deficient input with an explicit rank tolerance), `inv`, `det` and `logdet`.
-- Triangular solve with a matrix right-hand side is TRSM in `tprims-blas`.
+- Triangular solve with a matrix right-hand side was TRSM in `tprims-blas`, removed in the source integration ([#37](https://github.com/tensor4all/tprims-rs/issues/37)) with no replacement here.
 
 Start with `f32`/`f64`, then complex arithmetic with explicit conjugation behavior. Require reconstruction/solve residuals, QR orthogonality, rank-deficient, indefinite and non-positive-definite inputs, extreme scales, and convergence status before timing. SVD and eigensolvers are separate numerical workstreams, not straightforward GEMM extensions.
 
@@ -375,7 +375,7 @@ Tensor-level factorizations in `tprims-contract` reshape a strided tensor into a
 
 ### Batched execution
 
-`tprims-linalg` contains a `batched` module with factorization and solve entry points; `tprims-blas` owns batched GEMM. The batch module owns batch descriptors, output/status arrays, scratch planning, and the choice of batch versus inner-matrix parallelism. It executes the schedule on the caller's `tprims-exec` context and reuses per-matrix routines as its first implementation. Specialized small-matrix or interleaved batch kernels can later replace the per-item implementation under the same batch contract; they require their own correctness and performance evidence.
+`tprims-linalg` (removed in the source integration; this section is design history) contained a `batched` module with factorization and solve entry points; batched GEMM is a contraction with batch axes in `tprims-contract` (`contract_batched` for independent items). The batch module owns batch descriptors, output/status arrays, scratch planning, and the choice of batch versus inner-matrix parallelism. It executes the schedule on the caller's `tprims-exec` context and reuses per-matrix routines as its first implementation. Specialized small-matrix or interleaved batch kernels can later replace the per-item implementation under the same batch contract; they require their own correctness and performance evidence.
 
 **Phase 1 baseline: faer plus a loop.** Every batched operation first runs the faer per-matrix routine in a loop over items: serial per item on the calling thread for a small batch, the items distributed over the borrowed pool for a large batch, and faer's inner `Par::rayon(n)` only for a few large matrices. Batched GEMM additionally has the TBLIS-style implementation, compared against the faer loop.
 
