@@ -1006,7 +1006,7 @@ fn threaded_case<T>(
     // serial" is anchored to something rather than to itself.
     if batch == 1 {
         let want = naive_gemm::<T>(m as usize, n as usize, k as usize, &a, &b);
-        let want: Vec<T> = want.iter().map(|&v| alpha.mul(v)).collect();
+        let want: Vec<T> = want.iter().map(|&v| Element::mul(alpha, v)).collect();
         let err = rel_error(&serial, &want);
         assert!(err <= tol::<T>(method), "serial anchor: rel error {err:e}");
     }
