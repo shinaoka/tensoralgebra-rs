@@ -207,3 +207,67 @@ fn unit_scalars_match_the_oracle() {
         }
     }
 }
+
+/// Above strided-rs's parallel threshold the pass fans out on the borrowed
+/// pool; the in-place and separate-C forms (raw-pointer in-place body and the
+/// checked three-operand kernel) must give the serial, formula result.
+#[test]
+fn a_threaded_pass_matches_the_formula_and_the_serial_pass() {
+    use tprims_exec::Pool;
+    const N: usize = 300; // 90 000 elements, over 2^15
+    let dims = [N, N];
+    let labels = [0i64, 1];
+    let (alpha, beta) = (C64::new(0.7, -0.3), C64::new(-0.4, 0.6));
+    let a: Vec<C64> = seeded(1, N * N); // row-major: a permuted layout
+    let b: Vec<C64> = seeded(2, N * N);
+    let start: Vec<C64> = seeded(3, N * N);
+    let sa = [N as isize, 1];
+    let sd = [1isize, N as isize];
+    let spec = |s: &[isize; 2], conj| {
+        OperandSpec::new(LayoutSpec::new(&dims, s, 0).unwrap()).with_op(op(conj))
+    };
+    let problem = Problem::from_labels(
+        C64::STORAGE,
+        spec(&sa, true),
+        spec(&sd, false),
+        CSpec::Output(op(true)),
+        spec(&sd, true),
+        &Labels::new(&labels, &labels, &labels),
+    )
+    .unwrap();
+    let plan = Plan::<C64>::new(&problem, &PlanConfig::default()).unwrap();
+    assert_eq!(plan.report().algorithm, Algorithm::Elementwise);
+    let av = StridedView::new(&a, &dims, &sa, 0).unwrap();
+    let bv = StridedView::new(&b, &dims, &sd, 0).unwrap();
+    let go = |exec: &Exec<'_>| {
+        let mut out = start.clone();
+        let mut dv = StridedViewMut::new(&mut out, &dims, &sd, 0).unwrap();
+        plan.execute_into_accum(
+            exec,
+            alpha,
+            &av,
+            &bv,
+            beta,
+            AccumulationSource::Output,
+            &mut dv,
+        )
+        .unwrap();
+        out
+    };
+    let serial = go(&Exec::serial());
+    let tp = rayon::ThreadPoolBuilder::new()
+        .num_threads(4)
+        .build()
+        .unwrap();
+    let pool = Pool::borrow(&tp);
+    let par = go(&Exec::rayon(&pool));
+    assert_eq!(par, serial);
+    // D = conj(alpha * conj(A) * B + beta * conj(D)), D and B column-major.
+    for j in 0..N {
+        for i in 0..N {
+            let x = a[i * N + j].conj();
+            let want = (alpha * x * b[j * N + i] + beta * start[j * N + i].conj()).conj();
+            assert!((serial[j * N + i] - want).norm() < 1e-12, "({i}, {j})");
+        }
+    }
+}

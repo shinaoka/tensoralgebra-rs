@@ -11,7 +11,7 @@ description = "Binary tensor contraction for the tprims stack: one Problem, a pa
 [dependencies]
 faer = { workspace = true }
 num-complex = { workspace = true }
-strided-basic = { workspace = true }
+strided-basic = { workspace = true, features = ["parallel"] }
 strided-view = { workspace = true }
 thiserror = { workspace = true }
 tprims-exec = { workspace = true, features = ["strided"] }
