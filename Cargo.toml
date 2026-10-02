@@ -20,10 +20,10 @@ rust-version = "1.89"
 # strided-rs main at the merge of #283 (in-place update ops), after v0.4.4. This
 # is post-v0.4.4 main and no longer the rev tenferro-rs pins (v0.4.4,
 # 2570533); tenferro-rs's pin must follow before both are used in one build.
-strided-basic = { git = "https://github.com/tensor4all/strided-rs.git", rev = "82de28a30d578872dd96073c3b354a1677d754d8", version = "0.4.4", default-features = false }
-strided-view = { git = "https://github.com/tensor4all/strided-rs.git", rev = "82de28a30d578872dd96073c3b354a1677d754d8", version = "0.4.4" }
-strided-perm = { git = "https://github.com/tensor4all/strided-rs.git", rev = "82de28a30d578872dd96073c3b354a1677d754d8", version = "0.4.4" }
-strided-kernel = { git = "https://github.com/tensor4all/strided-rs.git", rev = "82de28a30d578872dd96073c3b354a1677d754d8", version = "0.4.4" }
+strided-basic = { git = "https://github.com/tensor4all/strided-rs.git", rev = "b2a9a54ac4177e2833d0501f6db582c6fe6ce186", version = "0.4.4", default-features = false }
+strided-view = { git = "https://github.com/tensor4all/strided-rs.git", rev = "b2a9a54ac4177e2833d0501f6db582c6fe6ce186", version = "0.4.4" }
+strided-perm = { git = "https://github.com/tensor4all/strided-rs.git", rev = "b2a9a54ac4177e2833d0501f6db582c6fe6ce186", version = "0.4.4" }
+strided-kernel = { git = "https://github.com/tensor4all/strided-rs.git", rev = "b2a9a54ac4177e2833d0501f6db582c6fe6ce186", version = "0.4.4" }
 tprims-kernel = { version = "0.1.0", path = "crates/tprims-kernel", default-features = false }
 tprims-exec = { version = "0.1.0", path = "crates/tprims-exec" }
 tprims-capi = { version = "0.1.0", path = "crates/tprims-capi" }

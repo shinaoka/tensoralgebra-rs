@@ -32,18 +32,19 @@
 
 use strided_basic::{
     axpy, copy_scale, fma, map_into, map_update_into, mul_into, zip_map2_into, zip_map3_into,
-    zip_update2_into, zip_update3_into, Conj, ElementOp, Identity, StridedError,
+    zip_update2_into, zip_update3_into, ElementOp, Identity, StridedError,
 };
 use strided_view::{StridedView, StridedViewMut};
 use tprims_exec::strided::run_with_exec;
 use tprims_exec::Exec;
 use tprims_kernel::Element;
 
+use crate::api::scalar::sealed::Sealed;
 use crate::api::{Error, OperandId, Problem, Result, RoleAxis, Scalar};
 
 /// Where the `beta * op_C(C)` term is read from.
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum CRead<T> {
+pub enum CRead<T> {
     /// No term: nothing previous is read and `beta` is treated as zero.
     None,
     /// The output element itself.
@@ -55,7 +56,7 @@ pub(crate) enum CRead<T> {
 
 /// The input term of one update.
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum Inputs<T> {
+pub enum Inputs<T> {
     /// No input term (an output-only pass).
     None,
     /// `alpha * op_A(A) * op_B(B)`, with the two origins.
@@ -73,7 +74,7 @@ unsafe impl<T> Sync for CRead<T> {}
 
 /// The scalars and conjugations of one update.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct Expr<T> {
+pub struct Expr<T> {
     pub alpha: T,
     pub beta: T,
     pub conj_a: bool,
@@ -161,7 +162,7 @@ unsafe fn write_view<'a, T>(
 /// The axes of a pass: extents and the `[A, B, C, D]` element strides of each
 /// axis, extent-1 axes dropped.
 #[derive(Clone, Debug)]
-pub(crate) struct ElementPlan {
+pub struct ElementPlan {
     dims: Vec<usize>,
     strides: [Vec<isize>; 4],
     total: usize,
@@ -235,6 +236,25 @@ impl ElementPlan {
         c: CRead<T>,
         d: *mut T,
     ) -> Result<()> {
+        // SAFETY: the caller's contract. The per-dtype hook is the one
+        // instantiation of `run_impl`, so consumers never re-monomorphize it.
+        unsafe { <T as Sealed>::elementwise(self, exec, e, inputs, c, d) }
+    }
+
+    /// The generic body of [`ElementPlan::run`]; instantiated only by the
+    /// four per-dtype hooks in `api::scalar`.
+    ///
+    /// # Safety
+    ///
+    /// As [`ElementPlan::run`].
+    pub(crate) unsafe fn run_impl<T: Scalar>(
+        &self,
+        exec: &Exec<'_>,
+        e: Expr<T>,
+        inputs: Inputs<T>,
+        c: CRead<T>,
+        d: *mut T,
+    ) -> Result<()> {
         if self.total == 0 {
             return Ok(());
         }
@@ -259,9 +279,6 @@ impl ElementPlan {
             cb = !cb;
             cc = !cc;
         }
-        if !<T as Element>::IS_COMPLEX {
-            (ca, cb, cc) = (false, false, false);
-        }
         let ptrs = match inputs {
             Inputs::Product(a, b) => [Ptr(a as *mut T), Ptr(b as *mut T)],
             Inputs::Scaled(a) => [Ptr(a as *mut T), Ptr(core::ptr::null_mut())],
@@ -281,22 +298,54 @@ impl ElementPlan {
             mode,
             d: Ptr(d),
         };
-        macro_rules! dispatch {
-            ($($ca:literal $cb:literal $cc:literal => $oa:ty, $ob:ty, $oc:ty;)*) => {
-                match (ca, cb, cc) {
-                    $(($ca, $cb, $cc) => job.go::<$oa, $ob, $oc>(exec),)*
-                }
+        // Dispatch on (kind, C mode) first, then only on the conjugations that
+        // arm uses, so an unused operand op is never instantiated. `Cj` is the
+        // identity for a real type: its two branches are one instance.
+        type Id = Identity;
+        macro_rules! cj {
+            () => {
+                <T as Sealed>::Cj
             };
         }
-        dispatch! {
-            false false false => Identity, Identity, Identity;
-            false false true => Identity, Identity, Conj;
-            false true false => Identity, Conj, Identity;
-            false true true => Identity, Conj, Conj;
-            true false false => Conj, Identity, Identity;
-            true false true => Conj, Identity, Conj;
-            true true false => Conj, Conj, Identity;
-            true true true => Conj, Conj, Conj;
+        let has_c = !matches!(job.mode, Mode::Overwrite);
+        match (job.kind, has_c) {
+            (Kind::None, false) => job.zero(exec),
+            (Kind::None, true) => {
+                if cc {
+                    job.none_c::<cj!()>(exec)
+                } else {
+                    job.none_c::<Id>(exec)
+                }
+            }
+            (Kind::Scaled, false) => {
+                if ca {
+                    job.scaled::<cj!()>(exec)
+                } else {
+                    job.scaled::<Id>(exec)
+                }
+            }
+            (Kind::Scaled, true) => match (ca, cc) {
+                (false, false) => job.scaled_c::<Id, Id>(exec),
+                (false, true) => job.scaled_c::<Id, cj!()>(exec),
+                (true, false) => job.scaled_c::<cj!(), Id>(exec),
+                (true, true) => job.scaled_c::<cj!(), cj!()>(exec),
+            },
+            (Kind::Product, false) => match (ca, cb) {
+                (false, false) => job.product::<Id, Id>(exec),
+                (false, true) => job.product::<Id, cj!()>(exec),
+                (true, false) => job.product::<cj!(), Id>(exec),
+                (true, true) => job.product::<cj!(), cj!()>(exec),
+            },
+            (Kind::Product, true) => match (ca, cb, cc) {
+                (false, false, false) => job.product_c::<Id, Id, Id>(exec),
+                (false, false, true) => job.product_c::<Id, Id, cj!()>(exec),
+                (false, true, false) => job.product_c::<Id, cj!(), Id>(exec),
+                (false, true, true) => job.product_c::<Id, cj!(), cj!()>(exec),
+                (true, false, false) => job.product_c::<cj!(), Id, Id>(exec),
+                (true, false, true) => job.product_c::<cj!(), Id, cj!()>(exec),
+                (true, true, false) => job.product_c::<cj!(), cj!(), Id>(exec),
+                (true, true, true) => job.product_c::<cj!(), cj!(), cj!()>(exec),
+            },
         }
         .map_err(Error::backend)
     }
@@ -323,83 +372,123 @@ struct Job<'p, T> {
     d: Ptr<T>,
 }
 
+type Done = core::result::Result<(), StridedError>;
+
 impl<T: Scalar> Job<'_, T> {
-    /// The monomorphized pass for the conjugations `OA`, `OB` and `OC`.
-    ///
-    /// Each arm of the match is one strided-basic kernel with its own closure,
-    /// chosen once per execution.
-    fn go<OA, OB, OC>(&self, exec: &Exec<'_>) -> core::result::Result<(), StridedError>
-    where
-        OA: ElementOp<T>,
-        OB: ElementOp<T>,
-        OC: ElementOp<T>,
-    {
-        let one = <T as Element>::one();
-        let (alpha, beta) = (self.alpha, self.beta);
+    /// Run `body(dims, strides)` under the executor, chosen once per call.
+    fn with(
+        &self,
+        exec: &Exec<'_>,
+        body: impl FnOnce(&[usize], &[Vec<isize>; 4]) -> Done + Send,
+    ) -> Done {
         let plan = self.plan;
-        run_with_exec(exec, plan.total, |_| {
-            let dims = plan.dims.as_slice();
-            let st = &plan.strides;
-            // SAFETY: the contract of `ElementPlan::run`: every origin and
-            // layout is validated; the destination is exclusive and
-            // injective; a separate C is disjoint from it. In-place forms never
-            // build a second view of the destination.
-            unsafe {
-                let dv = || write_view(self.d.get(), dims, &st[3]);
-                let av = || read_view::<T, OA>(self.ptrs[0].get(), dims, &st[0]);
-                let bv = || read_view::<T, OB>(self.ptrs[1].get(), dims, &st[1]);
-                let cv = |p: *const T| read_view::<T, OC>(p, dims, &st[2]);
-                match (self.kind, self.mode) {
-                    (Kind::None, Mode::Overwrite) => {
-                        // `op_D(0)`: a stride-0 broadcast of zero.
-                        let z = [<T as Element>::zero()];
-                        let zeros = vec![0isize; dims.len()];
-                        let zv = StridedView::<T, Identity>::new_unchecked(&z, dims, &zeros, 0);
-                        map_into(&mut dv(), &zv, |x| x)
-                    }
-                    (Kind::None, Mode::InPlace) => {
-                        map_update_into::<T, OC>(&mut dv(), move |z| beta * z)
-                    }
-                    (Kind::None, Mode::Separate(p)) => {
-                        map_into(&mut dv(), &cv(p.get()), move |x| beta * x)
-                    }
-                    (Kind::Scaled, Mode::Overwrite) => copy_scale(&mut dv(), &av(), alpha),
-                    (Kind::Scaled, Mode::InPlace) if beta == one && OC::IS_IDENTITY => {
-                        axpy(&mut dv(), &av(), alpha)
-                    }
-                    (Kind::Scaled, Mode::InPlace) => {
-                        zip_update2_into::<T, T, OC, OA>(&mut dv(), &av(), move |z, x| {
-                            alpha * x + beta * z
-                        })
-                    }
-                    (Kind::Scaled, Mode::Separate(p)) => {
-                        zip_map2_into(&mut dv(), &av(), &cv(p.get()), move |x, z| {
-                            alpha * x + beta * z
-                        })
-                    }
-                    (Kind::Product, Mode::Overwrite) if alpha == one => {
-                        mul_into(&mut dv(), &av(), &bv())
-                    }
-                    (Kind::Product, Mode::Overwrite) => {
-                        zip_map2_into(&mut dv(), &av(), &bv(), move |x, y| alpha * x * y)
-                    }
-                    (Kind::Product, Mode::InPlace)
-                        if alpha == one && beta == one && OC::IS_IDENTITY =>
-                    {
-                        fma(&mut dv(), &av(), &bv())
-                    }
-                    (Kind::Product, Mode::InPlace) => zip_update3_into::<T, T, T, OC, OA, OB>(
-                        &mut dv(),
-                        &av(),
-                        &bv(),
-                        move |z, x, y| alpha * x * y + beta * z,
-                    ),
-                    (Kind::Product, Mode::Separate(p)) => {
-                        zip_map3_into(&mut dv(), &av(), &bv(), &cv(p.get()), move |x, y, z| {
-                            alpha * x * y + beta * z
-                        })
-                    }
+        run_with_exec(exec, plan.total, |_| body(&plan.dims, &plan.strides))
+    }
+
+    // SAFETY (all arms): the contract of `ElementPlan::run`: every origin and
+    // layout is validated; the destination is exclusive and injective; a
+    // separate C is disjoint from it. In-place forms never build a second view
+    // of the destination.
+
+    /// `D = op_D(0)`: a stride-0 broadcast of zero.
+    fn zero(&self, exec: &Exec<'_>) -> Done {
+        self.with(exec, |dims, st| unsafe {
+            let z = [<T as Element>::zero()];
+            let zeros = vec![0isize; dims.len()];
+            let zv = StridedView::<T, Identity>::new_unchecked(&z, dims, &zeros, 0);
+            map_into(&mut write_view(self.d.get(), dims, &st[3]), &zv, |x| x)
+        })
+    }
+
+    /// `D = beta * op_C(C)`.
+    fn none_c<OC: ElementOp<T>>(&self, exec: &Exec<'_>) -> Done {
+        let beta = self.beta;
+        self.with(exec, |dims, st| unsafe {
+            let mut dv = write_view(self.d.get(), dims, &st[3]);
+            match self.mode {
+                Mode::InPlace => map_update_into::<T, OC>(&mut dv, move |z| beta * z),
+                Mode::Separate(p) => {
+                    let cv = read_view::<T, OC>(p.get(), dims, &st[2]);
+                    map_into(&mut dv, &cv, move |x| beta * x)
                 }
+                Mode::Overwrite => unreachable!("dispatched on a C term"),
+            }
+        })
+    }
+
+    /// `D = alpha * op_A(A)`.
+    fn scaled<OA: ElementOp<T>>(&self, exec: &Exec<'_>) -> Done {
+        let alpha = self.alpha;
+        self.with(exec, |dims, st| unsafe {
+            let av = read_view::<T, OA>(self.ptrs[0].get(), dims, &st[0]);
+            copy_scale(&mut write_view(self.d.get(), dims, &st[3]), &av, alpha)
+        })
+    }
+
+    /// `D = alpha * op_A(A) + beta * op_C(C)`.
+    fn scaled_c<OA: ElementOp<T>, OC: ElementOp<T>>(&self, exec: &Exec<'_>) -> Done {
+        let (alpha, beta) = (self.alpha, self.beta);
+        self.with(exec, |dims, st| unsafe {
+            let mut dv = write_view(self.d.get(), dims, &st[3]);
+            let av = read_view::<T, OA>(self.ptrs[0].get(), dims, &st[0]);
+            match self.mode {
+                Mode::InPlace if beta == <T as Element>::one() && OC::IS_IDENTITY => {
+                    axpy(&mut dv, &av, alpha)
+                }
+                Mode::InPlace => {
+                    zip_update2_into::<T, T, OC, OA>(&mut dv, &av, move |z, x| alpha * x + beta * z)
+                }
+                Mode::Separate(p) => {
+                    let cv = read_view::<T, OC>(p.get(), dims, &st[2]);
+                    zip_map2_into(&mut dv, &av, &cv, move |x, z| alpha * x + beta * z)
+                }
+                Mode::Overwrite => unreachable!("dispatched on a C term"),
+            }
+        })
+    }
+
+    /// `D = alpha * op_A(A) * op_B(B)`.
+    fn product<OA: ElementOp<T>, OB: ElementOp<T>>(&self, exec: &Exec<'_>) -> Done {
+        let alpha = self.alpha;
+        self.with(exec, |dims, st| unsafe {
+            let mut dv = write_view(self.d.get(), dims, &st[3]);
+            let av = read_view::<T, OA>(self.ptrs[0].get(), dims, &st[0]);
+            let bv = read_view::<T, OB>(self.ptrs[1].get(), dims, &st[1]);
+            if alpha == <T as Element>::one() {
+                mul_into(&mut dv, &av, &bv)
+            } else {
+                zip_map2_into(&mut dv, &av, &bv, move |x, y| alpha * x * y)
+            }
+        })
+    }
+
+    /// `D = alpha * op_A(A) * op_B(B) + beta * op_C(C)`.
+    fn product_c<OA: ElementOp<T>, OB: ElementOp<T>, OC: ElementOp<T>>(
+        &self,
+        exec: &Exec<'_>,
+    ) -> Done {
+        let (alpha, beta) = (self.alpha, self.beta);
+        let one = <T as Element>::one();
+        self.with(exec, |dims, st| unsafe {
+            let mut dv = write_view(self.d.get(), dims, &st[3]);
+            let av = read_view::<T, OA>(self.ptrs[0].get(), dims, &st[0]);
+            let bv = read_view::<T, OB>(self.ptrs[1].get(), dims, &st[1]);
+            match self.mode {
+                Mode::InPlace if alpha == one && beta == one && OC::IS_IDENTITY => {
+                    fma(&mut dv, &av, &bv)
+                }
+                Mode::InPlace => {
+                    zip_update3_into::<T, T, T, OC, OA, OB>(&mut dv, &av, &bv, move |z, x, y| {
+                        alpha * x * y + beta * z
+                    })
+                }
+                Mode::Separate(p) => {
+                    let cv = read_view::<T, OC>(p.get(), dims, &st[2]);
+                    zip_map3_into(&mut dv, &av, &bv, &cv, move |x, y, z| {
+                        alpha * x * y + beta * z
+                    })
+                }
+                Mode::Overwrite => unreachable!("dispatched on a C term"),
             }
         })
     }
