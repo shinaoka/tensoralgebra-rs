@@ -12,8 +12,10 @@ contributions are welcome.
 ABI or performance claim. The repository holds design notes, measurement
 experiments under `experiments/`, and:
 
-- `tensorprimitives/`: tensorprimitives-rs by Lukas Devos (`tensorcontract`,
-  the TBLIS-style direct contraction), imported with its history in Phase 0.
+- `tensorprimitives/`: tensorprimitives-rs by Lukas Devos, imported with its
+  history in Phase 0. Its contraction engine (`tensorcontract`) now lives in
+  `tprims-contract` and `tprims-kernel`; what remains here is the TAPP C API
+  (`tensorprimitives-tapp`).
 - `benchmarks/`: the `tprims-bench` package.
 - `crates/`: the new `tprims-*` parts (from Phase 1).
 
@@ -29,39 +31,27 @@ correctness before measurement, measurement before optimization.
 ## Parts, not a facade
 
 **Arrows mean "depends on"** and are drawn from the manifests (`cargo tree`).
-`tprims-contract` sits on top of `tprims-blas`: a contraction needs matrix GEMM
-only. Every part also takes `tprims-exec` directly. [Full dependency list](docs/architecture.md#crates).
+`tprims-contract` sits on top of `tprims-kernel` and `tprims-exec`; faer and
+the strided views are its only other dependencies. [Full dependency list](docs/architecture.md#crates).
 Rust crates carry no C symbols. Each C ABI crate is an `rlib` owned by the
 part it exposes; only `tprims-bundle` produces a shared or static library.
 
 ```mermaid
 flowchart TB
-    CT["<b>tprims-contract</b><br/>Binary contraction<br/>permute + batched GEMM<br/>or TBLIS direct"]
-    BL["<b>tprims-blas</b><br/>GEMM, batched GEMM, TRSM<br/>faer + loop or TBLIS"]
-    TC["<b>tensorcontract</b><br/>packing, loop nest,<br/>write-back, driver"]
+    CT["<b>tprims-contract</b><br/>Problem, Plan, backend trait<br/>packed driver, faer, elementwise"]
     GK["<b>tprims-kernel</b><br/>family contract, registry, packing,<br/>blocking, project-owned kernels<br/>(Lukas Devos's microkernels)"]
-    TR["<b>tprims-contract-traits</b><br/>Backend + plan traits,<br/>problem, errors, host seam"]
     FA["faer"]
     ST["<b>strided-rs</b> (external)<br/>views, permutation, copies"]
     EX["<b>tprims-exec</b><br/>Execution context<br/>borrowed pool, width"]
-    CT --> BL
-    BL --> FA
-    CT -->|"direct tensor path"| TC
-    BL -->|"TBLIS batched GEMM"| TC
-    TC --> GK
+    CT --> GK
+    CT --> FA
     CT --> ST
-    CT --> TR
-    TR --> ST
-    BL --> ST
-    BL --> EX
+    CT --> EX
     EX -.->|"feature strided"| ST
     classDef tensor fill:#e8f2ff,stroke:#2563a6,color:#132f50
-    classDef matrix fill:#e7f5ec,stroke:#28784c,color:#173d27
     classDef base fill:#edf0f4,stroke:#536477,color:#233244
-    class CT,TR tensor
-    class BL,TC matrix
-    class GK base
-    class FA,ST,EX base
+    class CT tensor
+    class GK,FA,ST,EX base
 ```
 
 The kernel layer is one crate, `tprims-kernel`: the packed format, the
@@ -76,14 +66,8 @@ native complex kernels). Family ids are `{isa}.{dtype}.{scheme}.{MR}x{NR}`
 | `tprims-exec` | Execution context: serial, a Rayon pool borrowed from the host (or created and joined through the C API by a C host); width chosen from work; the workspace provider (reusable, pool-owned scratch). No ambient global pool. | `tprims-core` |
 | `strided-*` (external, [strided-rs](https://github.com/tensor4all/strided-rs)) | Checked strided views, scalar and conjugation contracts, copy and permutation, map / reduce / fused elementwise. | `strided-capi` (planned) |
 | `tprims-kernel` | The kernel crate: packed formats, kernel-family descriptors, CPU masks, the registry and resolution with frozen blocking, the partition policy, caller-scoped catalogs of downstream kernels, packing, scatter and write-back, cache blocking, and the microkernel families (Lukas Devos's scalar, AVX2, AVX-512 and NEON register-tile kernels, the portable reference kernels, and project-owned native interleaved complex kernels, [#30](https://github.com/tensor4all/tprims-rs/issues/30), opt-in and never Auto-eligible). MIT OR Apache-2.0. | none |
-| `tensorcontract` (imported, tensorprimitives-rs by Lukas Devos) | The direct contraction driver: packing traversal, the loop nest, write-back; its threads and workspace come from a `tprims_exec::Exec`. | `tensorprimitives-tapp` (imported): the [TAPP](https://arxiv.org/abs/2601.07827) contraction C API |
-| `tprims-blas` | GEMM and batched GEMM (faer plus a loop over items, or TBLIS-style; compared), TRSM, later SYRK / HERK. Rust API only. | none |
-| `tprims-contract-traits` | The implementation-independent contraction interface: problem and validation, shared errors, object-safe backend / prepared-plan traits and a minimal borrowed host-execution seam; `tprims-contract` implements it, other backends can too. No executor runtime or kernel layer. | none |
-| `tprims-contract-testkit` | Test-only second backend (naive loop nest) used to prove the interface, plus the downstream-kernel fixture (`custom_kernels`: its own packed kernels for the custom-selector tests; see [architecture](docs/architecture.md#custom-kernels-with-a-safe-selector)); not a production fallback. | none |
-| `tprims-contract` | Binary contraction with batch indices (`dot_general` semantics) with two strategies to compare: permute plus batched GEMM (from tenferro-rs) and TBLIS-style direct (from tensorprimitives-rs); thin permute / add / trace wrappers. Rust API only; C callers contract through TAPP. | none |
-
-A Rust user who prefers short paths can rename on import, for example
-`blas = { package = "tprims-blas" }`.
+| `tprims-contract` | Binary contraction (`dot_general` and label semantics) over one validated `Problem`: a packed TBLIS-style direct driver (from tensorprimitives-rs), faer on copy-free batched-GEMM fusion, and an elementwise pass for all-batch problems, chosen by the planner; the implementation-independent backend and prepared-plan traits (`api`), shared errors, `contract_batched`; thin permute / add wrappers. Its threads and workspace come from a `tprims_exec::Exec`. Rust API only; C callers contract through TAPP. | `tensorprimitives-tapp` (imported): the [TAPP](https://arxiv.org/abs/2601.07827) contraction C API |
+| `tprims-testkit` | Test support: an independent label oracle, seeded fixtures, a naive second backend that proves the trait seam, and the downstream-kernel fixture (`custom_kernels`: its own packed kernels for the custom-selector tests; see [architecture](docs/architecture.md#custom-kernels-with-a-safe-selector)); not a production fallback. | none |
 
 **Deliberately excluded:** N-ary einsum and contraction-order planning (they
 stay above the stack, in the published `strided-opteinsum` releases or the
@@ -179,22 +163,22 @@ the same run.
 | Step | Content |
 | --- | --- |
 | 1a | `tprims-exec`: borrowed pool, width from work, kernel-level entry, `broadcast(n, f)` |
-| 1b | `tprims-blas`: GEMM, batched GEMM (faer + loop, TBLIS), grouped GEMM (1e-0), TRSM |
-| 1c | `tprims-contract`: permute + batched GEMM and TBLIS direct, compared |
+| 1b | `tprims-blas`: GEMM, batched GEMM (faer + loop, TBLIS), grouped GEMM (1e-0), TRSM; removed in the source integration ([#37](https://github.com/tensor4all/tprims-rs/issues/37)): GEMM is a contraction now, `trsm` has no replacement |
+| 1c | `tprims-contract`: permute + batched GEMM and TBLIS direct, compared; consolidated into one planner over the packed, faer and elementwise strategies in the source integration |
 | 1d | `tprims-linalg` (faer per item plus batched loops): removed in the source integration ([#37](https://github.com/tensor4all/tprims-rs/issues/37)), no retained consumer |
 | 1e | tenferro-rs integration behind a feature, with an explicit per-op fallback to the current backend, A/B correctness and a same-run performance gate |
 | 1f | A thin C ABI slice (core, blas, contract, bundle; the BLAS C symbols were removed in [#37](https://github.com/tensor4all/tprims-rs/issues/37)) and C benchmarks, to test the design across the C boundary early; the contraction part was then replaced by TAPP ([#26](https://github.com/tensor4all/tprims-rs/issues/26)) |
 
 **Status (2026-09-30):** 1a, 1b, 1c, 1d and 1f were implemented
-(`crates/tprims-{exec,blas,contract,core,bundle}` remain),
+(`crates/tprims-{exec,kernel,contract,core,bundle,testkit}` remain),
 each with 1T/4T benchmarks under [`benchmarks/benchmarks/tprims/`](benchmarks/benchmarks/tprims/README.md)
 and [`benchmarks/c/`](benchmarks/c/README.md). 1e (tenferro-rs integration,
 [design](docs/superpowers/specs/2026-09-30-phase1e-tenferro-integration-design.md))
 is in progress: the tenferro injection points and the optional tprims
 providers (GEMM, `dot_general`, linalg kernels) are merged in tenferro-rs
 (#1954, #1955) and selectable in tenferro-benchmark (`--features tprims`);
-on tenferro's shape corpus `Strategy::Auto` now contracts TBLIS-style when
-permute+GEMM would copy an operand (decision log). Optimizing tprims itself
+on tenferro's shape corpus the planner now contracts TBLIS-style when
+a copy-free GEMM fusion does not exist (decision log). Optimizing tprims itself
 comes next, starting with a switchable GEMM engine
 ([#23](https://github.com/tensor4all/tprims-rs/issues/23)); acceptance runs
 in tenferro-benchmark are deferred until then.
@@ -221,7 +205,7 @@ license of the new tprims code is pending a maintainer choice.
 ## Acknowledgements and citation
 
 tprims builds on [faer](https://github.com/sarah-quinones/faer-rs) by Sarah
-Quiñones El Kazdadi: `tprims-blas` runs its GEMM through faer, and GEMM kernels ported from
+Quiñones El Kazdadi: `tprims-contract` runs its copy-free GEMM strategy through faer, and GEMM kernels ported from
 faer's ecosystem keep their copyright and MIT license notices. If you use
 tprims in published work, please also cite the faer paper:
 

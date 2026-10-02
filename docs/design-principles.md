@@ -31,11 +31,11 @@ A new crate is created when a separate consumer and a stable interface justify i
 
 ## 4. Short names under one prefix
 
-Crates are named `tprims-<part>`, where the part name says what it does: `tprims-exec`, `tprims-blas`, `tprims-contract`.
+Crates are named `tprims-<part>`, where the part name says what it does: `tprims-exec`, `tprims-kernel`, `tprims-contract`.
 
 - The prefix identifies the family and avoids claiming generic crates.io names such as `blas3` or `tensordot`.
 - The prefix is neutral: no consumer or project name, because the stack is meant for users beyond its original project.
-- Crate, header and C symbol correspond one to one (`tprims-blas`, `tprims/blas.h`, `tprims_blas_*`), so documentation is easy to find from any side.
+- Crate, header and C symbol correspond one to one (`tprims-core`, `tprims/core.h`, `tprims_*`), so documentation is easy to find from any side.
 - Rust users who want shorter paths rename on import.
 
 ## 5. A C ABI per part, one library per build

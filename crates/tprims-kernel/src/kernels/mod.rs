@@ -26,7 +26,8 @@ mod macros;
 
 #[doc(hidden)]
 pub mod cplx;
-mod kernel_set;
+#[cfg(test)]
+mod menu_tests;
 pub mod reference;
 
 // The x86-64 SIMD kernels: public for `examples/kernel_shapes`, `doc(hidden)`
@@ -50,7 +51,27 @@ use aarch64 as simd_isa;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use x86 as simd_isa;
 
-pub use kernel_set::KernelSet;
+/// The instruction set whose built-in families form the default menu under an
+/// ISA preference: the widest one the CPU supports (or the pinned one), the
+/// portable kernels when the preference selects no vectorised module.
+///
+/// The contraction planner builds its default family menu from this (the
+/// families of this ISA, in registry order, default first).
+pub fn menu_isa(force: KernelForce) -> Isa {
+    if force == KernelForce::Scalar {
+        return Isa::Portable;
+    }
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    return match x86::selected_isa(force) {
+        Some(x86::Isa::Avx2) => Isa::Avx2,
+        Some(x86::Isa::Avx512) => Isa::Avx512,
+        None => Isa::Portable,
+    };
+    #[cfg(target_arch = "aarch64")]
+    return Isa::Neon;
+    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")))]
+    Isa::Portable
+}
 
 type List<R> = Vec<&'static KernelFamily<R>>;
 

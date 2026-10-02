@@ -92,6 +92,9 @@ struct BlockingPolicy {
     model: BlockModel,
     hierarchy: CacheHierarchy,
     overrides: Option<BlockingOverride>,
+    /// A coupled `kc` (legacy derivation only): sets `kc` and re-derives
+    /// `mc`/`nc` against the cache budgets at that depth.
+    kc_couple: Option<usize>,
     explicit: Option<Blocking>,
 }
 impl BlockingPolicy {
@@ -100,16 +103,25 @@ impl BlockingPolicy {
             model: tuning.block_model,
             hierarchy: cache::hierarchy(),
             overrides: tuning.blocking.is_set().then_some(tuning.blocking),
+            kc_couple: tuning.kc_couple,
             explicit: None,
         }
     }
 
     fn blocking<R: Real>(self, family: &KernelFamily<R>, threads: usize) -> Option<Blocking> {
         let mut blk = match self.model {
-            BlockModel::Legacy => Blocking {
-                mc: family.blocks.mc.0,
-                kc: family.blocks.kc.0,
-                nc: family.blocks.nc.0,
+            BlockModel::Legacy => match self.kc_couple {
+                Some(kc) => Blocking::derive_at_depth(
+                    core::mem::size_of::<R>(),
+                    family.a_per_k / family.mr,
+                    family.b_per_k / family.nr,
+                    kc,
+                ),
+                None => Blocking {
+                    mc: family.blocks.mc.0,
+                    kc: family.blocks.kc.0,
+                    nc: family.blocks.nc.0,
+                },
             },
             BlockModel::Analytical => cache::analytical(
                 PanelGeom {

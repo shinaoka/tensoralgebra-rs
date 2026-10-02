@@ -1,7 +1,7 @@
 # tensorprimitives-tapp
 
 The **TAPP** (Tensor Algebra Processing Primitives, arXiv:2601.07827) C ABI over
-the [`tensorcontract`](https://docs.rs/tensorcontract) engine — a native-Rust,
+the `tprims-contract` engine (the packed block-scatter driver, with faer and elementwise strategies) — a native-Rust,
 transpose-free dense tensor contraction implementation.
 
 Built as `lib`, `cdylib` and `staticlib`, so the same crate serves a Rust

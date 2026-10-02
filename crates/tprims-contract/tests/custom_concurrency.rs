@@ -1,16 +1,19 @@
 //! Independent catalogs, selectors and plans coexist: on one shared pool, on
 //! separate pools, and next to the built-in defaults they never touch.
 use strided_view::{StridedView, StridedViewMut};
-use tprims_blas::{gemm_with_selector, GemmConfig, KernelCatalog, MatIn};
-use tprims_contract_testkit::custom_kernels as own;
+use tprims_contract::api::{DType, DotGeneral, LayoutSpec, OperandSpec, Problem};
+use tprims_contract::{Plan, PlanConfig};
 use tprims_exec::{Exec, Pool};
+use tprims_kernel::KernelCatalog;
+use tprims_testkit::custom_kernels as own;
 
 const M: usize = 150;
 const N: usize = 130;
 const K: usize = 90;
 
 fn catalog() -> KernelCatalog<f64> {
-    // SAFETY: see `selector_blas::catalog`.
+    // SAFETY: the testkit's families are immutable, `'static` descriptors that
+    // meet the family contract (checked by their own tests).
     unsafe { KernelCatalog::<f64>::from_static_families(own::f64_families()) }.unwrap()
 }
 
@@ -20,31 +23,45 @@ fn data(len: usize, seed: usize) -> Vec<f64> {
         .collect()
 }
 
-/// `reps` GEMMs choosing `id` from a private catalog; returns the product.
-fn worker(exec: &Exec<'_>, id: &'static str, reps: usize) -> (Vec<f64>, &'static str) {
-    let cat = catalog();
+fn problem() -> Problem {
+    let spec = |d: &[usize], s: &[isize]| OperandSpec::new(LayoutSpec::new(d, s, 0).unwrap());
+    Problem::from_dot_general(
+        DType::F64,
+        spec(&[M, K], &[1, M as isize]),
+        spec(&[K, N], &[1, K as isize]),
+        spec(&[M, N], &[1, M as isize]),
+        &DotGeneral::new(&[1], &[0], &[], &[]),
+    )
+    .unwrap()
+}
+
+fn plan_for(cat: &KernelCatalog<f64>, id: &'static str) -> Plan<f64> {
+    Plan::<f64>::new_with_selector(&problem(), &PlanConfig::default(), cat, &mut |_, _| {
+        Ok(cat.get(id).unwrap())
+    })
+    .unwrap()
+}
+
+fn run(plan: &Plan<f64>, exec: &Exec<'_>) -> Vec<f64> {
     let (a, b) = (data(M * K, 1), data(K * N, 2));
     let av = StridedView::new(&a, &[M, K], &[1, M as isize], 0).unwrap();
     let bv = StridedView::new(&b, &[K, N], &[1, K as isize], 0).unwrap();
     let mut c = vec![0.0; M * N];
-    let mut used = "";
+    let mut cv = StridedViewMut::new(&mut c, &[M, N], &[1, M as isize], 0).unwrap();
+    plan.execute_into(exec, 1.0, &av, &bv, &mut cv).unwrap();
+    c
+}
+
+/// `reps` contractions on a plan choosing `id` from a private catalog; returns
+/// the product and the family the plan reports.
+fn worker(exec: &Exec<'_>, id: &'static str, reps: usize) -> (Vec<f64>, &'static str) {
+    let cat = catalog();
+    let plan = plan_for(&cat, id);
+    let mut c = vec![];
     for _ in 0..reps {
-        let mut cv = StridedViewMut::new(&mut c, &[M, N], &[1, M as isize], 0).unwrap();
-        let report = gemm_with_selector(
-            exec,
-            &GemmConfig::default(),
-            &cat,
-            |_, _| Ok(cat.get(id).unwrap()),
-            1.0,
-            MatIn::new(&av),
-            MatIn::new(&bv),
-            0.0,
-            &mut cv,
-        )
-        .unwrap();
-        used = report.family_id.unwrap();
+        c = run(&plan, exec);
     }
-    (c, used)
+    (c, plan.report().packed.as_ref().unwrap().family_id)
 }
 
 #[test]
@@ -93,8 +110,6 @@ fn catalogs_run_concurrently_on_one_pool_and_on_separate_pools() {
 
 #[test]
 fn executing_from_inside_a_worker_of_the_same_pool_falls_back_serially_on_the_same_family() {
-    use tprims_blas::Conj;
-    use tprims_contract::{ContractPlan, DotGeneral, Flags, Strategy};
     let tp = rayon::ThreadPoolBuilder::new()
         .num_threads(4)
         .build()
@@ -102,48 +117,17 @@ fn executing_from_inside_a_worker_of_the_same_pool_falls_back_serially_on_the_sa
     let pool = Pool::borrow(&tp);
     let exec = Exec::rayon(&pool);
     let cat = catalog();
-    let (dims_a, dims_b, dims_c) = ([M, K], [K, N], [M, N]);
-    let (sa, sb, sc) = (
-        [1isize, M as isize],
-        [1isize, K as isize],
-        [1isize, M as isize],
-    );
-    let plan = ContractPlan::<f64>::new_with_selector(
-        &exec,
-        &GemmConfig::default(),
-        &cat,
-        |ctx, cands| {
-            assert!(ctx.threads > 1, "planned for the pool's width");
-            Ok(cands[1].handle)
-        },
-        &DotGeneral::new(&[1], &[0], &[], &[]),
-        (&dims_a, &sa),
-        (&dims_b, &sb),
-        (&dims_c, &sc),
-        (Conj::No, Conj::No),
-        Strategy::Tblis,
-        Flags::default(),
-    )
-    .unwrap();
+    let plan = plan_for(&cat, "custom.f64.3x4");
     drop(cat);
-    let (a, b) = (data(M * K, 1), data(K * N, 2));
     let reference = worker(&Exec::serial(), "custom.f64.2x2", 1).0;
-    let run = |exec: &Exec<'_>| {
-        let av = StridedView::new(&a, &dims_a, &sa, 0).unwrap();
-        let bv = StridedView::new(&b, &dims_b, &sb, 0).unwrap();
-        let mut c = vec![0.0; M * N];
-        let mut cv = StridedViewMut::new(&mut c, &dims_c, &sc, 0).unwrap();
-        plan.execute(exec, 1.0, &av, &bv, 0.0, &mut cv).unwrap();
-        c
-    };
-    let outside = run(&exec);
-    // Inside a worker of the very pool the plan was made for, a broadcast
-    // cannot be co-scheduled; the call runs serially with the frozen family.
-    let inside = tp.install(|| run(&exec));
+    let outside = run(&plan, &exec);
+    // Inside a worker of the very pool the plan runs on, a broadcast cannot be
+    // co-scheduled; the call runs serially with the frozen family.
+    let inside = tp.install(|| run(&plan, &exec));
     assert_eq!(outside, reference);
     assert_eq!(inside, reference);
     assert_eq!(
-        plan.selected_gemm().unwrap().unwrap().family_id,
-        Some("custom.f64.3x4")
+        plan.report().packed.as_ref().unwrap().family_id,
+        "custom.f64.3x4"
     );
 }

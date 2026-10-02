@@ -30,11 +30,8 @@ The full statement and rationale are in [design principles](design-principles.md
 | `tprims-exec` | Execution context: serial, a Rayon pool borrowed from the host (or owned, for a C host), width chosen from work, kernel-level entry, SPMD `broadcast`, and the workspace provider (`ArenaProvider`, `WorkspaceReq`, `TeamLease`: pool-owned, reusable scratch); `strided::run_with_exec` bridges strided-rs kernels (feature `strided`). Planned: host scheduling callbacks, scratch queries. | rayon; strided-basic (optional) |
 | `strided-traits`, `strided-view`, `strided-perm`, `strided-basic` (external, strided-rs) | Checked borrowed strided views, scalar and conjugation contracts; copy, permutation and elementwise kernels. | none in tprims |
 | `tprims-kernel` | The kernel crate (one crate for all project-owned kernels): packed formats, kernel-family descriptors, CPU masks and validation, the registry with deterministic built-in families, resolution with a frozen blocking policy (explicit `Tuning` inputs, no environment reads), the partition policy, caller-scoped `KernelCatalog`/`KernelHandle` for downstream kernels, packing, scatter and write-back, cache blocking (`blocking::{probe,model}`), and the microkernel families: Lukas Devos's scalar, AVX2, AVX-512 and NEON register-tile kernels (`kernels::{reference,x86,aarch64}`), the portable reference kernels and the native interleaved complex kernels (`avx2.c64.native.4x4`, `avx2.c32.native.8x4`: `Method::Native`, no `allow_auto`). Ids: `{isa}.{dtype}.{scheme}.{MR}x{NR}`. No executor and no ambient state. | none in tprims |
-| `tensorcontract` (imported, tensorprimitives-rs) | The direct contraction driver: packing traversal, the loop nest, write-back; its threads and workspace come from a `tprims_exec::Exec`. It consumes resolved families rather than choosing kernels. | `tprims-kernel` |
-| `tprims-blas` | GEMM and batched GEMM with two engines (faer, the packed driver) and a selectable kernel family, `SelectedGemm` reporting what ran, TRSM; later SYRK/HERK and further BLAS-like operations. | faer, `tensorcontract`, `tprims-kernel`, `strided-view`, `tprims-exec` |
-| `tprims-contract-traits` | The implementation-independent contraction interface: `Problem` / `DotGeneral` / `Layout`, the canonical validation, the shared `Error` (source-preserving `Backend`), the object-safe `ContractionBackend<T>` / `PreparedContraction<T>` traits and the minimal borrowed `HostExecution` seam (budget, `install`, barrier-free `for_each_partition`, co-scheduled `broadcast`). No executor runtime, kernel layer, faer or tenferro. | `strided-view` |
-| `tprims-contract-testkit` | Test-only second backend (naive loop nest) proving the interface is implementable from the interface crate alone. Not a production fallback; never published or selected by default. | `tprims-contract-traits`, `strided-view` |
-| `tprims-contract` | Binary contraction with free, contracted and batch indices (`dot_general` semantics): one plan API over two strategies, permute plus batched GEMM and TBLIS-style direct packing with bounded scatter. Thin permute / add wrappers. Needs matrix GEMM only; it does not depend on `tprims-linalg`. | `tprims-blas`, `tensorcontract`, `tprims-contract-traits`, `tprims-kernel`, `strided-basic`, `strided-view`, `tprims-exec` |
+| `tprims-contract` | Binary contraction with free, contracted and batch indices (`dot_general` and label semantics) over one validated `Problem` (`api`: `Labels` and `DotGeneral` front ends, one lowering, one `Error`, the object-safe `ContractionBackend<T>` / `PreparedContraction<T>` traits taking an `&Exec`), planned once into a `Plan<T>` (`plan`: role folding and orientation, offsets, family and strategy resolution, an immutable `PlanReport`) and executed by one of three strategies (`strategy`, `driver`): the packed TBLIS-style direct driver of tensorprimitives-rs (packing traversal, loop nest, write-back, static and dynamic partition), faer on a copy-free batched-GEMM fusion, and an elementwise pass for all-batch problems. Threads and workspace come from a `tprims_exec::Exec`. Thin permute / add wrappers, `contract_batched`. It does not depend on `tprims-linalg`. | faer, `tprims-kernel`, `tprims-exec` (feature `strided`), `strided-view`, `strided-basic` |
+| `tprims-testkit` | Test support: an independent label oracle, seeded fixtures, a naive second backend (naive loop nest over the problem's roles) proving the trait seam, and the downstream-kernel fixture `custom_kernels`. Not a production fallback; never published or selected by default. | `tprims-contract`, `tprims-kernel`, `tprims-exec` |
 
 The name `contract` was chosen over `tensordot` because NumPy, PyTorch and JAX `tensordot` has no batch indices; the operation here does, as in cuTENSOR's `cutensorContract`.
 
@@ -44,7 +41,7 @@ The name `contract` was chosen over `tensordot` because NumPy, PyTorch and JAX `
 | --- | --- | --- |
 | `tprims-core` | DLPack types (mirroring the upstream `dlpack.h`), `tprims_status` (the one error-code table of the library, behind `TAPP_check_success` / `TAPP_explain_error`), thread-local last-error message, the `TAPP_executor` (`TAPP_create_executor`, `TAPP_destroy_executor`, the Rayon extension), ABI version queries | `tprims/core.h`, `tprims/tapp_ext.h` and the pinned upstream `tapp.h`, `tapp/*.h` |
 | `strided-capi` | Permute, copy, elementwise and reduce over DLPack operands | `tprims/strided.h` |
-| `tensorprimitives-tapp` (imported, tensorprimitives-rs; `rlib` in the bundle) | The TAPP contraction API: tensor infos, label-based products over `tensorcontract::Plan`, batched products, run on the shared executor through `Exec` | pinned upstream `tapp.h`, `tapp/*.h` |
+| `tensorprimitives-tapp` (imported, tensorprimitives-rs; `rlib` in the bundle) | The TAPP contraction API: tensor infos, label-based products lowered once into a `tprims_contract::Problem` and run through `Plan<T>::execute_raw`, batched products (sequential items), on the shared executor through `Exec` | pinned upstream `tapp.h`, `tapp/*.h` |
 | `tprims-bundle` | No API. `cdylib` + `staticlib` with one feature per part (`blas`, `tapp`); installs the selected headers, a generated umbrella `tprims/tprims.h`, and a pkg-config file | |
 
 `tprims-kernel` has no C ABI: the packed format is an internal contract between the driver and the kernels.
@@ -53,8 +50,8 @@ The name `contract` was chosen over `tensordot` because NumPy, PyTorch and JAX `
 
 - `tprims-exec` and `tprims-core` are the bottom of the tprims graph; their only stack dependency is strided-rs (`tprims-exec` optionally, for `strided::run_with_exec`; `tprims-core` for `strided-view`). strided-rs depends on nothing in tprims.
 - The kernel layer takes no tprims execution context of its own; drivers take a `tprims_exec::Exec` for parallelism and, through it, a workspace by borrowing the host's provider.
-- `tprims-contract` sits on top of `tprims-blas`.
-- `tprims-blas` and `tprims-contract` take an explicit `tprims-exec` context for every expensive operation.
+- `tprims-contract` sits on top of `tprims-kernel` and `tprims-exec`; `tprims-testkit` depends on `tprims-contract` (and `tprims-contract` dev-depends on it, path only).
+- `tprims-contract` takes an explicit `tprims-exec` context for every expensive operation.
 - A C ABI crate depends on its Rust part and `tprims-core` only. It contains no algorithm.
 - No cycle between crates. See the decision log for the repository placement of `tprims-exec` and `tprims-core`.
 
@@ -208,26 +205,30 @@ Not yet measured: real GEMM and contraction break-even against width, barrier co
 
 TBLIS also uses cooperating threads and barriers inside a blocked contraction. An arbitrary task-submission interface, including host callbacks, does not automatically provide that contract. Start with outer-batch parallelism and serial inner contractions, then prototype an explicitly synchronized inner driver on a Rayon context if large contractions need it.
 
-## Selection: two levels
+## Selection: strategy, then family
 
-A GEMM is chosen in two steps, and both happen when a plan is built, never
-during a call.
+A contraction is chosen in two steps, and both happen when a plan is built,
+never during a call.
 
-* **Engine** — `GemmConfig::engine`: faer (the default), the packed
-  micro-kernel driver, or `private-gemm-x86` called directly. faer is what every
-  caller got before this layer existed, so `Auto` keeps it; the other two are
-  opt-in per call or process-wide through `TPRIMS_GEMM_ENGINE`.
-* **Kernel family** — `GemmConfig::kernel` and `TPRIMS_GEMM_KERNEL`: a
-  registered family by id, or the first Auto-eligible one. Families carry their
-  own tile, packed layout, complex scheme, CPU requirements and cache blocking,
-  and resolution freezes the blocking policy and the partition so a later
-  environment change cannot move it.
+* **Strategy** — by rule, in order: an explicit kernel, selector, partition,
+  complex method, blocking, cache model or write-back request in `PlanConfig`
+  forces the **packed** driver (all-batch problems included); otherwise an
+  all-batch problem runs the **elementwise** pass; otherwise a problem that
+  fuses copy-free to one strided batched GEMM with full `op_C` / `op_D` /
+  separate-C semantics runs on **faer**; everything else runs **packed**.
+  Nothing copies a whole operand.
+* **Kernel family** (packed only) — `PlanConfig::kernel`: a registered family
+  by id, or the default menu (the built-in families of the preferred ISA and
+  complex scheme, default first, with an optional row-block shape). Families
+  carry their own tile, packed layout, complex scheme, CPU requirements and
+  cache blocking, and resolution freezes the blocking policy and the partition
+  so a later environment change cannot move it (the library reads none).
 
-`SelectedGemm` reports what ran: the engine, the family id, its geometry and the
-grid. A choice that cannot be honoured is an error from the constructor — an
-unknown id, a feature that is not built, a CPU without the required
-instructions, or an engine a strategy has no arm for. `list_kernels` returns
-the registry for diagnostics.
+`Plan::report()` says what was chosen: the algorithm, and for the packed
+strategy the family id, geometry, grid, orientation and observed regularity. A
+choice that cannot be honoured is an error from the constructor — an unknown
+id, a CPU without the required instructions, a blocking override that is not
+positive or exclusive. `list_kernels` returns the registry for diagnostics.
 
 The packed driver is told where its scratch lives: a host that owns threads
 passes a `tprims_exec::Exec` that lends a workspace (per-thread A block and tile,
@@ -238,7 +239,7 @@ it.
 
 ### Opt-in dynamic output assignment (`DynamicTiles`)
 
-`PartitionPolicy::DynamicTiles { job_m, job_n }` replaces the static
+`Partition::DynamicTiles { job_m, job_n }` replaces the static
 `pm x pn` grid with dynamic claiming for the packed driver. It assigns output
 work only: K is never split, no accumulation is atomic, every tile's K slabs
 run in order, and for a fixed blocking the result is bitwise identical to the
@@ -263,13 +264,12 @@ static and serial runs.
 * **Direct-B** keeps `b_bytes == 0` but still takes both barriers, an explicit
   tradeoff against the static barrier-free split.
 * **Validation.** Job extents are positive multiples of the family's logical
-  MR/NR; invalid values, `DynamicTiles + align_c_lines` and job-count overflow
-  fail when the plan is resolved, for empty problems too. Never rounded.
-* **Surface.** `GemmConfig::{partition, partition_opts}` (tprims-blas, including
-  batched TBLIS and contraction plans), `Plan::with_partition` (tensorcontract).
-  `SelectedGemm::{partition, dynamic}` report the resolved policy, job extents,
-  active width and assignment. `DynStats`/`dynamic_report` are opt-in
-  instrumentation.
+  MR/NR; invalid values and job-count overflow fail when the plan is built, for
+  empty problems too (`DynamicTiles` carries no `align_c_lines` option). Never
+  rounded.
+* **Surface.** `PlanConfig::partition` (`Partition`). `PlanReport::packed`
+  (`partition`, `dynamic`) reports the resolved policy, job extents, active
+  width and assignment. `DynStats` is opt-in instrumentation.
 
 The Stage-0 need measurement and the paired static-vs-dynamic suite were not
 run (maintainer decision); the policy stays opt-in and makes no speed claim.
@@ -287,7 +287,7 @@ selection policy without editing tprims or touching the process defaults.
    deadlocks its team). It validates geometry, formats, dtype and id
    uniqueness, then mints `KernelHandle<T>` values. The catalog is an immutable
    caller-owned list, not a second registry; `KernelCatalog::builtin()` /
-   `tprims_blas::builtin_catalog` give a safe snapshot of the built-in families
+   `KernelCatalog::builtin()` gives a safe snapshot of the built-in families
    and `union` combines catalogs explicitly, so a built-in fallback is a
    handle the selector chooses, never an implicit default.
 2. **Select, safe.** `KernelHandle<T>` has private fields, is typed by the
@@ -295,16 +295,15 @@ selection policy without editing tprims or touching the process defaults.
    exposes read-only metadata only. A selector is
    `FnOnce(&SelectionContext, &[KernelCandidate<T>]) -> Result<KernelHandle<T>, SelectError>`
    and need not be `Send`, `Sync` or `'static`. The context is problem metadata
-   (dtype, folded M/N/K and batch, original extents/strides/labels, conjugation,
-   requested complex method, thread budget, CPU mask); each candidate carries
+   (dtype, folded M/N/K and batch, original extents and strides, conjugation,
+   requested complex method, CPU mask; no thread budget, since a plan never
+   reselects its family for another budget); each candidate carries
    the facts that depend on *its* geometry — whether the driver swaps the
-   operands for its `MR`, whether it reads B in place, and the active width —
+   operands for its `MR` and whether it reads B in place —
    computed with the driver's own rules. Pointer-dependent facts (whether `C`
    and `D` are one buffer, bounds) stay execution guards.
 3. **Resolve once, execute frozen.** The selection runs in planning
-   (`Plan::with_selector` in `tensorcontract`; `gemm_with_selector`,
-   `gemm_batched_with_selector`, `gemm_grouped_with_selector` in `tprims-blas`;
-   `ContractPlan::new_with_selector` in `tprims-contract`), on the caller,
+   (`Plan::<T>::new_with_selector` in `tprims-contract`), on the caller,
    outside registry/workspace locks and worker broadcasts, and before any
    empty-problem shortcut. A homogeneous batch selects once; a grouped call
    selects once per non-empty group plan; execution never calls the selector or
@@ -312,17 +311,14 @@ selection policy without editing tprims or touching the process defaults.
    selector and catalog may be dropped. Membership and admissibility (CPU mask,
    conjugation, complex method) are checked after the callback; there is no
    implicit fallback on `Err`.
-4. **Refuse, do not ignore.** A selector needs the packed driver. An explicit
-   `Faer`/`PrivateGemmX86` engine, a forced `KernelChoice::Id`, a
-   `Strategy::PermuteGemm`, and an all-batch problem under `Strategy::Auto` are
-   typed errors; `EngineChoice::Auto` is overridden by the explicit selector.
-   `GemmConfig` keeps its value semantics: every selector entry point is a
-   separate function.
+4. **Refuse, do not ignore.** A selector is a requirement that forces the
+   packed driver (an all-batch problem included). A forced
+   `KernelChoice::Id` alongside a selector is ambiguous and a typed error.
 
 Errors are `SelectError` variants (`DuplicateId`, `ForeignHandle`,
 `NotACandidate`, `NoCandidates`, `SelectorFailed`, plus the existing
-`CpuUnsupported`, `DtypeMismatch`, `Incompatible`, `EngineUnsupported`); the
-contract crate preserves the typed `SelectError` as the source of `Error::Backend` (downcast it). `SelectedGemm`
+`CpuUnsupported`, `DtypeMismatch`, `Incompatible`); the
+contract crate preserves the typed `SelectError` as the source of `Error::Backend` (downcast it). `PlanReport`
 reports the chosen family, its geometry and its provenance (`origin`);
 downstream kernels report `Origin::External { crate_name, license }`.
 
@@ -371,7 +367,7 @@ Solves live in the same crate as the factorizations because they operate on each
 
 - Factor-object solves: `lu.solve`, `cholesky.solve`, `ldl.solve` (LAPACK `GETRS`/`POTRS`/`SYTRS` equivalents), with transpose and conjugate-transpose variants.
 - One-shot `solve(A, B)`, least squares `lstsq` (QR for full rank, SVD or pivoted QR for rank-deficient input with an explicit rank tolerance), `inv`, `det` and `logdet`.
-- Triangular solve with a matrix right-hand side is TRSM in `tprims-blas`.
+- Triangular solve with a matrix right-hand side was TRSM in `tprims-blas`, removed in the source integration ([#37](https://github.com/tensor4all/tprims-rs/issues/37)) with no replacement here.
 
 Start with `f32`/`f64`, then complex arithmetic with explicit conjugation behavior. Require reconstruction/solve residuals, QR orthogonality, rank-deficient, indefinite and non-positive-definite inputs, extreme scales, and convergence status before timing. SVD and eigensolvers are separate numerical workstreams, not straightforward GEMM extensions.
 
@@ -379,7 +375,7 @@ Tensor-level factorizations in `tprims-contract` reshape a strided tensor into a
 
 ### Batched execution
 
-`tprims-linalg` contains a `batched` module with factorization and solve entry points; `tprims-blas` owns batched GEMM. The batch module owns batch descriptors, output/status arrays, scratch planning, and the choice of batch versus inner-matrix parallelism. It executes the schedule on the caller's `tprims-exec` context and reuses per-matrix routines as its first implementation. Specialized small-matrix or interleaved batch kernels can later replace the per-item implementation under the same batch contract; they require their own correctness and performance evidence.
+`tprims-linalg` (removed in the source integration; this section is design history) contained a `batched` module with factorization and solve entry points; batched GEMM is a contraction with batch axes in `tprims-contract` (`contract_batched` for independent items). The batch module owns batch descriptors, output/status arrays, scratch planning, and the choice of batch versus inner-matrix parallelism. It executes the schedule on the caller's `tprims-exec` context and reuses per-matrix routines as its first implementation. Specialized small-matrix or interleaved batch kernels can later replace the per-item implementation under the same batch contract; they require their own correctness and performance evidence.
 
 **Phase 1 baseline: faer plus a loop.** Every batched operation first runs the faer per-matrix routine in a loop over items: serial per item on the calling thread for a small batch, the items distributed over the borrowed pool for a large batch, and faer's inner `Par::rayon(n)` only for a few large matrices. Batched GEMM additionally has the TBLIS-style implementation, compared against the faer loop.
 

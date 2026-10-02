@@ -148,3 +148,20 @@ historical observations and measured results remain evidence.
 | Can we reuse faer/OpenBLAS tests? | Run as external oracles first. Review each file's license before importing test code or fixtures. | [faer license](https://github.com/sarah-quinones/faer-rs/blob/main/LICENSE); [OpenBLAS license](https://github.com/OpenMathLib/OpenBLAS/blob/develop/LICENSE) |
 
 Update a row only after a recorded result or maintainer decision changes the evidence or conclusion. Keep rejected hypotheses visible.
+
+## 2026-10-02: contract consolidation (source integration PR 3)
+
+| Question | Decision |
+| --- | --- |
+| One description of a contraction? | **Decided:** a validated `Problem` (original layouts, normalized M/N/K/H role axes with signed A/B/C/D strides, C mode, checked spans) with `Labels` and `DotGeneral` as two front ends of one lowering. `Plan<T>::new(&Problem, &PlanConfig)` replaces `ContractPlan`, the labels-based `tensorcontract::Plan` and the traits crate's `Problem`. |
+| Strategy choice? | **Decided:** by rule, in order: an explicit kernel, selector, partition, complex method, blocking, cache model or write-back request forces the packed driver; else an all-batch problem is elementwise; else a copy-free full-semantics fusion runs on faer; else packed. The old `Strategy`/`Flags`/`EngineChoice` are gone. |
+| faer applicability? | **Decided:** faer only for fusions that copy no operand and implement the full update: overwrite or in-place accumulation (`op_D` distributed over the sum by conjugation flipping, the old-`D` term applied in one in-place pass), never a separately described C or a reduction one input lacks. The old copying branches are deleted. |
+| Elementwise semantics? | **Decided:** one strided pass with the full `op_D(alpha*op_A*op_B + beta*op_C(C))`, `C` in place, separate or absent; it also serves `alpha == 0` and an empty contraction for every strategy, so `op_D(beta*op_C(C))` is computed identically everywhere and reads no input. |
+| Explicit kernel or partition on an all-batch problem? | **Decided (behaviour change):** runs the packed driver. The baseline refused it with `EngineUnsupported`. Tested for `StaticGrid` and `DynamicTiles`. |
+| `Partition`? | **Decided:** `StaticGrid { pin, align_c_lines } \| DynamicTiles { job_m, job_n }`; `None` is the default rule. `PartitionMode` is gone (`Rows`, `Cols` and the ungated `Rule` had no retained consumer); `DynamicTiles` + `align_c_lines` is unrepresentable. |
+| Selector context? | **Decided:** no thread budget and no candidate grids: a plan is built before an executor is chosen and never reselects for another budget. Operand labels are gone (the problem is label-free after lowering). |
+| Width? | **Decided:** chosen at each call from `2 * macs * (4 if complex) * NS_PER_FLOP` and the executor's budget; one `NS_PER_FLOP` (0.05, provisional) replaces the three copies. |
+| `contract_batched` schedule? | **Decided:** items at least as many as the width are partitioned over it, each serial; fewer items run one after another, each on the whole `Exec`. All items are validated before any runs. |
+| Raw (C) execution? | **Decided:** `Plan::check_raw` is the pointer-only semantic preflight (output overlap, `C`/`D` aliasing, judged on address ranges); null pointers stay the adapter's. TAPP lowers once and keeps its sequential item loop. |
+| Legacy `KernelSet`? | **Decided:** deleted. The planner resolves families from the registry; the default menu is the registry's built-in families of the preferred ISA and scheme, and a test pins that it equals the old dispatch menu entry for entry. |
+| Benchmarks? | **Decided:** `tcbench` keeps `run`, `verify`, `info`, `--stress`; `sweep`/`shapes`/`orient`/`premise` are deleted. The three complex methods are a knob, not three engines. GEMM corpora are contraction cases. No timing was run for this PR. |

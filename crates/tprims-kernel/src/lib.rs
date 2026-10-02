@@ -19,6 +19,7 @@ use abi::{element, family, types};
 use blocking as cache;
 
 // Module paths the typed API and its doctests use.
+pub use kernels::menu_isa;
 pub use kernels::reference::{induced, portable};
 pub use pack::{scatter, writeback};
 pub use select::partition;

@@ -8,11 +8,11 @@ use std::cell::Cell;
 use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 
 use strided_view::{StridedView, StridedViewMut};
-use tprims_blas::{Conj, GemmConfig, KernelCatalog};
-use tprims_contract::{ContractPlan, DotGeneral, Flags, Strategy};
-use tprims_contract_testkit::custom_kernels as own;
+use tprims_contract::api::{DType, DotGeneral, LayoutSpec, OperandSpec, Problem};
+use tprims_contract::{Plan, PlanConfig};
 use tprims_exec::Exec;
-use tprims_kernel::KernelChoice;
+use tprims_kernel::{KernelCatalog, KernelChoice};
+use tprims_testkit::custom_kernels as own;
 
 static COUNT: AtomicUsize = AtomicUsize::new(0);
 
@@ -45,7 +45,7 @@ fn strides(dims: &[usize]) -> Vec<isize> {
 }
 
 /// Allocations performed by `reps` executes of an already warm plan.
-fn executes(plan: &ContractPlan<f64>, reps: usize) -> usize {
+fn executes(plan: &Plan<f64>, reps: usize) -> usize {
     let a = vec![1.0; DIMS_A.iter().product()];
     let b = vec![2.0; DIMS_B.iter().product()];
     let mut c = vec![0.0; DIMS_C.iter().product()];
@@ -55,7 +55,7 @@ fn executes(plan: &ContractPlan<f64>, reps: usize) -> usize {
     let exec = Exec::serial();
     let mut run = || {
         let mut cv = StridedViewMut::new(&mut c, &DIMS_C, &sc, 0).unwrap();
-        plan.execute(&exec, 1.0, &av, &bv, 0.0, &mut cv).unwrap();
+        plan.execute_into(&exec, 1.0, &av, &bv, &mut cv).unwrap();
     };
     // Warm up: first touch of the plan's own workspace.
     run();
@@ -71,39 +71,32 @@ fn executes(plan: &ContractPlan<f64>, reps: usize) -> usize {
 fn custom_selection_adds_no_steady_state_allocation() {
     let cfg = DotGeneral::new(&[1, 2], &[2, 0], &[], &[]);
     let (sa, sb, sc) = (strides(&DIMS_A), strides(&DIMS_B), strides(&DIMS_C));
-    // SAFETY: see `selector_blas::catalog`.
-    let cat = unsafe { KernelCatalog::<f64>::from_static_families(own::f64_families()) }.unwrap();
-    let calls = Cell::new(0);
-    let custom = ContractPlan::<f64>::new_with_selector(
-        &Exec::serial(),
-        &GemmConfig::default(),
-        &cat,
-        |_, cands| {
-            calls.set(calls.get() + 1);
-            Ok(cands[0].handle)
-        },
+    let spec = |d: &[usize], s: &[isize]| OperandSpec::new(LayoutSpec::new(d, s, 0).unwrap());
+    let problem = Problem::from_dot_general(
+        DType::F64,
+        spec(&DIMS_A, &sa),
+        spec(&DIMS_B, &sb),
+        spec(&DIMS_C, &sc),
         &cfg,
-        (&DIMS_A, &sa),
-        (&DIMS_B, &sb),
-        (&DIMS_C, &sc),
-        (Conj::No, Conj::No),
-        Strategy::Tblis,
-        Flags::default(),
     )
     .unwrap();
+    // SAFETY: the testkit's families are immutable, `'static` descriptors that
+    // meet the family contract (checked by their own tests).
+    let cat = unsafe { KernelCatalog::<f64>::from_static_families(own::f64_families()) }.unwrap();
+    let calls = Cell::new(0);
+    let custom =
+        Plan::<f64>::new_with_selector(&problem, &PlanConfig::default(), &cat, &mut |_, cands| {
+            calls.set(calls.get() + 1);
+            Ok(cands[0].handle)
+        })
+        .unwrap();
     // The same plan with the equivalent *built-in* geometry by id.
-    let builtin = ContractPlan::<f64>::new_with(
-        &GemmConfig {
+    let builtin = Plan::<f64>::new(
+        &problem,
+        &PlanConfig {
             kernel: KernelChoice::Id("ref.f64.real.4x4".into()),
-            ..Default::default()
+            ..PlanConfig::default()
         },
-        &cfg,
-        (&DIMS_A, &sa),
-        (&DIMS_B, &sb),
-        (&DIMS_C, &sc),
-        (Conj::No, Conj::No),
-        Strategy::Tblis,
-        Flags::default(),
     )
     .unwrap();
     let with_custom = executes(&custom, 20);

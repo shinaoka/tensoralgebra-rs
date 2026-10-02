@@ -9,10 +9,11 @@
 use std::alloc::{GlobalAlloc, Layout as AllocLayout, System};
 use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 
-use tprims_blas::Conj;
-use tprims_contract::{ContractPlan, DotGeneral, ExecHost, Flags, Strategy, TprimsBackend};
-use tprims_contract_traits as tr;
-use tprims_contract_traits::ContractionBackend;
+use tprims_contract::api::{
+    AccumulationSource, ContractionBackend, DType, DotGeneral, LayoutSpec, OperandSpec,
+    PlanningBudget, Problem, Requirements,
+};
+use tprims_contract::{Plan, PlanConfig, TprimsBackend};
 use tprims_exec::Exec;
 
 static COUNT: AtomicUsize = AtomicUsize::new(0);
@@ -44,7 +45,7 @@ fn measure(f: impl FnOnce()) -> (usize, usize) {
 #[test]
 fn the_trait_path_allocates_exactly_what_the_concrete_path_does() {
     // C[i,m] = sum_{j,k} A[i,j,k] B[k,m,j]: the contracted axes are in different
-    // orders, so permute+GEMM copies, the packed driver does not.
+    // orders, so nothing fuses and the planner runs the packed driver.
     let cfg = DotGeneral::new(&[1, 2], &[2, 0], &[], &[]);
     let (da, db, dc) = ([48usize, 40, 44], [44usize, 36, 40], [48usize, 36]);
     let col = |d: &[usize]| -> Vec<isize> {
@@ -64,34 +65,27 @@ fn the_trait_path_allocates_exactly_what_the_concrete_path_does() {
     let mut c1 = vec![0.0f64; dc.iter().product()];
     let mut c2 = c1.clone();
     let tensor_bytes = a.len() * 8;
+    let spec = |d: &[usize], s: &[isize]| OperandSpec::new(LayoutSpec::new(d, s, 0).unwrap());
+    let problem = Problem::from_dot_general(
+        DType::F64,
+        spec(&da, &sa),
+        spec(&db, &sb),
+        spec(&dc, &sc),
+        &cfg,
+    )
+    .unwrap();
 
-    for strategy in [Strategy::PermuteGemm, Strategy::Tblis] {
-        let plan = ContractPlan::<f64>::new(
-            &cfg,
-            (&da, &sa),
-            (&db, &sb),
-            (&dc, &sc),
-            (Conj::No, Conj::No),
-            strategy,
-            Flags::default(),
-        )
-        .unwrap();
+    let forced = PlanConfig::packed();
+    for config in [PlanConfig::default(), forced] {
+        let plan = Plan::<f64>::new(&problem, &config).unwrap();
         let backend = TprimsBackend {
-            strategy,
-            ..TprimsBackend::default()
+            config: config.clone(),
         };
-        let problem = tr::Problem::new(
-            cfg.clone(),
-            tr::Layout::new(&da, &sa),
-            tr::Layout::new(&db, &sb),
-            tr::Layout::new(&dc, &sc),
-            (tr::Conj::No, tr::Conj::No),
-        );
         let boxed = ContractionBackend::<f64>::prepare(
             &backend,
             &problem,
-            &tr::Requirements::new(),
-            &tr::PlanningBudget::serial(),
+            &Requirements::new(),
+            &PlanningBudget::serial(),
         )
         .unwrap();
         let (av, bv) = (
@@ -99,31 +93,32 @@ fn the_trait_path_allocates_exactly_what_the_concrete_path_does() {
             strided_view::StridedView::new(&b, &db, &sb, 0).unwrap(),
         );
         let exec = Exec::serial();
-        let host = ExecHost::new(&exec);
         let run_concrete = |c: &mut Vec<f64>| {
             let mut cv = strided_view::StridedViewMut::new(c, &dc, &sc, 0).unwrap();
-            plan.execute(&exec, 1.0, &av, &bv, 0.0, &mut cv).unwrap();
+            plan.execute_into(&exec, 1.0, &av, &bv, &mut cv).unwrap();
         };
         let run_trait = |c: &mut Vec<f64>| {
             let mut cv = strided_view::StridedViewMut::new(c, &dc, &sc, 0).unwrap();
             boxed
-                .execute_into_accum(&host, 1.0, &av, &bv, 0.0, &mut cv)
+                .execute_into_accum(
+                    &exec,
+                    1.0,
+                    &av,
+                    &bv,
+                    0.0,
+                    AccumulationSource::Output,
+                    &mut cv,
+                )
                 .unwrap();
         };
         run_concrete(&mut c1); // warm-up: lazy statics, first-use tables
         run_trait(&mut c2);
         let concrete = measure(|| run_concrete(&mut c1));
         let through_trait = measure(|| run_trait(&mut c2));
-        assert_eq!(through_trait, concrete, "{strategy:?}");
-        assert_eq!(c1, c2, "{strategy:?}");
-        let copies = boxed.diagnostics().materialized;
-        match strategy {
-            // The copy is the plan's own, reported, and identical on both paths.
-            Strategy::PermuteGemm => {
-                assert!(copies.iter().any(|&m| m));
-                assert!(concrete.1 >= tensor_bytes / 2, "{concrete:?}");
-            }
-            _ => assert_eq!(copies, [false; 3]),
-        }
+        assert_eq!(through_trait, concrete, "{config:?}");
+        assert_eq!(c1, c2, "{config:?}");
+        // Nothing is copied: no allocation approaches an operand's size.
+        assert!(concrete.1 < tensor_bytes / 2, "{concrete:?}");
+        assert_eq!(boxed.diagnostics().materialized, [false; 3]);
     }
 }

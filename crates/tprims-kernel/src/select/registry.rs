@@ -16,7 +16,7 @@ mod sealed {
 }
 
 /// Real types supported by the built-in registration slots.
-/// Sealed: foreign scalar types keep using tensorcontract's legacy `KernelSet`.
+/// Sealed: the four storage types are the only scalars the registry serves.
 /// Mutable registration storage is not part of the public API.
 ///
 /// ```compile_fail
@@ -320,13 +320,6 @@ pub enum SelectError {
         /// Unsupported operand or invalid descriptor condition.
         reason: &'static str,
     },
-    /// Engine cannot represent the operation or target.
-    EngineUnsupported {
-        /// Requested engine.
-        engine: &'static str,
-        /// Unsupported operation or target condition.
-        reason: &'static str,
-    },
     /// Policy is designed but not implemented.
     NotImplemented {
         /// Unimplemented policy's name.
@@ -370,7 +363,6 @@ impl core::fmt::Display for SelectError {
             Self::CpuUnsupported { id, missing } => write!(f, "kernel {id} requires unavailable CPU features {missing:?}; choose an available kernel"),
             Self::DtypeMismatch { id, dtype } => write!(f, "kernel {id} does not serve {dtype}; choose a matching scalar family"),
             Self::Incompatible { id, reason } => write!(f, "kernel {id}: {reason}"),
-            Self::EngineUnsupported { engine, reason } => write!(f, "engine {engine}: {reason}"),
             Self::NotImplemented { what } => write!(f, "{what} is not implemented; choose an implemented policy"),
             Self::DuplicateId { id } => write!(f, "kernel catalog holds two distinct descriptors with id {id}"),
             Self::ForeignHandle { id } => write!(f, "kernel handle {id} was not minted by the supplied catalog; select from the offered candidates"),

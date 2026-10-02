@@ -45,17 +45,29 @@ Both crates retain Lukas Devos in `authors` and copies of the imported
 MIT/Apache-2.0 license texts. `git log --follow` reaches the original files;
 no imported history was rewritten. Plain `git subtree pull` no longer
 updates these moved files: upstream changes must be reconciled explicitly.
-The kernel provider's path-only tensorcontract dev-dependency preserves
-its existing custom-scalar contraction doctest, not a runtime dependency.
+The kernel provider no longer has a tensorcontract dev-dependency: the
+custom-scalar contraction doctest went with the public `KernelSet` trait.
+
+## Contraction-crate move (2026-10-02, source integration PR 3)
+
+Lukas Devos's `tensorcontract` crate (`plan.rs`, `driver.rs`, `driver/dynamic.rs`, `select.rs`, `resolve.rs`, `batch.rs`,
+`buffer.rs`, `reference.rs` and its tests) moved by `git mv` into `crates/tprims-contract` (and the oracle into
+`crates/tprims-testkit`), and `tensorprimitives-bench` into `benchmarks/` (`tcbench`), each in a pure-rename commit
+followed by separate edit commits; the splits are listed in
+[the migration guide](migration-2026-10.md#source-moves-pr-3). `crates/tprims-contract` keeps Lukas Devos in
+`authors` and carries the imported license texts (`LICENSE-MIT`, `LICENSE-APACHE`); commits that touch his code carry a
+`Co-authored-by` trailer. The faer batched loop of `tprims-blas` was reduced to the copy-free path in
+`strategy/faer.rs`; the permute+GEMM approach is tenferro-rs's CPU `dot_general` (`tenferro-cpu/src/dot_runtime.rs`,
+`gemm/mod.rs` at `5a4e7fd`), reimplemented.
 
 ### Downstream kernels (issue #28)
 
 A downstream crate that supplies its own kernels through a caller-scoped
 `KernelCatalog` reports itself as `Origin::External { crate_name, license }`.
-tprims prints those strings in diagnostics (`SelectedGemm::origin`,
+tprims prints those strings in diagnostics (`PlanReport`'s `PackedReport::origin`,
 `list_kernels`/`KernelCatalog::list`) and never labels them `Portable` or
 `Tensorcontract`; it does not vouch for their license or correctness, which
-is the provider's `unsafe` promise at admission. `tprims_contract_testkit::custom_kernels` (formerly the
+is the provider's `unsafe` promise at admission. `tprims_testkit::custom_kernels` (formerly the
 `tprims-custom-kernel-test` crate) is the test stand-in: its kernels are new MIT OR Apache-2.0 code written for
 the test, and its complex family calls the project's own public reference loop
 (`portable::cplx_tile`), so no upstream kernel body is copied.

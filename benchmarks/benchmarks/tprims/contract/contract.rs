@@ -1,13 +1,14 @@
 //! tprims-contract at an enforced thread count: a predeclared corpus of
 //! binary contractions, or a recorded one (`--corpus FILE`, see
-//! `tprims_bench::corpus`), both strategies (permute + batched GEMM,
-//! TBLIS-style direct). Planning and execution are timed separately.
+//! `tprims_bench::corpus`), under the planner's own choice (`plan`) and the
+//! packed driver forced (`packed`). Planning and execution are timed
+//! separately.
 //!
-//! Usage: `contract --threads N [--corpus FILE] [--list]`. CSV
-//! `case,variant,threads,median_ns,samples` where `variant` is
-//! `<strategy>_<plan|exec>`; `# selected` lines report what each plan runs
-//! (including materialized operands); `CHECK` lines compare the strategies'
-//! results. `--list` prints the case names and exits. Environment:
+//! Usage: `contract --threads N [--corpus FILE] [--partition static|dynamic:JM,JN]
+//! [--list]`. CSV `case,variant,threads,median_ns,samples` where `variant` is
+//! `<engine>_<plan|exec>`; `# selected` lines report what each plan runs (the
+//! algorithm and, for the packed driver, its family); `CHECK` lines compare the
+//! engines' results. `--list` prints the case names and exits. Environment:
 //! `BENCH_RUNS` (default 20), `BENCH_WARMUP` (3), `BENCH_CASE` (exact case
 //! name). The built-in corpus runs in f64 and c64; a corpus file sets each
 //! entry's dtype.
@@ -15,13 +16,13 @@ use std::hint::black_box;
 
 use num_complex::{Complex32, Complex64};
 use strided_view::{StridedView, StridedViewMut};
-use tensorcontract::Element;
 use tprims_bench::corpus::{Corpus, DotGeneralEntry, Dtype, Entry, Operand};
 use tprims_bench::threads::BenchThreads;
 use tprims_bench::timing::{env_usize, median_ns};
-use tprims_blas::{Conj, Scalar};
-use tprims_contract::{ContractPlan, DotGeneral, Flags, Strategy};
+use tprims_contract::api::{DType, DotGeneral, LayoutSpec, Op, OperandSpec, Problem, Scalar};
+use tprims_contract::{Partition, Plan, PlanConfig};
 use tprims_exec::Exec;
+use tprims_kernel::{Element, Real};
 
 /// One corpus entry. `a_order` / `b_order` give the storage order of the
 /// logical axes (fastest first), so operands can be stored "transposed".
@@ -128,10 +129,7 @@ fn fill<T: Scalar>(len: usize, seed: u64) -> Vec<T> {
             s ^= s << 17;
             let re = (s % 1000) as f64 / 1000.0 - 0.5;
             let im = ((s >> 20) % 1000) as f64 / 1000.0 - 0.5;
-            <T as Element>::from_parts(
-                tensorcontract::Real::from_f64(re),
-                tensorcontract::Real::from_f64(im),
-            )
+            <T as Element>::from_parts(Real::from_f64(re), Real::from_f64(im))
         })
         .collect()
 }
@@ -178,11 +176,26 @@ fn entry(case: &Case, dtype: Dtype) -> DotGeneralEntry {
     }
 }
 
-fn conj(c: bool) -> Conj {
+fn operand(o: &Operand, op: Op) -> OperandSpec {
+    let (offset, _) = o.span();
+    OperandSpec::new(LayoutSpec::new(&o.dims, &o.strides, offset as isize).expect("layout"))
+        .with_op(op)
+}
+
+fn op(c: bool) -> Op {
     if c {
-        Conj::Yes
+        Op::Conjugate
     } else {
-        Conj::No
+        Op::Identity
+    }
+}
+
+fn dtype_of(d: Dtype) -> DType {
+    match d {
+        Dtype::F32 => DType::F32,
+        Dtype::F64 => DType::F64,
+        Dtype::C32 => DType::C32,
+        Dtype::C64 => DType::C64,
     }
 }
 
@@ -197,95 +210,67 @@ fn run<T: Scalar>(
     let ((oa, la), (ob, lb), (oc, lc)) = (e.a.span(), e.b.span(), e.c.span());
     let ad: Vec<T> = fill(la, 1);
     let bd: Vec<T> = fill(lb, 2);
-    let cfg = DotGeneral::new(&e.lc, &e.rc, &e.lb, &e.rb);
+    let problem = Problem::from_dot_general(
+        dtype_of(e.dtype),
+        operand(&e.a, op(e.conj[0])),
+        operand(&e.b, op(e.conj[1])),
+        operand(&e.c, Op::Identity),
+        &DotGeneral::new(&e.lc, &e.rc, &e.lb, &e.rb),
+    )
+    .expect("problem");
     let av = StridedView::new(&ad, &e.a.dims, &e.a.strides, oa as isize).expect("a");
     let bv = StridedView::new(&bd, &e.b.dims, &e.b.strides, ob as isize).expect("b");
     let mut outs = Vec::new();
-    // `--partition dynamic:JM,JN` adds a separately labelled TBLIS row that uses
-    // the opt-in dynamic scheduler; the pg and static tblis rows are unchanged.
+    // `--partition dynamic:JM,JN` adds a separately labelled packed row that uses
+    // the opt-in dynamic scheduler; the plan and static packed rows are
+    // unchanged. Any explicit partition forces the packed driver.
     let dynamic = tprims_bench::partition::from_args();
+    let static_grid = Some(Partition::StaticGrid {
+        pin: None,
+        align_c_lines: false,
+    });
     let mut variants = vec![
-        ("pg".to_string(), Strategy::PermuteGemm, None),
-        ("tblis".to_string(), Strategy::Tblis, None),
+        ("plan".to_string(), None),
+        ("packed".to_string(), static_grid),
     ];
     if dynamic.is_some() {
         variants.push((
-            format!("tblis{}", tprims_bench::partition::suffix(dynamic)),
-            Strategy::Tblis,
+            format!("packed{}", tprims_bench::partition::suffix(dynamic)),
             dynamic,
         ));
     }
-    for (tag, strategy, partition) in variants.iter().map(|(t, s, p)| (t.as_str(), *s, *p)) {
-        let gemm = tprims_bench::partition::apply(
-            tprims_blas::GemmConfig {
-                engine: if partition.is_some() {
-                    tprims_blas::EngineChoice::Packed
-                } else {
-                    Default::default()
-                },
-                ..Default::default()
-            },
-            partition,
-        );
-        let mk = || {
-            ContractPlan::<T>::new_with(
-                &gemm,
-                &cfg,
-                (&e.a.dims, &e.a.strides),
-                (&e.b.dims, &e.b.strides),
-                (&e.c.dims, &e.c.strides),
-                (conj(e.conj[0]), conj(e.conj[1])),
-                strategy,
-                Flags::default(),
-            )
-            .expect("plan")
-        };
+    for (tag, partition) in variants.iter().map(|(t, p)| (t.as_str(), *p)) {
+        let config = tprims_bench::partition::apply(PlanConfig::default(), partition);
+        let mk = || Plan::<T>::new(&problem, &config).expect("plan");
         let ns = median_ns(warmup, runs, || {
             black_box(mk());
         });
         println!("{name},{tag}_plan,{threads},{ns:.0},{runs}");
         let plan = mk();
-        println!("# selected {name} {tag}: {:?}", plan.selected());
+        let report = plan.report();
+        match &report.packed {
+            Some(p) => println!("# selected {name} {tag}: packed {}", p.family_id),
+            None => println!("# selected {name} {tag}: {}", report.algorithm.name()),
+        }
         let mut c = vec![<T as Element>::zero(); lc];
         let ns = median_ns(warmup, runs, || {
             let mut cv =
                 StridedViewMut::new(&mut c, &e.c.dims, &e.c.strides, oc as isize).expect("c");
-            plan.execute(
-                exec,
-                <T as Element>::one(),
-                &av,
-                &bv,
-                <T as Element>::zero(),
-                &mut cv,
-            )
-            .expect("exec");
+            plan.execute_into(exec, <T as Element>::one(), &av, &bv, &mut cv)
+                .expect("exec");
         });
         println!("{name},{tag}_exec,{threads},{ns:.0},{runs}");
         outs.push(c);
     }
     let mag = |z: T| {
-        let (re, im): (f64, f64) = (
-            tensorcontract::Real::to_f64(Element::re(z)),
-            tensorcontract::Real::to_f64(Element::im(z)),
-        );
+        let (re, im): (f64, f64) = (Real::to_f64(Element::re(z)), Real::to_f64(Element::im(z)));
         re.hypot(im)
     };
     let scale = outs[0].iter().map(|&z| mag(z)).fold(1.0, f64::max);
     let err = outs[0]
         .iter()
         .zip(&outs[1])
-        .map(|(&x, &y)| {
-            mag(Element::add(
-                x,
-                Element::mul(
-                    y,
-                    <T as Element>::from_parts(
-                        tensorcontract::Real::from_f64(-1.0),
-                        tensorcontract::Real::from_f64(0.0),
-                    ),
-                ),
-            ))
-        })
+        .map(|(&x, &y)| mag(Element::sub(x, y)))
         .fold(0.0, f64::max)
         / scale;
     let tol = if matches!(e.dtype, Dtype::F32 | Dtype::C32) {
@@ -294,7 +279,7 @@ fn run<T: Scalar>(
         1e-12
     };
     println!(
-        "CHECK {name} threads={threads} pg_vs_tblis_rel={err:e} {}",
+        "CHECK {name} threads={threads} plan_vs_packed_rel={err:e} {}",
         if err < tol { "ok" } else { "MISMATCH" }
     );
 }
@@ -320,10 +305,7 @@ fn cases() -> Vec<DotGeneralEntry> {
             corpus
                 .entries
                 .into_iter()
-                .filter_map(|e| match e {
-                    Entry::DotGeneral(d) => Some(d),
-                    _ => None,
-                })
+                .map(|Entry::DotGeneral(d)| d)
                 .collect()
         }
         None => CORPUS

@@ -1005,36 +1005,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "tensorcontract"
-version = "0.1.0"
-dependencies = [
- "num-complex",
- "rand",
- "rand_chacha",
- "rayon",
- "tprims-exec",
- "tprims-kernel",
-]
-
-[[package]]
-name = "tensorprimitives-bench"
-version = "0.1.0"
-dependencies = [
- "num-complex",
- "rand",
- "rand_chacha",
- "tensorcontract",
- "tprims-kernel",
-]
-
-[[package]]
 name = "tensorprimitives-tapp"
 version = "0.1.0"
 dependencies = [
  "num-complex",
- "tensorcontract",
+ "tprims-contract",
  "tprims-core",
  "tprims-exec",
+ "tprims-kernel",
+ "tprims-testkit",
 ]
 
 [[package]]
@@ -1072,30 +1051,15 @@ version = "0.1.0"
 dependencies = [
  "num-complex",
  "num-traits",
+ "rand",
+ "rand_chacha",
  "rayon",
  "serde",
  "serde_json",
  "strided-basic",
  "strided-view",
- "tensorcontract",
- "tprims-blas",
  "tprims-contract",
  "tprims-core",
- "tprims-exec",
- "tprims-kernel",
-]
-
-[[package]]
-name = "tprims-blas"
-version = "0.1.0"
-dependencies = [
- "faer",
- "num-complex",
- "rayon",
- "strided-view",
- "tensorcontract",
- "thiserror",
- "tprims-contract-testkit",
  "tprims-exec",
  "tprims-kernel",
 ]
@@ -1112,35 +1076,17 @@ dependencies = [
 name = "tprims-contract"
 version = "0.1.0"
 dependencies = [
+ "faer",
  "num-complex",
+ "rand",
+ "rand_chacha",
  "rayon",
  "strided-basic",
  "strided-view",
- "tensorcontract",
  "thiserror",
- "tprims-blas",
- "tprims-contract-testkit",
- "tprims-contract-traits",
  "tprims-exec",
  "tprims-kernel",
-]
-
-[[package]]
-name = "tprims-contract-testkit"
-version = "0.1.0"
-dependencies = [
- "num-complex",
- "strided-view",
- "tprims-contract-traits",
- "tprims-kernel",
-]
-
-[[package]]
-name = "tprims-contract-traits"
-version = "0.1.0"
-dependencies = [
- "strided-view",
- "thiserror",
+ "tprims-testkit",
 ]
 
 [[package]]
@@ -1168,7 +1114,19 @@ version = "0.1.0"
 dependencies = [
  "libc",
  "num-complex",
- "tensorcontract",
+]
+
+[[package]]
+name = "tprims-testkit"
+version = "0.1.0"
+dependencies = [
+ "num-complex",
+ "rand",
+ "rand_chacha",
+ "strided-view",
+ "tprims-contract",
+ "tprims-exec",
+ "tprims-kernel",
 ]
 
 [[package]]

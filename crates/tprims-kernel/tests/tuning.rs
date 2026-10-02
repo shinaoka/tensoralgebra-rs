@@ -86,3 +86,24 @@ fn the_process_environment_is_not_read() {
     let auto = ResolvedGemm::<f64>::resolve::<f64>(&KernelChoice::Auto, 1).unwrap();
     assert!(auto.family().allow_auto);
 }
+
+#[test]
+fn a_coupled_kc_rederives_mc_and_nc_at_that_depth() {
+    let base = tuned(Tuning::default());
+    let coupled = tuned(Tuning {
+        kc_couple: Some(64),
+        ..Tuning::default()
+    });
+    assert_eq!(coupled.kc, 64);
+    // A shallower depth leaves room for more rows and columns in the same budget.
+    assert!(coupled.mc > base.mc && coupled.nc > base.nc);
+    // The plain kc override changes kc alone.
+    let plain = tuned(Tuning {
+        blocking: BlockingOverride {
+            kc: Some(64),
+            ..Default::default()
+        },
+        ..Tuning::default()
+    });
+    assert_eq!((plain.mc, plain.nc), (base.mc, base.nc));
+}

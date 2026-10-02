@@ -1,22 +1,16 @@
 use strided_view::{StridedView, StridedViewMut};
-use tensorcontract::Element;
-use tprims_blas::{is_injective_layout, Scalar};
 use tprims_exec::strided::run_with_exec;
 use tprims_exec::Exec;
+use tprims_kernel::Element;
 
-use crate::{Error, Result};
+use crate::api::{is_injective_layout, AliasError, ConfigError, Error, Result, Scalar, ShapeError};
+use crate::strategy::elementwise::{CRead, ElementPlan, Expr, Inputs};
 
 fn check_out<T>(c: &StridedViewMut<'_, T>) -> Result<()> {
-    let l: Vec<(usize, isize)> = c
-        .dims()
-        .iter()
-        .copied()
-        .zip(c.strides().iter().copied())
-        .collect();
-    if is_injective_layout(&l) {
+    if is_injective_layout(c.dims(), c.strides()) {
         Ok(())
     } else {
-        Err(Error::AliasedOutput)
+        Err(AliasError::OutputNotInjective.into())
     }
 }
 
@@ -25,8 +19,8 @@ fn check_out<T>(c: &StridedViewMut<'_, T>) -> Result<()> {
 ///
 /// # Errors
 ///
-/// [`Error::Config`] for an invalid permutation, [`Error::Shape`] for C's
-/// extents, [`Error::AliasedOutput`].
+/// [`ConfigError::NotAPermutation`] for an invalid permutation,
+/// [`ShapeError::OutputExtents`] for C's extents, [`AliasError::OutputNotInjective`].
 ///
 /// # Examples
 ///
@@ -52,16 +46,15 @@ pub fn permute<T: Scalar>(
             .iter()
             .any(|&p| p >= r || std::mem::replace(&mut seen[p], true))
     {
-        return Err(Error::Config(format!(
-            "{perm:?} is not a permutation of 0..{r}"
-        )));
+        return Err(ConfigError::NotAPermutation { rank: r }.into());
     }
     let want: Vec<usize> = perm.iter().map(|&p| a.dims()[p]).collect();
     if c.dims() != want.as_slice() {
-        return Err(Error::Shape(format!(
-            "C has extents {:?}, expected {want:?}",
-            c.dims()
-        )));
+        return Err(ShapeError::OutputExtents {
+            expected: want,
+            actual: c.dims().to_vec(),
+        }
+        .into());
     }
     check_out(c)?;
     let src = a.permute(perm).map_err(Error::backend)?;
@@ -74,7 +67,7 @@ pub fn permute<T: Scalar>(
 ///
 /// # Errors
 ///
-/// [`Error::Shape`], [`Error::AliasedOutput`].
+/// [`ShapeError::OutputExtents`], [`AliasError::OutputNotInjective`].
 ///
 /// # Examples
 ///
@@ -95,11 +88,11 @@ pub fn add<T: Scalar>(
     c: &mut StridedViewMut<'_, T>,
 ) -> Result<()> {
     if a.dims() != c.dims() {
-        return Err(Error::Shape(format!(
-            "A {:?} vs C {:?}",
-            a.dims(),
-            c.dims()
-        )));
+        return Err(ShapeError::OutputExtents {
+            expected: a.dims().to_vec(),
+            actual: c.dims().to_vec(),
+        }
+        .into());
     }
     check_out(c)?;
     let len = c.len();
@@ -112,21 +105,22 @@ pub fn add<T: Scalar>(
     if len == 0 {
         return Ok(());
     }
-    let (dims, cs, as_) = (
-        c.dims().to_vec(),
-        c.strides().to_vec(),
-        a.strides().to_vec(),
-    );
     // SAFETY: both views are non-empty and bounds-checked with these extents;
     // C is exclusive and injective (checked above); A is a distinct borrow.
     unsafe {
-        crate::util::zip_update(
+        ElementPlan::scaled(c.dims(), a.strides(), c.strides()).run(
             exec,
-            &dims,
-            (c.as_mut_ptr(), &cs),
-            [(a.ptr(), &as_)],
-            true,
-            &move |y, [x]| Element::add(Element::mul(alpha, x), Element::mul(beta, y)),
+            Expr {
+                alpha,
+                beta,
+                conj_a: false,
+                conj_b: false,
+                conj_c: false,
+                conj_d: false,
+            },
+            Inputs::Scaled(a.ptr()),
+            CRead::InPlace,
+            c.as_mut_ptr(),
         )
     };
     Ok(())

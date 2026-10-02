@@ -15,7 +15,6 @@ num-complex.workspace = true
 # Path-only cross-layer test dependencies (the downstream driver exercises the
 # kernels); not a runtime dependency.
 libc = "0.2"
-tensorcontract = { path = "../../tensorprimitives/crates/tensorcontract", default-features = false }
 
 [features]
 default = ["std"]

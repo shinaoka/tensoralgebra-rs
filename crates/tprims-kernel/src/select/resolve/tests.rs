@@ -8,6 +8,7 @@ fn synthetic_shared_l3_retargets_nc_to_effective_width() {
         hierarchy: cache::BUILTIN,
         overrides: None,
         explicit: None,
+        kc_couple: None,
     };
     let budget = rg.with_threads(8).unwrap();
     let serial = budget.with_threads(1).unwrap();
@@ -32,6 +33,7 @@ fn percentage_overrides_apply_once_and_overflow_is_typed() {
         model: BlockModel::Legacy,
         hierarchy: cache::BUILTIN,
         explicit: None,
+        kc_couple: None,
         overrides: Some(BlockingOverride {
             mc: None,
             kc: None,

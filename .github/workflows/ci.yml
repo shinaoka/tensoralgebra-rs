@@ -26,7 +26,7 @@ jobs:
       - run: python3 scripts/check-agent-skills.py
       - run: python3 benchmarks/scripts/test_idle_cpus.py
       - run: python3 benchmarks/scripts/test_tblis_decision.py
-      - run: bash -n benchmarks/scripts/pinned.sh benchmarks/scripts/paired.sh benchmarks/benchmarks/tprims/contract/run.sh benchmarks/benchmarks/tprims/blas/run.sh benchmarks/c/run.sh
+      - run: bash -n benchmarks/scripts/pinned.sh benchmarks/scripts/paired.sh benchmarks/benchmarks/tprims/contract/run.sh benchmarks/c/run.sh
 
   clippy:
     strategy:
@@ -56,14 +56,10 @@ jobs:
       - run: cargo test --profile ci --workspace --no-fail-fast
       # tprims-exec alone, without the `strided` adapter the workspace unifies on.
       - run: cargo test --profile ci -p tprims-exec --no-fail-fast
-      # tensorcontract's micro-kernels are written for the release profile
+      # The packed driver's micro-kernels are written for the release profile
       # (thin LTO, one codegen unit); upstream CI tests both.
-      - run: cargo test -p tensorcontract --release
-      - run: cargo run --release -p tensorprimitives-bench -- info
-      # Upstream tensorprimitives checks: the out-of-root readme still packages,
-      # and the `std` feature seam still builds without it.
-      - run: cargo package -p tensorcontract --list --allow-dirty
-      - run: cargo build -p tensorcontract --no-default-features
+      - run: cargo test -p tprims-contract --release
+      - run: cargo run --release -p tprims-bench --bin tcbench -- info
 
   capi:
     strategy:

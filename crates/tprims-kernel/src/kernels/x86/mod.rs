@@ -5,7 +5,7 @@
 //! `examples/kernel_shapes` can measure one kernel family at a time. The
 //! register-block menus below are re-measured whenever the reference machine
 //! changes, so nothing here is stable. Reach the kernels through
-//! [`super::KernelSet`].
+//! registered families.
 //!
 //! These honour exactly the same [`PackFormat`](crate::PackFormat) / [`TileFormat`](crate::TileFormat) contract as
 //! [`scalar`](super::reference::scalar), which is what keeps the three complex methods
@@ -214,7 +214,7 @@ impl<T> core::fmt::Debug for IsaConfigs<T> {
     }
 }
 
-/// The five entry points the [`super::KernelSet`] impls call, per type: the
+/// The five entry points the default menu is built from, per type: the
 /// default shape, the menu of row blocks, and the config at a chosen one, each
 /// resolved through [`selected_isa`]. All yield `None`/`&[]` when no vectorised
 /// ISA is available or `force` is `Scalar`, which sends the

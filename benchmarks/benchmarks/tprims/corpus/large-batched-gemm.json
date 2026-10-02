@@ -1,17 +1,14 @@
 {
  "source": {
   "tool": "hand-written",
-  "note": "large batched GEMM: compact column-major items, batch axis last; equal weights (calls=1)"
+  "note": "large batched GEMM: compact column-major items, batch axis last; equal weights (calls=1)",
+  "rewritten": "gemm_batched entries rewritten as dot_general contraction cases: lc=[1], rc=[0], lb=[2], rb=[2] (the same views, the same output)"
  },
  "entries": [
   {
    "name": "large_b512_m128_n128_k128_f64",
-   "op": "gemm_batched",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 128,
-   "n": 128,
-   "k": 128,
-   "batch": 512,
    "a": {
     "dims": [
      128,
@@ -48,16 +45,28 @@
      16384
     ]
    },
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 1
   },
   {
    "name": "large_b64_m256_n256_k256_f64",
-   "op": "gemm_batched",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 256,
-   "n": 256,
-   "k": 256,
-   "batch": 64,
    "a": {
     "dims": [
      256,
@@ -94,16 +103,28 @@
      65536
     ]
    },
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 1
   },
   {
    "name": "large_b16_m512_n512_k512_f64",
-   "op": "gemm_batched",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 512,
-   "n": 512,
-   "k": 512,
-   "batch": 16,
    "a": {
     "dims": [
      512,
@@ -140,16 +161,28 @@
      262144
     ]
    },
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 1
   },
   {
    "name": "large_b4_m1024_n1024_k1024_f64",
-   "op": "gemm_batched",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 1024,
-   "n": 1024,
-   "k": 1024,
-   "batch": 4,
    "a": {
     "dims": [
      1024,
@@ -186,16 +219,28 @@
      1048576
     ]
    },
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 1
   },
   {
    "name": "large_b2_m2048_n2048_k2048_f64",
-   "op": "gemm_batched",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 2048,
-   "n": 2048,
-   "k": 2048,
-   "batch": 2,
    "a": {
     "dims": [
      2048,
@@ -232,16 +277,28 @@
      4194304
     ]
    },
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 1
   },
   {
    "name": "large_b1_m4096_n4096_k4096_f64",
-   "op": "gemm_batched",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 4096,
-   "n": 4096,
-   "k": 4096,
-   "batch": 1,
    "a": {
     "dims": [
      4096,
@@ -278,16 +335,28 @@
      16777216
     ]
    },
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 1
   },
   {
    "name": "large_b64_m256_n1024_k64_f64",
-   "op": "gemm_batched",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 256,
-   "n": 1024,
-   "k": 64,
-   "batch": 64,
    "a": {
     "dims": [
      256,
@@ -324,16 +393,28 @@
      262144
     ]
    },
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 1
   },
   {
    "name": "large_b64_m1024_n64_k256_f64",
-   "op": "gemm_batched",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 1024,
-   "n": 64,
-   "k": 256,
-   "batch": 64,
    "a": {
     "dims": [
      1024,
@@ -370,16 +451,28 @@
      65536
     ]
    },
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 1
   },
   {
    "name": "large_b512_m128_n128_k128_c64",
-   "op": "gemm_batched",
+   "op": "dot_general",
    "dtype": "c64",
-   "m": 128,
-   "n": 128,
-   "k": 128,
-   "batch": 512,
    "a": {
     "dims": [
      128,
@@ -416,16 +509,28 @@
      16384
     ]
    },
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 1
   },
   {
    "name": "large_b64_m256_n256_k256_c64",
-   "op": "gemm_batched",
+   "op": "dot_general",
    "dtype": "c64",
-   "m": 256,
-   "n": 256,
-   "k": 256,
-   "batch": 64,
    "a": {
     "dims": [
      256,
@@ -462,16 +567,28 @@
      65536
     ]
    },
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 1
   },
   {
    "name": "large_b16_m512_n512_k512_c64",
-   "op": "gemm_batched",
+   "op": "dot_general",
    "dtype": "c64",
-   "m": 512,
-   "n": 512,
-   "k": 512,
-   "batch": 16,
    "a": {
     "dims": [
      512,
@@ -508,16 +625,28 @@
      262144
     ]
    },
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 1
   },
   {
    "name": "large_b4_m1024_n1024_k1024_c64",
-   "op": "gemm_batched",
+   "op": "dot_general",
    "dtype": "c64",
-   "m": 1024,
-   "n": 1024,
-   "k": 1024,
-   "batch": 4,
    "a": {
     "dims": [
      1024,
@@ -554,16 +683,28 @@
      1048576
     ]
    },
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 1
   },
   {
    "name": "large_b2_m2048_n2048_k2048_c64",
-   "op": "gemm_batched",
+   "op": "dot_general",
    "dtype": "c64",
-   "m": 2048,
-   "n": 2048,
-   "k": 2048,
-   "batch": 2,
    "a": {
     "dims": [
      2048,
@@ -600,16 +741,28 @@
      4194304
     ]
    },
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 1
   },
   {
    "name": "large_b1_m4096_n4096_k4096_c64",
-   "op": "gemm_batched",
+   "op": "dot_general",
    "dtype": "c64",
-   "m": 4096,
-   "n": 4096,
-   "k": 4096,
-   "batch": 1,
    "a": {
     "dims": [
      4096,
@@ -646,16 +799,28 @@
      16777216
     ]
    },
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 1
   },
   {
    "name": "large_b64_m256_n1024_k64_c64",
-   "op": "gemm_batched",
+   "op": "dot_general",
    "dtype": "c64",
-   "m": 256,
-   "n": 1024,
-   "k": 64,
-   "batch": 64,
    "a": {
     "dims": [
      256,
@@ -692,16 +857,28 @@
      262144
     ]
    },
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 1
   },
   {
    "name": "large_b64_m1024_n64_k256_c64",
-   "op": "gemm_batched",
+   "op": "dot_general",
    "dtype": "c64",
-   "m": 1024,
-   "n": 64,
-   "k": 256,
-   "batch": 64,
    "a": {
     "dims": [
      1024,
@@ -738,6 +915,22 @@
      65536
     ]
    },
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 1
   }
  ]

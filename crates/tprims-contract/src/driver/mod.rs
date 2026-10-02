@@ -1,0 +1,789 @@
+//! The five-loop driver.
+//!
+//! tprims: threads come only from a [`tprims_exec::Exec`] (not upstream); this
+//! crate spawns none, and without an `Exec` the driver runs serially.
+//!
+//! Structurally identical to BLIS's GEMM: two levels of cache blocking with a
+//! packing step at each, wrapped around a register-blocked micro-kernel. The
+//! only tensor-specific part is that every matrix access goes through a
+//! scatter vector.
+//!
+//! ```text
+//! for each Hadamard (batch) index h          -- offsets all four operands
+//!   loop 5: for jc in 0..N step NC
+//!     loop 4: for pc in 0..K step KC
+//!               pack B[pc:pc+KC, jc:jc+NC] -> Bp    (NR slivers)
+//!       loop 3: for ic in 0..M step MC
+//!                 pack A[ic:ic+MC, pc:pc+KC] -> Ap  (MR slivers)
+//!         loop 2: for jr in 0..NC step NR
+//!           loop 1: for ir in 0..MC step MR
+//!                     micro-kernel -> MR x NR tile
+//!                     write back to C/D through the scatter vectors
+//! ```
+//!
+//! The loop nest is identical for real and for all three complex methods. What
+//! the complex method changes is captured entirely by the selected
+//! [`Ukr`](crate::kernel::Ukr): its `a_pack`/`b_pack` formats, its per-k sliver
+//! widths, its tile size and its `tile_fmt`. Nothing here branches on the
+//! method, which is what makes the three genuinely comparable — they share
+//! every line of index analysis, packing traversal, loop arithmetic and
+//! write-back scatter.
+//!
+//! `beta` and the `C` operand are consumed on the first `pc` iteration only;
+//! later iterations accumulate into `D`.
+//!
+//! # Threading
+//!
+//! BLIS-style, and two-dimensional: the output is cut into a `pm x pn` grid of
+//! contiguous row strips of whole `MR` panels by column groups of whole `NR`
+//! blocks, one thread each. [`Plan::partition`] decides `(pm, pn)` and is the
+//! single definition of it; `pn > 1` only when `ceil(M / MR) < p`, so on all but
+//! four of the 49 corpus cases this is still a 1-D partition of `M` and behaves
+//! exactly as the first version did.
+//!
+//! The two axes are cut in different places, and deliberately:
+//!
+//! * The **row strips** are cut once, outside everything, and each thread runs
+//!   loops 3, 2 and 1 over its own strip with its own packed-`A` block.
+//! * The **column groups** are cut *inside* loop 5, per `NC` block: every thread
+//!   iterates the same `(h, jc, pc)` sequence over the whole of `N` and `K`, and
+//!   within each `jc` block takes its group's contiguous range of `NR` slivers.
+//!
+//! Cutting `N` inside loop 5 rather than over the whole range is what keeps the
+//! packed-`B` panel single and shared. It stays exactly the L3-sized panel the
+//! `NC` budget is derived for — a top-level split of `N` would need `pn` panels
+//! and `pn` times the L3 — and it keeps loops 5 and 4 identical across all `p`
+//! threads, which is what makes the barrier counts agree without anyone tracking
+//! them (see `run_strip`).
+//!
+//! `B` is packed cooperatively: within a column group, the `pm` threads that
+//! share it split its slivers, so each thread packs slivers it will itself read
+//! and no thread packs anything it will not. Two barriers per `(jc, pc)` bracket
+//! the packing — one so nobody is still reading the previous panel, one so the
+//! new one is complete — and they are **per column group**, of `pm` threads,
+//! because a group's slice of the panel is written and read only by its own
+//! threads. A one-thread column group therefore needs no barrier at all, which
+//! is the case a pure `N` split (`pm == 1`) degenerates to: no synchronisation
+//! anywhere in the loop nest.
+//!
+//! The packed `A` block is per thread and so is **duplicated `pn` times**: the
+//! `pn` threads of one row strip each pack that strip for themselves. That is
+//! deliberate rather than merely convenient. It costs `ceil(panels/pm) * MR * K`
+//! element moves per thread against `ceil(panels/pm) * ceil(blocks/pn) * MR * NR
+//! * K` lane-FMAs, i.e. one packed element per `NR * ceil(blocks/pn)` FMA slots,
+//! and it buys back the alternative's cost: a single packer per row strip needs a
+//! barrier *inside* loop 3, at `M/MC` times the frequency of the ones above it,
+//! and leaves the block in one thread's L2 for the others to pull across L3
+//! instead of each having it in its own. `Plan::partition` prices the duplication
+//! explicitly and will not split `N` when a thread would be left with too few
+//! `NR` blocks to amortise it over.
+//!
+//! Four properties this buys, all of them deliberate:
+//!
+//! * **No reduction.** Loop 4 (`pc`) accumulates into `D` in place, so
+//!   parallelising it would need either a temporary per thread or atomics.
+//!   Partitioning the *output* instead gives every element a single owning
+//!   thread, which accumulates over the full `K` in the original order. Both
+//!   axes have this property; `K` is the one that does not, and it is left
+//!   serial.
+//! * **Bitwise identical to serial**, therefore, for any thread count and any
+//!   `(pm, pn)` — the floating-point operations per output element are the same
+//!   operations in the same order. That is a strong enough invariant to test
+//!   directly, and the `threaded_matches_serial_*` tests do.
+//! * **Blocks stay aligned with the block scatter.** Strips are whole `MR`
+//!   panels and groups whole `NR` slivers, so every thread's micro-tiles are the
+//!   ones the serial driver would have used. The write-back fast path, the
+//!   row-block rule and the orientation rule are untouched by threading.
+//! * **The serial path is unchanged.** With `pm == pn == 1` the only difference
+//!   from the pre-threading driver is two `Option` checks and a handful of
+//!   integer divisions per `(jc, pc)` iteration, nowhere near the hot loops.
+//!   Every measurement committed in `docs/notebook/` was taken single-threaded and
+//!   stays comparable.
+//!
+//! Known limits, in the order they will bite (see the Phase 4 report):
+//! parallelism is capped at `ceil(M / MR) * ceil(N / NR)`, and a column group can
+//! only be as wide as the `jc` block it is cut from, so a tail `NC` block with
+//! fewer slivers than groups leaves some threads idle for that block; and `NC`'s
+//! L3 budget is still charged as if one core owned the cache.
+//!
+//! The per-call spawn cost that used to head that list — `std::thread::scope`
+//! rather than a pool, ~20–36 µs per thread and the whole story below a megabyte
+//! (A43, D46) — is gone: the threads of one call are the workers of the host's
+//! [`tprims_exec::Pool`], co-scheduled by [`tprims_exec::Exec::broadcast`]. For
+//! many small contractions, [`crate::batch`] parallelises over a *batch*
+//! instead of inside each contraction.
+
+use std::sync::Barrier;
+
+use tprims_exec::{Exec, WorkspaceProvider, WorkspaceReq};
+
+use crate::buffer::Panel;
+mod dynamic;
+mod static_grid;
+#[cfg(test)]
+mod tests;
+mod tile;
+use crate::plan::PackedPlan;
+pub(crate) use dynamic::dynamic_report;
+pub use dynamic::{Assignment, DynSnapshot, DynStats, DynamicReport};
+use static_grid::{run_strip, BPart};
+use tile::{compute_block, pack_a_rows, pack_b_slivers, Bufs, Epoch};
+use tprims_kernel::pack::panel_len;
+use tprims_kernel::scatter::append_block_scatter;
+use tprims_kernel::writeback::scale_only;
+use tprims_kernel::{Axis, BAccess, Blocking, DriverFamily, Element};
+
+/// Operand-dependent decisions the driver makes once per execute, kept
+/// separate from the plan-level resolution so tests can pin the real rule.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct ResolvedCall {
+    /// The shared B panel must be packed this call.
+    pub pack_b_needed: bool,
+    /// Eligible tiles may be updated directly, without a scratch tile.
+    pub direct_c_allowed: bool,
+}
+
+/// The same two decisions the driver takes, for a given plan, resolution and
+/// operand pair.
+#[cfg(test)]
+pub(crate) fn driver_decisions<T>(
+    plan: &PackedPlan,
+    rg: &tprims_kernel::ResolvedGemm<T::Real>,
+    c: *const T,
+    d: *mut T,
+    beta: T,
+) -> ResolvedCall
+where
+    T: Element,
+{
+    // Which user operand plays the kernel's column role, exactly as
+    // `execute_capped` decides it.
+    let swap = plan.transposes_gemm(rg.mr);
+    let (bk, bn) = if swap {
+        (&plan.a_k, &plan.a_m)
+    } else {
+        (&plan.b_k, &plan.b_n)
+    };
+    ResolvedCall {
+        pack_b_needed: pack_b_needed(rg.family().b_access, bk, bn, rg.nr),
+        direct_c_allowed: direct_c_allowed(plan, c, d, beta),
+    }
+}
+
+/// Whether the family must pack this call's column operand: it must accept an
+/// in-place B, B's k stride must be one, and every `NR` block's column offsets
+/// must be an arithmetic progression, so one stride expresses the tile.
+///
+/// This reads the operand's own scatter rather than its block scatter, so it
+/// can decide before any scratch buffer exists.
+pub(crate) fn pack_b_needed(b_access: BAccess, bk: &[i64], bn: &[i64], nr: usize) -> bool {
+    if !matches!(
+        b_access,
+        BAccess::Direct {
+            unit_stride: Axis::Col
+        }
+    ) {
+        return true;
+    }
+    if bk.len() > 1 && !bk.windows(2).all(|w| w[1] - w[0] == 1) {
+        return true;
+    }
+    !tprims_kernel::scatter::block_scatter_regular(bn, nr)
+}
+
+/// Whether the Direct kernel may write D in place. Real storage only, no C or D
+/// conjugation, and either C is not read at all or C *is* D — because the
+/// kernel has a single output pointer it scales as `alpha_d*D + beta_ab*A*B`.
+fn direct_c_allowed<T: Element>(plan: &PackedPlan, c: *const T, d: *mut T, beta: T) -> bool {
+    !T::IS_COMPLEX
+        && !plan.conj_c
+        && !plan.conj_d
+        && (beta == T::zero()
+            || (core::ptr::eq(c, d as *const T)
+                && plan.c_m == plan.d_m
+                && plan.c_n == plan.d_n
+                && plan.h_c == plan.h_d))
+}
+
+/// Where the five block-scatter vectors sit inside one reused scatter buffer.
+///
+/// They are built together into the team's buffer so a steady-state execute
+/// allocates nothing; these offsets are what keeps them separate slices.
+#[derive(Clone, Copy, Default)]
+struct ScatterRuns {
+    a: (usize, usize),
+    b: (usize, usize),
+    dm: (usize, usize),
+    dn: (usize, usize),
+    cm: (usize, usize),
+}
+
+impl ScatterRuns {
+    fn slice<'a>(&self, buf: &'a [i64], run: (usize, usize)) -> &'a [i64] {
+        &buf[run.0..run.1]
+    }
+}
+
+/// A raw pointer shared across the threads of one [`execute`] call.
+///
+/// Rust will not send a bare pointer between threads, and rightly, so the
+/// promise is made explicitly here rather than silently at each use: the
+/// operands are read-only for the duration, and every thread writes only the
+/// output elements of its own `(row strip, column group)` cell. The cells
+/// partition the output's `(i, j)` index space by construction, so no two
+/// threads write the same element — and no two write the same *byte*, because
+/// `D`'s scatter is injective, which the serial write-back's read-modify-write
+/// on every `pc` block past the first already requires.
+#[derive(Clone, Copy)]
+struct Shared<T>(*mut T);
+
+// SAFETY: see the type's documentation. The disjointness is a property of the
+// strip partition in `execute`, which is the only place `Shared` is created.
+//
+// `T: Send` on both, and it is `Send` rather than `Sync` that is wanted even for
+// the `Sync` impl: `Shared` is written through from several threads at once, so
+// it is morally a split `&mut T` rather than a shared `&T`, and the obligation
+// it discharges is that values of `T` may be produced and dropped on a thread
+// other than the one that created them. Every instantiation is `T: Element`,
+// which is already `Copy + Send + Sync + 'static`, so the bound costs nothing
+// here -- it is there so the impls cannot silently start covering a `T` that
+// does not deserve them. `buffer::Panel` bounds its `Send` the same way.
+unsafe impl<T: Send> Send for Shared<T> {}
+unsafe impl<T: Send> Sync for Shared<T> {}
+
+/// Everything one thread of the loop nest needs that does not vary with its
+/// row strip. Exists so that the nest can be written once and run either
+/// serially or on `p` threads, rather than duplicated.
+struct Ctx<'a, T: Element> {
+    plan: &'a PackedPlan,
+    fam: DriverFamily<T::Real>,
+    packers: (tprims_kernel::PackFn<T>, tprims_kernel::PackFn<T>),
+    emitter: tprims_kernel::EmitFn<T>,
+    /// This call's operand-dependent decisions.
+    call: ResolvedCall,
+    /// Whether the kernel's column role takes B in place this call.
+    direct_b: bool,
+    mr: usize,
+    nr: usize,
+    mc: usize,
+    kc: usize,
+    nc: usize,
+    m: usize,
+    n: usize,
+    k: usize,
+    /// Reals between one column group's slice of the packed `B` panel and the
+    /// next. See `execute` for why the panel is cut per group and not per sliver.
+    b_group: usize,
+    am: &'a [i64],
+    ak: &'a [i64],
+    bk: &'a [i64],
+    bn: &'a [i64],
+    cm: &'a [i64],
+    cn: &'a [i64],
+    dm: &'a [i64],
+    dn: &'a [i64],
+    ha: &'a [i64],
+    hb: &'a [i64],
+    /// Every block-scatter vector this call needs, laid out by `runs`.
+    scatter: &'a [i64],
+    runs: ScatterRuns,
+    conj_a: bool,
+    conj_b: bool,
+    alpha: T,
+    beta: T,
+    a: Shared<T>,
+    b: Shared<T>,
+    c: Shared<T>,
+    d: Shared<T>,
+    /// The shared packed-`B` panel: written cooperatively, read by everyone.
+    bp: Shared<T::Real>,
+}
+
+fn lcm(a: usize, b: usize) -> usize {
+    fn gcd(mut a: usize, mut b: usize) -> usize {
+        while b != 0 {
+            (a, b) = (b, a % b);
+        }
+        a
+    }
+    a / gcd(a, b) * b
+}
+
+/// Execute a packed plan with a resolved family on `exec`, with `workspace`
+/// (or, when `None`, the one `exec` lends). The width is `exec.budget()`;
+/// effective blocking uses the active grid width, not the plan's requested
+/// width.
+///
+/// An `exec` that declines a multi-worker broadcast is retried serially with
+/// this same frozen family and policy; it never re-selects.
+///
+/// # Safety
+/// * `a`, `b`, `d` must be valid for all offsets generated by the plan's
+///   scatter vectors (reads for `a`/`b`, reads and writes for `d`).
+/// * `c` must likewise be valid for reads unless `beta` is zero, in which case
+///   it is never dereferenced and may be dangling.
+/// * `d` must not alias `a` or `b`.
+/// * `rg` must be validated for `T`, the plan's conjugations, scratch ABI and
+///   every active width (including the serial fallback); the owning `Plan`
+///   does this when it is built.
+#[allow(clippy::too_many_arguments)] // INVARIANT: the contraction argument set plus the seam.
+pub(crate) unsafe fn execute_packed<T: Element>(
+    plan: &PackedPlan,
+    rg: &tprims_kernel::ResolvedGemm<T::Real>,
+    exec: &Exec<'_>,
+    workspace: Option<&dyn WorkspaceProvider>,
+    alpha: T,
+    a: *const T,
+    b: *const T,
+    beta: T,
+    c: *const T,
+    d: *mut T,
+) {
+    // SAFETY: raw pointer and descriptor obligations forwarded unchanged.
+    unsafe { execute_capped(plan, alpha, a, b, beta, c, d, exec, workspace, rg, None) }
+}
+
+/// [`execute_packed`] with opt-in [`DynStats`] counters, for tests and
+/// benchmarks of `Partition::DynamicTiles`. Ordinary execution carries no
+/// counters.
+///
+/// # Safety
+/// As [`execute_packed`].
+#[cfg(test)]
+#[allow(clippy::too_many_arguments)] // INVARIANT: as `execute_packed`.
+pub(crate) unsafe fn execute_packed_instrumented<T: Element>(
+    plan: &PackedPlan,
+    rg: &tprims_kernel::ResolvedGemm<T::Real>,
+    exec: &Exec<'_>,
+    workspace: Option<&dyn WorkspaceProvider>,
+    stats: &DynStats,
+    alpha: T,
+    a: *const T,
+    b: *const T,
+    beta: T,
+    c: *const T,
+    d: *mut T,
+) {
+    // SAFETY: raw pointer and descriptor obligations forwarded unchanged.
+    unsafe {
+        execute_capped(
+            plan,
+            alpha,
+            a,
+            b,
+            beta,
+            c,
+            d,
+            exec,
+            workspace,
+            rg,
+            Some(stats),
+        )
+    }
+}
+
+/// The loop nest on `exec`: its budget is the width this call may use, and its
+/// workspace (or `workspace`, when given) is where the call's buffers live.
+///
+/// # Safety
+///
+/// As [`execute_packed`].
+// Eight arguments, against clippy's seven: seven of them are the contraction
+// itself -- `alpha`, four operands, `beta` and the plan -- and bundling them into a
+// struct to satisfy a count would put a layer between the ABI-facing entry points
+// and the loop nest for no reader's benefit.
+#[allow(clippy::too_many_arguments)]
+unsafe fn execute_capped<T>(
+    plan: &PackedPlan,
+    alpha: T,
+    a: *const T,
+    b: *const T,
+    beta: T,
+    c: *const T,
+    d: *mut T,
+    exec: &Exec<'_>,
+    workspace: Option<&dyn WorkspaceProvider>,
+    resolution: &tprims_kernel::ResolvedGemm<T::Real>,
+    stats: Option<&dynamic::DynStats>,
+) where
+    T: Element,
+{
+    let rg = *resolution;
+    if plan.is_empty() {
+        return;
+    }
+    let fam = rg
+        .family()
+        .driver_family()
+        .expect("validated family ABI for this scheme");
+    let (mr, nr) = (fam.mr, fam.nr);
+
+    // Row/column orientation. Exchanging `(A, M)` with `(B, N)` computes
+    // `D^T = B^T A^T`, which is the same contraction seen through the
+    // transposed matrix view of `C` and `D`. Nothing below branches on it
+    // again: from here on `am`/`ak`/`ptr_a` *are* the row operand, whichever
+    // tensor that is. See `Plan::transposes_gemm` for why it is worth doing.
+    //
+    // Packing formats remain fixed to kernel roles: row-A uses 1e and
+    // column-B uses 1r under 1m, whichever user tensor fills that role.
+    let swap = plan.transposes_gemm(mr);
+    let (ptr_a, ptr_b) = if swap { (b, a) } else { (a, b) };
+    let (am, ak, conj_a) = if swap {
+        (&plan.b_n, &plan.b_k, plan.conj_b)
+    } else {
+        (&plan.a_m, &plan.a_k, plan.conj_a)
+    };
+    let (bk, bn, conj_b) = if swap {
+        (&plan.a_k, &plan.a_m, plan.conj_a)
+    } else {
+        (&plan.b_k, &plan.b_n, plan.conj_b)
+    };
+    let (cm, cn) = if swap {
+        (&plan.c_n, &plan.c_m)
+    } else {
+        (&plan.c_m, &plan.c_n)
+    };
+    let (dm, dn) = if swap {
+        (&plan.d_n, &plan.d_m)
+    } else {
+        (&plan.d_m, &plan.d_n)
+    };
+    let (ha, hb) = if swap {
+        (&plan.h_b, &plan.h_a)
+    } else {
+        (&plan.h_a, &plan.h_b)
+    };
+
+    let workspace = workspace.or_else(|| exec.workspace());
+    let m = am.len();
+    let n = bn.len();
+    let k = ak.len();
+
+    // Empty contraction dimension: D = op_D(beta * op_C(C)).
+    if plan.has_empty_contraction() {
+        for h in 0..plan.stats.batch {
+            scale_only::<T>(
+                beta,
+                c.offset(plan.h_c[h] as isize),
+                cm,
+                cn,
+                plan.conj_c,
+                d.offset(plan.h_d[h] as isize),
+                dm,
+                dn,
+                plan.conj_d,
+            );
+        }
+        return;
+    }
+
+    // Operand-dependent decisions, made once for the whole call: the family's
+    // B access, this B's strides, and whether D can be updated in place. Both
+    // are allocation-free, because the partition below depends on them and the
+    // team's buffer is only borrowed once the shape is known.
+    let call = ResolvedCall {
+        pack_b_needed: pack_b_needed(rg.family().b_access, bk, bn, nr),
+        direct_c_allowed: direct_c_allowed(plan, c, d, beta),
+    };
+    let direct_b = !call.pack_b_needed;
+
+    // NOTE (Phase 4): `cfg.blk` is still the untouched Phase 2 heuristic, and
+    // `MC`/`NC` in it are sized for a `KC`-deep panel. On a third of the corpus
+    // the contraction is far shallower than `KC` (`k = 24` against 256), so the
+    // packed `A` block uses a tenth of its budget and `B` is re-streamed
+    // `M/MC` times for nothing. Re-deriving against `min(k, KC)` was tried and
+    // is *not* a win: it swings individual cases by +13% and −18% with no rule
+    // visible, because `MC` has a second constraint this model omits — the
+    // strip of `D` that one `jr` pass revisits. See the Phase 4 report; this is
+    // what the `MC`/`KC`/`NC` sweep has to settle.
+    // Row strips are whole `MR` panels and column groups whole `NR` slivers, so
+    // every thread's micro-tiles line up with the block scatter and with the
+    // write-back's fast path. `Plan::partition` owns the choice of how many of
+    // each; it caps them at the panel and block counts, so a contraction with
+    // three row panels and two column blocks uses six threads at most however
+    // many were asked for and however much work it contains.
+    // The width is the `Exec`'s budget, not the plan's: threads come from the
+    // host alone.
+    let want = exec.budget();
+    // An explicit grid is clamped to the width this call may use; the default
+    // grid is the plan's own cost model, which already respects it.
+    let explicit_grid = match rg.partition {
+        tprims_kernel::PartitionPolicy::StaticGrid { pm, pn } if pm != 0 => Some((pm, pn)),
+        _ => None,
+    };
+    // `DynamicTiles`: the team claims jobs, so the grid is `p x 1` (all in the
+    // row direction, which only fixes the barrier's size). The width is the
+    // host's budget capped by the jobs that exist at the widest NC block.
+    let dyn_jobs = match rg.partition {
+        tprims_kernel::PartitionPolicy::DynamicTiles { job_m, job_n } => {
+            let nc_serial = rg.with_threads(1).map_or(n, |rg| rg.nc);
+            let jobs = dynamic::job_count(m, n, nr, nc_serial, job_m, job_n);
+            Some((job_m, job_n, jobs))
+        }
+        _ => None,
+    };
+    let (mut pm, mut pn) = match (explicit_grid, dyn_jobs) {
+        (_, Some((_, _, jobs))) => (want.min(jobs), 1),
+        (Some((pm, pn)), None) => (pm, pn),
+        (None, None) => plan.partition_with(mr, nr, want),
+    };
+    // A pinned partition (`PartitionMode::Pin` or an explicit grid)
+    // ignores the thread count, so shrink it to the budget.
+    if dyn_jobs.is_none() {
+        while pm * pn > want {
+            if pn > 1 {
+                pn -= 1;
+            } else {
+                pm -= 1;
+            }
+        }
+    }
+    let p = pm * pn;
+    // A direct-B kernel reads B where it lies, one column group at a time, so
+    // there is no shared panel to publish and no cross-thread barrier: the
+    // partition must be a pure split of `N` (`pm == 1`). The total width is
+    // unchanged, so the blocking below still matches the active thread count.
+    if direct_b && dyn_jobs.is_none() {
+        pm = 1;
+        pn = p;
+    }
+    // INVARIANT: the plan validated serial's maximal NC, and p >= 1.
+    let at_width = rg
+        .with_threads(p)
+        .expect("validated effective-width blocking");
+    let blocking = Blocking {
+        mc: at_width.mc,
+        kc: at_width.kc,
+        nc: at_width.nc,
+    };
+    let Blocking { mc, kc, nc } = blocking;
+    let mc = mc.min(m.next_multiple_of(mr));
+    let nc = nc.min(n.next_multiple_of(nr));
+    // C-line aligned strips, when asked for: one line of `C` is 64 bytes, so
+    // the boundary is a multiple of both the panel and the line.
+    let align = match rg.opts.align_c_lines {
+        true => lcm(mr, (64 / core::mem::size_of::<T>()).max(1)),
+        false => 0,
+    };
+
+    // Panel sizes come from the kernel's declared per-k sliver widths, so a
+    // method that packs more reals per element (1m's "1e", 3m's sum plane)
+    // automatically gets a correspondingly larger buffer. `A` is per thread and
+    // allocated inside it, so it is first-touched on the node that will use it;
+    // `B` is shared and allocated here.
+    //
+    // The `B` panel is cut into one slice per *column group*, not indexed by
+    // absolute sliver, and the two differ: a group's sliver range moves between
+    // `jc` blocks, because a tail block has fewer slivers to divide, so with
+    // absolute indexing one group's next block would land on top of another
+    // group's current one. There is nothing to order them — the barriers are per
+    // group by design, and at `pm == 1` there are none at all — so it has to be
+    // structural. It costs at most one sliver of padding per group, and it is
+    // also a small win: a group's slice is contiguous, so groups do not share
+    // cache lines at their boundaries.
+    //
+    // The stride between slices is the *worst-case* sliver size, `kc` deep and
+    // not `pc_len` deep, precisely so that two groups sitting on different `pc`
+    // blocks at the same moment still cannot overlap.
+    let ap_len = panel_len(mc, mr, kc, fam.a_pack);
+    let group_cap = nc.div_ceil(nr).div_ceil(pn);
+    let b_group = panel_len(group_cap * nr, nr, kc, fam.b_pack);
+    // What this call needs from the owner, if it has one. Everything is in
+    // bytes except the element counts of the scratch vectors.
+    let element = core::mem::size_of::<T::Real>();
+    let req = WorkspaceReq {
+        a_bytes: ap_len * element,
+        tile_bytes: (fam.tile + fam.induced_scratch(kc)) * element,
+        worker_scatter: 0,
+        // A direct-B call never touches the panel, so it asks for none.
+        b_bytes: if direct_b { 0 } else { pn * b_group * element },
+        team_scatter: am.len().div_ceil(mr)
+            + bn.len().div_ceil(nr)
+            + dm.len().div_ceil(mr)
+            + dn.len().div_ceil(nr)
+            + if beta == T::zero() {
+                0
+            } else {
+                cm.len().div_ceil(mr)
+            },
+        barriers: if pm > 1 { pn } else { 0 },
+    };
+    if let Some(st) = stats {
+        st.note_call(p, req.b_bytes);
+    }
+    let mut lease = workspace.map(|ws| ws.take_team(&req, pm, pn));
+    // The panel lives in the lease when there is one, and in a call-local
+    // allocation otherwise; a direct-B call sizes it to zero either way. The
+    // pointer is taken before the scatter borrow, which is held to the end.
+    let has_lease = lease.is_some();
+    let mut local_bp = match has_lease || direct_b {
+        true => None,
+        false => Some(Panel::<T::Real>::new(pn * b_group)),
+    };
+    let bp_ptr = match lease.as_mut() {
+        Some(l) => l.panel(req.b_bytes) as *mut T::Real,
+        None => match local_bp.as_mut() {
+            Some(p) => p.as_mut_ptr(),
+            // A direct-B call reads B in place, so it has no panel at all.
+            None => std::ptr::NonNull::<T::Real>::dangling().as_ptr(),
+        },
+    };
+    // A leased team set also carries the scatter vectors and the barriers, so a
+    // steady-state call reuses their capacity instead of allocating five
+    // vectors and a barrier list. Both are taken as shared slices once the
+    // filling is done, so they can be borrowed together.
+    let mut local_scatter = Vec::new();
+    let local_bars: Vec<Barrier>;
+    let runs = {
+        let buf = match lease.as_mut() {
+            Some(l) => &mut l.scatter,
+            None => &mut local_scatter,
+        };
+        buf.clear();
+        buf.reserve(req.team_scatter);
+        ScatterRuns {
+            a: append_block_scatter(buf, am, mr),
+            b: append_block_scatter(buf, bn, nr),
+            dm: append_block_scatter(buf, dm, mr),
+            dn: append_block_scatter(buf, dn, nr),
+            cm: match beta == T::zero() {
+                true => (buf.len(), buf.len()),
+                false => append_block_scatter(buf, cm, mr),
+            },
+        }
+    };
+    let (scatter_buf, bars) = match lease.as_ref() {
+        Some(l) => (l.scatter.as_slice(), l.barriers.as_slice()),
+        None => {
+            local_bars = (0..pn).map(|_| Barrier::new(pm)).collect();
+            (local_scatter.as_slice(), local_bars.as_slice())
+        }
+    };
+
+    let cx = Ctx::<T> {
+        plan,
+        fam,
+        packers: rg.packers::<T>(),
+        emitter: rg.emitter::<T>(),
+        call,
+        direct_b,
+        mr,
+        nr,
+        mc,
+        kc,
+        nc,
+        m,
+        n,
+        k,
+        b_group,
+        am,
+        ak,
+        bk,
+        bn,
+        cm,
+        cn,
+        dm,
+        dn,
+        ha,
+        hb,
+        scatter: scatter_buf,
+        runs,
+        conj_a,
+        conj_b,
+        alpha,
+        beta,
+        a: Shared(ptr_a as *mut T),
+        b: Shared(ptr_b as *mut T),
+        c: Shared(c as *mut T),
+        d: Shared(d),
+        bp: Shared(bp_ptr),
+    };
+
+    // Worker buffers come from the owner when there is one, and from a fresh
+    // per-call panel otherwise; either way they are the caller-of-`f`'s for the
+    // duration of `f`, and the 4m scratch is carved out of the tile.
+    let with_buffers = |f: &mut dyn FnMut(*mut T::Real, *mut T::Real)| match workspace {
+        Some(ws) => {
+            ws.with_worker(&req, &mut |a, tile, _| {
+                f(a as *mut T::Real, tile as *mut T::Real)
+            });
+        }
+        None => {
+            let mut ap = Panel::<T::Real>::new(ap_len);
+            let mut tile = Panel::<T::Real>::new(fam.tile + fam.induced_scratch(kc));
+            f(ap.as_mut_ptr(), tile.as_mut_ptr());
+        }
+    };
+    let scratch_off = fam.tile;
+
+    if p == 1 {
+        with_buffers(&mut |ap, tile| {
+            // SAFETY: `execute`'s contract, and these buffers are exclusive to
+            // this call for its duration.
+            unsafe { run_strip::<T>(&cx, 0, m, ap, tile, tile.add(scratch_off), BPart::SERIAL) }
+        });
+        return;
+    }
+
+    // One barrier per column group, each shared by exactly the `pm` threads
+    // that write and read that group's slice of the packed `B` panel. Groups
+    // never need to synchronise with each other, so they do not: the barrier is
+    // `pm`-way, not `p`-way. At `pm == 1` there is nothing to synchronise and
+    // the threads take no barrier at all — which `bars` being empty expresses.
+
+    // One thread's whole job, as a function of its index in the `pm x pn` grid.
+    // Written once; the broadcast below runs it on the `Exec`'s workers. The
+    // partition, the strips and therefore the arithmetic are the same at every
+    // width, which is why the result stays bitwise identical to serial.
+    let claim = std::sync::atomic::AtomicUsize::new(0);
+    let cell = |t: usize| {
+        let cx = &cx;
+        if let Some((job_m, job_n, _)) = dyn_jobs {
+            with_buffers(&mut |ap, tile| {
+                let bufs = Bufs {
+                    ap,
+                    tile,
+                    scratch: tile.add(scratch_off),
+                };
+                // SAFETY: `execute`'s contract covers the accesses; the claim
+                // counter hands each job to one worker, and jobs partition the
+                // output within an epoch. The barrier has `p` participants.
+                unsafe {
+                    dynamic::run_dynamic::<T>(cx, t, p, job_m, job_n, &claim, &bars[0], bufs, stats)
+                };
+            });
+            return;
+        }
+        let (r, g) = (t / pn, t % pn);
+        let bpart = BPart {
+            g,
+            pn,
+            r,
+            pm,
+            bar: (pm > 1).then(|| &bars[g]),
+        };
+        let (lo, hi) = tprims_kernel::partition::strip(r, pm, cx.m, mr, align);
+        with_buffers(&mut |ap, tile| {
+            // SAFETY: `execute`'s contract covers the accesses; the strips and
+            // column groups partition the output, so this thread's writes are
+            // disjoint from every other thread's.
+            unsafe { run_strip::<T>(cx, lo, hi, ap, tile, tile.add(scratch_off), bpart) };
+        });
+    };
+
+    // `broadcast` runs nothing when it declines (a serial `Exec`, a width the
+    // pool or budget cannot serve, or a caller already on the pool's workers),
+    // so this is a real either/or and never a partial execution.
+    if exec.broadcast(p, &cell).is_ok() {
+        return;
+    }
+    // Declined: nothing ran, so running serially is safe, and no thread is ever
+    // spawned behind the host's back. The caller does the work with this call's
+    // own buffers and panel, so the refusal costs no second allocation and no
+    // second lease.
+    with_buffers(&mut |ap, tile| {
+        // SAFETY: forwarded unchanged from this call's contract; a serial strip
+        // is the degenerate partition and needs no barrier.
+        unsafe { run_strip::<T>(&cx, 0, m, ap, tile, tile.add(scratch_off), BPart::SERIAL) }
+    });
+}

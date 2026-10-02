@@ -1,5 +1,5 @@
 //! Benchmark corpora: shapes recorded from real workloads (spec 1e, P1) or
-//! written by hand, replayed by `contract --corpus` and `blas --corpus`.
+//! written by hand, replayed by `contract --corpus`.
 //!
 //! ```json
 //! { "source": { "tool": "...", "commit": "..." },
@@ -7,11 +7,7 @@
 //!     { "name": "...", "op": "dot_general", "dtype": "f64",
 //!       "a": {"dims": [..], "strides": [..]}, "b": {..}, "c": {..},
 //!       "lc": [..], "rc": [..], "lb": [..], "rb": [..], "conj": [false, false],
-//!       "calls": 12, "time_share": 0.3 },
-//!     { "name": "...", "op": "gemm_batched", "dtype": "c64",
-//!       "m": 8, "n": 8, "k": 8, "batch": 1024,
-//!       "a": {"dims": [m, k, batch], ..}, "b": {"dims": [k, n, batch], ..},
-//!       "c": {"dims": [m, n, batch], ..} } ] }
+//!       "calls": 12, "time_share": 0.3 } ] }
 //! ```
 //!
 //! Strides are in elements and may be negative; a replay stores each operand
@@ -83,14 +79,6 @@ impl Operand {
         }
         Ok(())
     }
-
-    fn pairs(&self) -> Vec<(usize, isize)> {
-        self.dims
-            .iter()
-            .copied()
-            .zip(self.strides.iter().copied())
-            .collect()
-    }
 }
 
 /// A binary contraction entry (`dot_general` semantics of tprims-contract).
@@ -125,43 +113,12 @@ pub struct DotGeneralEntry {
     pub time_share: Option<f64>,
 }
 
-/// A batched GEMM entry: `C_i = A_i B_i` over `[rows, cols, batch]` views.
-#[derive(Clone, Debug, PartialEq, Deserialize)]
-pub struct GemmBatchedEntry {
-    /// Case name.
-    pub name: String,
-    /// Element type.
-    pub dtype: Dtype,
-    /// Rows of `C`.
-    pub m: usize,
-    /// Columns of `C`.
-    pub n: usize,
-    /// Inner extent.
-    pub k: usize,
-    /// Items.
-    pub batch: usize,
-    /// `[m, k, batch]`.
-    pub a: Operand,
-    /// `[k, n, batch]`.
-    pub b: Operand,
-    /// `[m, n, batch]`.
-    pub c: Operand,
-    /// Calls in the recorded workload.
-    #[serde(default)]
-    pub calls: Option<u64>,
-    /// Share of the recorded workload's time in this shape.
-    #[serde(default)]
-    pub time_share: Option<f64>,
-}
-
 /// One corpus entry.
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum Entry {
     /// See [`DotGeneralEntry`].
     DotGeneral(DotGeneralEntry),
-    /// See [`GemmBatchedEntry`].
-    GemmBatched(GemmBatchedEntry),
 }
 
 impl Entry {
@@ -169,7 +126,6 @@ impl Entry {
     pub fn name(&self) -> &str {
         match self {
             Entry::DotGeneral(d) => &d.name,
-            Entry::GemmBatched(g) => &g.name,
         }
     }
 }
@@ -211,44 +167,40 @@ impl Corpus {
     }
 }
 
+/// A malformed entry, with the reason the shared lowering gives.
+///
+/// The entry is described to `tprims-contract` exactly as a replay will
+/// describe it (one validation, shared with the library), so a corpus that
+/// parses is a corpus that plans.
 fn validate(e: &Entry) -> Result<(), String> {
-    let (a, b, c) = match e {
-        Entry::DotGeneral(d) => (&d.a, &d.b, &d.c),
-        Entry::GemmBatched(g) => (&g.a, &g.b, &g.c),
+    use tprims_contract::api::{DType, DotGeneral, LayoutSpec, Op, OperandSpec, Problem};
+    let Entry::DotGeneral(d) = e;
+    d.a.check("a")?;
+    d.b.check("b")?;
+    d.c.check("c")?;
+    let spec = |o: &Operand, op: Op| -> Result<OperandSpec, String> {
+        let (offset, _) = o.span();
+        Ok(OperandSpec::new(
+            LayoutSpec::new(&o.dims, &o.strides, offset as isize).map_err(|e| e.to_string())?,
+        )
+        .with_op(op))
     };
-    a.check("a")?;
-    b.check("b")?;
-    c.check("c")?;
-    let out = match e {
-        Entry::DotGeneral(d) => {
-            let cfg = tprims_contract::DotGeneral::new(&d.lc, &d.rc, &d.lb, &d.rb);
-            cfg.validate(&a.dims, &b.dims)
-                .map_err(|e| e.to_string())?
-                .out_dims
-        }
-        Entry::GemmBatched(g) => {
-            let want = |op: &Operand, dims: [usize; 3], what: &str| {
-                if op.dims != dims {
-                    Err(format!("{what}: dims {:?}, expected {dims:?}", op.dims))
-                } else {
-                    Ok(())
-                }
-            };
-            want(a, [g.m, g.k, g.batch], "a")?;
-            want(b, [g.k, g.n, g.batch], "b")?;
-            vec![g.m, g.n, g.batch]
-        }
+    let op = |c: bool| if c { Op::Conjugate } else { Op::Identity };
+    let dtype = match d.dtype {
+        Dtype::F32 => DType::F32,
+        Dtype::F64 => DType::F64,
+        Dtype::C32 => DType::C32,
+        Dtype::C64 => DType::C64,
     };
-    if c.dims != out {
-        return Err(format!(
-            "c: dims {:?}, the configuration gives {out:?}",
-            c.dims
-        ));
-    }
-    if !tprims_blas::is_injective_layout(&c.pairs()) {
-        return Err("c: aliased (non-injective) output layout".into());
-    }
-    Ok(())
+    Problem::from_dot_general(
+        dtype,
+        spec(&d.a, op(d.conj[0]))?,
+        spec(&d.b, op(d.conj[1]))?,
+        spec(&d.c, Op::Identity)?,
+        &DotGeneral::new(&d.lc, &d.rc, &d.lb, &d.rb),
+    )
+    .map(|_| ())
+    .map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
