@@ -3,7 +3,7 @@ use tprims_contract::api::{
     AccumulationSource, AliasError, ConfigError, DType, DotGeneral, Error, LayoutError, LayoutSpec,
     Op, OperandSpec, Problem, Scalar, ShapeError,
 };
-use tprims_contract::{Algorithm, Partition, Plan, PlanConfig};
+use tprims_contract::{Algorithm, Plan, PlanConfig};
 use tprims_exec::{Exec, Pool};
 use tprims_kernel::Element;
 
@@ -13,11 +13,7 @@ use common::*;
 /// The configurations every case runs under: the planner's own choice, and
 /// the packed driver forced by an explicit grid request.
 fn configs() -> [PlanConfig; 2] {
-    let mut packed = PlanConfig::default();
-    packed.partition = Some(Partition::StaticGrid {
-        pin: None,
-        align_c_lines: false,
-    });
+    let packed = PlanConfig::packed();
     [PlanConfig::default(), packed]
 }
 

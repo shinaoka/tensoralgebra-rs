@@ -13,7 +13,7 @@ use tprims_kernel::scatter::unbroken_fraction;
 /// register tile shape suits the output strides.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Orient {
-    /// [`Plan::transposes_gemm`]'s rule. The default.
+    /// The planner's orientation rule (`transposes_gemm`). The default.
     #[default]
     Rule,
     /// A pinned arm, for forced-arm measurement of both.
@@ -46,7 +46,7 @@ impl Orient {
 pub enum RowBlock {
     /// The kernel set's default shape — the Phase 3 choice.
     Base,
-    /// [`Plan::row_block`]'s rule. The default.
+    /// The planner's row-block rule (`row_block`). The default.
     #[default]
     Auto,
     /// A specific logical `MR`, where the kernel set has one.

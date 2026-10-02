@@ -51,7 +51,6 @@ use aarch64 as simd_isa;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use x86 as simd_isa;
 
-
 /// The instruction set whose built-in families form the default menu under an
 /// ISA preference: the widest one the CPU supports (or the pinned one), the
 /// portable kernels when the preference selects no vectorised module.

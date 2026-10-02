@@ -9,7 +9,7 @@ package now holds only the tprims benchmarks.
 | Binary | Page |
 | --- | --- |
 | `exec_entry` | [exec_entry](benchmarks/tprims/exec_entry/README.md) |
-| `blas` | [blas](benchmarks/tprims/blas/README.md) |
+| `tcbench` | the TCCG corpus: `run`, `verify`, `info`, `--stress` (optional TBLIS and BLAS baselines behind the `tblis` and `blas` features) |
 | `contract` | [contract](benchmarks/tprims/contract/README.md) |
 | `capi_rust` | [C ABI comparison](c/README.md) |
 
@@ -21,8 +21,8 @@ repository's `target/`:
 ```bash
 cargo build --release -p tprims-bench --bins   # jobs from CARGO_BUILD_JOBS
 cpus=$(python3 scripts/idle_cpus.py pick 4)          # idle CPUs of one L3 domain
-scripts/pinned.sh "${cpus%%,*}" -- ../target/release/blas --threads 1
-scripts/pinned.sh "$cpus"       -- ../target/release/blas --threads 4
+scripts/pinned.sh "${cpus%%,*}" -- ../target/release/contract --threads 1
+scripts/pinned.sh "$cpus"       -- ../target/release/contract --threads 4
 ```
 
 The full procedure is the `tprims-benchmark` skill

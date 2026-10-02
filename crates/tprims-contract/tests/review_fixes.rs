@@ -2,7 +2,7 @@
 use tprims_contract::api::{
     DType, DotGeneral, Error, LayoutSpec, OperandSpec, Problem, ShapeError,
 };
-use tprims_contract::{add, Algorithm, Partition, Plan, PlanConfig};
+use tprims_contract::{add, Algorithm, Plan, PlanConfig};
 use tprims_exec::Exec;
 
 mod common;
@@ -13,12 +13,7 @@ fn spec(dims: &[usize], strides: &[isize]) -> OperandSpec {
 }
 
 fn forced_packed() -> PlanConfig {
-    let mut cfg = PlanConfig::default();
-    cfg.partition = Some(Partition::StaticGrid {
-        pin: None,
-        align_c_lines: false,
-    });
-    cfg
+    PlanConfig::packed()
 }
 
 #[test]

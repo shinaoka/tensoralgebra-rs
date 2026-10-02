@@ -1,9 +1,17 @@
 # contract
 
-`tprims-contract` at an enforced thread count on a predeclared corpus, both
-strategies: permute plus batched GEMM (`pg`) and TBLIS-style direct through
-Lukas Devos's `tensorcontract` (`tblis`). Planning (`ContractPlan::new`) and
-execution (`execute`, alpha = 1, beta = 0) are timed separately.
+`tprims-contract` at an enforced thread count on a predeclared corpus, under
+the planner's own choice (`plan`) and with the packed driver forced
+(`packed`; `--partition dynamic:JM,JN` adds a `packed_dyn..` row). Planning
+(`Plan::new`) and execution (`execute_into`, alpha = 1, beta = 0) are timed
+separately.
+
+> **Row names changed in the contract consolidation.** The recorded results below
+> were taken with the two old strategies, `pg` (permute plus batched GEMM, which
+> copied operands) and `tblis` (the packed driver); that strategy split no longer
+> exists. `plan` is what `pg` and `Auto` became (faer on a copy-free fusion,
+> elementwise for all-batch, otherwise packed) and `packed` is `tblis`. The
+> recorded tables keep their original names and measure the old code.
 
 | Case | A (storage order) | B (storage order) | Contraction |
 | --- | --- | --- | --- |
@@ -24,7 +32,7 @@ CORPUS=path/to/corpus.json benchmarks/benchmarks/tprims/contract/run.sh /tmp/c2 
 
 `run.sh` (`benchmarks/scripts/paired.sh`) runs every case in its own process,
 all thread counts of a case back to back, each through `pinned.sh`, and keeps
-the `# selected` (materialized operands) and `CHECK` (pg vs tblis) lines in a
+the `# selected` (algorithm and family) and `CHECK` (plan vs packed) lines in a
 log and the commit, CPU, core set and corpus hash in `manifest.txt`.
 `contract --corpus FILE` replays the `dot_general` entries of a corpus
 (`tprims_bench::corpus`; example: `../corpus/example.json`) in any of

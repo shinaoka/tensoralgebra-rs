@@ -2,18 +2,23 @@
 
 Tracking issue: [#37](https://github.com/tensor4all/tprims-rs/issues/37). This file records what a
 consumer of the old crates, family ids, environment variables and C symbols has to change. Each
-integration PR extends it; this version covers PR 1 (removals) and PR 2 (kernel consolidation).
+integration PR extends it; this version covers PR 1 (removals), PR 2 (kernel consolidation) and PR 3 (contract
+consolidation).
 
 ## Crates
 
 | Old | New |
 |---|---|
 | `tprims-gemm-kernel`, `tprims-kernel-tensorcontract`, `tprims-kernel-cplx` | `tprims-kernel` (one crate; Lukas Devos's files keep their history and headers) |
-| `tprims-custom-kernel-test` | `tprims_contract_testkit::custom_kernels` plus tests in `tprims-blas` and `tprims-contract` |
+| `tprims-custom-kernel-test` | `tprims_testkit::custom_kernels` plus tests in `tprims-contract` |
 | `tprims-linalg`, `tprims-blas-capi`, `tprims-kernel-gemm`, `tprims-kernel-pgx86` | removed in PR 1 (no retained consumer) |
+| `tensorcontract` (the packed driver and its labels-based `Plan`), `tprims-contract-traits`, the old `tprims-contract` | `tprims-contract` (one crate: `api`, `plan`, `driver`, `strategy`; see PR 3 below) |
+| `tprims-blas` | removed in PR 3: GEMM, batched GEMM and grouped GEMM are contractions; `trsm` is gone |
+| `tprims-contract-testkit` | `tprims-testkit` (label oracle, seeded fixtures, naive second backend, custom-kernel fixtures) |
+| `tensorprimitives-bench` (`tcbench`) | `benchmarks/` (`tprims-bench`, binary `tcbench`) |
 
-Module paths: `tprims_gemm_kernel::cache` is `tprims_kernel::blocking`; `tprims_kernel_tensorcontract::{scalar, x86, aarch64, KernelSet}`
-are `tprims_kernel::kernels::{reference::scalar, x86, aarch64, KernelSet}`; the workspace provider moved to `tprims_exec`.
+Module paths: `tprims_gemm_kernel::cache` is `tprims_kernel::blocking`; `tprims_kernel_tensorcontract::{scalar, x86, aarch64}`
+are `tprims_kernel::kernels::{reference::scalar, x86, aarch64}`; the `KernelSet` trait is gone (PR 3); the workspace provider moved to `tprims_exec`.
 The built-in families need no registration call: `register()` of the old provider crates is gone and
 `tprims_kernel::register` remains only for explicit, unsafe external manifests.
 
@@ -27,7 +32,7 @@ pure-rename commit is `Move the kernel crates into crates/tprims-kernel`, the sp
 | `crates/tprims-gemm-kernel/src/cache.rs` | `crates/tprims-kernel/src/blocking/probe.rs` (hierarchy types, probes, `l3_domains`) and `blocking/model.rs` (`BlockModel`, `PanelGeom`, the analytical model) |
 | `crates/tprims-kernel-tensorcontract/src/x86.rs` | `kernels/x86/mod.rs` (ISA enum, detection, dispatch), `kernels/x86/avx2.rs`, `kernels/x86/avx512.rs` |
 | `crates/tprims-kernel-tensorcontract/src/aarch64.rs` | `kernels/aarch64/neon.rs` |
-| `crates/tprims-kernel-tensorcontract/src/lib.rs` | `kernels/kernel_set.rs` (the legacy `KernelSet` menu and its contract tests; dies with the legacy menu) |
+| `crates/tprims-kernel-tensorcontract/src/lib.rs` | `kernels/kernel_set.rs` in PR 2, then `kernels/menu_tests.rs` in PR 3: the public `KernelSet` trait is deleted; its dispatch survives as a private test trait carrying the kernel-vs-reference contract tests |
 | `crates/tprims-kernel-tensorcontract/src/families.rs` | `kernels/mod.rs` (built-in lists, id function) |
 | `crates/tprims-kernel-tensorcontract/src/{scalar,simd}.rs` | `kernels/reference/scalar.rs`, `kernels/macros.rs` |
 | `crates/tprims-kernel-cplx/src/{lib,avx2}.rs` | `kernels/cplx.rs`, `kernels/x86/avx2_complex.rs` |
@@ -35,8 +40,8 @@ pure-rename commit is `Move the kernel crates into crates/tprims-kernel`, the sp
 | `crates/tprims-gemm-kernel/src/{registry,resolved,custom,partition}.rs` | `select/{registry,resolve,catalog,partition}.rs` |
 | `crates/tprims-gemm-kernel/src/{pack,scatter,writeback}.rs` | `pack/` |
 | `crates/tprims-gemm-kernel/src/{portable,induced}.rs` | `kernels/reference/{portable,induced}.rs` |
-| `crates/tprims-custom-kernel-test/src/lib.rs` | `crates/tprims-contract-testkit/src/custom_kernels.rs` |
-| `crates/tprims-custom-kernel-test/tests/selector_blas.rs` | `crates/tprims-blas/tests/custom_selector.rs` |
+| `crates/tprims-custom-kernel-test/src/lib.rs` | `crates/tprims-testkit/src/custom_kernels.rs` |
+| `crates/tprims-custom-kernel-test/tests/selector_blas.rs` | deleted with `tprims-blas` in PR 3 (the selector contract is covered by `tprims-contract/tests/custom_selector.rs`) |
 | `crates/tprims-custom-kernel-test/tests/{selector_contract,concurrency,steady_state_alloc}.rs` | `crates/tprims-contract/tests/custom_{selector,concurrency,steady_state_alloc}.rs` |
 
 ## Family ids
@@ -239,25 +244,121 @@ No library reads the environment any more. Every knob is an explicit input:
 
 | Removed | Replacement |
 |---|---|
-| `TENSORCONTRACT_THREADS` | none: threads come only from the `tprims_exec::Exec` passed to `run_with` (plan width is `Plan::with_threads`, a planning hint) |
+| `TENSORCONTRACT_THREADS` | none: threads come only from the `tprims_exec::Exec` passed to `execute_*`; the plan chooses the width from its work estimate and the executor's budget |
 | `TENSORCONTRACT_POOL` | none (the parked-thread pool is gone) |
-| `TENSORCONTRACT_KERNEL` | `tprims_kernel::Tuning::kernel_force` (`Plan::with_tuning`, `GemmConfig::tuning`) |
-| `TENSORCONTRACT_COMPLEX` | `Plan::with_complex_method` (`GemmConfig::method`) |
-| `TENSORCONTRACT_MC` `_KC` `_NC` `_MC_PCT` `_NC_PCT` | `Tuning::blocking` (`BlockingOverride`) |
-| `TENSORCONTRACT_KC_COUPLE` | `Tuning::kc_couple` |
-| `TENSORCONTRACT_BLOCKMODEL` | `Tuning::block_model` |
-| `TENSORCONTRACT_WRITEBACK` | `Tuning::writeback_gather` |
-| `TENSORCONTRACT_L3_DOMAINS` | `Plan::with_l3_domains` (`GemmConfig::l3_domains`) |
-| `TENSORCONTRACT_ORIENT` | `Plan::with_orientation(Orient)` (`GemmConfig::orientation`) |
-| `TENSORCONTRACT_ROWBLOCK` | `Plan::with_row_block(RowBlock)` (`GemmConfig::row_block`) |
-| `TENSORCONTRACT_PARTITION` | `Plan::with_partition_mode(PartitionMode)` (`GemmConfig::partition_mode`); the grid/dynamic request stays `Plan::with_partition` |
-| `TPRIMS_GEMM_KERNEL` | `Plan::with_kernel(KernelChoice::Id(..))` / `GemmConfig::kernel` |
-| `TPRIMS_GEMM_ENGINE` | `GemmConfig::engine` (`default_engine()` is gone; `Auto` is faer) |
+| `TENSORCONTRACT_KERNEL` | `PlanConfig::isa` (`KernelForce`) |
+| `TENSORCONTRACT_COMPLEX` | `PlanConfig::method` (`Option<tprims_kernel::Method>`) |
+| `TENSORCONTRACT_MC` `_KC` `_NC` `_MC_PCT` `_NC_PCT` | `PlanConfig::blocking` (`BlockingOverride`; positivity and absolute/percentage exclusivity are validated) |
+| `TENSORCONTRACT_KC_COUPLE` | `PlanConfig::cache_model.kc_couple` |
+| `TENSORCONTRACT_BLOCKMODEL` | `PlanConfig::cache_model.block_model` |
+| `TENSORCONTRACT_WRITEBACK` | `PlanConfig::writeback` (`Writeback::{Auto, Gather}`) |
+| `TENSORCONTRACT_L3_DOMAINS` | `PlanConfig::cache_model.l3_domains` |
+| `TENSORCONTRACT_ORIENT` | `PlanConfig::orientation` (`Orient`) |
+| `TENSORCONTRACT_ROWBLOCK` | `PlanConfig::row_block` (`RowBlock`) |
+| `TENSORCONTRACT_PARTITION` | `PlanConfig::partition` (`Partition::StaticGrid { pin }` for a pinned `<pm>x<pn>` grid; `domain` is the default `None`; the `m`/`n`/`legacy` spellings no longer exist) |
+| `TPRIMS_GEMM_KERNEL` | `PlanConfig::kernel` (`KernelChoice`) |
+| `TPRIMS_GEMM_ENGINE` | none: the planner chooses the strategy (PR 3); an explicit kernel, partition, method, blocking, cache model or write-back request forces the packed driver |
 
-`tcbench` still accepts the `TENSORCONTRACT_*` spellings of the table (except `THREADS` and `POOL`) and parses
-them into plan configuration; an unparseable value or a removed variable is an error. The `tprims-bench`
+`tcbench` still accepts the `TENSORCONTRACT_*` spellings of the table (except `THREADS`, `POOL` and the retired partition
+spellings) and parses them into `PlanConfig`; an unparseable value or a removed variable is an error. The `tprims-bench`
 binaries refuse to run with any removed variable set.
 
 ## Removed C symbols (PR 1)
 
 `tprims_blas_gemm`, `tprims_blas_gemm_batched` and `tprims/blas.h` are gone; `tprims_has_part("blas")` returns 0.
+
+## Contraction API (PR 3)
+
+### Old to new
+
+| Old | New |
+|---|---|
+| `tprims_contract::ContractPlan::<T>::new(&DotGeneral, a, b, c, conj, Strategy, Flags)` | `Plan::<T>::new(&Problem, &PlanConfig)` with `Problem::from_dot_general(dtype, a, b, d, &DotGeneral)`; layouts are `LayoutSpec` (signed element strides and a logical offset) and conjugation is an `Op` of each `OperandSpec` |
+| `tensorcontract::Plan::new(Operand, Operand, Option<Operand>, Operand)` over `Layout` and `i64` labels | `Problem::from_labels(dtype, a, b, CSpec, d, &Labels)`; `Layout` and `ElementOp` are replaced by `LayoutSpec` and `Op` |
+| `Strategy::{Auto, PermuteGemm, Tblis}` | none: the planner chooses (rules below) and `plan.report().algorithm` says what it chose (`Packed`, `Faer`, `Elementwise`). `PermuteGemm` copied operands and is gone; its copy-free fusion survives as the faer strategy |
+| `Flags { no_materialize }` | `PlanConfig::no_materialize`, OR-ed with `Requirements::no_materialize` by `TprimsBackend`. No strategy copies a whole operand, so it is always met and `Unsupported::WouldMaterialize` is only reachable from a foreign backend |
+| `GemmConfig { engine, kernel, method, partition, partition_opts, .. }` | `PlanConfig { kernel, isa, partition, no_materialize, method, blocking, orientation, row_block, cache_model, writeback }`; `Engine`/`EngineChoice` and `SelectError::EngineUnsupported` are dropped (the refusals are `Error::Config`) |
+| `PartitionPolicy` + `PartitionOpts` + `PartitionMode` | `Partition::{StaticGrid { pin: Option<(pm, pn)>, align_c_lines }, DynamicTiles { job_m, job_n }}`; `DynamicTiles` with `align_c_lines` is no longer expressible |
+| `ContractPlan::execute(exec, alpha, a, b, beta, c)` (C is D, accumulated) | `plan.execute_into(exec, alpha, a, b, d)` (overwrite) or `plan.execute_into_accum(exec, alpha, a, b, beta, AccumulationSource, d)`; `AccumulationSource::Output` reads through the mutable D, `Separate(&c_view)` a distinct C |
+| `tensorcontract::Plan::run` / `run_with` / `run_raw` / `run_raw_with` | `Plan::execute_into_accum` / `execute_raw` (the C adapter's entry, with `check_raw` as its pointer-only preflight) |
+| `tensorcontract::contract_batched(&mut [BatchItem], &Exec)` | `contract_batched(&mut [BatchItem<T>], &Exec)`; items carry `StridedView`s and an `Option<AccumulationSource>` |
+| `tensorcontract::batch`, `parse_einsum`, `einsum_labels`, `TensorView`, `TensorViewMut`, `ElementOp::Conjugate` per view | removed; the views are `strided_view` views and conjugation belongs to the problem (a view that disagreed with its plan can no longer be expressed) |
+| `plan.stats`, `plan.selected()`, `selected_gemm()`, `dynamic_report` | `plan.report()` (`PlanReport`, `PackedReport` with family id, geometry, folded `PlanStats`, orientation, observed regularity, estimated scratch and the dynamic assignment) |
+| `Plan::with_selector(operands, catalog, selector)` | `Plan::new_with_selector(&Problem, &PlanConfig, &KernelCatalog<T>, &mut selector)`; the context no longer carries the thread budget or candidate grids (a plan never reselects for another budget) and operand labels are gone |
+| `tprims_contract_traits::{ContractionBackend, PreparedContraction, Problem, Layout, Conj}` | `tprims_contract::api::{ContractionBackend, PreparedContraction, Problem, LayoutSpec, Op}`; the traits take `&Exec` and `AccumulationSource` |
+| `HostExecution`, `NativeHost`, `ExecHost`, `SerialHost`, the duplicated `Par` | removed; `tprims_exec::{Exec, Par}` is the only host and width vocabulary |
+| `tensorcontract::Error`, `tprims_contract_traits::Error`, `tprims_blas::Error` | one `tprims_contract::Error`: `Config`, `Shape`, `Layout`, `Alias`, `Unsupported`, `Select`, `Exec`, `Backend`, `Internal`, each with typed context |
+| `tensorcontract::reference::contract_reference` (over `Layout`) | `tprims_testkit::oracle::contract_reference` over plain `dims`/`strides`/`labels` slices; shares no code with the planner |
+| `tensorcontract::kernel::{plan_config, selected_config, selected_kernel_name}` | `plan.report().packed` (family id, `mr`, `nr`, `mc`, `kc`, `nc`) |
+| `TAPP_implementation_name()` | now names `tprims-contract`; the ABI is unchanged |
+
+### The one lowering
+
+`Problem::from_labels` and `Problem::from_dot_general` share one lowering: repeated labels on one operand select a
+diagonal (strides add), a label on only one input is a reduction (a K axis with the other input's stride zero), output-only
+labels are `Unsupported`, and the output must be injective. The result keeps the original layouts plus normalized
+M/N/K/H role axes with signed A/B/C/D strides; negative strides are not rejected for their sign.
+`DotGeneral` fixes `C = D` (`CSpec::Output`), output axes `[lhs_free..., rhs_free..., batch...]`.
+
+### Strategy selection
+
+1. An explicit kernel, selector, partition, complex method, blocking, cache model or write-back request forces the packed
+   driver, including for an all-batch problem.
+2. An all-batch problem runs the elementwise pass (full `op_C`, `op_D` and separate-C semantics).
+3. A problem that fuses to one strided batched GEMM without copying an operand, with full semantics, runs on faer. A
+   separately described C, or a reduction over an axis one input lacks, is declined.
+4. Everything else runs on the packed driver.
+
+`alpha == 0` or an empty contraction computes `op_D(beta * op_C(C))` in one output pass, for every strategy, reading no
+input. Beta zero reads neither C nor D.
+
+### Removed capabilities (not renames)
+
+| Old | Disposition |
+|---|---|
+| `gemm`, `gemm_with`, `gemm_batched`, `gemm_batched_with`, `gemm_grouped`, `GemmShape`, `MatIn`, `BatchIn` | `gemm`: a `DotGeneral` with one contracted pair (or `Labels`), keeping op, scaling and layout semantics. `gemm_batched`: batch axes of one problem (`lc=[1], rc=[0], lb=[2], rb=[2]`); a loop of independent items over one fixed-layout plan is `contract_batched`. `gemm_grouped`: one plan per shape, grouped by the host; a fixed-layout plan does not accept heterogeneous items |
+| `trsm` | removed; no contraction replacement |
+| `tprims-linalg` decompositions and solves | removed in PR 1; the consumer chooses another provider |
+| `EngineChoice::{Faer, Packed}`, `BatchStrategy`, `Selected` | see `Strategy` above |
+| `ElementOpMismatch` (a view's op differing from the plan's) | cannot occur: views carry no element operation |
+| explicit kernel or partition on an all-batch problem | **behaviour change:** the old planner refused it with `EngineUnsupported` because the elementwise pass has no kernel or grid; the packed driver now honours it (tested for `StaticGrid` and `DynamicTiles`) |
+| `TAPP` ABI | unchanged; the product lowers its labels once into a `Problem`, and one status table maps the contract error |
+
+The pinned `ext/tenferro-cpu-tprims` consumer stays on its old revision until its own migration is done; this repository
+does not claim a drop-in revision bump, and `trsm`/linalg need downstream provider work.
+
+### Source moves (PR 3)
+
+All of these are `git mv`s followed by edits in separate commits; `git log --follow` follows a file, so the splits are
+listed here.
+
+| Old path | New path |
+|---|---|
+| `tensorprimitives/crates/tensorcontract/src/plan.rs` | `crates/tprims-contract/src/plan/analysis.rs` (index analysis: roles, folding, scatter vectors, `PackedPlan`) and `plan/orientation.rs` (orientation, row block, partition rule, with their tests) |
+| `tensorprimitives/crates/tensorcontract/src/driver.rs`, `driver/dynamic.rs` | `crates/tprims-contract/src/driver/mod.rs`, `driver/dynamic.rs` (the loop nest; resolution is mandatory, the foreign-scalar path is gone) |
+| `tensorprimitives/crates/tensorcontract/tests/*.rs` (`common`, `correctness`, `cplx_native`, `direct`, `dynamic`, `gemm_families`, `partition_bitwise`, `selection_boundary`, `traits`) | `crates/tprims-contract/src/driver/tests/*.rs` (unit tests over a test-only adapter, `compat.rs`) |
+| `tensorprimitives/crates/tensorcontract/tests/{exec_pin,exec_pool,exec_seam,explicit_config,pool_workspace,workspace_alloc}.rs` | `crates/tprims-contract/tests/packed_*.rs` |
+| `tensorprimitives/crates/tensorcontract/src/{select,resolve,batch,buffer}.rs` | `crates/tprims-contract/src/{select,resolve,batch,buffer}.rs` |
+| `tensorprimitives/crates/tensorcontract/src/reference.rs` | `crates/tprims-testkit/src/oracle.rs` |
+| `tensorprimitives/crates/tensorcontract/src/layout.rs` | removed (`LayoutSpec` in `api/problem.rs`) |
+| `crates/tprims-contract/src/{plan,permute_gemm,util,tblis,host,backend}.rs` (old `ContractPlan`) | `plan/mod.rs` (the new `Plan`), `strategy/{faer,elementwise}.rs`, `api/backend.rs` and `backend.rs` (`TprimsBackend`) |
+| `crates/tprims-contract-traits/src/{problem,error,backend,host}.rs` | `crates/tprims-contract/src/api/{problem,error,backend}.rs` (`host.rs` removed) |
+| `crates/tprims-blas/src/{batched,gemm,scalar}.rs` (faer batched loop) | `strategy/faer.rs` (copy-free fusion only) and `api/scalar.rs` |
+| `tensorprimitives/crates/tensorprimitives-bench/src/*.rs`, `build.rs` | `benchmarks/benchmarks/tcbench/*.rs`, `benchmarks/build.rs` |
+| `tensorprimitives/crates/tensorprimitives-tapp` | unchanged location; rebased onto `Plan<T>` |
+| `crates/tprims-kernel/src/kernels/kernel_set.rs` | `kernels/menu_tests.rs` (see above) |
+| `tensorprimitives/crates/tensorprimitives-bench/src/engines/{sweep,shapes,orient,premise}.rs` | `engines/run.rs` (the corpus run, from `sweep`); `shapes`, `orient` and `premise` are deleted, as are `examples/{blocking_model,kernel_shapes}.rs` |
+
+The `tprims-contract` examples `blocking_model` and `kernel_shapes` measured the legacy menu and are deleted with it;
+`examples/contract.rs` is ported. The pure-move commits of this PR are `Move tensorcontract, contract-traits and the
+strategy sources into tprims-contract (pure git mv)`, `Rename tprims-contract-testkit to tprims-testkit (pure git mv)` and
+`Move the tcbench sources into the tprims-bench package (pure git mv)`.
+
+### Benchmarks
+
+`tcbench` keeps `run` (the corpus across the planner's choice, the forced packed driver, TTGT and TBLIS), `verify`,
+`info` and `--stress`. `sweep`, `shapes`, `orient` and `premise` are deleted: they depended on the legacy menu and on
+engine internals the contract crate no longer exposes. The three complex methods are now one knob
+(`TENSORCONTRACT_COMPLEX`) rather than three engine columns. The `contract` bench rows are `plan`/`packed` (formerly
+`pg`/`tblis`), and `tenferro-p1-gemm` and `large-batched-gemm` are `dot_general` corpora; `benchmarks/.../blas` is
+deleted.

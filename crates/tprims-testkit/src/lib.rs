@@ -105,7 +105,7 @@ impl<T> Raw<T> {
 }
 
 impl NaivePlan {
-    fn check<T: Scalar>(&self, which: OperandId, dims: &[usize], strides: &[isize]) -> Result<()> {
+    fn check(&self, which: OperandId, dims: &[usize], strides: &[isize]) -> Result<()> {
         let l = match which {
             OperandId::A => self.problem.a().layout(),
             OperandId::B => self.problem.b().layout(),
@@ -134,9 +134,9 @@ impl NaivePlan {
         d: &mut StridedViewMut<'_, T>,
     ) -> Result<()> {
         let p = &self.problem;
-        self.check::<T>(OperandId::A, a.dims(), a.strides())?;
-        self.check::<T>(OperandId::B, b.dims(), b.strides())?;
-        self.check::<T>(OperandId::D, d.dims(), d.strides())?;
+        self.check(OperandId::A, a.dims(), a.strides())?;
+        self.check(OperandId::B, b.dims(), b.strides())?;
+        self.check(OperandId::D, d.dims(), d.strides())?;
         if p.out_empty() {
             return Ok(());
         }
@@ -241,7 +241,7 @@ impl<T: Scalar> PreparedContraction<T> for NaivePlan {
                 self.run(exec, alpha, a, b, beta, None, true, d)
             }
             (CSpec::Separate(_), AccumulationSource::Separate(c)) => {
-                self.check::<T>(OperandId::C, c.dims(), c.strides())?;
+                self.check(OperandId::C, c.dims(), c.strides())?;
                 self.run(exec, alpha, a, b, beta, Some(c.ptr()), false, d)
             }
             _ => Err(LayoutError::CMode.into()),

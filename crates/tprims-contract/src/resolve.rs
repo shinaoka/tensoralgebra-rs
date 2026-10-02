@@ -4,8 +4,8 @@
 //! built; execution never selects again. No workspace or executor lives here.
 
 use tprims_kernel::{
-    Blocking, CpuFeatures, Families, Isa, KernelChoice, KernelForce, KernelHandle, Method, Origin,
-    Registry, ResolvedGemm, SelectError,
+    Blocking, CpuFeatures, Families, KernelChoice, KernelHandle, Method, Origin, Registry,
+    ResolvedGemm, SelectError,
 };
 
 use crate::plan::{PackedPlan, PlanConfig};

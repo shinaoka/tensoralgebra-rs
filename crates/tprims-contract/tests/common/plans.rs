@@ -2,7 +2,7 @@
 #![allow(dead_code)]
 
 use tprims_contract::api::{CSpec, DType, Labels, LayoutSpec, OperandSpec, Problem};
-use tprims_contract::{Partition, Plan, PlanConfig};
+use tprims_contract::{Plan, PlanConfig};
 
 /// `D[i,k] = sum_j A[i,j] B[j,k]` on column-major `m x k`, `k x n`, `m x n`.
 pub fn matmul_problem(m: usize, n: usize, k: usize) -> Problem {
@@ -21,12 +21,7 @@ pub fn matmul_problem(m: usize, n: usize, k: usize) -> Problem {
 /// An explicit grid request: forces the packed driver with the planner's own
 /// grid rule.
 pub fn packed() -> PlanConfig {
-    let mut cfg = PlanConfig::default();
-    cfg.partition = Some(Partition::StaticGrid {
-        pin: None,
-        align_c_lines: false,
-    });
-    cfg
+    PlanConfig::packed()
 }
 
 pub fn packed_plan(m: usize, n: usize, k: usize) -> Plan<f64> {

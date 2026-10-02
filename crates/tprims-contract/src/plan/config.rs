@@ -108,7 +108,7 @@ pub struct PlanConfig {
     /// default rule (a static grid from the planner's cost model) when the
     /// packed driver is chosen.
     pub partition: Option<Partition>,
-    /// Refuse a plan that would copy a whole operand ([`Unsupported::WouldMaterialize`](crate::Unsupported)).
+    /// Refuse a plan that would copy a whole operand ([`Unsupported::WouldMaterialize`](crate::api::Unsupported)).
     /// Bounded packing inside the packed driver is not a materialization.
     pub no_materialize: bool,
     /// Complex scheme. `None` keeps the baseline default; a forced family must
@@ -129,6 +129,18 @@ pub struct PlanConfig {
 }
 
 impl PlanConfig {
+    /// The baseline configuration with the packed driver forced: an explicit
+    /// grid request with the planner's own grid rule.
+    pub fn packed() -> Self {
+        PlanConfig {
+            partition: Some(Partition::StaticGrid {
+                pin: None,
+                align_c_lines: false,
+            }),
+            ..PlanConfig::default()
+        }
+    }
+
     /// Whether this configuration can only be honoured by the packed driver:
     /// an explicit kernel, partition, complex method, blocking, cache model or
     /// write-back request. (Orientation and row block shape the packed plan

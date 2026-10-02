@@ -37,7 +37,12 @@ fn auto_head_is_the_head_of_the_default_menu() {
         .into_iter()
         .find(|f| f.allow_auto)
         .unwrap();
-    assert_eq!(chead.complex.unwrap().method, Method::Native, "{}", chead.id);
+    assert_eq!(
+        chead.complex.unwrap().method,
+        Method::Native,
+        "{}",
+        chead.id
+    );
 }
 
 #[test]

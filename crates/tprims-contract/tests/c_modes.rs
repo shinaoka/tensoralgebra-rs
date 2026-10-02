@@ -12,7 +12,7 @@ use strided_view::{StridedView, StridedViewMut};
 use tprims_contract::api::{
     AccumulationSource, CSpec, DType, Labels, LayoutSpec, Op, OperandSpec, Problem,
 };
-use tprims_contract::{Algorithm, Partition, Plan, PlanConfig};
+use tprims_contract::{Algorithm, Plan, PlanConfig};
 use tprims_exec::Exec;
 use tprims_testkit::fixtures::{col_major, row_major, seeded, storage_len};
 use tprims_testkit::oracle::{contract_reference, RefOperand, RefOutput};
@@ -76,11 +76,7 @@ fn shapes() -> Vec<Shape> {
 }
 
 fn configs() -> [PlanConfig; 2] {
-    let mut packed = PlanConfig::default();
-    packed.partition = Some(Partition::StaticGrid {
-        pin: None,
-        align_c_lines: false,
-    });
+    let packed = PlanConfig::packed();
     [PlanConfig::default(), packed]
 }
 

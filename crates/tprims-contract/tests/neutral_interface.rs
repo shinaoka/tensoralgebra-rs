@@ -6,7 +6,7 @@ use tprims_contract::api::{
     AccumulationSource, AliasError, BoxedPlan, ContractionBackend, DotGeneral, Error, LayoutError,
     LayoutSpec, Op, OperandSpec, PlanningBudget, Problem, Requirements, Scalar, ShapeError,
 };
-use tprims_contract::{Partition, PlanConfig, TprimsBackend};
+use tprims_contract::{PlanConfig, TprimsBackend};
 use tprims_exec::{Exec, Pool};
 use tprims_kernel::{Element, KernelChoice, Real, SelectError};
 use tprims_testkit::NaiveBackend;
@@ -45,11 +45,7 @@ fn problem<S: Scalar>(
 
 /// The planner's own choice, the packed driver forced, and the naive loop nest.
 fn backends<S: Scalar>() -> Vec<Box<dyn ContractionBackend<S>>> {
-    let mut packed = PlanConfig::default();
-    packed.partition = Some(Partition::StaticGrid {
-        pin: None,
-        align_c_lines: false,
-    });
+    let packed = PlanConfig::packed();
     vec![
         Box::new(TprimsBackend::default()),
         Box::new(TprimsBackend { config: packed }),

@@ -132,7 +132,7 @@ impl<T: Scalar> Plan<T> {
     /// # Errors
     ///
     /// [`ConfigError::DtypeMismatch`] when `T` is not the problem's dtype, any
-    /// [`PlanConfig::validate`] error, [`Error::Select`] for an unknown or
+    /// [`PlanConfig::validate`] error, [`Error::Select`](crate::api::Error::Select) for an unknown or
     /// unusable kernel, blocking or partition request, and
     /// [`ShapeError::Overflow`](crate::api::ShapeError) for a role whose scatter
     /// vector cannot be addressed.
@@ -153,7 +153,7 @@ impl<T: Scalar> Plan<T> {
     ///
     /// # Errors
     ///
-    /// As [`Plan::new`], plus [`Error::Select`] for an explicit kernel id
+    /// As [`Plan::new`], plus [`Error::Select`](crate::api::Error::Select) for an explicit kernel id
     /// alongside the selector (ambiguous), no admissible candidate, the
     /// selector's own `Err` (unchanged) or a handle it should not have
     /// returned. Zero-size problems are selected and validated too.
@@ -267,7 +267,7 @@ impl<T: Scalar> Plan<T> {
     /// # Errors
     ///
     /// [`LayoutError::Mismatch`] when a view differs from the plan (nothing is
-    /// written); [`Error::Exec`] or [`Error::Backend`] from a lower layer.
+    /// written); [`Error::Exec`](crate::api::Error::Exec) or [`Error::Backend`](crate::api::Error::Backend) from a lower layer.
     pub fn execute_into(
         &self,
         exec: &Exec<'_>,

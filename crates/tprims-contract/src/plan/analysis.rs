@@ -122,7 +122,7 @@ pub struct PlanStats {
 impl PlanStats {
     /// Multiply-accumulate count (batch * m * n * k).
     ///
-    /// Multiply by [`crate::Element::FLOPS_PER_MAC`] for a flop count. This
+    /// Multiply by `Element::FLOPS_PER_MAC` for a flop count. This
     /// counts *useful* work — the padding the engine does on edge blocks is
     /// deliberately not included, so throughput computed from it is comparable
     /// against another library's.

@@ -13,7 +13,7 @@ use tprims_contract::api::{
     AccumulationSource, ContractionBackend, DType, DotGeneral, LayoutSpec, OperandSpec,
     PlanningBudget, Problem, Requirements,
 };
-use tprims_contract::{Partition, Plan, PlanConfig, TprimsBackend};
+use tprims_contract::{Plan, PlanConfig, TprimsBackend};
 use tprims_exec::Exec;
 
 static COUNT: AtomicUsize = AtomicUsize::new(0);
@@ -75,11 +75,7 @@ fn the_trait_path_allocates_exactly_what_the_concrete_path_does() {
     )
     .unwrap();
 
-    let mut forced = PlanConfig::default();
-    forced.partition = Some(Partition::StaticGrid {
-        pin: None,
-        align_c_lines: false,
-    });
+    let forced = PlanConfig::packed();
     for config in [PlanConfig::default(), forced] {
         let plan = Plan::<f64>::new(&problem, &config).unwrap();
         let backend = TprimsBackend {
