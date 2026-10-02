@@ -1,0 +1,6 @@
+N rep1 hadamard_mat_2048_bT_c64,plan_exec,1,32402309,20
+B rep1 hadamard_mat_2048_bT_c64,pg_exec,1,33754122,20
+N rep2 hadamard_mat_2048_bT_c64,plan_exec,1,28672284,20
+B rep2 hadamard_mat_2048_bT_c64,pg_exec,1,34005642,20
+N rep3 hadamard_mat_2048_bT_c64,plan_exec,1,28625645,20
+B rep3 hadamard_mat_2048_bT_c64,pg_exec,1,34115157,20

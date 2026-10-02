@@ -1,0 +1,959 @@
+pinned.sh: cpus 40 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 40
+pinned.sh: cpus 56 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 56
+pinned.sh: cpus 57 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 57
+pinned.sh: cpus 57 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 57
+pinned.sh: cpus 56 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 56
+pinned.sh: cpus 56 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 56
+pinned.sh: cpus 59 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 59
+pinned.sh: cpus 57 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 57
+pinned.sh: cpus 54 idle before and after (attempt 1)
+pinned.sh: cpus 54 idle before and after (attempt 1)
+pinned.sh: cpus 40 idle before and after (attempt 1)
+pinned.sh: cpus 40 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 40
+pinned.sh: cpus 54 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 54
+pinned.sh: cpus 58 idle before and after (attempt 1)
+pinned.sh: cpus 58 idle before and after (attempt 1)
+pinned.sh: cpus 40 idle before and after (attempt 1)
+pinned.sh: cpus 40 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 40
+pinned.sh: cpus 40 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 40
+pinned.sh: cpus 40 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 40
+pinned.sh: cpus 57 idle before and after (attempt 1)
+pinned.sh: cpus 57 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 57
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 8
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 0 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 25 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 25
+pinned.sh: cpus 11 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 11
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 8
+pinned.sh: cpus 2 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 2
+pinned.sh: cpus 32 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 32
+pinned.sh: cpus 24 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 24
+pinned.sh: cpus 24 idle before and after (attempt 1)
+pinned.sh: cpus 24 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 40 idle before and after (attempt 1)
+pinned.sh: cpus 40 idle before and after (attempt 1)
+pinned.sh: cpus 24 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 24
+pinned.sh: cpus 17 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 17
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 40 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 40
+pinned.sh: cpus 32 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 32
+pinned.sh: cpus 26 idle before and after (attempt 1)
+pinned.sh: cpus 26 idle before and after (attempt 1)
+pinned.sh: cpus 2 idle before and after (attempt 1)
+pinned.sh: cpus 2 idle before and after (attempt 1)
+pinned.sh: cpus 26 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 26
+pinned.sh: cpus 48 idle before and after (attempt 1)
+pinned.sh: cpus 48 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 48
+pinned.sh: cpus 25 idle before and after (attempt 1)
+pinned.sh: cpus 25 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 25
+pinned.sh: cpus 0 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 1 idle before and after (attempt 1)
+pinned.sh: cpus 1 idle before and after (attempt 1)
+pinned.sh: cpus 1 idle before and after (attempt 1)
+pinned.sh: cpus 1 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 1
+pinned.sh: cpus 1 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 1
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 1 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 1
+pinned.sh: cpus 10 idle before and after (attempt 1)
+pinned.sh: cpus 10 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 24 idle before and after (attempt 1)
+pinned.sh: cpus 24 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 24
+pinned.sh: cpus 1 idle before and after (attempt 1)
+pinned.sh: cpus 1 idle before and after (attempt 1)
+pinned.sh: cpus 8 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 8
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 24 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 24
+pinned.sh: cpus 0 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 1 idle before and after (attempt 1)
+pinned.sh: cpus 1 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 8 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 8
+pinned.sh: cpus 9 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 9
+pinned.sh: cpus 0 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 11 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 11
+pinned.sh: cpus 24 idle before and after (attempt 1)
+pinned.sh: cpus 24 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 8
+pinned.sh: cpus 0 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 8
+pinned.sh: cpus 17 idle before and after (attempt 1)
+pinned.sh: cpus 17 idle before and after (attempt 1)
+pinned.sh: cpus 10 idle before and after (attempt 1)
+pinned.sh: cpus 10 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 49 idle before and after (attempt 1)
+pinned.sh: cpus 49 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 49
+pinned.sh: cpus 16 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 16
+pinned.sh: cpus 18 idle before and after (attempt 1)
+pinned.sh: cpus 18 idle before and after (attempt 1)
+pinned.sh: cpus 25 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 25
+pinned.sh: cpus 24 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 24
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 8
+pinned.sh: cpus 9 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 9
+pinned.sh: cpus 1 idle before and after (attempt 1)
+pinned.sh: cpus 1 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 1
+pinned.sh: cpus 8 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 8
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 56 idle before and after (attempt 1)
+pinned.sh: cpus 56 idle before and after (attempt 1)
+pinned.sh: cpus 16 idle before and after (attempt 1)
+pinned.sh: cpus 16 idle before and after (attempt 1)
+pinned.sh: cpus 16 idle before and after (attempt 1)
+pinned.sh: cpus 16 idle before and after (attempt 1)
+pinned.sh: cpus 0 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 8
+pinned.sh: cpus 16 idle before and after (attempt 1)
+pinned.sh: cpus 16 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 8
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 49 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 49
+pinned.sh: cpus 8 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 8
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 5 idle before and after (attempt 1)
+pinned.sh: cpus 5 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 5
+pinned.sh: cpus 0 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 41 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 41
+pinned.sh: cpus 49 idle before and after (attempt 1)
+pinned.sh: cpus 49 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 49
+pinned.sh: cpus 17 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 17
+pinned.sh: cpus 1 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 1
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 32 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 32
+pinned.sh: cpus 56 idle before and after (attempt 1)
+pinned.sh: cpus 56 idle before and after (attempt 1)
+pinned.sh: cpus 56 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 56
+pinned.sh: cpus 56 idle before and after (attempt 1)
+pinned.sh: cpus 56 idle before and after (attempt 1)
+pinned.sh: cpus 57 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 57
+pinned.sh: cpus 57 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 57
+pinned.sh: cpus 56 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 56
+pinned.sh: cpus 40 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 40
+pinned.sh: cpus 40 idle before and after (attempt 1)
+pinned.sh: cpus 40 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 40
+pinned.sh: cpus 40 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 40
+pinned.sh: cpus 48 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 48
+pinned.sh: cpus 24 idle before and after (attempt 1)
+pinned.sh: cpus 24 idle before and after (attempt 1)
+pinned.sh: cpus 24 idle before and after (attempt 1)
+pinned.sh: cpus 24 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 24
+pinned.sh: cpus 49 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 49
+pinned.sh: cpus 48 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 48
+pinned.sh: cpus 40 idle before and after (attempt 1)
+pinned.sh: cpus 40 idle before and after (attempt 1)
+pinned.sh: cpus 48 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 48
+pinned.sh: cpus 8 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 8
+pinned.sh: cpus 0 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 1 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 1
+pinned.sh: cpus 57 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 57
+pinned.sh: cpus 59 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 59
+pinned.sh: cpus 56 idle before and after (attempt 1)
+pinned.sh: cpus 56 idle before and after (attempt 1)
+pinned.sh: cpus 40 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 40
+pinned.sh: cpus 24 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 24
+pinned.sh: cpus 48 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 48
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 57 idle before and after (attempt 1)
+pinned.sh: cpus 57 idle before and after (attempt 1)
+pinned.sh: cpus 0 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 57 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 57
+pinned.sh: cpus 58 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 58
+pinned.sh: cpus 56 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 56
+pinned.sh: cpus 56 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 56
+pinned.sh: cpus 56 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 56
+pinned.sh: cpus 59 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 59
+pinned.sh: cpus 59 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 59
+pinned.sh: cpus 56 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 56
+pinned.sh: cpus 57 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 57
+pinned.sh: cpus 56 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 56
+pinned.sh: cpus 58 idle before and after (attempt 1)
+pinned.sh: cpus 58 idle before and after (attempt 1)
+pinned.sh: cpus 40 idle before and after (attempt 1)
+pinned.sh: cpus 40 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 40
+pinned.sh: cpus 48 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 48
+pinned.sh: cpus 0 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 56 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 56
+pinned.sh: cpus 24 idle before and after (attempt 1)
+pinned.sh: cpus 24 idle before and after (attempt 1)
+pinned.sh: cpus 49 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 49
+pinned.sh: cpus 36 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 36
+pinned.sh: cpus 49 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 49
+pinned.sh: cpus 54 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 54
+pinned.sh: cpus 55 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 55
+pinned.sh: cpus 55 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 55
+pinned.sh: cpus 18 idle before and after (attempt 1)
+pinned.sh: cpus 18 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 18
+pinned.sh: cpus 9 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 9
+pinned.sh: cpus 0 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 42 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 42
+pinned.sh: cpus 40 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 40
+pinned.sh: cpus 36 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 36
+pinned.sh: cpus 54 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 54
+pinned.sh: cpus 18 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 18
+pinned.sh: cpus 25 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 25
+pinned.sh: cpus 1 idle before and after (attempt 1)
+pinned.sh: cpus 1 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 1
+pinned.sh: cpus 41 idle before and after (attempt 1)
+pinned.sh: cpus 41 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 41
+pinned.sh: cpus 17 idle before and after (attempt 1)
+pinned.sh: cpus 17 idle before and after (attempt 1)
+pinned.sh: cpus 24 idle before and after (attempt 1)
+pinned.sh: cpus 24 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 54 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 54
+pinned.sh: cpus 63 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 63
+pinned.sh: cpus 0 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 9 idle before and after (attempt 1)
+pinned.sh: cpus 9 idle before and after (attempt 1)
+pinned.sh: cpus 16 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 16
+pinned.sh: cpus 32 idle before and after (attempt 1)
+pinned.sh: cpus 32 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 32
+pinned.sh: cpus 25 idle before and after (attempt 1)
+pinned.sh: cpus 25 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 25
+pinned.sh: cpus 58 idle before and after (attempt 1)
+pinned.sh: cpus 58 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 1 idle before and after (attempt 1)
+pinned.sh: cpus 1 idle before and after (attempt 1)
+pinned.sh: cpus 8 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 8
+pinned.sh: cpus 57 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 57
+pinned.sh: cpus 58 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 58
+pinned.sh: cpus 58 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 58
+pinned.sh: cpus 59 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 59
+pinned.sh: cpus 24 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 24
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 1 idle before and after (attempt 1)
+pinned.sh: cpus 1 idle before and after (attempt 1)
+pinned.sh: cpus 9 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 9
+pinned.sh: cpus 57 idle before and after (attempt 1)
+pinned.sh: cpus 57 idle before and after (attempt 1)
+pinned.sh: cpus 40 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 40
+pinned.sh: cpus 24 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 24
+pinned.sh: cpus 0 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 40 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 40
+pinned.sh: cpus 10 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 10
+pinned.sh: cpus 0 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 25 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 25
+pinned.sh: cpus 18 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 18
+pinned.sh: cpus 26 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 26
+pinned.sh: cpus 1 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 1
+pinned.sh: cpus 56 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 56
+pinned.sh: cpus 24 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 24
+pinned.sh: cpus 18 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 18
+pinned.sh: cpus 57 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 57
+pinned.sh: cpus 57 idle before and after (attempt 1)
+pinned.sh: cpus 57 idle before and after (attempt 1)
+pinned.sh: cpus 40 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 40
+pinned.sh: cpus 1 idle before and after (attempt 1)
+pinned.sh: cpus 1 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 1
+pinned.sh: cpus 56 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 56
+pinned.sh: cpus 56 idle before and after (attempt 1)
+pinned.sh: cpus 56 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 56
+pinned.sh: cpus 57 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 57
+pinned.sh: cpus 56 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 56
+pinned.sh: cpus 56 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 56
+pinned.sh: cpus 57 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 57
+pinned.sh: cpus 56 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 56
+pinned.sh: cpus 57 idle before and after (attempt 1)
+pinned.sh: cpus 57 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 57
+pinned.sh: cpus 60 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 60
+pinned.sh: cpus 56 idle before and after (attempt 1)
+pinned.sh: cpus 56 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 56
+pinned.sh: cpus 0 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 9 idle before and after (attempt 1)
+pinned.sh: cpus 9 idle before and after (attempt 1)
+pinned.sh: cpus 0 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 41 idle before and after (attempt 1)
+pinned.sh: cpus 41 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 41
+pinned.sh: cpus 18 idle before and after (attempt 1)
+pinned.sh: cpus 18 idle before and after (attempt 1)
+pinned.sh: cpus 24 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 24
+pinned.sh: cpus 2 idle before and after (attempt 1)
+pinned.sh: cpus 2 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 2
+pinned.sh: cpus 48 idle before and after (attempt 1)
+pinned.sh: cpus 48 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 48
+pinned.sh: cpus 24 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 24
+pinned.sh: cpus 56 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 56
+pinned.sh: cpus 57 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 57
+pinned.sh: cpus 57 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 57
+pinned.sh: cpus 54 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 54
+pinned.sh: cpus 58 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 58
+pinned.sh: cpus 59 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 59
+pinned.sh: cpus 57 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 57
+pinned.sh: cpus 56 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 56
+pinned.sh: cpus 57 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 57
+pinned.sh: cpus 58 idle before and after (attempt 1)
+pinned.sh: cpus 58 idle before and after (attempt 1)
+pinned.sh: cpus 40 idle before and after (attempt 1)
+pinned.sh: cpus 40 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 48 idle before and after (attempt 1)
+pinned.sh: cpus 48 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 48
+pinned.sh: cpus 49 idle before and after (attempt 1)
+pinned.sh: cpus 49 idle before and after (attempt 1)
+pinned.sh: cpus 8 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 8
+pinned.sh: cpus 0 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 40 idle before and after (attempt 1)
+pinned.sh: cpus 40 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 40
+pinned.sh: cpus 24 idle before and after (attempt 1)
+pinned.sh: cpus 24 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 24
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 24 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 24
+pinned.sh: cpus 16 idle before and after (attempt 1)
+pinned.sh: cpus 16 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 41 idle before and after (attempt 1)
+pinned.sh: cpus 41 idle before and after (attempt 1)
+pinned.sh: cpus 40 idle before and after (attempt 1)
+pinned.sh: cpus 40 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 8
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 24 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 24
+pinned.sh: cpus 0 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 40 idle before and after (attempt 1)
+pinned.sh: cpus 40 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 40
+pinned.sh: cpus 8 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 8
+pinned.sh: cpus 48 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 48
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 8 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 8
+pinned.sh: cpus 1 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 1
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 8
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 56 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 56
+pinned.sh: cpus 40 idle before and after (attempt 1)
+pinned.sh: cpus 40 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 40
+pinned.sh: cpus 40 idle before and after (attempt 1)
+pinned.sh: cpus 40 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 32 idle before and after (attempt 1)
+pinned.sh: cpus 32 idle before and after (attempt 1)
+pinned.sh: cpus 24 idle before and after (attempt 1)
+pinned.sh: cpus 24 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 24
+pinned.sh: cpus 1 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 1
+pinned.sh: cpus 32 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 32
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 8
+pinned.sh: cpus 48 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 48
+pinned.sh: cpus 24 idle before and after (attempt 1)
+pinned.sh: cpus 24 idle before and after (attempt 1)
+pinned.sh: cpus 32 idle before and after (attempt 1)
+pinned.sh: cpus 32 idle before and after (attempt 1)
+pinned.sh: cpus 48 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 48
+pinned.sh: cpus 0 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 25 idle before and after (attempt 1)
+pinned.sh: cpus 25 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 8
+pinned.sh: cpus 0 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 8
+pinned.sh: cpus 40 idle before and after (attempt 1)
+pinned.sh: cpus 40 idle before and after (attempt 1)
+pinned.sh: cpus 40 idle before and after (attempt 1)
+pinned.sh: cpus 40 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 24 idle before and after (attempt 1)
+pinned.sh: cpus 24 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 1 idle before and after (attempt 1)
+pinned.sh: cpus 1 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 8 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 8
+pinned.sh: cpus 1 idle before and after (attempt 1)
+pinned.sh: cpus 1 idle before and after (attempt 1)
+pinned.sh: cpus 24 busy after run (attempt 1); discarding it
+pinned.sh: no valid run on cpus 24
+pinned.sh: cpus 8 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 8
+pinned.sh: cpus 40 idle before and after (attempt 1)
+pinned.sh: cpus 40 idle before and after (attempt 1)
+pinned.sh: cpus 40 idle before and after (attempt 1)
+pinned.sh: cpus 40 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 40
+pinned.sh: cpus 24 idle before and after (attempt 1)
+pinned.sh: cpus 24 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 8 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 8
+pinned.sh: cpus 40 idle before and after (attempt 1)
+pinned.sh: cpus 40 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 16 idle before and after (attempt 1)
+pinned.sh: cpus 16 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 0 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 0
+pinned.sh: cpus 8 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 8
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 8 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 32 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 32
+pinned.sh: cpus 24 busy before run (attempt 1); waiting
+pinned.sh: no valid run on cpus 24
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
+pinned.sh: cpus 0 idle before and after (attempt 1)
