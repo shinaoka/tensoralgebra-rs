@@ -5,8 +5,8 @@ use std::time::Instant;
 
 use strided_view::{StridedView, StridedViewMut};
 use tprims_bench::threads::BenchThreads;
-use tprims_blas::Conj;
-use tprims_contract::{ContractPlan, DotGeneral, Flags, Strategy};
+use tprims_contract::api::{DType, DotGeneral, LayoutSpec, OperandSpec, Problem};
+use tprims_contract::{Plan, PlanConfig};
 
 const INNER: usize = 1000;
 const SAMPLES: usize = 101;
@@ -39,21 +39,22 @@ fn main() {
         let y: Vec<f64> = (0..8).map(|i| 8.0 - i as f64).collect();
         let mut z = vec![0.0f64; 16];
         let cfg = DotGeneral::new(&[2], &[0], &[], &[]);
-        let plan = ContractPlan::<f64>::new(
+        let spec =
+            |d: &[usize], s: &[isize]| OperandSpec::new(LayoutSpec::new(d, s, 0).expect("layout"));
+        let problem = Problem::from_dot_general(
+            DType::F64,
+            spec(&[2, 2, 2], &[1, 2, 4]),
+            spec(&[2, 2, 2], &[1, 2, 4]),
+            spec(&[2, 2, 2, 2], &[1, 2, 4, 8]),
             &cfg,
-            (&[2, 2, 2], &[1, 2, 4]),
-            (&[2, 2, 2], &[1, 2, 4]),
-            (&[2, 2, 2, 2], &[1, 2, 4, 8]),
-            (Conj::No, Conj::No),
-            Strategy::Auto,
-            Flags::default(),
         )
-        .expect("plan");
+        .expect("problem");
+        let plan = Plan::<f64>::new(&problem, &PlanConfig::default()).expect("plan");
         let xv = StridedView::new(&x, &[2, 2, 2], &[1, 2, 4], 0).expect("x");
         let yv = StridedView::new(&y, &[2, 2, 2], &[1, 2, 4], 0).expect("y");
         let ns = median(|| {
             let mut zv = StridedViewMut::new(&mut z, &[2, 2, 2, 2], &[1, 2, 4, 8], 0).expect("z");
-            plan.execute(exec, 1.0, &xv, &yv, 0.0, &mut zv)
+            plan.execute_into(exec, 1.0, &xv, &yv, &mut zv)
                 .expect("exec");
         });
         println!("contract_2x2x2,rust,{t},{ns:.1},{SAMPLES}");

@@ -1,18 +1,20 @@
-//! `tcbench` — correctness and performance harness.
+//! `tcbench` -- correctness and performance harness over the TCCG corpus.
 //!
 //! Subcommands:
 //!
-//! * `verify` — engine vs TTGT and TBLIS over the whole corpus at benchmark
-//!   sizes, in every dtype and under every stride-stress mode.
-//! * `premise` — the Phase 1 empirical premise check: measure real-vs-complex
-//!   efficiency for TBLIS and TTGT against a same-shape GEMM ceiling, to
-//!   confirm or refute the hypothesis that complex contraction is where the
-//!   headroom is.
-//! * `sweep` — the full TCCG corpus across engines and dtypes, reporting
-//!   GFLOP/s and the per-case complex efficiency ratio.
+//! * `run` -- the corpus across engines and dtypes, reporting GFLOP/s and the
+//!   per-case complex efficiency ratio. Engines: `plan` (the planner's choice
+//!   under the `TENSORCONTRACT_*` knobs), `packed` (the packed driver, forced),
+//!   `ttgt` and `tblis` (external baselines).
+//! * `verify` -- the planner's choice, the packed driver, TTGT and TBLIS over the
+//!   whole corpus at benchmark sizes, in every dtype and under every
+//!   stride-stress mode.
+//! * `info` -- the machine and the baselines this binary was built with.
 //!
 //! Run single-threaded by default so that kernel and packing efficiency, not
-//! thread scaling, is what is being compared.
+//! thread scaling, is what is being compared. The `sweep`, `shapes`, `orient`
+//! and `premise` analyses of the original harness were retired with the move into
+//! `tprims-bench`; `docs/migration-2026-10.md` records where they went.
 
 mod blas;
 mod corpus;
@@ -36,21 +38,14 @@ fn main() -> ExitCode {
 
     match cmd {
         "verify" => engines::verify::run(&opts),
-        "premise" => engines::premise::run(&opts),
-        "sweep" => engines::sweep::run(&opts),
-        "shapes" => engines::shapes::run(&opts),
-        "orient" => engines::orient::run(&opts),
+        "run" => engines::run::run(&opts),
         "info" => {
             report::print_environment();
             ExitCode::SUCCESS
         }
         _ => {
             eprintln!(
-                "usage: tcbench <verify|premise|sweep|shapes|orient|info> [options]\n\
-                 \n\
-                 `shapes` and `orient` are analyses, not benchmarks: they touch\n\
-                 no data and cost no CPU, so they are safe to run while a\n\
-                 measurement is in flight, and their output is reproducible.\n\
+                "usage: tcbench <run|verify|info> [options]\n\
                  \n\
                  options:\n\
                  \x20 --size <MiB>      tensor size target for TCCG sizing (default 200)\n\
@@ -58,7 +53,7 @@ fn main() -> ExitCode {
                  \x20 --dtype <list>    comma separated: f32,f64,c32,c64 (default all)\n\
                  \x20 --case <substr>   only cases whose name contains this\n\
                  \x20 --engines <list>  comma separated, default all of:\n\
-                 \x20                   planar,1m,3m  (this engine's three complex methods)\n\
+                 \x20                   plan,packed   (this library)\n\
                  \x20                   ttgt,tblis    (external baselines)\n\
                  \x20 --csv <path>      also write machine-readable results\n\
                  \x20 --stress <mode>   none|ragged|padded: perturb TCCG extents/layouts\n\
@@ -87,7 +82,7 @@ impl Options {
             reps: 5,
             dtypes: vec!["f32".into(), "f64".into(), "c32".into(), "c64".into()],
             case_filter: None,
-            engines: crate::engines::sweep::ENGINE_ORDER
+            engines: crate::engines::run::ENGINE_ORDER
                 .iter()
                 .map(|s| s.to_string())
                 .collect(),

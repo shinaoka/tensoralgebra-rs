@@ -1,25 +1,27 @@
-//! The TCCG corpus sweep: every case, every requested dtype, every engine.
+//! The TCCG corpus run: every case, every requested dtype, every engine.
+//!
+//! Engines: `plan` (the planner's own choice under the knobs), `packed` (the
+//! packed driver, forced), and the external baselines `ttgt` and `tblis`.
 
 use std::process::ExitCode;
 
 use num_complex::Complex;
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
-use tensorcontract::kernel::{plan_config, selected_kernel_name, ComplexMethod, KernelSet};
-use tensorcontract::plan::Operand;
-use tensorcontract::scatter::{build_block_scatter, regular_fraction};
-use tensorcontract::Plan;
+use tprims_contract::{Plan, PlanConfig};
+use tprims_exec::Exec;
+use tprims_kernel::Element;
 
-use super::{gflops, pin_single_threaded, rel_error, timed, BenchElem};
+use super::{gflops, pin_single_threaded, problem_of, rel_error, timed, BenchElem};
 use crate::corpus::{self, Sized};
 use crate::report::{Results, Row, Table};
 #[cfg(feature = "blas")]
-use crate::ttgt::{ttgt, TtgtScratch};
+use crate::ttgt::{ttgt, TtgtPlan, TtgtScratch};
 use crate::Options;
 
-/// Column order for the report tables: our three complex methods first, then
-/// the external baselines.
-pub const ENGINE_ORDER: &[&str] = &["planar", "1m", "3m", "ttgt", "tblis"];
+/// Column order for the report tables: this library's engines first, then the
+/// external baselines.
+pub const ENGINE_ORDER: &[&str] = &["plan", "packed", "ttgt", "tblis"];
 
 pub fn run(opts: &Options) -> ExitCode {
     pin_single_threaded();
@@ -38,7 +40,7 @@ pub fn run(opts: &Options) -> ExitCode {
         .collect();
 
     println!(
-        "sweeping {} cases at {} MiB nominal tensor size, {} reps, stress={}\n",
+        "running {} cases at {} MiB nominal tensor size, {} reps, stress={}\n",
         cases.len(),
         opts.size_mib,
         opts.reps,
@@ -75,36 +77,30 @@ pub fn run(opts: &Options) -> ExitCode {
 pub fn run_case<T>(s: &Sized, opts: &Options, results: &mut Results)
 where
     T: BenchElem,
-    T::Real: KernelSet,
 {
-    let plan = match Plan::new(
-        Operand::new(&s.la, &s.idx_a),
-        Operand::new(&s.lb, &s.idx_b),
-        None,
-        Operand::new(&s.lc, &s.idx_c),
-    )
-    .map(|p| crate::knobs::get().apply(p))
-    {
+    let problem = match problem_of::<T>(s) {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("{} [{}]: planning failed: {e}", s.case.name, T::NAME);
+            eprintln!("{} [{}]: description failed: {e}", s.case.name, T::NAME);
             return;
+        }
+    };
+    let knobs = crate::knobs::get();
+    let plan_for = |config: &PlanConfig| match Plan::<T>::new(&problem, config) {
+        Ok(p) => Some(p),
+        Err(e) => {
+            eprintln!("{} [{}]: planning failed: {e}", s.case.name, T::NAME);
+            None
         }
     };
 
     let (m, n, k) = s.mnk();
     let macs = s.macs();
 
-    // Regularity is reported against the orientation the engine actually
-    // executes in, which is not necessarily `A`-rows / `B`-columns.
-    // `MR` is element-type and method dependent — and since Phase 4.1c, plan
-    // dependent too — and so is the orientation. Each engine row therefore
-    // reports against its own `MR`; the baselines' rows use the default
-    // method's, so that column means one thing per row.
     let mut rng = ChaCha8Rng::seed_from_u64(0x5EED);
     let a: Vec<T> = (0..s.elems_a()).map(|_| T::sample(&mut rng)).collect();
     let b: Vec<T> = (0..s.elems_b()).map(|_| T::sample(&mut rng)).collect();
-    let mut d: Vec<T> = vec![T::zero(); s.elems_c()];
+    let mut d: Vec<T> = vec![<T as Element>::zero(); s.elems_c()];
 
     let mut reference: Option<Vec<T>> = None;
     let check = |name: &str, d: &Vec<T>, reference: &mut Option<Vec<T>>| -> String {
@@ -148,104 +144,90 @@ where
             });
         };
 
-    // ---- our engine, once per complex method -----------------------------
+    // ---- this library: the planner's choice, and the packed driver ---------
     //
-    // For a real element type all three methods reduce to the same real path,
-    // so it is measured once and reported under each requested engine name.
-    // That keeps the complex-over-real efficiency ratio well defined for every
-    // method without pretending to have measured the real path three times.
-    let mut real_measured: Option<(f64, f64, f64, String)> = None;
-    for method in ComplexMethod::ALL {
-        let name = method.name();
+    // Regularity is reported against the orientation the packed engine actually
+    // executes in, which is not necessarily `A`-rows / `B`-columns; a strategy
+    // that does not use the packed driver reports no regularity (0, 0).
+    let mut regularity = (0.0f64, 0.0f64);
+    for (name, config) in [("plan", knobs.config()), ("packed", knobs.packed_config())] {
         if !opts.engine(name) {
             continue;
         }
-        if let Some((secs, ra, rb, notes)) = &real_measured {
-            push(name, *secs, *ra, *rb, notes.clone(), results);
+        let Some(p) = plan_for(&config) else {
             continue;
-        }
-
-        let p = plan.clone().with_complex_method(method);
-        let (mr, nr, blk) = plan_config::<T>(&p);
-        let psc = p.oriented_scatters(mr);
-        let orient = if p.transposes_gemm(mr) { "BA" } else { "AB" };
-        let reg_a = regular_fraction(&build_block_scatter(psc.a_m, mr));
-        let reg_b = regular_fraction(&build_block_scatter(psc.b_n, nr));
-
-        let secs = timed(opts.reps, || unsafe {
-            p.run_raw::<T>(
-                T::one(),
-                a.as_ptr(),
-                b.as_ptr(),
-                T::zero(),
-                d.as_ptr(),
-                d.as_mut_ptr(),
-            )
-        });
-        // `MR x NR` goes in the notes because it is no longer a constant per
-        // dtype and method: a CSV without it cannot be re-read later. So does
-        // the blocking, for the same reason — the item 2 grid varies it per arm
-        // and a coupled `kc` gives each dtype and method a different `mc`.
-        // The thread count appears only when it is not 1, so single-core CSVs
-        // keep the exact format every committed measurement was written in. With
-        // it goes the partition actually used, `pm x pn`, because a case that
-        // cannot fill the threads from one axis is exactly what a scaling run is
-        // looking for and the CSV should say so without re-deriving it.
-        let threads = p.threads();
-        // `run_raw` is serial since threads come only from a `tprims_exec::Exec`
-        // (#37); refuse rather than label a serial run as a threaded one. The
-        // `sweep` subcommand is deleted with this crate's port.
-        assert_eq!(
-            threads, 1,
-            "sweep no longer threads: TENSORCONTRACT_THREADS does not start threads"
-        );
-        let tag = if threads == 1 {
-            String::new()
-        } else {
-            let (pm, pn) = p.partition_with(mr, nr, threads);
-            format!("t{threads}/{pm}x{pn} ")
         };
-        let notes = format!(
-            "{} {mr}x{nr} {orient} {}x{}x{} {tag}{}",
-            selected_kernel_name::<T>(crate::knobs::get().tuning(), method),
-            blk.mc,
-            blk.kc,
-            blk.nc,
-            check(name, &d, &mut reference)
-        )
+        let report = p.report();
+        let (reg_a, reg_b) = report
+            .packed
+            .as_ref()
+            .map_or((0.0, 0.0), |r| (r.regular_rows, r.regular_cols));
+        if report.packed.is_some() && regularity == (0.0, 0.0) {
+            regularity = (reg_a, reg_b);
+        }
+        let secs = timed(opts.reps, || {
+            // SAFETY: the buffers are sized by the layouts, `D` is exclusive and
+            // `beta = 0` reads no previous value.
+            unsafe {
+                p.execute_raw(
+                    &Exec::serial(),
+                    <T as Element>::one(),
+                    a.as_ptr(),
+                    b.as_ptr(),
+                    <T as Element>::zero(),
+                    std::ptr::null(),
+                    d.as_mut_ptr(),
+                )
+            }
+            .expect("a validated plan runs")
+        });
+        // `MR x NR`, the orientation and the blocking go in the notes because
+        // they are not constants per dtype: a CSV without them cannot be
+        // re-read later.
+        let notes = match &report.packed {
+            Some(r) => format!(
+                "{} {}x{} {} {}x{}x{} {}",
+                r.family_id,
+                r.mr,
+                r.nr,
+                if r.swapped { "BA" } else { "AB" },
+                r.mc,
+                r.kc,
+                r.nc,
+                check(name, &d, &mut reference)
+            ),
+            None => format!(
+                "{} {}",
+                report.algorithm.name(),
+                check(name, &d, &mut reference)
+            ),
+        }
         .trim()
         .to_string();
-        push(name, secs, reg_a, reg_b, notes.clone(), results);
-        if !T::IS_COMPLEX {
-            real_measured = Some((secs, reg_a, reg_b, notes));
-        }
+        push(name, secs, reg_a, reg_b, notes, results);
     }
 
-    // Regularity for the baselines' rows: report at the default method's
-    // register block so the column means one thing per row. (Only consumed
-    // when a baseline feature is enabled.)
+    // Regularity for the baselines' rows: the packed engine's, so the column
+    // means one thing per row. (Only consumed when a baseline feature is
+    // enabled.)
     #[cfg(any(feature = "blas", feature = "tblis"))]
-    let (reg_a, reg_b) = {
-        let (mr, nr, _) = plan_config::<T>(&plan);
-        let sc = plan.oriented_scatters(mr);
-        (
-            regular_fraction(&build_block_scatter(sc.a_m, mr)),
-            regular_fraction(&build_block_scatter(sc.b_n, nr)),
-        )
-    };
+    let (reg_a, reg_b) = regularity;
+    #[cfg(not(any(feature = "blas", feature = "tblis")))]
+    let _ = regularity;
 
     // ---- TTGT ------------------------------------------------------------
     #[cfg(feature = "blas")]
     if opts.engine("ttgt") {
-        let mut scratch = TtgtScratch::<T>::new(&plan);
-        let mut dt: Vec<T> = vec![T::zero(); s.elems_c()];
+        let tp = TtgtPlan::new(&problem);
+        let mut scratch = TtgtScratch::<T>::new(&tp);
+        let mut dt: Vec<T> = vec![<T as Element>::zero(); s.elems_c()];
         let secs = timed(opts.reps, || {
             ttgt(
-                &plan,
-                T::one(),
+                &tp,
+                <T as Element>::one(),
                 &a,
                 &b,
-                T::zero(),
+                <T as Element>::zero(),
                 &dt.clone(),
                 &mut dt,
                 &mut scratch,
@@ -261,7 +243,7 @@ where
         let mut oa = tb::Operand::new(s.la.extents(), s.la.strides(), s.case.a);
         let mut ob = tb::Operand::new(s.lb.extents(), s.lb.strides(), s.case.b);
         let mut oc = tb::Operand::new(s.lc.extents(), s.lc.strides(), s.case.c);
-        let mut dt: Vec<T> = vec![T::zero(); s.elems_c()];
+        let mut dt: Vec<T> = vec![<T as Element>::zero(); s.elems_c()];
         let ta = oa.tensor(
             T::TBLIS_TYPE,
             T::tblis_scalar(1.0),

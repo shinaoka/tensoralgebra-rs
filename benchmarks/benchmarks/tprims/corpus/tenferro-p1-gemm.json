@@ -17,16 +17,14 @@
   ],
   "calls": 3150,
   "time_share": 0.95,
-  "frequent": 20
+  "frequent": 20,
+  "rewritten": "gemm_batched entries rewritten as dot_general contraction cases: lc=[1], rc=[0], lb=[2], rb=[2] (the same views, the same output)"
  },
  "entries": [
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_000_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 990,
-   "n": 2187,
-   "k": 4620,
-   "batch": 1,
    "a": {
     "dims": [
      990,
@@ -63,17 +61,29 @@
      0
     ]
    },
-   "name": "gemm_batched_000_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 4,
    "time_share": 0.112077
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_001_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 4782969,
-   "n": 27,
-   "k": 9,
-   "batch": 1,
    "a": {
     "dims": [
      4782969,
@@ -110,17 +120,29 @@
      0
     ]
    },
-   "name": "gemm_batched_001_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 2,
    "time_share": 0.085206
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_002_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 540,
-   "n": 58320,
-   "k": 136,
-   "batch": 1,
    "a": {
     "dims": [
      540,
@@ -157,17 +179,29 @@
      0
     ]
    },
-   "name": "gemm_batched_002_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 4,
    "time_share": 0.080866
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_003_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 177147,
-   "n": 243,
-   "k": 50,
-   "batch": 1,
    "a": {
     "dims": [
      177147,
@@ -204,17 +238,29 @@
      0
     ]
    },
-   "name": "gemm_batched_003_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 4,
    "time_share": 0.075706
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_004_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 399,
-   "n": 4320,
-   "k": 7290,
-   "batch": 1,
    "a": {
     "dims": [
      399,
@@ -251,17 +297,29 @@
      0
     ]
    },
-   "name": "gemm_batched_004_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 2,
    "time_share": 0.075587
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_005_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 399,
-   "n": 7290,
-   "k": 4320,
-   "batch": 1,
    "a": {
     "dims": [
      399,
@@ -298,17 +356,29 @@
      0
     ]
    },
-   "name": "gemm_batched_005_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 2,
    "time_share": 0.073399
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_006_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 243,
-   "n": 6561,
-   "k": 729,
-   "batch": 9,
    "a": {
     "dims": [
      243,
@@ -345,17 +415,29 @@
      1594323
     ]
    },
-   "name": "gemm_batched_006_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 2,
    "time_share": 0.067918
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_007_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 512,
-   "n": 8192,
-   "k": 128,
-   "batch": 4,
    "a": {
     "dims": [
      512,
@@ -392,17 +474,29 @@
      4194304
     ]
    },
-   "name": "gemm_batched_007_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 4,
    "time_share": 0.042305
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_008_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 9,
-   "n": 19683,
-   "k": 27,
-   "batch": 243,
    "a": {
     "dims": [
      9,
@@ -439,17 +533,29 @@
      177147
     ]
    },
-   "name": "gemm_batched_008_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 2,
    "time_share": 0.036524
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_009_c64",
+   "op": "dot_general",
    "dtype": "c64",
-   "m": 640,
-   "n": 640,
-   "k": 640,
-   "batch": 1,
    "a": {
     "dims": [
      640,
@@ -486,17 +592,29 @@
      0
     ]
    },
-   "name": "gemm_batched_009_c64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 10,
    "time_share": 0.028443
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_010_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 810,
-   "n": 12474,
-   "k": 154,
-   "batch": 1,
    "a": {
     "dims": [
      810,
@@ -533,17 +651,29 @@
      0
     ]
    },
-   "name": "gemm_batched_010_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 4,
    "time_share": 0.027185
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_011_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 1026,
-   "n": 33048,
-   "k": 40,
-   "batch": 1,
    "a": {
     "dims": [
      1026,
@@ -580,17 +710,29 @@
      0
     ]
    },
-   "name": "gemm_batched_011_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 2,
    "time_share": 0.026298
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_012_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 27,
-   "n": 729,
-   "k": 3,
-   "batch": 2187,
    "a": {
     "dims": [
      27,
@@ -627,17 +769,29 @@
      19683
     ]
    },
-   "name": "gemm_batched_012_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 2,
    "time_share": 0.025304
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_013_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 81,
-   "n": 59049,
-   "k": 3,
-   "batch": 9,
    "a": {
     "dims": [
      81,
@@ -674,17 +828,29 @@
      4782969
     ]
    },
-   "name": "gemm_batched_013_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 2,
    "time_share": 0.024091
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_014_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 1024,
-   "n": 1024,
-   "k": 1024,
-   "batch": 1,
    "a": {
     "dims": [
      1024,
@@ -721,17 +887,29 @@
      0
     ]
    },
-   "name": "gemm_batched_014_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 6,
    "time_share": 0.020121
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_015_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 2160,
-   "n": 3672,
-   "k": 360,
-   "batch": 1,
    "a": {
     "dims": [
      2160,
@@ -768,17 +946,29 @@
      0
     ]
    },
-   "name": "gemm_batched_015_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 2,
    "time_share": 0.019369
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_016_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 39600,
-   "n": 252,
-   "k": 56,
-   "batch": 1,
    "a": {
     "dims": [
      39600,
@@ -815,17 +1005,29 @@
      0
     ]
    },
-   "name": "gemm_batched_016_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 4,
    "time_share": 0.017954
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_017_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 1024,
-   "n": 1024,
-   "k": 1024,
-   "batch": 1,
    "a": {
     "dims": [
      1024,
@@ -862,17 +1064,29 @@
      0
     ]
    },
-   "name": "gemm_batched_017_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 2,
    "time_share": 0.016364
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_018_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 40,
-   "n": 198288,
-   "k": 171,
-   "batch": 1,
    "a": {
     "dims": [
      40,
@@ -909,17 +1123,29 @@
      0
     ]
    },
-   "name": "gemm_batched_018_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 2,
    "time_share": 0.014023
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_019_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 196830,
-   "n": 45,
-   "k": 11,
-   "batch": 1,
    "a": {
     "dims": [
      196830,
@@ -956,17 +1182,29 @@
      0
     ]
    },
-   "name": "gemm_batched_019_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 4,
    "time_share": 0.011118
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_020_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 4536,
-   "n": 945,
-   "k": 54,
-   "batch": 1,
    "a": {
     "dims": [
      4536,
@@ -1003,17 +1241,29 @@
      0
     ]
    },
-   "name": "gemm_batched_020_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 4,
    "time_share": 0.007164
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_021_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 1728,
-   "n": 1100,
-   "k": 144,
-   "batch": 1,
    "a": {
     "dims": [
      1728,
@@ -1050,17 +1300,29 @@
      0
     ]
    },
-   "name": "gemm_batched_021_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 8,
    "time_share": 0.007114
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_022_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 11,
-   "n": 415800,
-   "k": 24,
-   "batch": 1,
    "a": {
     "dims": [
      11,
@@ -1097,17 +1359,29 @@
      0
     ]
    },
-   "name": "gemm_batched_022_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 4,
    "time_share": 0.006948
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_023_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 3,
-   "n": 19683,
-   "k": 27,
-   "batch": 81,
    "a": {
     "dims": [
      3,
@@ -1144,17 +1418,29 @@
      59049
     ]
    },
-   "name": "gemm_batched_023_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 2,
    "time_share": 0.00624
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_024_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 399,
-   "n": 4320,
-   "k": 594,
-   "batch": 1,
    "a": {
     "dims": [
      399,
@@ -1191,17 +1477,29 @@
      0
     ]
    },
-   "name": "gemm_batched_024_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 2,
    "time_share": 0.006172
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_025_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 136,
-   "n": 9720,
-   "k": 441,
-   "batch": 1,
    "a": {
     "dims": [
      136,
@@ -1238,17 +1536,29 @@
      0
     ]
    },
-   "name": "gemm_batched_025_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 4,
    "time_share": 0.006087
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_026_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 4,
-   "n": 524288,
-   "k": 4,
-   "batch": 2,
    "a": {
     "dims": [
      4,
@@ -1285,17 +1595,29 @@
      2097152
     ]
    },
-   "name": "gemm_batched_026_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 4,
    "time_share": 0.005899
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_027_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 4320,
-   "n": 594,
-   "k": 399,
-   "batch": 1,
    "a": {
     "dims": [
      4320,
@@ -1332,17 +1654,29 @@
      0
     ]
    },
-   "name": "gemm_batched_027_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 2,
    "time_share": 0.00578
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_028_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 480,
-   "n": 4620,
-   "k": 243,
-   "batch": 1,
    "a": {
     "dims": [
      480,
@@ -1379,17 +1713,29 @@
      0
     ]
    },
-   "name": "gemm_batched_028_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 4,
    "time_share": 0.005595
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_029_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 8,
-   "n": 131072,
-   "k": 2,
-   "batch": 4,
    "a": {
     "dims": [
      8,
@@ -1426,17 +1772,29 @@
      1048576
     ]
    },
-   "name": "gemm_batched_029_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 4,
    "time_share": 0.004849
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_030_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 924,
-   "n": 1215,
-   "k": 360,
-   "batch": 1,
    "a": {
     "dims": [
      924,
@@ -1473,17 +1831,29 @@
      0
     ]
    },
-   "name": "gemm_batched_030_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 4,
    "time_share": 0.004219
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_031_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 207,
-   "n": 594,
-   "k": 4320,
-   "batch": 1,
    "a": {
     "dims": [
      207,
@@ -1520,17 +1890,29 @@
      0
     ]
    },
-   "name": "gemm_batched_031_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 2,
    "time_share": 0.003267
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_032_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 128,
-   "n": 128,
-   "k": 128,
-   "batch": 32,
    "a": {
     "dims": [
      128,
@@ -1567,17 +1949,29 @@
      16384
     ]
    },
-   "name": "gemm_batched_032_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 2,
    "time_share": 0.003226
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_033_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 2,
-   "n": 4,
-   "k": 2,
-   "batch": 1,
    "a": {
     "dims": [
      2,
@@ -1614,17 +2008,29 @@
      0
     ]
    },
-   "name": "gemm_batched_033_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 78,
    "time_share": 5e-06
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_034_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 2,
-   "n": 2,
-   "k": 2,
-   "batch": 1,
    "a": {
     "dims": [
      2,
@@ -1661,17 +2067,29 @@
      0
     ]
    },
-   "name": "gemm_batched_034_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 62,
    "time_share": 5e-06
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_035_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 2,
-   "n": 4,
-   "k": 2,
-   "batch": 1,
    "a": {
     "dims": [
      2,
@@ -1708,17 +2126,29 @@
      0
     ]
    },
-   "name": "gemm_batched_035_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 54,
    "time_share": 3e-06
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_036_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 1,
-   "n": 16,
-   "k": 11,
-   "batch": 1900,
    "a": {
     "dims": [
      1,
@@ -1755,17 +2185,29 @@
      16
     ]
    },
-   "name": "gemm_batched_036_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 48,
    "time_share": 0.000564
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_037_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 1,
-   "n": 16,
-   "k": 7,
-   "batch": 1996,
    "a": {
     "dims": [
      1,
@@ -1802,17 +2244,29 @@
      16
     ]
    },
-   "name": "gemm_batched_037_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 48,
    "time_share": 0.000721
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_038_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 2,
-   "n": 2,
-   "k": 2,
-   "batch": 1,
    "a": {
     "dims": [
      2,
@@ -1849,17 +2303,29 @@
      0
     ]
    },
-   "name": "gemm_batched_038_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 38,
    "time_share": 7e-06
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_039_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 16,
-   "n": 256,
-   "k": 4,
-   "batch": 1,
    "a": {
     "dims": [
      16,
@@ -1896,17 +2362,29 @@
      0
     ]
    },
-   "name": "gemm_batched_039_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 32,
    "time_share": 9e-06
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_040_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 4,
-   "n": 4,
-   "k": 2,
-   "batch": 1,
    "a": {
     "dims": [
      4,
@@ -1943,17 +2421,29 @@
      0
     ]
    },
-   "name": "gemm_batched_040_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 32,
    "time_share": 2e-06
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_041_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 112,
-   "n": 1996,
-   "k": 7,
-   "batch": 1,
    "a": {
     "dims": [
      112,
@@ -1990,17 +2480,29 @@
      0
     ]
    },
-   "name": "gemm_batched_041_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 28,
    "time_share": 0.000229
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_042_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 176,
-   "n": 1900,
-   "k": 11,
-   "batch": 1,
    "a": {
     "dims": [
      176,
@@ -2037,17 +2539,29 @@
      0
     ]
    },
-   "name": "gemm_batched_042_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 24,
    "time_share": 0.000343
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_043_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 176,
-   "n": 1900,
-   "k": 11,
-   "batch": 1,
    "a": {
     "dims": [
      176,
@@ -2084,17 +2598,29 @@
      0
     ]
    },
-   "name": "gemm_batched_043_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 24,
    "time_share": 0.000339
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_044_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 112,
-   "n": 1996,
-   "k": 7,
-   "batch": 1,
    "a": {
     "dims": [
      112,
@@ -2131,17 +2657,29 @@
      0
     ]
    },
-   "name": "gemm_batched_044_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 20,
    "time_share": 0.000164
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_045_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 16,
-   "n": 64,
-   "k": 4,
-   "batch": 1,
    "a": {
     "dims": [
      16,
@@ -2178,17 +2716,29 @@
      0
     ]
    },
-   "name": "gemm_batched_045_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 20,
    "time_share": 3e-06
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_046_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 2,
-   "n": 8,
-   "k": 2,
-   "batch": 1,
    "a": {
     "dims": [
      2,
@@ -2225,17 +2775,29 @@
      0
     ]
    },
-   "name": "gemm_batched_046_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 20,
    "time_share": 1e-06
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_047_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 1,
-   "n": 144,
-   "k": 11,
-   "batch": 1100,
    "a": {
     "dims": [
      1,
@@ -2272,17 +2834,29 @@
      144
     ]
    },
-   "name": "gemm_batched_047_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 16,
    "time_share": 0.000719
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_048_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 16,
-   "n": 16,
-   "k": 16,
-   "batch": 1,
    "a": {
     "dims": [
      16,
@@ -2319,17 +2893,29 @@
      0
     ]
    },
-   "name": "gemm_batched_048_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 16,
    "time_share": 2e-06
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_049_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 16,
-   "n": 16,
-   "k": 4,
-   "batch": 1,
    "a": {
     "dims": [
      16,
@@ -2366,17 +2952,29 @@
      0
     ]
    },
-   "name": "gemm_batched_049_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 16,
    "time_share": 1e-06
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_050_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 16,
-   "n": 256,
-   "k": 4,
-   "batch": 1,
    "a": {
     "dims": [
      16,
@@ -2413,17 +3011,29 @@
      0
     ]
    },
-   "name": "gemm_batched_050_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 16,
    "time_share": 4e-06
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_051_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 19,
-   "n": 19,
-   "k": 1026,
-   "batch": 1,
    "a": {
     "dims": [
      19,
@@ -2460,17 +3070,29 @@
      0
     ]
    },
-   "name": "gemm_batched_051_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 16,
    "time_share": 2.5e-05
   },
   {
-   "op": "gemm_batched",
+   "name": "gemm_batched_052_f64",
+   "op": "dot_general",
    "dtype": "f64",
-   "m": 2,
-   "n": 2,
-   "k": 2,
-   "batch": 1,
    "a": {
     "dims": [
      2,
@@ -2507,7 +3129,22 @@
      0
     ]
    },
-   "name": "gemm_batched_052_f64",
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [
+    2
+   ],
+   "rb": [
+    2
+   ],
+   "conj": [
+    false,
+    false
+   ],
    "calls": 16,
    "time_share": 1e-06
   }

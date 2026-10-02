@@ -117,7 +117,7 @@ pub fn print_environment() {
     // make every derived parameter conservative — should be visible here rather
     // than inferred from a disappointing number.
     {
-        use tensorcontract::kernel::cache;
+        use tprims_kernel::blocking as cache;
         let h = cache::hierarchy();
         let one = |l: &cache::CacheLevel| {
             format!(
@@ -137,7 +137,7 @@ pub fn print_environment() {
             "caches      : {} (via {}), blocking={}",
             levels.join(" "),
             h.source.name(),
-            crate::knobs::get().tuning().block_model.name()
+            crate::knobs::get().block_model().name()
         );
         // How many L3 domains this run's threads span, which is what the
         // domain-aware partition gate turns on (A36). Printed as a small table

@@ -1,4 +1,4 @@
-//! Entry cost of tprims-exec primitives, and strided / tensorcontract kernels
+//! Entry cost of tprims-exec primitives, and strided / tprims-contract kernels
 //! driven through `Exec`, at an enforced thread count.
 //!
 //! Usage: `exec_entry --threads N`. CSV `case,variant,threads,median_ns,samples`
@@ -7,9 +7,11 @@
 use std::hint::black_box;
 
 use strided_basic::{map_into, StridedArray};
-use tensorcontract::{Layout, Operand, Plan, TensorView, TensorViewMut};
+use strided_view::{StridedView, StridedViewMut};
 use tprims_bench::threads::BenchThreads;
 use tprims_bench::timing::{env_usize, median_ns};
+use tprims_contract::api::{CSpec, DType, Labels, LayoutSpec, OperandSpec, Problem};
+use tprims_contract::{Partition, Plan, PlanConfig};
 use tprims_exec::strided::run_with_exec;
 use tprims_exec::{Exec, Pool};
 
@@ -105,43 +107,54 @@ fn strided_cases(cfg: &Cfg, exec: &Exec<'_>, pool: Option<&Pool<'_>>) {
 }
 
 fn gemm_case(cfg: &Cfg, exec: &Exec<'_>, pool: Option<&Pool<'_>>) {
-    if !cfg.want("tensorcontract_gemm_f64") {
+    if !cfg.want("packed_gemm_f64") {
         return;
     }
     let n = 512usize;
     let a: Vec<f64> = (0..n * n).map(|x| (x % 13) as f64 - 6.0).collect();
     let b: Vec<f64> = (0..n * n).map(|x| (x % 7) as f64 * 0.5).collect();
-    let l = Layout::col_major(&[n as i64, n as i64]);
-    let (ia, ib, id) = ([0i64, 2], [2i64, 1], [0i64, 1]);
-    let plan = Plan::new(
-        Operand::new(&l, &ia),
-        Operand::new(&l, &ib),
-        None,
-        Operand::new(&l, &id),
+    let spec = || OperandSpec::new(LayoutSpec::new(&[n, n], &[1, n as isize], 0).expect("layout"));
+    let problem = Problem::from_labels(
+        DType::F64,
+        spec(),
+        spec(),
+        CSpec::Absent,
+        spec(),
+        &Labels::new(&[0, 2], &[2, 1], &[0, 1]),
     )
-    .expect("plan")
-    .with_threads(1);
+    .expect("problem");
+    // An explicit grid request forces the packed driver, whose entry through
+    // `Exec` is what this case measures.
+    let config = PlanConfig {
+        partition: Some(Partition::StaticGrid {
+            pin: None,
+            align_c_lines: false,
+        }),
+        ..PlanConfig::default()
+    };
+    let plan = Plan::<f64>::new(&problem, &config).expect("plan");
+    fn view(x: &[f64], n: usize) -> StridedView<'_, f64> {
+        StridedView::new(x, &[n, n], &[1, n as isize], 0).expect("view")
+    }
+    let (av, bv) = (view(&a, n), view(&b, n));
     let mut reference = vec![0.0; n * n];
-    plan.run(
+    plan.execute_into(
+        &Exec::serial(),
         1.0,
-        TensorView::new(&a, &l, &ia),
-        TensorView::new(&b, &l, &ib),
-        0.0,
-        None,
-        TensorViewMut::new(&mut reference, &l, &id),
+        &av,
+        &bv,
+        &mut StridedViewMut::new(&mut reference, &[n, n], &[1, n as isize], 0).expect("view"),
     )
     .expect("reference");
     let mut d = vec![0.0; n * n];
     let runs = cfg.runs.min(20);
     let ns = median_ns(cfg.warmup.min(3), runs, || {
-        plan.run_with(
+        plan.execute_into(
             exec,
             1.0,
-            TensorView::new(&a, &l, &ia),
-            TensorView::new(&b, &l, &ib),
-            0.0,
-            None,
-            TensorViewMut::new(&mut d, &l, &id),
+            &av,
+            &bv,
+            &mut StridedViewMut::new(&mut d, &[n, n], &[1, n as isize], 0).expect("view"),
         )
         .expect("run");
     });
@@ -151,12 +164,12 @@ fn gemm_case(cfg: &Cfg, exec: &Exec<'_>, pool: Option<&Pool<'_>>) {
         .map(|(x, y)| (x - y).abs())
         .fold(0.0, f64::max);
     println!(
-        "CHECK tensorcontract_gemm_f64 threads={} max_abs_diff={max_diff:e} {}",
+        "CHECK packed_gemm_f64 threads={} max_abs_diff={max_diff:e} {}",
         cfg.threads,
         if max_diff == 0.0 { "ok" } else { "MISMATCH" }
     );
-    cfg.row("tensorcontract_gemm_f64", "512^3", ns, runs);
-    stats("tensorcontract_gemm_f64", pool);
+    cfg.row("packed_gemm_f64", "512^3", ns, runs);
+    stats("packed_gemm_f64", pool);
 }
 
 fn main() {

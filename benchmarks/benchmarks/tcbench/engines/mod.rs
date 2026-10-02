@@ -1,10 +1,7 @@
 //! Shared plumbing for the harness: element traits, timing, and the
 //! per-engine runners.
 
-pub mod orient;
-pub mod premise;
-pub mod shapes;
-pub mod sweep;
+pub mod run;
 pub mod verify;
 
 use std::os::raw::c_int;
@@ -12,14 +9,16 @@ use std::time::Instant;
 
 use num_complex::Complex;
 use rand::Rng;
-use tensorcontract::Element;
+use tprims_contract::api::{CSpec, Labels, LayoutSpec, OperandSpec, Problem, Scalar};
+use tprims_kernel::Element;
 
 use crate::blas::GemmScalar;
+use crate::corpus::{Layout, Sized};
 use crate::tblis;
 
 /// An element type the harness can drive through every engine.
 #[allow(dead_code)] // some members are only used under optional features
-pub trait BenchElem: Element + GemmScalar {
+pub trait BenchElem: Scalar + GemmScalar {
     const NAME: &'static str;
     const TBLIS_TYPE: c_int;
     /// The same shape in the corresponding real type, for ratio reporting.
@@ -90,6 +89,25 @@ impl BenchElem for Complex<f64> {
     }
 }
 
+fn operand(l: &Layout) -> OperandSpec {
+    let dims: Vec<usize> = l.extents().iter().map(|&e| e as usize).collect();
+    let strides: Vec<isize> = l.strides().iter().map(|&s| s as isize).collect();
+    OperandSpec::new(LayoutSpec::new(&dims, &strides, 0).expect("corpus layouts are valid"))
+}
+
+/// The validated problem of a sized corpus case in storage type `T`: `D` is
+/// overwritten (`beta = 0`), so there is no `C`.
+pub fn problem_of<T: BenchElem>(s: &Sized) -> Result<Problem, tprims_contract::Error> {
+    Problem::from_labels(
+        T::STORAGE,
+        operand(&s.la),
+        operand(&s.lb),
+        CSpec::Absent,
+        operand(&s.lc),
+        &Labels::new(&s.idx_a, &s.idx_b, &s.idx_c),
+    )
+}
+
 /// Best-of-`reps` wall time in seconds, after one warm-up call.
 ///
 /// Minimum rather than mean: these are deterministic compute kernels, so the
@@ -108,7 +126,7 @@ pub fn timed(reps: usize, mut f: impl FnMut()) -> f64 {
 
 /// GFLOP/s given a multiply-accumulate count and a time.
 pub fn gflops<T: Element>(macs: u64, secs: f64) -> f64 {
-    (macs as f64) * (T::FLOPS_PER_MAC as f64) / secs / 1e9
+    (macs as f64) * (<T as Element>::FLOPS_PER_MAC as f64) / secs / 1e9
 }
 
 /// Relative Frobenius error `||got - want|| / ||want||`.
@@ -116,8 +134,8 @@ pub fn rel_error<T: Element>(got: &[T], want: &[T]) -> f64 {
     let mut num = 0.0;
     let mut den = 0.0;
     for (&g, &w) in got.iter().zip(want) {
-        num += g.sub(w).norm().powi(2);
-        den += w.norm().powi(2);
+        num += Element::sub(g, w).norm().powi(2);
+        den += Element::norm(w).powi(2);
     }
     if den == 0.0 {
         num.sqrt()

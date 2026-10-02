@@ -11,11 +11,11 @@
 
 use std::sync::OnceLock;
 
-use tensorcontract::kernel::{ComplexMethod, Tuning};
-use tensorcontract::{Orient, PartitionMode, Plan, RowBlock};
-use tprims_kernel::{blocking::BlockModel, KernelForce};
+use tprims_contract::{CacheModel, Orient, Partition, PlanConfig, RowBlock, Writeback};
+use tprims_kernel::{blocking::BlockModel, BlockingOverride, ComplexMethod, KernelForce, Method};
 
-/// Variables that were removed together with the library's environment reads.
+/// Variables that were removed together with the library's environment reads
+/// and the partition modes the typed [`Partition`] no longer has.
 const REMOVED: [(&str, &str); 4] = [
     (
         "TENSORCONTRACT_THREADS",
@@ -27,22 +27,26 @@ const REMOVED: [(&str, &str); 4] = [
     ),
     (
         "TPRIMS_GEMM_KERNEL",
-        "select a family with Plan::with_kernel or a benchmark flag",
+        "select a family with PlanConfig::kernel or a benchmark flag",
     ),
     (
         "TPRIMS_GEMM_ENGINE",
-        "select the engine with a benchmark flag",
+        "the engine is chosen by the planner; an explicit request forces the packed driver",
     ),
 ];
 
 /// The parsed knobs.
 #[derive(Clone, Debug, Default)]
 pub struct Knobs {
-    tuning: Tuning,
+    isa: KernelForce,
     method: Option<ComplexMethod>,
+    block_model: BlockModel,
+    blocking: BlockingOverride,
+    kc_couple: Option<usize>,
+    gather: bool,
     orient: Orient,
     row_block: RowBlock,
-    partition: PartitionMode,
+    partition: Option<Partition>,
     l3_domains: Option<usize>,
 }
 
@@ -63,6 +67,22 @@ fn parse_usize(v: &str) -> Option<usize> {
     v.trim().parse().ok().filter(|&n| n > 0)
 }
 
+/// The partition spellings that survive: the default rule, or a pinned grid.
+fn parse_partition(v: &str) -> Option<Option<Partition>> {
+    let v = v.trim().to_ascii_lowercase();
+    if v == "domain" || v == "domains" {
+        return Some(None);
+    }
+    let (pm, pn) = v.split_once('x')?;
+    Some(Some(Partition::StaticGrid {
+        pin: Some((
+            pm.parse::<usize>().ok()?.max(1),
+            pn.parse::<usize>().ok()?.max(1),
+        )),
+        align_c_lines: false,
+    }))
+}
+
 impl Knobs {
     /// Parse from a variable lookup (the process environment in `main`).
     pub fn parse(get: impl Fn(&str) -> Option<String>) -> Result<Knobs, String> {
@@ -73,56 +93,78 @@ impl Knobs {
         }
         let mut k = Knobs::default();
         if let Some(f) = parse_with(&get, "TENSORCONTRACT_KERNEL", KernelForce::parse)? {
-            k.tuning.kernel_force = f;
+            k.isa = f;
         }
         k.method = parse_with(&get, "TENSORCONTRACT_COMPLEX", ComplexMethod::parse)?;
         if let Some(m) = parse_with(&get, "TENSORCONTRACT_BLOCKMODEL", BlockModel::parse)? {
-            k.tuning.block_model = m;
+            k.block_model = m;
         }
-        let b = &mut k.tuning.blocking;
+        let b = &mut k.blocking;
         b.mc = parse_with(&get, "TENSORCONTRACT_MC", parse_usize)?;
         b.kc = parse_with(&get, "TENSORCONTRACT_KC", parse_usize)?;
         b.nc = parse_with(&get, "TENSORCONTRACT_NC", parse_usize)?;
         b.mc_pct = parse_with(&get, "TENSORCONTRACT_MC_PCT", parse_usize)?;
         b.nc_pct = parse_with(&get, "TENSORCONTRACT_NC_PCT", parse_usize)?;
-        k.tuning.kc_couple = parse_with(&get, "TENSORCONTRACT_KC_COUPLE", parse_usize)?;
-        k.tuning.writeback_gather =
-            parse_with(&get, "TENSORCONTRACT_WRITEBACK", |v: &str| {
-                match v.trim().to_ascii_lowercase().as_str() {
-                    "gather" | "scatter" => Some(true),
-                    "fast" | "default" => Some(false),
-                    _ => None,
-                }
-            })?
-            .unwrap_or(false);
+        k.kc_couple = parse_with(&get, "TENSORCONTRACT_KC_COUPLE", parse_usize)?;
+        k.gather = parse_with(&get, "TENSORCONTRACT_WRITEBACK", |v: &str| {
+            match v.trim().to_ascii_lowercase().as_str() {
+                "gather" | "scatter" => Some(true),
+                "fast" | "default" => Some(false),
+                _ => None,
+            }
+        })?
+        .unwrap_or(false);
         k.orient = parse_with(&get, "TENSORCONTRACT_ORIENT", Orient::parse)?.unwrap_or_default();
         k.row_block =
             parse_with(&get, "TENSORCONTRACT_ROWBLOCK", RowBlock::parse)?.unwrap_or_default();
-        k.partition =
-            parse_with(&get, "TENSORCONTRACT_PARTITION", PartitionMode::parse)?.unwrap_or_default();
+        k.partition = parse_with(&get, "TENSORCONTRACT_PARTITION", parse_partition)?.flatten();
         k.l3_domains = parse_with(&get, "TENSORCONTRACT_L3_DOMAINS", parse_usize)?;
         Ok(k)
     }
 
-    /// The kernel-layer tuning inputs.
-    pub fn tuning(&self) -> &Tuning {
-        &self.tuning
+    /// The plan configuration every knob describes. An unset knob is the library
+    /// baseline; a set tuning knob forces the packed driver, as the library
+    /// documents.
+    pub fn config(&self) -> PlanConfig {
+        PlanConfig {
+            isa: self.isa,
+            method: self.method.map(|m| match m {
+                ComplexMethod::Planar => Method::Native,
+                ComplexMethod::OneM => Method::OneM,
+                ComplexMethod::ThreeM => Method::ThreeM,
+            }),
+            blocking: self.blocking,
+            orientation: self.orient,
+            row_block: self.row_block,
+            partition: self.partition,
+            cache_model: CacheModel {
+                block_model: self.block_model,
+                l3_domains: self.l3_domains,
+                kc_couple: self.kc_couple,
+            },
+            writeback: if self.gather {
+                Writeback::Gather
+            } else {
+                Writeback::Auto
+            },
+            ..PlanConfig::default()
+        }
     }
 
-    /// Apply every knob to a plan.
-    pub fn apply(&self, plan: Plan) -> Plan {
-        let mut plan = plan
-            .with_tuning(self.tuning)
-            .with_orientation(self.orient)
-            .with_row_block(self.row_block)
-            .with_partition_mode(self.partition);
-        if let Some(m) = self.method {
-            plan = plan.with_complex_method(m);
-        }
-        if let Some(n) = self.l3_domains {
-            plan = plan.with_l3_domains(n);
-        }
-        plan
+    /// The same configuration with the packed driver forced, so the packed
+    /// engine is measured even where the planner would pick another strategy.
+    pub fn packed_config(&self) -> PlanConfig {
+        let mut cfg = self.config();
+        cfg.partition.get_or_insert(Partition::StaticGrid {
+            pin: None,
+            align_c_lines: false,
+        });
+        cfg
+    }
+
+    /// The block model in force.
+    pub fn block_model(&self) -> BlockModel {
+        self.block_model
     }
 
     /// The forced L3 domain count, if any.
@@ -162,8 +204,8 @@ mod tests {
     #[test]
     fn unset_is_the_baseline_and_knobs_parse() {
         let base = Knobs::parse(env(&[])).unwrap();
-        assert_eq!(base.tuning, Tuning::default());
-        assert_eq!(base.partition, PartitionMode::Domain);
+        assert_eq!(base.config(), PlanConfig::default());
+        assert!(!base.config().requires_packed());
         let k = Knobs::parse(env(&[
             ("TENSORCONTRACT_KERNEL", "avx2"),
             ("TENSORCONTRACT_PARTITION", "4x2"),
@@ -172,11 +214,22 @@ mod tests {
             ("TENSORCONTRACT_L3_DOMAINS", "3"),
         ]))
         .unwrap();
-        assert_eq!(k.tuning.kernel_force, KernelForce::Avx2);
-        assert_eq!(k.partition, PartitionMode::Pin(4, 2));
-        assert_eq!(k.tuning.blocking.mc, Some(64));
-        assert!(k.tuning.writeback_gather);
+        let cfg = k.config();
+        assert_eq!(cfg.isa, KernelForce::Avx2);
+        assert_eq!(
+            cfg.partition,
+            Some(Partition::StaticGrid {
+                pin: Some((4, 2)),
+                align_c_lines: false
+            })
+        );
+        assert_eq!(cfg.blocking.mc, Some(64));
+        assert_eq!(cfg.writeback, Writeback::Gather);
         assert_eq!(k.l3_domains(), Some(3));
+        assert!(cfg.requires_packed());
+        // The packed engine is the default configuration plus a forced grid.
+        assert!(base.packed_config().requires_packed());
+        assert_eq!(base.packed_config().kernel, base.config().kernel);
     }
 
     #[test]
@@ -192,5 +245,12 @@ mod tests {
         }
         assert!(Knobs::parse(env(&[("TENSORCONTRACT_KERNEL", "avx3")])).is_err());
         assert!(Knobs::parse(env(&[("TENSORCONTRACT_MC", "0")])).is_err());
+        // The row/column partition modes no longer exist.
+        for v in ["m", "n", "rows", "cols", "legacy"] {
+            assert!(
+                Knobs::parse(env(&[("TENSORCONTRACT_PARTITION", v)])).is_err(),
+                "{v}"
+            );
+        }
     }
 }

@@ -570,7 +570,21 @@ fn packed_report<T: Scalar>(pk: &Packed<T>) -> PackedReport {
     let a_reals = fam.a_per_k / fam.mr;
     let b_reals = fam.b_per_k / fam.nr;
     let scratch_bytes = (rg.mc * rg.kc * a_reals + rg.nc * rg.kc * b_reals) * element;
+    let swapped = pk.plan.transposes_gemm(rg.mr);
+    let (rows, cols) = if swapped {
+        (&pk.plan.b_n, &pk.plan.a_m)
+    } else {
+        (&pk.plan.a_m, &pk.plan.b_n)
+    };
+    let regular = |scatter: &[i64], block: usize| {
+        tprims_kernel::scatter::regular_fraction(&tprims_kernel::scatter::build_block_scatter(
+            scatter, block,
+        ))
+    };
     PackedReport {
+        swapped,
+        regular_rows: regular(rows, rg.mr),
+        regular_cols: regular(cols, rg.nr),
         family_id: fam.id,
         origin: fam.origin,
         complex: fam.complex,

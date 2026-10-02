@@ -9,33 +9,65 @@ const OK: &str = r#"{
      "c": {"dims": [4, 5], "strides": [1, 4]},
      "lc": [1], "rc": [0], "lb": [], "rb": [], "conj": [false, true],
      "calls": 7, "time_share": 0.25},
-    {"name": "bmm", "op": "gemm_batched", "dtype": "c32",
-     "m": 2, "n": 3, "k": 4, "batch": 5,
+    {"name": "bmm", "op": "dot_general", "dtype": "c32",
      "a": {"dims": [2, 4, 5], "strides": [1, 2, 8]},
      "b": {"dims": [4, 3, 5], "strides": [1, 4, 12]},
-     "c": {"dims": [2, 3, 5], "strides": [1, 2, 6]}}
+     "c": {"dims": [2, 3, 5], "strides": [1, 2, 6]},
+     "lc": [1], "rc": [0], "lb": [2], "rb": [2]}
   ]
 }"#;
 
 #[test]
-fn parses_both_entry_kinds() {
+fn parses_contraction_entries() {
     let c = Corpus::parse(OK).unwrap();
     assert_eq!(c.entries.len(), 2);
-    match &c.entries[0] {
-        Entry::DotGeneral(d) => {
-            assert_eq!(d.name, "mm");
-            assert_eq!(d.dtype, Dtype::F64);
-            assert_eq!(d.conj, [false, true]);
-            assert_eq!(d.calls, Some(7));
-        }
-        e => panic!("{e:?}"),
-    }
-    match &c.entries[1] {
-        Entry::GemmBatched(g) => {
-            assert_eq!((g.m, g.n, g.k, g.batch), (2, 3, 4, 5));
-            assert_eq!(g.dtype, Dtype::C32);
-        }
-        e => panic!("{e:?}"),
+    let Entry::DotGeneral(d) = &c.entries[0];
+    assert_eq!(d.name, "mm");
+    assert_eq!(d.dtype, Dtype::F64);
+    assert_eq!(d.conj, [false, true]);
+    assert_eq!(d.calls, Some(7));
+    let Entry::DotGeneral(b) = &c.entries[1];
+    assert_eq!((b.lb.as_slice(), b.rb.as_slice()), (&[2][..], &[2][..]));
+    assert_eq!(b.dtype, Dtype::C32);
+}
+
+/// The GEMM corpora were rewritten as contraction cases when the batched GEMM
+/// entry point went away; the op tag is gone with it.
+#[test]
+fn a_batched_gemm_entry_is_no_longer_an_op() {
+    let old = r#"{"name": "g", "op": "gemm_batched", "dtype": "f64", "m": 2, "n": 2, "k": 2,
+      "batch": 1, "a": {"dims": [2, 2, 1], "strides": [1, 2, 4]},
+      "b": {"dims": [2, 2, 1], "strides": [1, 2, 4]},
+      "c": {"dims": [2, 2, 1], "strides": [1, 2, 4]}}"#;
+    assert!(Corpus::parse(&format!(r#"{{"source": {{}}, "entries": [{old}]}}"#)).is_err());
+}
+
+/// Every shipped corpus parses and validates under the shared lowering.
+#[test]
+fn the_shipped_corpora_parse() {
+    for (name, text) in [
+        (
+            "example",
+            include_str!("../../benchmarks/tprims/corpus/example.json"),
+        ),
+        (
+            "hadamard",
+            include_str!("../../benchmarks/tprims/corpus/hadamard.json"),
+        ),
+        (
+            "large-batched-gemm",
+            include_str!("../../benchmarks/tprims/corpus/large-batched-gemm.json"),
+        ),
+        (
+            "tenferro-p1-gemm",
+            include_str!("../../benchmarks/tprims/corpus/tenferro-p1-gemm.json"),
+        ),
+        (
+            "tenferro-p1",
+            include_str!("../../benchmarks/tprims/corpus/tenferro-p1.json"),
+        ),
+    ] {
+        Corpus::parse(text).unwrap_or_else(|e| panic!("{name}: {e}"));
     }
 }
 

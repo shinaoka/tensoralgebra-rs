@@ -44,7 +44,60 @@
 //! a `c64` run touches 2x the bytes of the `f64` run of the same case, which
 //! is exactly the effect being measured.
 
-use tensorcontract::Layout;
+/// Extents and strides of one tensor, in elements (`i64`, as the TCCG sizing
+/// rule and the baselines' C APIs write them).
+#[derive(Clone, Debug)]
+pub struct Layout {
+    extents: Vec<i64>,
+    strides: Vec<i64>,
+}
+
+impl Layout {
+    /// A layout from one stride per extent.
+    pub fn new(extents: Vec<i64>, strides: Vec<i64>) -> Result<Self, String> {
+        if extents.len() != strides.len() {
+            return Err(format!(
+                "{} extents but {} strides",
+                extents.len(),
+                strides.len()
+            ));
+        }
+        Ok(Self { extents, strides })
+    }
+
+    /// Column-major strides (the first label is stride-1).
+    pub fn col_major(extents: &[i64]) -> Self {
+        let mut strides = Vec::with_capacity(extents.len());
+        let mut acc = 1i64;
+        for &e in extents {
+            strides.push(acc);
+            acc *= e.max(1);
+        }
+        Self {
+            extents: extents.to_vec(),
+            strides,
+        }
+    }
+
+    pub fn extents(&self) -> &[i64] {
+        &self.extents
+    }
+
+    pub fn strides(&self) -> &[i64] {
+        &self.strides
+    }
+
+    /// Smallest allocation that backs the layout (non-negative strides).
+    pub fn storage_len(&self) -> i64 {
+        let mut n = 1i64;
+        for (&e, &s) in self.extents.iter().zip(&self.strides) {
+            if e > 0 {
+                n += (e - 1) * s.abs();
+            }
+        }
+        n
+    }
+}
 
 /// One contraction: `C[idx_c] = A[idx_a] * B[idx_b]`, written the way
 /// `benchmark.py` writes it, `"c-a-b"`.
@@ -177,6 +230,7 @@ const TRANS_C: &[&str] = &["abc-bk-akc"];
 /// from bandwidth-bound to compute-bound as measured on a Haswell core. Used
 /// for presentation order and for picking representative subsets; every entry
 /// is the normalised form of a case already in [`corpus()`].
+#[allow(dead_code)] // the canonical presentation order; `tcbench run` prints in corpus order
 pub const SORTED_ORDER: &[&str] = &[
     "abcde-efbad-cf",
     "abcde-efcad-bf",
@@ -241,6 +295,7 @@ pub fn corpus() -> Vec<Case> {
 /// The corpus ordered as TCCG presents it: bandwidth-bound first,
 /// compute-bound last, per `_sortedTCs`. Cases with no `_sortedTCs` entry
 /// (they only exist in the full set) are appended, keeping group order.
+#[allow(dead_code)]
 pub fn sorted_cases() -> Vec<Case> {
     let all = corpus();
     let rank = |c: &Case| -> usize {

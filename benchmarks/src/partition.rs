@@ -1,17 +1,16 @@
 //! `--partition static|dynamic:JM,JN` for the packed-driver benchmarks.
 //!
 //! The comparison of the default static grid with the opt-in
-//! `PartitionPolicy::DynamicTiles` is run later, with the `tprims-benchmark`
+//! `Partition::DynamicTiles` is run later, with the `tprims-benchmark`
 //! protocol; this flag only makes the two separately selectable and their rows
 //! separately identifiable. Absent, every benchmark behaves exactly as before.
-use tprims_blas::GemmConfig;
-use tprims_kernel::PartitionPolicy;
+use tprims_contract::{Partition, PlanConfig};
 
 /// The requested policy, or `None` for the default (static) behaviour.
 ///
 /// # Panics
 /// On a malformed value: a benchmark run must not silently fall back.
-pub fn from_args() -> Option<PartitionPolicy> {
+pub fn from_args() -> Option<Partition> {
     let args: Vec<String> = std::env::args().collect();
     let i = args.iter().position(|a| a == "--partition")?;
     let value = args
@@ -21,29 +20,29 @@ pub fn from_args() -> Option<PartitionPolicy> {
 }
 
 /// Parse `static` (the default, reported as no request) or `dynamic:JM,JN`.
-pub fn parse(value: &str) -> Option<Option<PartitionPolicy>> {
+pub fn parse(value: &str) -> Option<Option<Partition>> {
     if value == "static" {
         return Some(None);
     }
     let (job_m, job_n) = value.strip_prefix("dynamic:")?.split_once(',')?;
-    Some(Some(PartitionPolicy::DynamicTiles {
+    Some(Some(Partition::DynamicTiles {
         job_m: job_m.parse().ok()?,
         job_n: job_n.parse().ok()?,
     }))
 }
 
 /// Row-label suffix identifying the policy: empty for static.
-pub fn suffix(policy: Option<PartitionPolicy>) -> String {
+pub fn suffix(policy: Option<Partition>) -> String {
     match policy {
-        Some(PartitionPolicy::DynamicTiles { job_m, job_n }) => format!("_dyn{job_m}x{job_n}"),
+        Some(Partition::DynamicTiles { job_m, job_n }) => format!("_dyn{job_m}x{job_n}"),
         _ => String::new(),
     }
 }
 
 /// `cfg` with the policy applied.
-pub fn apply(mut cfg: GemmConfig, policy: Option<PartitionPolicy>) -> GemmConfig {
+pub fn apply(mut cfg: PlanConfig, policy: Option<Partition>) -> PlanConfig {
     if let Some(p) = policy {
-        cfg.partition = p;
+        cfg.partition = Some(p);
     }
     cfg
 }
@@ -57,7 +56,7 @@ mod tests {
         assert_eq!(parse("static"), Some(None));
         assert_eq!(
             parse("dynamic:16,32"),
-            Some(Some(PartitionPolicy::DynamicTiles {
+            Some(Some(Partition::DynamicTiles {
                 job_m: 16,
                 job_n: 32
             }))

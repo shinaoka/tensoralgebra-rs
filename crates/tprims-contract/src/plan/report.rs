@@ -59,6 +59,16 @@ pub struct PackedReport {
     pub dynamic: Option<DynamicReport>,
     /// The matrix shape and folded axes the index analysis reached.
     pub stats: PlanStats,
+    /// Whether execution computes `D^T = B^T A^T`: the planner exchanged the
+    /// row and column operands to make the micro-tile's rows a run of `D`.
+    pub swapped: bool,
+    /// Fraction of the row operand's `MR` blocks that are one regular run
+    /// (1.0 is a plain strided panel, 0.0 is entirely the gather path), at the
+    /// oriented register block. The observed regularity any awkward-stride claim
+    /// must quote.
+    pub regular_rows: f64,
+    /// As [`regular_rows`](Self::regular_rows), for the column operand at `NR`.
+    pub regular_cols: f64,
     /// Estimated serial scratch in bytes: one packed `A` block and one packed
     /// `B` panel, at the serial blocking.
     pub scratch_bytes: usize,
