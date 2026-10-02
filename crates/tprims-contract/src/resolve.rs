@@ -1,55 +1,18 @@
-//! Typed plan-owned family caches. No workspace or ambient executor lives here.
-use crate::{ComplexMethod, Element, KernelSet, Plan};
-use std::{
-    any::{Any, TypeId},
-    sync::OnceLock,
-};
+//! Planning-time family resolution for the packed driver.
+//!
+//! A plan resolves its kernel family, blocking and partition once, when it is
+//! built; execution never selects again. No workspace or executor lives here.
+
 use tprims_kernel::{
-    CpuFeatures, Families, Isa, KernelChoice, KernelImpl, Method, Origin, Registry, ResolvedGemm,
-    SelectError, C32, C64,
+    Blocking, CpuFeatures, Families, Isa, KernelChoice, KernelForce, KernelHandle, Method, Origin,
+    Registry, ResolvedGemm, SelectError,
 };
 
-#[derive(Debug, Default)]
-pub(crate) struct Cache {
-    real32: OnceLock<Result<ResolvedGemm<f32>, SelectError>>,
-    complex32: OnceLock<Result<ResolvedGemm<f32>, SelectError>>,
-    real64: OnceLock<Result<ResolvedGemm<f64>, SelectError>>,
-    complex64: OnceLock<Result<ResolvedGemm<f64>, SelectError>>,
-}
-impl Clone for Cache {
-    fn clone(&self) -> Self {
-        Self::default()
-    }
-}
+use crate::plan::{PackedPlan, PlanConfig};
 
-impl Cache {
-    pub(crate) fn resolved<T: Families>(
-        &self,
-        p: &Plan,
-    ) -> Result<ResolvedGemm<T::Real>, SelectError>
-    where
-        T::Real: KernelSet,
-    {
-        let result: &dyn Any = if TypeId::of::<T>() == TypeId::of::<f32>() {
-            self.real32.get_or_init(|| resolve::<f32>(p))
-        } else if TypeId::of::<T>() == TypeId::of::<C32>() {
-            self.complex32.get_or_init(|| resolve::<C32>(p))
-        } else if TypeId::of::<T>() == TypeId::of::<f64>() {
-            self.real64.get_or_init(|| resolve::<f64>(p))
-        } else {
-            self.complex64.get_or_init(|| resolve::<C64>(p))
-        };
-        // INVARIANT: Families is sealed to these four storage types. Their
-        // Element impls bind Real to the exact cache real type chosen above.
-        result
-            .downcast_ref::<Result<ResolvedGemm<T::Real>, SelectError>>()
-            .expect("sealed dtype cache real type")
-            .clone()
-    }
-}
-
-fn legacy_isa(force: tprims_kernel::KernelForce) -> Isa {
-    if force == tprims_kernel::KernelForce::Scalar {
+/// The ISA the default family menu is built from under a [`KernelForce`].
+fn legacy_isa(force: KernelForce) -> Isa {
+    if force == KernelForce::Scalar {
         return Isa::Portable;
     }
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -64,86 +27,108 @@ fn legacy_isa(force: tprims_kernel::KernelForce) -> Isa {
     Isa::Portable
 }
 
-fn method_kind(method: ComplexMethod) -> Method {
-    match method {
-        ComplexMethod::Planar => Method::Native,
-        ComplexMethod::OneM => Method::OneM,
-        ComplexMethod::ThreeM => Method::ThreeM,
-    }
+/// The complex scheme the default menu uses when the config names none.
+const DEFAULT_METHOD: Method = Method::Native;
+
+/// The default family menu: the Lukas Devos kernel families of the preferred
+/// ISA and the requested complex scheme, default first. Its `(MR, NR)` shapes
+/// are what [`PackedPlan::row_block`] chooses among.
+fn default_menu<T: Families>(cfg: &PlanConfig) -> Vec<&'static tprims_kernel::KernelFamily<T::Real>> {
+    let method = cfg.method.unwrap_or(DEFAULT_METHOD);
+    let isa = legacy_isa(cfg.isa);
+    Registry::families::<T>(CpuFeatures::detect(), false)
+        .into_iter()
+        .filter(|f| {
+            // An induced variant is a different family that only an explicit
+            // id may choose.
+            f.imp != tprims_kernel::KernelImpl::Induced
+                && f.origin == Origin::Tensorcontract
+                && f.isa == isa
+                && (!T::IS_COMPLEX || f.complex.is_some_and(|s| s.method == method))
+        })
+        .collect()
 }
 
-fn resolve<T: Families>(p: &Plan) -> Result<ResolvedGemm<T::Real>, SelectError>
-where
-    T::Real: KernelSet,
-{
-    if let Some(forced) = &p.forced {
-        return resolve_forced::<T>(p, forced);
+/// Resolve the family, blocking and partition of `p` for storage type `T`, at
+/// the serial width (the largest cache share); the driver retargets the
+/// blocking to the active grid width without reselecting.
+///
+/// `handle` is a family a caller's selector chose: trusted, never looked up.
+pub(crate) fn resolve<T: Families>(
+    p: &PackedPlan,
+    cfg: &PlanConfig,
+    handle: Option<&KernelHandle<T>>,
+) -> Result<ResolvedGemm<T::Real>, SelectError> {
+    let tuning = cfg.tuning();
+    if let Some(handle) = handle {
+        let rg = ResolvedGemm::<T::Real>::resolve_handle::<T>(
+            handle,
+            1,
+            Default::default(),
+            Default::default(),
+        )?
+        .with_tuning(&tuning)?;
+        check_family::<T>(p, cfg, &rg)?;
+        return apply_partition::<T>(p, cfg, rg);
     }
-    let choice = p.kernel.as_ref().unwrap_or(&KernelChoice::Auto);
-    let legacy_auto = matches!(choice, KernelChoice::Auto);
+    let auto = matches!(cfg.kernel, KernelChoice::Auto);
     let chosen;
-    let choice = if legacy_auto {
-        let method = method_kind(p.complex_method());
-        let isa = legacy_isa(p.tuning.kernel_force);
-        let candidates = Registry::families::<T>(CpuFeatures::detect(), false);
-        let candidates: Vec<_> = candidates
-            .into_iter()
-            .filter(|f| {
-                // The legacy menu is the compiled KernelSet list; an induced
-                // variant of it is a different family that only an explicit id
-                // may choose.
-                f.imp != KernelImpl::Induced
-                    && f.origin == Origin::Tensorcontract
-                    && f.isa == isa
-                    && (!T::IS_COMPLEX || f.complex.is_some_and(|s| s.method == method))
-            })
-            .collect();
-        let menu = <T::Real as KernelSet>::row_blocks(
-            p.tuning.kernel_force,
-            T::IS_COMPLEX,
-            p.complex_method(),
-        );
-        let shape = p.row_block(menu).map(|i| menu[i]);
-        let family = candidates
+    let choice = if auto {
+        let menu = default_menu::<T>(cfg);
+        let shapes: Vec<(usize, usize)> = menu.iter().map(|f| (f.mr, f.nr)).collect();
+        let shape = p.row_block(&shapes).map(|i| shapes[i]);
+        let family = menu
             .iter()
-            .find(|f| shape.is_none_or(|(mr, nr)| (f.mr, f.nr) == (mr, nr)))
-            .or_else(|| candidates.first());
-        let family = family.ok_or_else(|| SelectError::Incompatible {
-            id: "Auto".into(),
-            reason: "legacy default family is unavailable",
-        })?;
+            .find(|f| shape.is_none_or(|s| (f.mr, f.nr) == s))
+            .or_else(|| menu.first())
+            .ok_or(SelectError::Incompatible {
+                id: "Auto".into(),
+                reason: "the default family menu is unavailable for this ISA and complex scheme",
+            })?;
         chosen = KernelChoice::Id(family.id.into());
         &chosen
     } else {
-        choice
+        &cfg.kernel
     };
-    let mut rg =
-        ResolvedGemm::<T::Real>::resolve::<T>(choice, p.threads())?.with_tuning(&p.tuning)?;
-    check_family::<T>(p, &rg)?;
-    if legacy_auto && p.tuning.block_model == tprims_kernel::blocking::BlockModel::Legacy {
-        // Preserve old percentage-before-register-rounding semantics. The
-        // canonical resolver above already checked override multiplication;
-        // the legacy raw seed is no larger than its aligned descriptor seed.
-        // This runs once in planning, never in the built-in execute path.
-        rg = rg.with_blocking(crate::kernel::config_for_plan::<T>(p).blk)?;
-    }
-    if let Some(blk) = p.blocking {
+    let mut rg = ResolvedGemm::<T::Real>::resolve::<T>(choice, 1)?.with_tuning(&tuning)?;
+    check_family::<T>(p, cfg, &rg)?;
+    if auto && tuning.block_model == tprims_kernel::blocking::BlockModel::Legacy {
+        // The default menu's legacy blocking: derived from the packed
+        // footprint, overrides applied before register rounding.
+        let f = rg.family();
+        let (a_reals, b_reals) = (f.a_per_k / f.mr, f.b_per_k / f.nr);
+        let real_bytes = core::mem::size_of::<T::Real>();
+        let mut blk = match tuning.kc_couple {
+            Some(kc) => Blocking::derive_at_depth(real_bytes, a_reals, b_reals, kc),
+            None => Blocking::derive(real_bytes, a_reals, b_reals),
+        };
+        if tuning.blocking.is_set() {
+            blk = tuning
+                .blocking
+                .apply_checked(blk)
+                .ok_or(SelectError::Incompatible {
+                    id: f.id.into(),
+                    reason: "blocking arithmetic overflow",
+                })?;
+        }
         rg = rg.with_blocking(blk)?;
     }
-    apply_partition::<T>(p, rg)
+    apply_partition::<T>(p, cfg, rg)
 }
 
-/// Apply the plan's partition request to a resolution: validate it against the
-/// family, and for `DynamicTiles` prove the job counts and the claim counter's
-/// bound fit in `usize` for this shape (in either orientation), so nothing can
-/// overflow once execution starts.
+/// Apply the config's partition request to a resolution: validate it against
+/// the family, and for `DynamicTiles` prove the job counts and the claim
+/// counter's bound fit in `usize` for this shape (in either orientation), so
+/// nothing can overflow once execution starts.
 fn apply_partition<T: Families>(
-    p: &Plan,
+    p: &PackedPlan,
+    cfg: &PlanConfig,
     rg: ResolvedGemm<T::Real>,
 ) -> Result<ResolvedGemm<T::Real>, SelectError> {
-    let Some((policy, opts)) = p.partition else {
+    let Some(partition) = cfg.partition else {
         return Ok(rg);
     };
+    let (policy, opts) = partition.policy();
     let rg = rg.with_partition(policy, opts)?;
     if let tprims_kernel::PartitionPolicy::DynamicTiles { job_m, job_n } = policy {
         let (m, n) = (p.a_m.len(), p.b_n.len());
@@ -165,109 +150,32 @@ fn apply_partition<T: Families>(
 }
 
 /// The checks every resolved family passes before it may execute this plan.
-fn check_family<T: Families>(p: &Plan, rg: &ResolvedGemm<T::Real>) -> Result<(), SelectError> {
-    if T::IS_COMPLEX
-        && p.method.is_some_and(|m| {
-            rg.family()
-                .complex
-                .is_none_or(|s| s.method != method_kind(m))
-        })
-    {
+fn check_family<T: Families>(
+    p: &PackedPlan,
+    cfg: &PlanConfig,
+    rg: &ResolvedGemm<T::Real>,
+) -> Result<(), SelectError> {
+    let family = rg.family();
+    if T::IS_COMPLEX && cfg.method.is_some_and(|m| family.complex.is_none_or(|s| s.method != m)) {
         return Err(SelectError::Incompatible {
-            id: rg.family().id.into(),
+            id: family.id.into(),
             reason: "family implements a different complex method",
         });
     }
     // A family whose kernel arm the driver cannot express (unsupported complex
     // scheme) must never reach execution; validation rejects it the same way
     // unsupported descriptors are rejected at registration.
-    if rg.family().driver_family().is_none() {
+    if family.driver_family().is_none() {
         return Err(SelectError::Incompatible {
-            id: rg.family().id.into(),
+            id: family.id.into(),
             reason: "family has no driver-expressible kernel",
         });
     }
-    if (p.conj_a && !rg.family().caps.conj_a) || (p.conj_b && !rg.family().caps.conj_b) {
+    if (p.conj_a && !family.caps.conj_a) || (p.conj_b && !family.caps.conj_b) {
         return Err(SelectError::Incompatible {
-            id: rg.family().id.into(),
+            id: family.id.into(),
             reason: "operand conjugation unsupported",
         });
     }
     Ok(())
-}
-
-/// Resolution of a family a caller's selector chose (see `Plan::with_selector`):
-/// no id lookup and no registry; the handle is the trusted descriptor.
-fn resolve_forced<T: Families>(
-    p: &Plan,
-    forced: &crate::select::Forced,
-) -> Result<ResolvedGemm<T::Real>, SelectError> {
-    let handle = forced.handle::<T>()?;
-    let mut rg = ResolvedGemm::<T::Real>::resolve_handle::<T>(
-        &handle,
-        p.threads(),
-        Default::default(),
-        Default::default(),
-    )?
-    .with_tuning(&p.tuning)?;
-    check_family::<T>(p, &rg)?;
-    if let Some(blk) = p.blocking {
-        rg = rg.with_blocking(blk)?;
-    }
-    apply_partition::<T>(p, rg)
-}
-
-pub(crate) fn validate<T: Element>(p: &Plan) -> crate::Result<()>
-where
-    T::Real: KernelSet,
-{
-    if let Some(result) = builtin::<T>(p) {
-        // Serial has the largest model NC; validating it also bounds every
-        // smaller active-width retarget before the raw driver allocates.
-        result
-            .and_then(|rg| rg.with_threads(1))
-            .map(|_| ())
-            .map_err(crate::Error::KernelSelection)
-    } else if let Some(forced) = &p.forced {
-        Err(crate::Error::KernelSelection(SelectError::DtypeMismatch {
-            id: forced.id().into(),
-            dtype: "a foreign scalar",
-        }))
-    } else if let Some(KernelChoice::Id(id)) = p.kernel.as_ref() {
-        Err(crate::Error::KernelSelection(SelectError::Incompatible {
-            id: id.clone(),
-            reason: "registered families require a built-in storage dtype",
-        }))
-    } else {
-        Ok(())
-    }
-}
-
-/// Built-in dispatch without narrowing existing Element/KernelSet execution.
-/// Foreign scalars return None and continue through their existing KernelSet.
-pub(crate) fn builtin<T: Element>(p: &Plan) -> Option<Result<ResolvedGemm<T::Real>, SelectError>>
-where
-    T::Real: KernelSet,
-{
-    macro_rules! dtype {
-        ($t:ty) => {
-            if TypeId::of::<T>() == TypeId::of::<$t>() {
-                let result = p.resolved::<$t>();
-                let result: &dyn Any = &result;
-                // INVARIANT: exact storage TypeId implies the fixed Element
-                // impl's Real type; downcast is safe and allocation-free.
-                return Some(
-                    result
-                        .downcast_ref::<Result<ResolvedGemm<T::Real>, SelectError>>()
-                        .expect("built-in dtype real type")
-                        .clone(),
-                );
-            }
-        };
-    }
-    dtype!(f32);
-    dtype!(f64);
-    dtype!(C32);
-    dtype!(C64);
-    None
 }

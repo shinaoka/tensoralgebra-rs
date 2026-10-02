@@ -1,69 +1,46 @@
 //! The tprims implementation of the neutral contraction interface.
 
-use strided_view::{StridedView, StridedViewMut};
-use tprims_blas::{Conj, GemmConfig, Scalar};
-use tprims_contract_traits as tr;
-use tprims_contract_traits::{
-    BoxedPlan, ContractionBackend, Diagnostics, HostExecution, PlanningBudget, PreparedContraction,
-    Problem, Requirements, Result,
+use crate::api::{
+    BoxedPlan, ContractionBackend, PlanningBudget, Problem, Requirements, Result, Scalar,
 };
-
-use crate::host::exec_of;
-use crate::{ContractPlan, Flags, Selected, Strategy};
+use crate::plan::{Plan, PlanConfig};
 
 const ID: &str = "tprims-contract";
 
-fn conj(c: tr::Conj) -> Conj {
-    match c {
-        tr::Conj::No => Conj::No,
-        tr::Conj::Yes => Conj::Yes,
-    }
-}
-
-/// The tprims contraction implementation behind the neutral interface:
-/// permute+GEMM, packed direct or elementwise, chosen per [`Strategy`] with the
-/// library defaults unchanged.
+/// The tprims contraction implementation behind the neutral interface.
+///
+/// It owns a [`PlanConfig`]; preparation applies the consumer's
+/// [`Requirements`] without mutating the factory (the effective
+/// `no_materialize` is the OR of the two). A prepared [`Plan`] implements
+/// [`PreparedContraction`](crate::api::PreparedContraction); the box is
+/// allocated once, at prepare, and no per-tile virtual call exists.
 ///
 /// # Examples
 ///
 /// ```
-/// use tprims_contract::{ExecHost, TprimsBackend};
-/// use tprims_contract_traits::*;
-/// use tprims_exec::Exec;
 /// use strided_view::{StridedView, StridedViewMut};
+/// use tprims_contract::api::*;
+/// use tprims_contract::TprimsBackend;
+/// use tprims_exec::Exec;
 ///
 /// let backend: Box<dyn ContractionBackend<f64>> = Box::new(TprimsBackend::default());
-/// let lay = Layout::new(&[2, 2], &[1, 2]);
-/// let problem = Problem::new(
-///     DotGeneral::new(&[1], &[0], &[], &[]), lay.clone(), lay.clone(), lay, (Conj::No, Conj::No));
+/// let l = |d: &[usize], s: &[isize]| OperandSpec::new(LayoutSpec::new(d, s, 0).unwrap());
+/// let problem = Problem::from_dot_general(
+///     DType::F64, l(&[2, 2], &[1, 2]), l(&[2, 2], &[1, 2]), l(&[2, 2], &[1, 2]),
+///     &DotGeneral::new(&[1], &[0], &[], &[]),
+/// ).unwrap();
 /// let plan = backend.prepare(&problem, &Requirements::new(), &PlanningBudget::serial()).unwrap();
-/// let (a, b, mut c) = ([1.0, 2.0, 3.0, 4.0], [1.0, 0.0, 0.0, 1.0], [0.0; 4]);
+/// let (a, b, mut d) = ([1.0, 2.0, 3.0, 4.0], [1.0, 0.0, 0.0, 1.0], [0.0; 4]);
 /// let av = StridedView::new(&a, &[2, 2], &[1, 2], 0).unwrap();
 /// let bv = StridedView::new(&b, &[2, 2], &[1, 2], 0).unwrap();
-/// let mut cv = StridedViewMut::new(&mut c, &[2, 2], &[1, 2], 0).unwrap();
-/// plan.execute_into_accum(&ExecHost::new(&Exec::serial()), 1.0, &av, &bv, 0.0, &mut cv).unwrap();
-/// assert_eq!(c, a);
+/// let mut dv = StridedViewMut::new(&mut d, &[2, 2], &[1, 2], 0).unwrap();
+/// plan.execute_into(&Exec::serial(), 1.0, &av, &bv, &mut dv).unwrap();
+/// assert_eq!(d, a);
 /// ```
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct TprimsBackend {
-    /// Which implementation plans use.
-    pub strategy: Strategy,
-    /// Matrix engine and kernel choice, resolved when the plan is prepared.
-    pub gemm: GemmConfig,
-}
-
-impl Default for TprimsBackend {
-    fn default() -> Self {
-        Self {
-            strategy: Strategy::Auto,
-            gemm: GemmConfig::default(),
-        }
-    }
-}
-
-struct TprimsPlan<T> {
-    plan: ContractPlan<T>,
-    diag: Diagnostics,
+    /// Planning options every prepared plan starts from.
+    pub config: PlanConfig,
 }
 
 impl<T: Scalar> ContractionBackend<T> for TprimsBackend {
@@ -77,45 +54,8 @@ impl<T: Scalar> ContractionBackend<T> for TprimsBackend {
         requirements: &Requirements,
         _budget: &PlanningBudget,
     ) -> Result<BoxedPlan<T>> {
-        let plan = ContractPlan::<T>::new_with(
-            &self.gemm,
-            &problem.dot,
-            (&problem.a.dims, &problem.a.strides),
-            (&problem.b.dims, &problem.b.strides),
-            (&problem.c.dims, &problem.c.strides),
-            (conj(problem.conj.0), conj(problem.conj.1)),
-            self.strategy,
-            Flags {
-                no_materialize: requirements.no_materialize,
-            },
-        )?;
-        let (algorithm, materialized) = match plan.selected() {
-            Selected::PermuteGemm { materialized } => ("permute-gemm", materialized),
-            Selected::Tblis => ("packed-direct", [false; 3]),
-            Selected::Elementwise => ("elementwise", [false; 3]),
-        };
-        Ok(Box::new(TprimsPlan {
-            plan,
-            diag: Diagnostics::new(ID, algorithm).with_materialized(materialized),
-        }))
-    }
-}
-
-impl<T: Scalar> PreparedContraction<T> for TprimsPlan<T> {
-    fn execute_into_accum(
-        &self,
-        host: &dyn HostExecution,
-        alpha: T,
-        a: &StridedView<'_, T>,
-        b: &StridedView<'_, T>,
-        beta: T,
-        c: &mut StridedViewMut<'_, T>,
-    ) -> Result<()> {
-        let exec = exec_of(host)?;
-        self.plan.execute(&exec, alpha, a, b, beta, c)
-    }
-
-    fn diagnostics(&self) -> &Diagnostics {
-        &self.diag
+        let mut config = self.config.clone();
+        config.no_materialize |= requirements.no_materialize;
+        Ok(Box::new(Plan::<T>::new(problem, &config)?))
     }
 }

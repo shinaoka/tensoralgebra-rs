@@ -139,6 +139,22 @@ fn injective(modes: &[Mode]) -> bool {
     true
 }
 
+/// Whether distinct indices of a layout address distinct elements: the
+/// conservative sorted-stride test the output check uses. An empty layout is
+/// injective.
+pub fn is_injective_layout(dims: &[usize], strides: &[isize]) -> bool {
+    let modes: Vec<Mode> = dims
+        .iter()
+        .zip(strides)
+        .map(|(&extent, &stride)| Mode {
+            label: 0,
+            extent,
+            stride,
+        })
+        .collect();
+    injective(&modes)
+}
+
 #[derive(Clone, Copy, Debug)]
 struct Label {
     id: i64,

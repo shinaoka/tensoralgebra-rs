@@ -76,6 +76,12 @@ pub enum ConfigError {
         /// The axis.
         axis: usize,
     },
+    /// An axis list that is not a permutation.
+    #[error("the axis list is not a permutation of 0..{rank}")]
+    NotAPermutation {
+        /// The rank the permutation had to cover.
+        rank: usize,
+    },
     /// A plan-configuration option that cannot be honoured or combined.
     #[error("invalid plan configuration: {0}")]
     Option(&'static str),

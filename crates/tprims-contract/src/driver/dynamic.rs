@@ -30,8 +30,7 @@ use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering::Relaxed};
 use std::sync::Barrier;
 
 use super::{compute_block, pack_a_rows, pack_b_slivers, Bufs, Ctx, Epoch};
-use crate::element::Element;
-use crate::kernel::KernelSet;
+use tprims_kernel::Element;
 
 /// How an NC epoch's output jobs are assigned.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -88,23 +87,8 @@ pub struct DynamicReport {
 
 /// The dynamic assignment `plan` would use at host width `width` with `rg`, or
 /// none when the resolution is not `DynamicTiles`.
-///
-/// # Examples
-/// ```
-/// use tensorcontract::{dynamic_report, Layout, Operand, Plan};
-/// use tprims_kernel::{KernelChoice, PartitionOpts, PartitionPolicy, ResolvedGemm};
-/// let l = Layout::col_major(&[64, 64]);
-/// let p = Plan::new(Operand::new(&l, &[0, 2]), Operand::new(&l, &[2, 1]), None,
-///     Operand::new(&l, &[0, 1]))?;
-/// let rg = ResolvedGemm::<f64>::resolve_with::<f64>(
-///     &KernelChoice::Id("ref.f64.real.4x4".into()), 4,
-///     PartitionPolicy::DynamicTiles { job_m: 16, job_n: 16 }, PartitionOpts::default())?;
-/// let r = dynamic_report(&p, &rg, 4).unwrap();
-/// assert_eq!((r.row_bands, r.active_width), (4, 4));
-/// # Ok::<(), Box<dyn std::error::Error>>(())
-/// ```
-pub fn dynamic_report<R: tprims_kernel::Real>(
-    plan: &crate::Plan,
+pub(crate) fn dynamic_report<R: tprims_kernel::Real>(
+    plan: &crate::plan::PackedPlan,
     rg: &tprims_kernel::ResolvedGemm<R>,
     width: usize,
 ) -> Option<DynamicReport> {
@@ -268,7 +252,7 @@ impl DynStats {
 /// worker *claims* inside an epoch never changes how many epochs it sees.
 ///
 /// # Safety
-/// As [`execute`](crate::execute): operand pointers valid for the plan's
+/// As `execute_packed`: operand pointers valid for the plan's
 /// offsets. `bufs` is this worker's alone; `bar` has exactly `p` participants
 /// and `claim` is shared by exactly the `p` workers of this invocation; `p >=
 /// 2`; `job_m`/`job_n` are positive multiples of `MR`/`NR`.
@@ -285,7 +269,6 @@ pub(super) unsafe fn run_dynamic<T>(
     stats: Option<&DynStats>,
 ) where
     T: Element,
-    T::Real: KernelSet,
 {
     let (plan, fam, mr, nr, mc, kc, nc, m, n, k, direct_b) = (
         cx.plan,

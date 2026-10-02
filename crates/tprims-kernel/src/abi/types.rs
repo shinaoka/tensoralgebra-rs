@@ -520,6 +520,12 @@ impl BlockingOverride {
         *self != Self::default()
     }
 
+    /// Apply the overrides to `blk` with checked multiplication; `None` when a
+    /// percentage scaling overflows. No register rounding happens here.
+    pub fn apply_checked(self, blk: Blocking) -> Option<Blocking> {
+        self.apply(blk, usize::checked_mul)
+    }
+
     pub(crate) fn apply(
         self,
         mut blk: Blocking,

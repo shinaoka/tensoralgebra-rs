@@ -1,476 +1,613 @@
+//! [`Plan`]: a prepared contraction.
+//!
+//! A [`Plan`] is built from a validated [`Problem`] and a [`PlanConfig`]. It
+//! owns one immutable metadata record and one strategy payload:
+//!
+//! ```text
+//! Plan<T>
+//!   problem   original layouts, normalized roles, ops, C mode, checked spans
+//!   strategy  Packed(PackedPlan + resolved family) | Faer(FaerPlan) | Elementwise(ElementPlan)
+//!   report    immutable PlanReport
+//! ```
+//!
+//! # Strategy selection
+//!
+//! Chosen once, at construction, by these rules in order:
+//!
+//! 1. An explicit kernel, selector, partition, complex method, blocking, cache
+//!    model or write-back request forces the **packed** driver, including for
+//!    an all-batch problem. It is honoured or refused.
+//! 2. An all-batch problem runs the **elementwise** pass, which implements the
+//!    full `op_C` / `op_D` / separate-`C` semantics.
+//! 3. A problem that fuses to one strided batched GEMM without copying any
+//!    operand, with full semantics, runs on **faer**.
+//! 4. Everything else runs on the packed driver.
+//!
+//! Runtime pointers, `alpha` and `beta` may pick the packed driver's existing
+//! direct-B and direct-C applicability fallbacks, never another family.
+//!
+//! # Execution
+//!
+//! After one operation boundary checks layout compatibility and the
+//! accumulation source, an empty output returns; `alpha == 0` or an empty
+//! contraction computes `op_D(beta * op_C(C))` and reads no `A` or `B`;
+//! otherwise the call dispatches once to the prepared strategy. `beta == 0`
+//! never reads `C` or `D`. A plan holds no pointer to an operand and works with
+//! different buffers and different executor budgets; the actual width is chosen
+//! from the work estimate and the budget at each call.
+
+mod analysis;
+mod config;
+mod orientation;
+mod report;
+#[cfg(test)]
+pub(crate) mod test_support;
+
+use core::marker::PhantomData;
+
 use strided_view::{StridedView, StridedViewMut};
-use tensorcontract::Element;
-use tprims_blas::{Conj, Scalar};
-use tprims_exec::Exec;
+use tprims_exec::{ArenaProvider, Exec, WidthPolicy, WorkspaceProvider};
+use tprims_kernel::{Element, KernelCatalog, ResolvedGemm, SelectError};
 
-use crate::permute_gemm::{self, PgPlan};
-use crate::tblis::{self, TbPlan};
-use crate::util::select_err;
-use crate::{DotGeneral, Error, Result};
+pub use analysis::{Axis, PlanStats};
+pub(crate) use analysis::PackedPlan;
+pub use config::{CacheModel, Partition, PlanConfig, Writeback};
+pub use orientation::{Orient, RowBlock};
+pub use report::{Algorithm, PackedReport, PlanReport};
 
-/// Which implementation a plan uses.
-///
-/// # Examples
-///
-/// ```
-/// assert_ne!(tprims_contract::Strategy::PermuteGemm, tprims_contract::Strategy::Tblis);
-/// ```
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum Strategy {
-    /// Library choice: an elementwise pass for all-batch (Hadamard)
-    /// problems; otherwise [`Strategy::PermuteGemm`] when it fuses every
-    /// operand without a copy, and [`Strategy::Tblis`] when permute+GEMM
-    /// would copy any operand. Measured on the tenferro-benchmark shape
-    /// corpus (Phase 1e P2, `docs/decision-log.md`): permute+GEMM wins the
-    /// copy-free problems, TBLIS-style wins the copying ones, which carry
-    /// most of the workload time. With [`Flags::no_materialize`], a copying
-    /// problem therefore plans TBLIS-style instead of failing.
-    Auto,
-    /// Fuse to strided batched GEMM, copying non-fusable operands once.
-    PermuteGemm,
-    /// TBLIS-style direct contraction (tensorcontract, by Lukas Devos).
-    Tblis,
-}
+use crate::api::{
+    AccumulationSource, AliasError, CSpec, ConfigError, Diagnostics, LayoutError,
+    OperandId, PreparedContraction, Problem, Result, Scalar,
+};
+use crate::driver;
+use crate::resolve;
+use crate::select::Chooser;
+use crate::strategy::elementwise::{CRead, ElementPlan, Expr, Inputs};
+use crate::strategy::faer::{self as faer_strategy, FaerPlan};
 
-/// Planning options.
-///
-/// # Examples
-///
-/// ```
-/// assert!(!tprims_contract::Flags::default().no_materialize);
-/// ```
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Flags {
-    /// Refuse a plan that would copy any operand ([`Error::WouldMaterialize`]).
-    pub no_materialize: bool,
-}
+/// Estimated serial time per real flop (provisional: 20 GFLOP/s); the one
+/// default the width choice uses everywhere.
+pub const NS_PER_FLOP: f64 = 0.05;
 
-/// What a plan runs.
-///
-/// # Examples
-///
-/// ```
-/// let s = tprims_contract::Selected::PermuteGemm { materialized: [false; 3] };
-/// assert!(matches!(s, tprims_contract::Selected::PermuteGemm { .. }));
-/// ```
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum Selected {
-    /// Batched GEMM; which of A, B, C are copied into compact buffers.
-    PermuteGemm {
-        /// A, B, C copied.
-        materialized: [bool; 3],
-    },
-    /// Direct contraction; nothing is copied.
-    Tblis,
-    /// All axes are batch axes (Hadamard product): one elementwise pass.
-    Elementwise,
+#[derive(Debug)]
+struct Packed<T: Scalar> {
+    plan: PackedPlan,
+    rg: ResolvedGemm<<T as Scalar>::Re>,
 }
 
 #[derive(Debug)]
-enum Inner {
-    Pg(Box<PgPlan>),
-    Tb(Box<TbPlan>),
-    /// A and B axis of each output (batch) axis.
-    Elementwise {
-        a_axes: Vec<usize>,
-        b_axes: Vec<usize>,
-    },
+enum Strategy<T: Scalar> {
+    Packed(Box<Packed<T>>),
+    Faer(FaerPlan),
+    Elementwise(ElementPlan),
 }
 
-/// A validated contraction for fixed layouts, reusable across calls.
+/// A prepared contraction for fixed layouts, reusable across executions.
+///
+/// # Examples
+///
+/// ```
+/// use strided_view::{StridedView, StridedViewMut};
+/// use tprims_contract::api::{CSpec, DType, Labels, LayoutSpec, OperandSpec, Problem};
+/// use tprims_contract::{Plan, PlanConfig};
+/// use tprims_exec::Exec;
+///
+/// let l = |d: &[usize], s: &[isize]| OperandSpec::new(LayoutSpec::new(d, s, 0).unwrap());
+/// // D[i,k] = sum_j A[i,j] B[j,k]
+/// let problem = Problem::from_labels(
+///     DType::F64,
+///     l(&[2, 2], &[1, 2]),
+///     l(&[2, 2], &[1, 2]),
+///     CSpec::Absent,
+///     l(&[2, 2], &[1, 2]),
+///     &Labels::new(&[0, 1], &[1, 2], &[0, 2]),
+/// ).unwrap();
+/// let plan = Plan::<f64>::new(&problem, &PlanConfig::default()).unwrap();
+/// let a = [1.0, 2.0, 3.0, 4.0];
+/// let b = [1.0, 0.0, 0.0, 1.0];
+/// let mut d = [0.0; 4];
+/// let av = StridedView::new(&a, &[2, 2], &[1, 2], 0).unwrap();
+/// let bv = StridedView::new(&b, &[2, 2], &[1, 2], 0).unwrap();
+/// let mut dv = StridedViewMut::new(&mut d, &[2, 2], &[1, 2], 0).unwrap();
+/// plan.execute_into(&Exec::serial(), 1.0, &av, &bv, &mut dv).unwrap();
+/// assert_eq!(d, a);
+/// ```
 #[derive(Debug)]
-pub struct ContractPlan<T> {
-    layouts: [(Vec<usize>, Vec<isize>); 3],
-    conj: (Conj, Conj),
-    k_empty: bool,
-    inner: Inner,
-    _t: std::marker::PhantomData<fn() -> T>,
+pub struct Plan<T: Scalar> {
+    problem: Problem,
+    strategy: Strategy<T>,
+    /// The pass over the output's elements: `alpha == 0` and empty `K`.
+    output: ElementPlan,
+    report: PlanReport,
+    diagnostics: Diagnostics,
+    /// Lent to serial executions so their steady state allocates nothing; a
+    /// borrowed pool lends its own arena instead.
+    workspace: ArenaProvider,
+    _t: PhantomData<fn() -> T>,
 }
 
-type Lay<'a> = (&'a [usize], &'a [isize]);
-
-impl<T: Scalar> ContractPlan<T> {
-    /// Validate `cfg` against the layouts (extents and element strides of A,
-    /// B and C) and choose a strategy.
+impl<T: Scalar> Plan<T> {
+    /// Plan `problem` under `config`.
     ///
     /// # Errors
     ///
-    /// [`Error::Config`], [`Error::Shape`] (including C's extents),
-    /// [`Error::AliasedOutput`], [`Error::WouldMaterialize`] under
-    /// `no_materialize`, [`Error::Backend`] when tensorcontract rejects the
-    /// problem.
-    pub fn new(
-        cfg: &DotGeneral,
-        a: Lay<'_>,
-        b: Lay<'_>,
-        c: Lay<'_>,
-        conj: (Conj, Conj),
-        strategy: Strategy,
-        flags: Flags,
-    ) -> Result<Self> {
-        Self::new_with(
-            &tprims_blas::GemmConfig::default(),
-            cfg,
-            a,
-            b,
-            c,
-            conj,
-            strategy,
-            flags,
-        )
+    /// [`ConfigError::DtypeMismatch`] when `T` is not the problem's dtype, any
+    /// [`PlanConfig::validate`] error, [`Error::Select`] for an unknown or
+    /// unusable kernel, blocking or partition request, and
+    /// [`ShapeError::Overflow`](crate::api::ShapeError) for a role whose scatter
+    /// vector cannot be addressed.
+    pub fn new(problem: &Problem, config: &PlanConfig) -> Result<Self> {
+        Self::build(problem, config, None)
     }
 
-    /// [`ContractPlan::new`], choosing the matrix engine and kernel.
+    /// [`Plan::new`] on the packed driver, choosing the kernel family with a
+    /// caller-supplied selector over a caller-supplied [`KernelCatalog`]
+    /// (issue #28).
     ///
-    /// The choice is resolved *here*, so an unknown or unusable kernel id is an
-    /// error from this call rather than from the first contraction that runs.
-    ///
-    /// # Errors
-    ///
-    /// As [`ContractPlan::new`], plus [`Error::Backend`] when the GEMM
-    /// configuration cannot be used.
-    #[allow(clippy::too_many_arguments)] // INVARIANT: the contraction argument set.
-    pub fn new_with(
-        gemm: &tprims_blas::GemmConfig,
-        cfg: &DotGeneral,
-        a: Lay<'_>,
-        b: Lay<'_>,
-        c: Lay<'_>,
-        conj: (Conj, Conj),
-        strategy: Strategy,
-        flags: Flags,
-    ) -> Result<Self> {
-        Self::build(gemm, cfg, a, b, c, conj, strategy, flags, None)
-    }
-
-    /// [`ContractPlan::new_with`] on the TBLIS-style packed driver, choosing the
-    /// kernel with a caller-supplied selector over a caller-supplied
-    /// [`KernelCatalog`](tprims_blas::KernelCatalog) (issue #28).
-    ///
-    /// The selector sees metadata only — the folded problem and each admissible
-    /// candidate, with the thread budget `exec` grants this problem — and
-    /// returns an opaque handle. It is called once, here, outside every lock
-    /// and worker broadcast; [`execute`](Self::execute) never calls it, and the
-    /// plan keeps only the chosen trusted handle, so the selector and catalog
-    /// may be dropped. The performance protocol of the issue was deferred.
-    ///
-    /// The selector is a requirement, not a hint, so strategies that cannot
-    /// honour it are errors rather than silent fallbacks:
-    /// [`Strategy::PermuteGemm`] (computes with faer, and copies), and
-    /// [`Strategy::Auto`] on an all-batch (elementwise) problem. `Auto` and
-    /// `Tblis` otherwise plan the packed driver; nothing is copied.
+    /// The selector sees metadata only -- the validated, oriented shape and the
+    /// explicit method -- and returns an opaque handle. It is called at most
+    /// once, here, outside every lock and worker broadcast; execution never
+    /// calls it, and the plan keeps only the chosen trusted handle, so the
+    /// selector and catalog may be dropped. A selector is a requirement: it
+    /// forces the packed driver, including for an all-batch problem.
     ///
     /// # Errors
     ///
-    /// As [`ContractPlan::new_with`], plus a typed `SelectError` source in [`Error::Backend`] for an
-    /// engine other than `Auto`/`Packed`, a forced kernel id alongside the
-    /// selector, an incompatible strategy, no admissible candidate, the
+    /// As [`Plan::new`], plus [`Error::Select`] for an explicit kernel id
+    /// alongside the selector (ambiguous), no admissible candidate, the
     /// selector's own `Err` (unchanged) or a handle it should not have
     /// returned. Zero-size problems are selected and validated too.
-    #[allow(clippy::too_many_arguments)] // INVARIANT: the contraction argument set.
-    pub fn new_with_selector<F>(
-        exec: &Exec<'_>,
-        gemm: &tprims_blas::GemmConfig,
-        catalog: &tprims_blas::KernelCatalog<T>,
-        selector: F,
-        cfg: &DotGeneral,
-        a: Lay<'_>,
-        b: Lay<'_>,
-        c: Lay<'_>,
-        conj: (Conj, Conj),
-        strategy: Strategy,
-        flags: Flags,
-    ) -> Result<Self>
-    where
-        F: FnOnce(
-            &tprims_blas::SelectionContext<'_>,
-            &[tprims_blas::KernelCandidate<T>],
-        )
-            -> std::result::Result<tprims_blas::KernelHandle<T>, tprims_blas::SelectError>,
-    {
-        use tprims_blas::SelectError;
-        match gemm.engine {
-            tprims_blas::EngineChoice::Auto | tprims_blas::EngineChoice::Packed => {}
-            _ => {
-                return Err(select_err(SelectError::EngineUnsupported {
-                    engine: "contract",
-                    reason: "a custom kernel selector needs the packed engine",
-                }));
-            }
-        }
-        if let tprims_blas::KernelChoice::Id(id) = &gemm.kernel {
-            return Err(select_err(SelectError::Incompatible {
+    pub fn new_with_selector(
+        problem: &Problem,
+        config: &PlanConfig,
+        catalog: &KernelCatalog<T>,
+        selector: &mut Chooser<'_, T>,
+    ) -> Result<Self> {
+        if let tprims_kernel::KernelChoice::Id(id) = &config.kernel {
+            return Err(SelectError::Incompatible {
                 id: id.clone(),
                 reason: "a forced kernel id and a custom selector are ambiguous",
-            }));
+            }
+            .into());
         }
-        if strategy == Strategy::PermuteGemm {
-            return Err(select_err(SelectError::EngineUnsupported {
-                engine: "permute+GEMM",
-                reason: "the permute+GEMM strategy computes with faer; use Strategy::Tblis",
-            }));
-        }
-        let mut selector = Some(selector);
-        let mut chooser = |ctx: &tprims_blas::SelectionContext<'_>,
-                           cands: &[tprims_blas::KernelCandidate<T>]| {
-            (selector.take().expect("a single-plan selector runs once"))(ctx, cands)
-        };
-        // The width the executor will grant this problem, as `execute` will
-        // compute it, so the selector sees the real budget.
-        let k: usize = cfg
-            .lhs_contract
-            .iter()
-            .map(|&x| a.0.get(x).copied().unwrap_or(0))
-            .product();
-        let out: usize = c.0.iter().product();
-        let flops = 2.0 * out as f64 * k as f64 * if T::IS_COMPLEX_SCALAR { 4.0 } else { 1.0 };
-        let threads = exec
-            .width_for(
-                flops * tprims_blas::GemmPolicy::default().ns_per_flop,
-                &tprims_exec::WidthPolicy::default(),
-            )
-            .max(1);
-        let custom = crate::tblis::Custom {
-            catalog,
-            chooser: &mut chooser,
-            threads,
-            method: gemm.method,
-        };
-        Self::build(gemm, cfg, a, b, c, conj, strategy, flags, Some(custom))
+        Self::build(problem, config, Some((catalog, selector)))
     }
 
-    #[allow(clippy::too_many_arguments)] // INVARIANT: the contraction argument set.
     fn build(
-        gemm: &tprims_blas::GemmConfig,
-        cfg: &DotGeneral,
-        a: Lay<'_>,
-        b: Lay<'_>,
-        c: Lay<'_>,
-        conj: (Conj, Conj),
-        strategy: Strategy,
-        flags: Flags,
-        custom: Option<crate::tblis::Custom<'_, T>>,
+        problem: &Problem,
+        config: &PlanConfig,
+        selection: Option<(&KernelCatalog<T>, &mut Chooser<'_, T>)>,
     ) -> Result<Self> {
-        let tprims_contract_traits::Validated {
-            shape,
-            k_empty,
-            all_batch,
-        } = tprims_contract_traits::validate_layouts::<T>(cfg, a, b, c)?;
-        let dims = [a.0, b.0, c.0];
-        let strides = [a.1, b.1, c.1];
-        let inner = match strategy {
-            // A custom selector is a requirement: an elementwise pass has no
-            // kernel to select, so it is refused rather than ignoring it.
-            Strategy::Auto if all_batch && custom.is_some() => {
-                return Err(select_err(tprims_blas::SelectError::EngineUnsupported {
-                    engine: "elementwise",
-                    reason: "an all-batch problem has no kernel to select; use Strategy::Tblis",
-                }));
+        if problem.dtype() != T::STORAGE {
+            return Err(ConfigError::DtypeMismatch {
+                plan: T::STORAGE.name(),
+                problem: problem.dtype().name(),
             }
-            _ if custom.is_some() => Inner::Tb(Box::new(tblis::plan::<T>(
-                cfg, &shape, dims, strides, conj, gemm, custom,
-            )?)),
-            // A partition policy is a requirement of the packed driver; the
-            // elementwise pass has no output grid to assign.
-            Strategy::Auto | Strategy::PermuteGemm if all_batch && gemm.has_partition_request() => {
-                return Err(select_err(tprims_blas::SelectError::EngineUnsupported {
-                    engine: "elementwise",
-                    reason: "an all-batch problem has no partition to choose; use Strategy::Tblis",
-                }));
-            }
-            Strategy::Auto | Strategy::PermuteGemm if all_batch => Inner::Elementwise {
-                a_axes: cfg.lhs_batch.clone(),
-                b_axes: cfg.rhs_batch.clone(),
+            .into());
+        }
+        config.validate()?;
+        let packed = config.requires_packed() || selection.is_some();
+        let strategy = if packed {
+            Strategy::Packed(Box::new(Self::plan_packed(problem, config, selection)?))
+        } else if problem.all_batch() {
+            Strategy::Elementwise(ElementPlan::product(problem))
+        } else if let Some(f) = faer_strategy::plan(problem) {
+            Strategy::Faer(f)
+        } else {
+            Strategy::Packed(Box::new(Self::plan_packed(problem, config, None)?))
+        };
+        let (algorithm, packed_report) = match &strategy {
+            Strategy::Packed(p) => (Algorithm::Packed, Some(packed_report(p))),
+            Strategy::Faer(_) => (Algorithm::Faer, None),
+            Strategy::Elementwise(_) => (Algorithm::Elementwise, None),
+        };
+        Ok(Self {
+            output: ElementPlan::output(problem),
+            report: PlanReport {
+                algorithm,
+                materialized: [false; 3],
+                packed: packed_report,
             },
-            Strategy::Tblis => Inner::Tb(Box::new(tblis::plan::<T>(
-                cfg, &shape, dims, strides, conj, gemm, None,
-            )?)),
-            Strategy::PermuteGemm => Inner::Pg(Box::new(permute_gemm::plan(
-                cfg,
-                &shape,
-                dims,
-                strides,
-                flags.no_materialize,
-                gemm,
-            )?)),
-            Strategy::Auto => {
-                // An explicit engine or kernel is a requirement, not a hint:
-                // it is met by the packed driver or it is an error. The
-                // copying permute+GEMM plan is only a fallback for the default
-                // configuration.
-                let wants_packed = gemm.kernel != tprims_blas::KernelChoice::Auto
-                    || gemm.has_partition_request()
-                    || matches!(gemm.engine, tprims_blas::EngineChoice::Packed);
-                let pg = permute_gemm::plan(cfg, &shape, dims, strides, false, gemm)?;
-                if pg.materialized.iter().any(|&m| m) || wants_packed {
-                    match tblis::plan::<T>(cfg, &shape, dims, strides, conj, gemm, None) {
-                        Ok(tb) => Inner::Tb(Box::new(tb)),
-                        // tensorcontract declined: keep the copying plan
-                        // unless copies were refused or the driver was asked
-                        // for.
-                        Err(e) if flags.no_materialize || wants_packed => return Err(e),
-                        Err(_) => Inner::Pg(Box::new(pg)),
-                    }
-                } else {
-                    Inner::Pg(Box::new(pg))
-                }
-            }
-        };
-        let plan = Self {
-            layouts: [0, 1, 2].map(|o| (dims[o].to_vec(), strides[o].to_vec())),
-            conj,
-            k_empty,
-            inner,
-            _t: std::marker::PhantomData,
-        };
-        // Resolve now: a kernel this problem cannot use is a configuration
-        // error, not something to discover inside a contraction.
-        match &plan.inner {
-            Inner::Tb(_) => {
-                plan.resolved_gemm()?;
-            }
-            Inner::Pg(_) => {
-                // The permute+GEMM arm computes with faer, so a configuration
-                // that asks for another engine or a named kernel has no arm
-                // here; saying so now beats a surprise when it runs.
-                let unsupported = gemm.kernel != tprims_blas::KernelChoice::Auto
-                    || gemm.has_partition_request()
-                    || matches!(gemm.engine, tprims_blas::EngineChoice::Packed);
-                if unsupported {
-                    return Err(Error::Unsupported(
-                        "the permute+GEMM strategy computes with faer; \
-                         select Strategy::Tblis for a packed engine or a named kernel"
-                            .into(),
-                    ));
-                }
-            }
-            Inner::Elementwise { .. } => {}
-        }
-        Ok(plan)
-    }
-
-    /// What the packed plan resolved to: the family, its geometry and the grid.
-    ///
-    /// `None` for the strategies that do not use the packed driver. The
-    /// resolution is the plan's own cached one, so this is a lookup, not a
-    /// re-selection.
-    ///
-    /// # Errors
-    ///
-    /// [`Error::Backend`] when a forced kernel cannot serve this contraction.
-    pub fn selected_gemm(&self) -> Result<Option<tprims_blas::SelectedGemm>> {
-        match self.inner {
-            Inner::Tb(_) => Ok(Some(self.resolved_gemm()?)),
-            _ => Ok(None),
-        }
-    }
-
-    /// The packed plan's resolution, as a report.
-    fn resolved_gemm(&self) -> Result<tprims_blas::SelectedGemm> {
-        let Inner::Tb(tb) = &self.inner else {
-            return Err(Error::backend("not a packed plan"));
-        };
-        let rg = tb.resolved::<T>().map_err(Error::backend)?;
-        Ok(tprims_blas::SelectedGemm {
-            engine: tprims_blas::Engine::Packed,
-            family_id: Some(rg.family().id),
-            complex: rg.family().complex,
-            mr: rg.mr,
-            nr: rg.nr,
-            mc: rg.mc,
-            nc: rg.nc,
-            kc: rg.kc,
-            partition: rg.partition,
-            batched: None,
-            origin: Some(rg.family().origin),
-            dynamic: tb.dynamic(&rg),
+            diagnostics: Diagnostics::new("tprims-contract", algorithm.name()),
+            problem: problem.clone(),
+            strategy,
+            workspace: ArenaProvider::new(),
+            _t: PhantomData,
         })
     }
 
-    /// The implementation this plan runs.
-    pub fn selected(&self) -> Selected {
-        match &self.inner {
-            Inner::Pg(p) => Selected::PermuteGemm {
-                materialized: p.materialized,
-            },
-            Inner::Tb(_) => Selected::Tblis,
-            Inner::Elementwise { .. } => Selected::Elementwise,
-        }
+    fn plan_packed(
+        problem: &Problem,
+        config: &PlanConfig,
+        selection: Option<(&KernelCatalog<T>, &mut Chooser<'_, T>)>,
+    ) -> Result<Packed<T>> {
+        let plan = PackedPlan::from_problem(problem, config)?;
+        let handle = match selection {
+            Some((catalog, selector)) => {
+                Some(crate::select::choose::<T>(problem, &plan, config, catalog, selector)?)
+            }
+            None => None,
+        };
+        let rg = resolve::resolve::<T>(&plan, config, handle.as_ref())?;
+        Ok(Packed { plan, rg })
     }
 
-    /// `C = alpha * contract(op(A), op(B)) + beta * C` on views with exactly
-    /// the planned layouts. `beta == 0` never reads C; `alpha == 0` or an
-    /// empty contraction never reads A or B.
+    /// What this plan decided: the algorithm and, for the packed strategy, the
+    /// family, blocking and grid. A lookup, not a re-selection.
+    pub fn report(&self) -> &PlanReport {
+        &self.report
+    }
+
+    /// The validated problem this plan was built from.
+    pub fn problem(&self) -> &Problem {
+        &self.problem
+    }
+
+    fn check_layout(&self, which: OperandId, dims: &[usize], strides: &[isize]) -> Result<()> {
+        let planned = match which {
+            OperandId::A => self.problem.a().layout(),
+            OperandId::B => self.problem.b().layout(),
+            OperandId::D => self.problem.d().layout(),
+            OperandId::C => match self.problem.c_spec() {
+                CSpec::Separate(c) => c.layout(),
+                _ => self.problem.d().layout(),
+            },
+        };
+        // The offset is part of the problem's address-range check; the view
+        // brings its own origin and has validated its own storage.
+        if planned.dims() != dims || planned.strides() != strides {
+            return Err(LayoutError::Mismatch { operand: which }.into());
+        }
+        Ok(())
+    }
+
+    /// `D = op_D(alpha * dot_general(op_A(A), op_B(B)))`: the overwrite form.
+    /// No previous output value is read.
     ///
     /// # Errors
     ///
-    /// [`Error::LayoutMismatch`] when a view differs from the plan (nothing is
-    /// written); [`Error::Backend`] from a lower layer.
-    pub fn execute(
+    /// [`LayoutError::Mismatch`] when a view differs from the plan (nothing is
+    /// written); [`Error::Exec`] or [`Error::Backend`] from a lower layer.
+    pub fn execute_into(
+        &self,
+        exec: &Exec<'_>,
+        alpha: T,
+        a: &StridedView<'_, T>,
+        b: &StridedView<'_, T>,
+        d: &mut StridedViewMut<'_, T>,
+    ) -> Result<()> {
+        self.validate_views(a, b, None, d)?;
+        // SAFETY: the views' layouts equal the plan's validated layouts, so
+        // their origins address every offset the plan generates; `d` is an
+        // exclusive borrow and cannot alias `a` or `b`.
+        unsafe {
+            self.run(
+                exec,
+                alpha,
+                a.ptr(),
+                b.ptr(),
+                <T as Element>::zero(),
+                CRead::None,
+                d.as_mut_ptr(),
+            )
+        }
+    }
+
+    /// `D = op_D(alpha * dot_general(op_A(A), op_B(B)) + beta * op_C(C))`.
+    ///
+    /// `beta == 0` reads no previous C value; `alpha == 0` or an empty
+    /// contraction reads no A or B value. `source` must match the planned C
+    /// mode: [`AccumulationSource::Output`] only when C maps to D (a problem
+    /// built with [`CSpec::Output`]), and [`AccumulationSource::Separate`] only
+    /// for a separately described C.
+    ///
+    /// # Errors
+    ///
+    /// As [`Plan::execute_into`], and [`LayoutError::CMode`] for a source that
+    /// does not match the planned C mode (including any accumulation from a
+    /// problem built with [`CSpec::Absent`]).
+    pub fn execute_into_accum(
         &self,
         exec: &Exec<'_>,
         alpha: T,
         a: &StridedView<'_, T>,
         b: &StridedView<'_, T>,
         beta: T,
-        c: &mut StridedViewMut<'_, T>,
+        source: AccumulationSource<'_, T>,
+        d: &mut StridedViewMut<'_, T>,
     ) -> Result<()> {
-        let views = [
-            (a.dims(), a.strides()),
-            (b.dims(), b.strides()),
-            (c.dims(), c.strides()),
-        ];
-        for (o, (name, v)) in ["A", "B", "C"].iter().zip(views).enumerate() {
-            if v.0 != self.layouts[o].0.as_slice() || v.1 != self.layouts[o].1.as_slice() {
-                return Err(Error::LayoutMismatch(format!(
-                    "{name}: {:?} / {:?}",
-                    v.0, v.1
-                )));
+        let c = self.validate_views(a, b, Some(source), d)?;
+        // SAFETY: as `execute_into`; a separate C is an immutable borrow
+        // distinct from the exclusive `d`.
+        unsafe { self.run(exec, alpha, a.ptr(), b.ptr(), beta, c, d.as_mut_ptr()) }
+    }
+
+    /// Check the views of one operation against the plan, before any write,
+    /// and say where the accumulation term is read from.
+    ///
+    /// `source` is `None` for the overwrite form.
+    pub(crate) fn validate_views(
+        &self,
+        a: &StridedView<'_, T>,
+        b: &StridedView<'_, T>,
+        source: Option<AccumulationSource<'_, T>>,
+        d: &StridedViewMut<'_, T>,
+    ) -> Result<CRead<T>> {
+        self.check_layout(OperandId::A, a.dims(), a.strides())?;
+        self.check_layout(OperandId::B, b.dims(), b.strides())?;
+        self.check_layout(OperandId::D, d.dims(), d.strides())?;
+        Ok(match (self.problem.c_spec(), source) {
+            (_, None) => CRead::None,
+            (CSpec::Output(_), Some(AccumulationSource::Output)) => CRead::InPlace,
+            (CSpec::Separate(_), Some(AccumulationSource::Separate(c))) => {
+                self.check_layout(OperandId::C, c.dims(), c.strides())?;
+                CRead::Separate(c.ptr())
             }
-        }
-        if c.dims().contains(&0) {
+            _ => return Err(LayoutError::CMode.into()),
+        })
+    }
+
+    /// Run one item whose views [`Plan::validate_views`] has accepted.
+    ///
+    /// # Safety
+    ///
+    /// The views are the ones that were validated, `d` is exclusive, and a
+    /// separate C is distinct from `d`.
+    pub(crate) unsafe fn run_validated(
+        &self,
+        exec: &Exec<'_>,
+        alpha: T,
+        a: &StridedView<'_, T>,
+        b: &StridedView<'_, T>,
+        beta: T,
+        c: CRead<T>,
+        d: &mut StridedViewMut<'_, T>,
+    ) -> Result<()> {
+        // SAFETY: forwarded.
+        unsafe { self.run(exec, alpha, a.ptr(), b.ptr(), beta, c, d.as_mut_ptr()) }
+    }
+
+    /// Execute on raw origins: the pointers are the elements at logical index
+    /// zero of each operand. This is the entry of the C adapter, which holds
+    /// pointers and no Rust references.
+    ///
+    /// The same semantic preflight as the safe path runs first: `D`
+    /// overlapping an input, `C` and `D` overlapping without being the same
+    /// mapping at the same origin. Input errors leave `D` untouched. Null
+    /// pointers are the caller's to refuse (they are an FFI status, not a
+    /// contraction error): `a` and `b` must be non-null unless the call reads
+    /// neither, `c` unless it reads a separate C, and `d` unless the output is
+    /// empty.
+    ///
+    /// `c` is read only for a problem built with [`CSpec::Separate`] and a
+    /// nonzero `beta`; for [`CSpec::Output`] the previous `D` is read through
+    /// `d`.
+    ///
+    /// # Safety
+    ///
+    /// Every pointer the call reads or writes is the origin of a live allocation that covers the
+    /// problem's address range for that operand (see
+    /// [`Problem::span`](crate::api::Problem::span), relative to the operand's
+    /// logical offset); `d` is valid for writes and nothing else accesses any of
+    /// the memory for the duration of the call.
+    #[allow(clippy::too_many_arguments)] // INVARIANT: the contraction argument set.
+    pub unsafe fn execute_raw(
+        &self,
+        exec: &Exec<'_>,
+        alpha: T,
+        a: *const T,
+        b: *const T,
+        beta: T,
+        c: *const T,
+        d: *mut T,
+    ) -> Result<()> {
+        let p = &self.problem;
+        if p.out_empty() {
             return Ok(());
         }
-        if self.k_empty || alpha == <T as Element>::zero() || a.is_empty() || b.is_empty() {
-            let (dims, strides) = (c.dims().to_vec(), c.strides().to_vec());
-            // SAFETY: C is non-empty and bounds-checked; exclusive borrow.
-            unsafe { crate::util::scale(c.as_mut_ptr(), &dims, &strides, beta) };
+        let zero = <T as Element>::zero();
+        let reads_ab = !(p.k_empty() || alpha == zero);
+        let c_read = match p.c_spec() {
+            CSpec::Absent => CRead::None,
+            CSpec::Output(_) => CRead::InPlace,
+            CSpec::Separate(_) if beta == zero => CRead::None,
+            CSpec::Separate(_) => CRead::Separate(c),
+        };
+        let range = |o: OperandId, origin: *const T| -> Option<(usize, usize)> {
+            let span = p.span(o)?;
+            let off = match o {
+                OperandId::A => p.a().layout().offset(),
+                OperandId::B => p.b().layout().offset(),
+                OperandId::D => p.d().layout().offset(),
+                OperandId::C => match p.c_spec() {
+                    CSpec::Separate(c) => c.layout().offset(),
+                    _ => p.d().layout().offset(),
+                },
+            } as i128;
+            let base = origin as usize as i128;
+            let size = core::mem::size_of::<T>() as i128;
+            let lo = base + (span.lo() - off) * size;
+            let hi = base + (span.hi() - off + 1) * size;
+            Some((usize::try_from(lo).ok()?, usize::try_from(hi).ok()?))
+        };
+        let overlap = |x: Option<(usize, usize)>, y: Option<(usize, usize)>| match (x, y) {
+            (Some(x), Some(y)) => x.0 < y.1 && y.0 < x.1,
+            _ => false,
+        };
+        let rd = range(OperandId::D, d);
+        if reads_ab {
+            if overlap(rd, range(OperandId::A, a)) {
+                return Err(AliasError::OutputOverlapsInput {
+                    operand: OperandId::A,
+                }
+                .into());
+            }
+            if overlap(rd, range(OperandId::B, b)) {
+                return Err(AliasError::OutputOverlapsInput {
+                    operand: OperandId::B,
+                }
+                .into());
+            }
+        }
+        if let CRead::Separate(cp) = c_read {
+            // A separate C may be D itself only as the same mapping at the
+            // same origin (an in-place update).
+            let same = core::ptr::eq(cp, d as *const T) && p.c_matches_d();
+            if !same && overlap(rd, range(OperandId::C, cp)) {
+                return Err(AliasError::CDOverlap.into());
+            }
+        }
+        // SAFETY: preflight passed; the caller's contract covers the rest.
+        unsafe { self.run(exec, alpha, a, b, beta, c_read, d) }
+    }
+
+    /// The width the work estimate asks for at the executor's budget.
+    fn width(&self, exec: &Exec<'_>) -> usize {
+        let flops = 2.0 * self.problem.macs() as f64 * if T::IS_COMPLEX { 4.0 } else { 1.0 };
+        exec.width_for(flops * NS_PER_FLOP, &WidthPolicy::default())
+    }
+
+    /// After preflight: output-empty returns; `alpha == 0` / empty `K` uses the
+    /// output-update helper; otherwise one dispatch to the prepared strategy.
+    ///
+    /// # Safety
+    ///
+    /// As [`Plan::execute_raw`], with the preflight already done.
+    #[allow(clippy::too_many_arguments)] // INVARIANT: the contraction argument set.
+    unsafe fn run(
+        &self,
+        exec: &Exec<'_>,
+        alpha: T,
+        a: *const T,
+        b: *const T,
+        beta: T,
+        c: CRead<T>,
+        d: *mut T,
+    ) -> Result<()> {
+        let p = &self.problem;
+        if p.out_empty() {
             return Ok(());
         }
-        match &self.inner {
-            Inner::Pg(p) => {
-                permute_gemm::execute(p, exec, alpha, a, self.conj.0, b, self.conj.1, beta, c)
+        let zero = <T as Element>::zero();
+        let (conj_a, conj_b) = (p.a().op().is_conj(), p.b().op().is_conj());
+        let (conj_c, conj_d) = (p.op_c().is_conj(), p.d().op().is_conj());
+        // No C term means beta is zero, whatever the caller passed.
+        let beta = if matches!(c, CRead::None) { zero } else { beta };
+        let expr = Expr {
+            alpha,
+            beta,
+            conj_a,
+            conj_b,
+            conj_c,
+            conj_d,
+        };
+        if p.k_empty() || alpha == zero {
+            // D = op_D(beta * op_C(C)); A and B are not referenced. An
+            // in-place identity update changes nothing.
+            if matches!(c, CRead::InPlace)
+                && beta == <T as Element>::one()
+                && !conj_c
+                && !conj_d
+            {
+                return Ok(());
             }
-            Inner::Tb(p) => tblis::execute(p, exec, alpha, a, b, beta, c),
-            Inner::Elementwise { a_axes, b_axes } => {
-                let (dims, cs) = (c.dims().to_vec(), c.strides().to_vec());
-                let sa: Vec<isize> = a_axes.iter().map(|&x| a.strides()[x]).collect();
-                let sb: Vec<isize> = b_axes.iter().map(|&x| b.strides()[x]).collect();
-                let (ca, cb) = self.conj;
-                let op = |x: T, cj: Conj| if cj == Conj::Yes { Element::conj(x) } else { x };
-                let read = beta != <T as Element>::zero();
-                // SAFETY: all three views are non-empty and bounds-checked;
-                // A and B axes are permuted onto C's (batch) axes, whose
-                // extents they share; C is exclusive and injective.
+            // SAFETY: the caller's contract.
+            unsafe { self.output.run(exec, expr, Inputs::None, c, d) };
+            return Ok(());
+        }
+        match &self.strategy {
+            Strategy::Packed(pk) => {
+                let exec = exec.with_budget(self.width(exec)).unwrap_or(*exec);
+                // A borrowed pool lends its own arena; a serial context uses the
+                // plan's, which is why a serial plan's steady state allocates
+                // nothing either.
+                let workspace: &dyn WorkspaceProvider =
+                    exec.workspace().unwrap_or(&self.workspace);
+                let cp = match c {
+                    CRead::Separate(c) => c,
+                    _ => d as *const T,
+                };
+                // SAFETY: the caller's contract; `pk.rg` was validated for this
+                // plan when it was built.
                 unsafe {
-                    crate::util::zip_update(
-                        exec,
-                        &dims,
-                        (c.as_mut_ptr(), &cs),
-                        [(a.ptr(), &sa), (b.ptr(), &sb)],
-                        read,
-                        &move |y, [x, z]| {
-                            Element::add(
-                                Element::mul(alpha, Element::mul(op(x, ca), op(z, cb))),
-                                Element::mul(beta, y),
-                            )
-                        },
+                    driver::execute_packed(
+                        &pk.plan,
+                        &pk.rg,
+                        &exec,
+                        Some(workspace),
+                        alpha,
+                        a,
+                        b,
+                        beta,
+                        cp,
+                        d,
                     )
                 };
-                Ok(())
+            }
+            Strategy::Faer(f) => {
+                // SAFETY: the caller's contract; the fusion was proven copy-free
+                // over exactly this problem's layouts.
+                unsafe { f.run(exec, alpha, a, b, beta, d) };
+            }
+            Strategy::Elementwise(e) => {
+                // SAFETY: the caller's contract.
+                unsafe { e.run(exec, expr, Inputs::Product(a, b), c, d) };
             }
         }
+        Ok(())
+    }
+}
+
+fn packed_report<T: Scalar>(pk: &Packed<T>) -> PackedReport {
+    let rg = &pk.rg;
+    let fam = rg.family();
+    let element = core::mem::size_of::<<T as Scalar>::Re>();
+    let a_reals = fam.a_per_k / fam.mr;
+    let b_reals = fam.b_per_k / fam.nr;
+    let scratch_bytes = (rg.mc * rg.kc * a_reals + rg.nc * rg.kc * b_reals) * element;
+    PackedReport {
+        family_id: fam.id,
+        origin: fam.origin,
+        complex: fam.complex,
+        mr: rg.mr,
+        nr: rg.nr,
+        mc: rg.mc,
+        nc: rg.nc,
+        kc: rg.kc,
+        partition: rg.partition,
+        align_c_lines: rg.opts.align_c_lines,
+        dynamic: driver::dynamic_report(&pk.plan, rg, usize::MAX),
+        stats: pk.plan.stats.clone(),
+        scratch_bytes,
+    }
+}
+
+impl<T: Scalar> PreparedContraction<T> for Plan<T> {
+    fn execute_into(
+        &self,
+        exec: &Exec<'_>,
+        alpha: T,
+        a: &StridedView<'_, T>,
+        b: &StridedView<'_, T>,
+        d: &mut StridedViewMut<'_, T>,
+    ) -> Result<()> {
+        Plan::execute_into(self, exec, alpha, a, b, d)
+    }
+
+    fn execute_into_accum(
+        &self,
+        exec: &Exec<'_>,
+        alpha: T,
+        a: &StridedView<'_, T>,
+        b: &StridedView<'_, T>,
+        beta: T,
+        source: AccumulationSource<'_, T>,
+        d: &mut StridedViewMut<'_, T>,
+    ) -> Result<()> {
+        Plan::execute_into_accum(self, exec, alpha, a, b, beta, source, d)
+    }
+
+    fn diagnostics(&self) -> &Diagnostics {
+        &self.diagnostics
     }
 }
