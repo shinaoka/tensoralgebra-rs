@@ -4,7 +4,7 @@ version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
 license = "MIT OR Apache-2.0"
-authors = ["Lukas Devos <ldevos@flatironinstitute.org>", "tprims contributors"]
+authors = ["Lukas Devos <ldevos@flatironinstitute.org>", "tensor4all contributors"]
 publish = false
 description = "Binary tensor contraction for the tprims stack: one Problem, a packed TBLIS-style driver, faer and elementwise strategies"
 
