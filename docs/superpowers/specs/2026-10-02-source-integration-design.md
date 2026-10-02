@@ -28,7 +28,7 @@ performance parity.
 | D2 | The public Rust API may break freely. tenferro gets a migration guide; the `ext/tenferro-cpu-tprims` update is separate work. |
 | D3 | Removed: the public BLAS API (`gemm`, `gemm_batched`, `gemm_grouped`, `trsm`), the BLAS C ABI (`tprims-blas-capi`), the engine layer (`Engine`, `EngineChoice`, `TPRIMS_GEMM_ENGINE`), the private-gemm-x86 engine (`tprims-kernel-pgx86`), the gemm-f64/f32 adapter (`tprims-kernel-gemm`) and `tprims-linalg`. BLAS and linalg may return later as separate repositories. |
 | D4 | Phase 1 keeps faer only as an internal contraction strategy, for copy-free permute+GEMM and the batched faer loop. It lives in one module. Phase 2 deletes it after the packed driver is optimized. |
-| D5 | Phase 2 target: **one route**. Every contraction runs the packed driver, and the only difference between cases is which kernel family is called. Small problems, matvec-like and Hadamard products are covered by families and driver handling, not by separate paths. |
+| D5 | Phase 2 target: contractions with a K role use **only the packed driver**, and the only difference between cases is which kernel family is called. Small and matvec-like problems are covered by families and driver handling, not by separate paths. All-batch (pure elementwise: no M, N or K) problems are **delegated to strided-rs permanently** (`strategy/elementwise.rs` on `strided-basic`, monomorphized flag-free bodies); they are not removed in Phase 2. (Amended 2026-10-02.) |
 | D6 | The central contraction representation is a lowered, role-grouped problem (§4.1). Label-based (TAPP) and `DotGeneral` (Rust/tenferro) inputs are thin front ends lowered at plan time. Execution cost is identical: the driver already runs on precomputed offset tables (`tensorcontract/src/plan.rs:275`), not on labels. |
 | D7 | Kernel family IDs are renamed to one scheme (§6.2). |
 | D8 | The library reads **no environment variables**. Every tuning knob becomes explicit configuration; benchmarks translate env/flags into it. |
@@ -211,18 +211,17 @@ In Phase 1 the plan picks one internal strategy, using today's rule:
 1. Explicit kernel/selector, partition, or packed-driver tuning requests
    select the packed driver, including for all-batch problems. A request is
    applied or rejected at plan time; never silently ignored.
-2. Otherwise **Elementwise** when every axis is batch **and** the
-   elementwise pass implements the full semantics: op_C, op_D, a separate C
-   and conjugation. Otherwise select packed. The baseline elementwise pass
-   (`tprims-contract/src/plan.rs:451-480`) handles only C = D with conj A/B.
-   TAPP all-batch products with op_D or a separate C therefore go to packed,
-   unless the pass is extended.
+2. Otherwise **Elementwise** when every axis is batch: strided-basic kernels
+   with the full semantics (op_C, op_D, a separate C and conjugation), where
+   `op_D` is folded into the other terms and one dispatch per execution picks a
+   monomorphized, flag-free closure. No runtime mode flag is tested inside the
+   per-element loop. This strategy is permanent (D5).
 3. Otherwise **faer permute+GEMM** only when it fuses every operand without a
    copy and implements the full C/D/conjugation semantics. If it cannot,
    select packed. Distinct C/D must not cause a hidden copy into D.
 4. **Packed driver** otherwise. This is the default for non-fusable layouts.
 
-Strategies live in `src/strategy/{faer.rs, elementwise.rs}`. No public enum names them; `plan.report()` only displays the choice, together with the family, blocking, partition and materialization. `strategy/faer.rs` is the only file that depends on faer. Phase 2 deletes both files.
+Strategies live in `src/strategy/{faer.rs, elementwise.rs}`. No public enum names them; `plan.report()` only displays the choice, together with the family, blocking, partition and materialization. `strategy/faer.rs` is the only file that depends on faer. Phase 2 deletes `faer.rs`; `elementwise.rs` stays, delegating to strided-rs.
 
 Execution uses `StridedView`/`StridedViewMut`. The overwrite operation is
 `execute_into(&exec, alpha, a, b, d)` and never reads previous D. The update
@@ -305,7 +304,7 @@ src/
   plan/{mod.rs, analysis.rs, orientation.rs, report.rs}   ← tensorcontract plan.rs (1850) split
   driver/{mod.rs, static_grid.rs, dynamic.rs, tile.rs}    ← tensorcontract driver.rs (1548) split
   select.rs, resolve.rs, layout.rs, buffer.rs, scatter.rs, batch.rs
-  strategy/{faer.rs, elementwise.rs}                      ← Phase 1 only
+  strategy/{faer.rs, elementwise.rs}                      ← faer.rs Phase 1 only
   wrappers.rs                                             ← add, permute (strided-basic)
 ```
 
@@ -625,9 +624,9 @@ Name feature-gated reference cases separately from tprims strategies.
 
 ## 10. Phase 2 (separate spec, summary only)
 
-**Goal.** Optimize the packed driver, then delete `strategy/faer.rs` and `strategy/elementwise.rs` and the faer dependency.
+**Goal.** Optimize the packed driver, then delete `strategy/faer.rs` and the faer dependency. `strategy/elementwise.rs` stays: all-batch problems are delegated to strided-rs permanently.
 
-**End state.** One route, where cases differ only in the selected family.
+**End state.** Contractions with a K role run one route (the packed driver), where cases differ only in the selected family; all-batch problems run on strided-rs.
 
 **Work items:**
 

@@ -7,7 +7,7 @@ tprims is a CPU library for dense binary tensor contraction, usable from Rust an
 ## Working hypotheses
 
 - **Contraction:** one validated `Problem` is planned once and run by one of three strategies: a packed, block-scatter (TBLIS-style) driver that packs general strides straight into microkernel panels, faer on problems that fuse into one copy-free batched GEMM, and an elementwise pass for all-batch problems. Measurement, not assertion, decides which one a plan selects.
-- **Phase 2 goal:** optimize the packed driver until it replaces faer and the elementwise pass, leaving one execution route that differs only by kernel family. Small, Hadamard-like and batched shapes (`hadamard.json`) must not regress while doing so.
+- **Phase 2 goal:** optimize the packed driver until it replaces faer, leaving one route for contractions with a K role that differs only by kernel family; all-batch problems stay delegated to strided-rs. Small, Hadamard-like and batched shapes (`hadamard.json`) must not regress while doing so.
 - **Execution ownership:** the effective thread budget, pool and scratch lifetime are explicit. A Rust caller supplies an execution context. A C, Julia or Python caller creates, uses and closes a pool through the C ABI, without the library taking over the host's threads.
 - **No configuration through the environment.** No library crate reads an environment variable; every knob is an explicit input (`PlanConfig`).
 
@@ -337,7 +337,7 @@ Phase 1 put being usable as the tenferro-rs CPU backend first, with a thin C ABI
 | 1d | Dense linear algebra (faer per item plus batched loops). | Done, then removed in #37 (no retained consumer). |
 | 1e | tenferro-rs integration behind a feature, with an explicit per-op fallback to the current backend, A/B correctness and a same-run performance gate. | The injection points and optional providers are merged in tenferro-rs and selectable in tenferro-benchmark; acceptance runs are deferred until Phase 2 optimization. |
 | 1f | A thin C ABI slice and C benchmarks; the contraction part is the standard TAPP interface ([#26](https://github.com/tensor4all/tprims-rs/issues/26)), consolidated into `tprims-capi` in #37. | Done. |
-| 2 | Optimize the packed driver (small, Hadamard-like and batched shapes included) until faer and the elementwise pass can be deleted: one route that differs only by kernel family. Then wider C ABI coverage and Windows. | Goal; `hadamard.json` must not regress. |
+| 2 | Optimize the packed driver (small, Hadamard-like and batched shapes included) until faer can be deleted: one route for contractions with a K role that differs only by kernel family (all-batch problems stay on strided-rs). Then wider C ABI coverage and Windows. | Goal; `hadamard.json` must not regress. |
 
 Crates are published only after an interface and a consumer exist, consistent with [tenferro #1927](https://github.com/tensor4all/tenferro-rs/issues/1927).
 

@@ -218,8 +218,9 @@ The full local gate is in [AGENTS.md](AGENTS.md).
 
 Phase 1 is done: the contraction stack above, the TAPP C ABI, and the
 benchmark harness. faer is an internal strategy, not API. Phase 2 optimizes the
-packed driver until it can replace faer and the elementwise pass, leaving one
-execution route that differs only by kernel family; `hadamard.json` must not
+packed driver until it can replace faer, leaving one route for contractions
+with a K role that differs only by kernel family (all-batch problems stay
+delegated to strided-rs); `hadamard.json` must not
 regress. There is no stable API or ABI yet and no crate has been published.
 Performance claims need recorded measurements ([PERFORMANCE_TIPS.md](PERFORMANCE_TIPS.md),
 [docs/experiments.md](docs/experiments.md)). The source integration that
