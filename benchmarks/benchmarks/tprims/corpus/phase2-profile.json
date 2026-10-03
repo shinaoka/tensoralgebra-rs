@@ -1,0 +1,104 @@
+{
+ "source": {
+  "tool": "hand-written",
+  "note": "synthetic, Phase 2 S0 attribution profile: 1024^3 dot_general (not a gate corpus)"
+ },
+ "entries": [
+  {
+   "name": "gemm_1024_f64",
+   "op": "dot_general",
+   "dtype": "f64",
+   "a": {
+    "dims": [
+     1024,
+     1024
+    ],
+    "strides": [
+     1,
+     1024
+    ]
+   },
+   "b": {
+    "dims": [
+     1024,
+     1024
+    ],
+    "strides": [
+     1,
+     1024
+    ]
+   },
+   "c": {
+    "dims": [
+     1024,
+     1024
+    ],
+    "strides": [
+     1,
+     1024
+    ]
+   },
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [],
+   "rb": [],
+   "conj": [
+    false,
+    false
+   ],
+   "calls": 1
+  },
+  {
+   "name": "gemm_1024_c64",
+   "op": "dot_general",
+   "dtype": "c64",
+   "a": {
+    "dims": [
+     1024,
+     1024
+    ],
+    "strides": [
+     1,
+     1024
+    ]
+   },
+   "b": {
+    "dims": [
+     1024,
+     1024
+    ],
+    "strides": [
+     1,
+     1024
+    ]
+   },
+   "c": {
+    "dims": [
+     1024,
+     1024
+    ],
+    "strides": [
+     1,
+     1024
+    ]
+   },
+   "lc": [
+    1
+   ],
+   "rc": [
+    0
+   ],
+   "lb": [],
+   "rb": [],
+   "conj": [
+    false,
+    false
+   ],
+   "calls": 1
+  }
+ ]
+}

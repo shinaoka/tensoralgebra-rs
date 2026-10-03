@@ -1,0 +1,45 @@
+Phase 2 S3, batch-axis claiming: KEEP.
+
+Rule (driver/batch.rs::lanes, default partition only): lanes iff H >= 2, budget >= 2, caller is not a
+worker of the pool, the whole batch warrants width >= 2 under WidthPolicy::default() x NS_PER_FLOP, and
+(the item alone is under the 50 us serial threshold OR H >= budget); lanes = min(H, width). Lanes run
+contiguous item ranges serially, barrier-free, with the serial blocking and private A / tile / B slice.
+
+packed_exec median, before = c71bba4, after = this branch, medians of s1 and s2 (table.txt has every row;
+noise = A/A spread between s1 and s2):
+
+case                               T   before        after     speedup  noise  (faer plan row)
+dot_general_049_f64 / gemm_batched_047_f64
+                                   4   10.1-10.2 ms   0.39 ms   26x      0.17-0.19   0.27 ms
+                                   8   11.3-12.3 ms   0.29-0.30 ms   39-41x  0.02-0.16  0.21-0.28 ms
+small_n4_k32_h8192_f64             4   79.8 ms        2.70 ms   29.6x    0.05        1.96 ms
+                                   8   79.6 ms        1.58 ms   50.3x    0.09        1.85 ms
+small_n2_k2_h262144_f64            4   20.7 ms        5.41 ms   3.8x     0.02        1.67 ms
+                                   8   20.6 ms        4.13 ms   5.0x     0.05        1.34 ms
+small_m1_n64_k64_h4096_f64         4   45.5 ms        8.0 ms    5.7x                  2.7 ms
+                                   8   59.7 ms        4.2 ms    14x                   2.6 ms
+small_n3_k3 / n4_k4 (f64, c64)     4   6.6-11.9 ms    1.7-3.1 ms  3.8-3.9x            0.7-1.4 ms
+                                   8   6.6-11.8 ms    1.3-1.9 ms  5.1-6.2x            0.5-0.8 ms
+gemm_batched_012_f64               4   46.8 ms        13.5 ms   3.5x     0.05        13.5 ms (= faer)
+                                   8   37.6 ms        13.4 ms   2.8x     0.04        13.3 ms (= faer)
+gemm_batched_008_f64               4   79.3 ms        52.6 ms   1.5x     0.14        50.0 ms
+                                   8   59.6 ms        34.9 ms   1.7x     0.05        35.8 ms
+large_b512_m128_n128_k128_f64      8   17.1 ms        9.6 ms    1.8x     0.03        17.8 ms
+large-batched-gemm, 12 cases       4   geomean 1.08x (min 1.00x)   8: geomean 1.14x (min 0.92x, c64 1024^3 b4, noise 0.075)
+
+1T: no case moves beyond noise (geomean 1.00; at 1T the budget is 1 and lanes is never chosen).
+
+Controls (large single GEMMs, H = 1, the path is untouched: lanes() returns 1 at once): gemm_1024_f64/c64,
+dot_general_008_f64, dot_general_016_c64, gemm_batched_000_f64: speedup 0.90-1.02 at 4T/8T, all inside
+the A/A noise of the same rows (up to 0.18 on gemm_1024_f64 4T; the host is shared). Geomean 0.99 / 0.98 / 0.97
+at 1T / 4T / 8T. No regression beyond noise.
+
+Cases that did not move (dot_general_040/041/044/045, gemm_batched_022/023, rank-1 K=1 entries with H = 1): their items are large with H < budget, or H = 1, so they keep the
+team (unchanged by design); their packed/faer gap is the 1T kernel and per-item pack overhead (S1, S3 small-
+problem family), not the batch axis.
+
+Remaining gap to faer (packed after / faer plan, 4T-8T): 0.85-1.5x for the n4_k32, 047/049 and rank-1 batched
+cases; 1.6-3.3x for the many-tiny-item cases (n2, n3, n4_k4 with H >= 65536, small_m1): per-item pack and
+tile cost, which is the next S3 bullet (small-problem family), not the batch axis.
+
+Verdict: batched cases improve 3-50x at 4T/8T, controls and large batched do not regress beyond noise. Keep.

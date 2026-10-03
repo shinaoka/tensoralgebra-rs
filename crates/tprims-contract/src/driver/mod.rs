@@ -100,6 +100,17 @@
 //!   Every measurement committed in `docs/archive/tensorprimitives/notebook/` was taken single-threaded and
 //!   stays comparable.
 //!
+//! # Batch-axis claiming
+//!
+//! Everything above cuts *one* entry of the in-plan batch (the Hadamard modes)
+//! across the team, and the team runs the entries one after another with its
+//! barriers per entry. For tiny entries, or at least as many entries as workers,
+//! that is the wrong cut: on the default partition the driver instead gives each
+//! of a few lanes a contiguous share of the entries, each run serially with the
+//! serial blocking and the lane's own buffers, with no barrier and no shared `B`
+//! panel. The result is bitwise the serial one. The width rule is the one
+//! function `batch::lanes`.
+//!
 //! Known limits, in the order they will bite (see the Phase 4 report):
 //! parallelism is capped at `ceil(M / MR) * ceil(N / NR)`, and a column group can
 //! only be as wide as the `jc` block it is cut from, so a tail `NC` block with

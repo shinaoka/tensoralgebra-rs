@@ -171,3 +171,12 @@ paying micro-kernel and packing overhead per element, and its batch axis is
 serial inside the SPMD team, so it does not scale with threads while the
 elementwise path does (hypothesis consistent with the growth from 1T to 8T).
 The dedicated elementwise path stays.
+
+## Phase 2 S3: batch-axis claiming (2026-10-03)
+
+The in-plan batch axis runs barrier-free across the pool when the entries are
+tiny or at least as many as the workers (`driver/batch.rs`). Before/after
+(c71bba4 vs the S3 branch, packed row, 1T/4T/8T, two sessions): tiny batched
+entries 3-50x faster at 4T/8T (`dot_general_049` 11.3 ms -> 0.29 ms at 8T), large
+single GEMMs unchanged within noise. Details and the decision:
+[`results/2026-10-03-phase2-s3-batch/`](results/2026-10-03-phase2-s3-batch/).

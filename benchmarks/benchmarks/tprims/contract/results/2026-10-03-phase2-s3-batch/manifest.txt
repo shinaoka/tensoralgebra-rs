@@ -1,0 +1,16 @@
+Phase 2 S3: batch-axis claiming for tiny batched items (tensor4all/tprims-rs #50; spec 2026-10-03-phase2-packed-driver-without-faer-design section 3 S3, 5)
+date: 2026-10-03
+before: origin/main c71bba4 (binary built in a detached worktree); after: branch phase2-s3-batch (commit "Batch-axis claiming for tiny batched items (#50)"); library change only in crates/tprims-contract/src/driver/
+cpu: AMD EPYC 7713P (Zen 3, AVX2), shared 64-core host with other users' and agents' jobs (another agent was benchmarking on other CCDs)
+rustc: rustc 1.97.1 (8bab26f4f 2026-07-14); cargo build --release -j 16 (thin LTO, debug=1), built under taskset -c 32-47
+harness: contract --threads T --corpus C, packed row (PlanConfig::packed(), default partition); the plan (faer) row is printed for reference only
+sessions: s1 and s2 are two passes (A/A noise = between them); BENCH_RUNS=5
+pinning: scripts/drive.sh. Per case: idle_cpus.py pick 8 --seconds 2 (8 idle CPUs of one L3 domain); for T in 1 4 8, before then after back to back on a prefix of that set, each through pinned.sh (PINNED_RETRIES=1); a case whose runs are not all valid is discarded and retried on a new pick (up to 60). Cores per case: s*/<corpus>-cpus.csv. Skipped cases: none.
+corpora (focused case lists in scripts/session.sh):
+  tenferro-p1: dot_general_040/041/044/045/049_f64 (S0 targets), dot_general_008_f64 and _016_c64 (large single contractions: control)
+  tenferro-p1-gemm: gemm_batched_047/008/012/022/023_f64 (S0 targets), gemm_batched_000_f64 (control)
+  phase2-extra: all 11 entries
+  large-batched-gemm: the 12 entries with H >= 4 (b4..b512, f64 and c64); the 2048^3 and 4096^3 entries (H < 4, team path unchanged, minutes per case at 1T) are omitted
+  phase2-profile: gemm_1024_f64, gemm_1024_c64 (control)
+correctness: every harness CHECK line (plan vs packed) is ok in every run (no MISMATCH in s*/*.log)
+outputs: decision.txt, table.txt (scripts/analyze.py s1 s2), s1/ s2/ raw CSV/logs, scripts/

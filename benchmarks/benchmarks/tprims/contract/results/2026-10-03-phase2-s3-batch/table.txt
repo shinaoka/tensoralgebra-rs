@@ -1,0 +1,127 @@
+sessions: s1 s2; metric: packed_exec median (us); speedup = before/after; noise = A/A spread of the case's own rows
+
+corpus             case                                     T      before       after  speedup  noise  plan(faer)     role
+tenferro-p1        dot_general_008_f64                      1    169605.4    169544.7     1.00  0.005    170284.5  control
+tenferro-p1        dot_general_016_c64                      1     45517.5     45341.6     1.00  0.028     40397.2  control
+tenferro-p1        dot_general_040_f64                      1       377.6       384.3     0.98  0.013       194.4  batched
+tenferro-p1        dot_general_041_f64                      1       304.3       304.9     1.00  0.013       211.5  batched
+tenferro-p1        dot_general_044_f64                      1       175.1       173.5     1.01  0.007       110.2  batched
+tenferro-p1        dot_general_045_f64                      1       310.6       305.8     1.02  0.014       201.6  batched
+tenferro-p1        dot_general_049_f64                      1      1354.1      1342.4     1.01  0.007       903.6  batched
+tenferro-p1        dot_general_008_f64                      4     72901.8     72584.0     1.00  0.005     72441.2  control
+tenferro-p1        dot_general_016_c64                      4     11654.9     11952.2     0.98  0.032     10059.3  control
+tenferro-p1        dot_general_040_f64                      4       376.5       386.9     0.97  0.042       194.6  batched
+tenferro-p1        dot_general_041_f64                      4       302.4       304.4     0.99  0.009       233.0  batched
+tenferro-p1        dot_general_044_f64                      4       130.5       127.9     1.02  0.099        93.7  batched
+tenferro-p1        dot_general_045_f64                      4       183.2       179.7     1.02  0.130       158.4  batched
+tenferro-p1        dot_general_049_f64                      4     10124.4       388.1    26.09  0.192       265.2  batched
+tenferro-p1        dot_general_008_f64                      8     72633.7     71490.0     1.02  0.007     71262.1  control
+tenferro-p1        dot_general_016_c64                      8      6620.7      6864.8     0.96  0.171      5970.3  control
+tenferro-p1        dot_general_040_f64                      8       415.3       463.4     0.90  0.149       233.5  batched
+tenferro-p1        dot_general_041_f64                      8       366.2       366.9     1.00  0.015       255.1  batched
+tenferro-p1        dot_general_044_f64                      8       139.7       119.5     1.17  0.128       110.8  batched
+tenferro-p1        dot_general_045_f64                      8       199.3       163.3     1.22  0.163       159.1  batched
+tenferro-p1        dot_general_049_f64                      8     11323.4       293.7    38.55  0.019       208.1  batched
+tenferro-p1-gemm   gemm_batched_000_f64                     1    414959.1    425264.5     0.98  0.039    396798.1  control
+tenferro-p1-gemm   gemm_batched_008_f64                     1    200530.8    204832.2     0.98  0.041     82721.1  batched
+tenferro-p1-gemm   gemm_batched_012_f64                     1     39255.4     36968.6     1.06  0.111     26579.6  batched
+tenferro-p1-gemm   gemm_batched_022_f64                     1     16060.6     15838.7     1.01  0.009      6491.1  batched
+tenferro-p1-gemm   gemm_batched_023_f64                     1     51279.2     50344.2     1.02  0.006     23861.8  batched
+tenferro-p1-gemm   gemm_batched_047_f64                     1      1342.4      1350.2     0.99  0.016       863.1  batched
+tenferro-p1-gemm   gemm_batched_000_f64                     4    119197.5    117017.2     1.02  0.131    108412.2  control
+tenferro-p1-gemm   gemm_batched_008_f64                     4     79346.5     52562.7     1.51  0.135     49966.0  batched
+tenferro-p1-gemm   gemm_batched_012_f64                     4     46790.5     13507.6     3.46  0.049     13496.7  batched
+tenferro-p1-gemm   gemm_batched_022_f64                     4      7087.7      7447.4     0.95  0.146      4023.8  batched
+tenferro-p1-gemm   gemm_batched_023_f64                     4     13841.6     13524.4     1.02  0.031     14258.8  batched
+tenferro-p1-gemm   gemm_batched_047_f64                     4     10208.2       389.4    26.21  0.171       278.2  batched
+tenferro-p1-gemm   gemm_batched_000_f64                     8     68335.4     67676.7     1.01  0.085     58891.1  control
+tenferro-p1-gemm   gemm_batched_008_f64                     8     59636.2     34925.1     1.71  0.047     35762.2  batched
+tenferro-p1-gemm   gemm_batched_012_f64                     8     37577.0     13354.4     2.81  0.038     13292.4  batched
+tenferro-p1-gemm   gemm_batched_022_f64                     8      5822.7      5051.6     1.15  0.024      3090.8  batched
+tenferro-p1-gemm   gemm_batched_023_f64                     8     10722.6      9685.0     1.11  0.057     11086.9  batched
+tenferro-p1-gemm   gemm_batched_047_f64                     8     12344.2       301.9    40.89  0.161       281.3  batched
+phase2-extra       rank1_k1_batched_m256_n256_h64_f64       1      2799.9      2903.0     0.96  0.044      1098.8  batched
+phase2-extra       rank1_k1_m1024_n1024_c64                 1      1827.6      1834.2     1.00  0.007       406.3  batched
+phase2-extra       rank1_k1_m2048_n2048_f64                 1      2767.5      2529.6     1.09  0.167      1152.2  batched
+phase2-extra       rank1_k1_m4096_n64_f64                   1       160.5       159.1     1.01  0.013        42.8  batched
+phase2-extra       small_m1_n64_k64_h4096_f64               1     31028.8     31809.7     0.98  0.018      5930.0  batched
+phase2-extra       small_n2_k2_h262144_f64                  1     20830.2     21502.9     0.97  0.004      6335.8  batched
+phase2-extra       small_n3_k3_h131072_f64                  1     11824.6     12750.3     0.93  0.098      4513.6  batched
+phase2-extra       small_n4_k32_h8192_f64                   1      9786.9     10040.1     0.97  0.071      6714.5  batched
+phase2-extra       small_n4_k4_h65536_c64                   1      8017.0      7987.1     1.00  0.010      3635.9  batched
+phase2-extra       small_n4_k4_h65536_f64                   1      6582.9      6784.7     0.97  0.009      2445.6  batched
+phase2-extra       small_n4_m256_k256_h256_f64              1     27786.6     29084.4     0.96  0.002     20488.1  batched
+phase2-extra       rank1_k1_batched_m256_n256_h64_f64       4      2422.9       805.2     3.01  0.555       397.7  batched
+phase2-extra       rank1_k1_m1024_n1024_c64                 4       607.8       567.5     1.07  0.317       268.3  batched
+phase2-extra       rank1_k1_m2048_n2048_f64                 4       799.4       797.0     1.00  0.139       383.2  batched
+phase2-extra       rank1_k1_m4096_n64_f64                   4       161.4       159.5     1.01  0.015        44.4  batched
+phase2-extra       small_m1_n64_k64_h4096_f64               4     45304.5      7943.0     5.70  0.019      2683.5  batched
+phase2-extra       small_n2_k2_h262144_f64                  4     20668.9      5408.0     3.82  0.017      1668.3  batched
+phase2-extra       small_n3_k3_h131072_f64                  4     11850.4      3175.1     3.73  0.073      1265.9  batched
+phase2-extra       small_n4_k32_h8192_f64                   4     79774.9      2697.3    29.58  0.049      1963.8  batched
+phase2-extra       small_n4_k4_h65536_c64                   4      8063.2      2241.0     3.60  0.094       945.0  batched
+phase2-extra       small_n4_k4_h65536_f64                   4      6611.9      1732.1     3.82  0.020       658.4  batched
+phase2-extra       small_n4_m256_k256_h256_f64              4      8533.2      7216.1     1.18  0.041      4917.0  batched
+phase2-extra       rank1_k1_batched_m256_n256_h64_f64       8      1780.7       443.3     4.02  0.045       285.0  batched
+phase2-extra       rank1_k1_m1024_n1024_c64                 8       641.2       508.6     1.26  0.033       254.9  batched
+phase2-extra       rank1_k1_m2048_n2048_f64                 8       618.4       587.1     1.05  0.069       275.6  batched
+phase2-extra       rank1_k1_m4096_n64_f64                   8       192.0       190.9     1.01  0.024        51.3  batched
+phase2-extra       small_m1_n64_k64_h4096_f64               8     60458.0      4299.0    14.06  0.027      2612.4  batched
+phase2-extra       small_n2_k2_h262144_f64                  8     20611.4      4134.0     4.99  0.045      1340.3  batched
+phase2-extra       small_n3_k3_h131072_f64                  8     11836.0      1832.4     6.46  0.066      1059.2  batched
+phase2-extra       small_n4_k32_h8192_f64                   8     79634.6      1583.2    50.30  0.086      1851.7  batched
+phase2-extra       small_n4_k4_h65536_c64                   8      8054.4      1541.8     5.22  0.014       795.5  batched
+phase2-extra       small_n4_k4_h65536_f64                   8      6601.1      1290.3     5.12  0.004       466.9  batched
+phase2-extra       small_n4_m256_k256_h256_f64              8      8064.8      6072.3     1.33  0.020      3156.7  batched
+large-batched-gemm large_b16_m512_n512_k512_c64             1    378879.4    376347.6     1.01  0.002    346940.4    large
+large-batched-gemm large_b16_m512_n512_k512_f64             1     92720.6     92441.6     1.00  0.022     89174.2    large
+large-batched-gemm large_b4_m1024_n1024_k1024_c64           1    747613.9    754441.9     0.99  0.013    678058.1    large
+large-batched-gemm large_b4_m1024_n1024_k1024_f64           1    175583.8    176148.5     1.00  0.009    173190.1    large
+large-batched-gemm large_b512_m128_n128_k128_c64            1    216736.4    220580.9     0.98  0.032    195801.1    large
+large-batched-gemm large_b512_m128_n128_k128_f64            1     64972.8     67194.6     0.97  0.064     54759.7    large
+large-batched-gemm large_b64_m1024_n64_k256_c64             1    217726.5    219389.0     0.99  0.012    213038.2    large
+large-batched-gemm large_b64_m1024_n64_k256_f64             1     69888.5     70757.7     0.99  0.024     61001.7    large
+large-batched-gemm large_b64_m256_n1024_k64_c64             1    220032.3    205874.2     1.07  0.094    169631.4    large
+large-batched-gemm large_b64_m256_n1024_k64_f64             1     54357.0     54295.2     1.00  0.017     44636.4    large
+large-batched-gemm large_b64_m256_n256_k256_c64             1    198059.0    195805.3     1.01  0.050    172379.1    large
+large-batched-gemm large_b64_m256_n256_k256_f64             1     50255.7     50183.2     1.00  0.002     45964.4    large
+large-batched-gemm large_b16_m512_n512_k512_c64             4     98879.7     97057.9     1.02  0.004     83055.1    large
+large-batched-gemm large_b16_m512_n512_k512_f64             4     26571.1     25606.1     1.04  0.067     21728.6    large
+large-batched-gemm large_b4_m1024_n1024_k1024_c64           4    193139.9    193456.6     1.00  0.001    164834.1    large
+large-batched-gemm large_b4_m1024_n1024_k1024_f64           4     51655.1     46897.6     1.10  0.117     46724.1    large
+large-batched-gemm large_b512_m128_n128_k128_c64            4     63325.6     55207.0     1.15  0.006     57366.7    large
+large-batched-gemm large_b512_m128_n128_k128_f64            4     21832.5     17409.5     1.25  0.128     21063.1    large
+large-batched-gemm large_b64_m1024_n64_k256_c64             4     61524.7     56816.8     1.08  0.015     53335.8    large
+large-batched-gemm large_b64_m1024_n64_k256_f64             4     17906.1     17757.1     1.01  0.006     16142.7    large
+large-batched-gemm large_b64_m256_n1024_k64_c64             4     56973.8     52235.7     1.09  0.020     48659.2    large
+large-batched-gemm large_b64_m256_n1024_k64_f64             4     15937.1     14853.6     1.07  0.154     15934.7    large
+large-batched-gemm large_b64_m256_n256_k256_c64             4     52483.7     50122.6     1.05  0.015     45296.8    large
+large-batched-gemm large_b64_m256_n256_k256_f64             4     14430.1     13117.2     1.10  0.095     13565.4    large
+large-batched-gemm large_b16_m512_n512_k512_c64             8     58873.5     56500.1     1.04  0.094     46463.5    large
+large-batched-gemm large_b16_m512_n512_k512_f64             8     15692.3     15284.1     1.03  0.096     13720.0    large
+large-batched-gemm large_b4_m1024_n1024_k1024_c64           8    105781.9    114703.8     0.92  0.075     87800.3    large
+large-batched-gemm large_b4_m1024_n1024_k1024_f64           8     28225.1     28987.6     0.97  0.113     25522.9    large
+large-batched-gemm large_b512_m128_n128_k128_c64            8     39470.2     32478.4     1.22  0.080     38070.3    large
+large-batched-gemm large_b512_m128_n128_k128_f64            8     17085.3      9642.9     1.77  0.027     17842.5    large
+large-batched-gemm large_b64_m1024_n64_k256_c64             8     38124.6     30910.2     1.23  0.058     39799.9    large
+large-batched-gemm large_b64_m1024_n64_k256_f64             8     12734.7     11948.9     1.07  0.024     15306.8    large
+large-batched-gemm large_b64_m256_n1024_k64_c64             8     33383.6     28163.9     1.19  0.053     27894.8    large
+large-batched-gemm large_b64_m256_n1024_k64_f64             8      9698.3      7902.3     1.23  0.137      9211.7    large
+large-batched-gemm large_b64_m256_n256_k256_c64             8     32331.6     29651.5     1.09  0.035     25966.0    large
+large-batched-gemm large_b64_m256_n256_k256_f64             8      8538.9      7446.0     1.15  0.108      8316.8    large
+phase2-profile     gemm_1024_c64                            1    184603.1    187174.6     0.99  0.005    168755.3  control
+phase2-profile     gemm_1024_f64                            1     42998.8     44381.7     0.97  0.052     42056.7  control
+phase2-profile     gemm_1024_c64                            4     47783.1     48582.2     0.98  0.009     40313.5  control
+phase2-profile     gemm_1024_f64                            4     11268.3     12362.4     0.91  0.180     11523.4  control
+phase2-profile     gemm_1024_c64                            8     26564.2     29453.9     0.90  0.076     23001.5  control
+phase2-profile     gemm_1024_f64                            8      6409.3      6797.1     0.94  0.136      5980.3  control
+
+batched  1T: n=21 geomean speedup 1.00  min 0.93 (small_n3_k3_h131072_f64, noise 0.098)  max 1.09
+batched  4T: n=21 geomean speedup 2.58  min 0.95 (gemm_batched_022_f64, noise 0.146)  max 29.58
+batched  8T: n=21 geomean speedup 3.24  min 0.90 (dot_general_040_f64, noise 0.149)  max 50.30
+control  1T: n=5 geomean speedup 0.99  min 0.97 (gemm_1024_f64, noise 0.052)  max 1.00
+control  4T: n=5 geomean speedup 0.98  min 0.91 (gemm_1024_f64, noise 0.180)  max 1.02
+control  8T: n=5 geomean speedup 0.97  min 0.90 (gemm_1024_c64, noise 0.076)  max 1.02
+large    1T: n=12 geomean speedup 1.00  min 0.97 (large_b512_m128_n128_k128_f64, noise 0.064)  max 1.07
+large    4T: n=12 geomean speedup 1.08  min 1.00 (large_b4_m1024_n1024_k1024_c64, noise 0.001)  max 1.25
+large    8T: n=12 geomean speedup 1.14  min 0.92 (large_b4_m1024_n1024_k1024_c64, noise 0.075)  max 1.77
