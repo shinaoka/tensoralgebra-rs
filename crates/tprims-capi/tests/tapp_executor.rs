@@ -120,7 +120,7 @@ fn large_work_uses_the_executors_pool_and_small_work_does_not() {
         let want = big.want();
         assert_close(&big.run(four), &want, 1e-12);
         let s = pool_stats(four).unwrap();
-        assert_eq!(s.broadcasts, 1, "a large contraction runs SPMD on the pool");
+        assert_eq!(s.entries, 1, "a large contraction enters the pool once");
 
         // Small work stays on the caller of an explicitly larger pool.
         let before = pool_stats(four).unwrap();
@@ -155,15 +155,15 @@ fn width_is_the_executors_not_the_environment() {
         std::env::set_var("RAYON_NUM_THREADS", "1");
         let four = rayon_exec(4);
         assert_close(&big.run(four), &want, 1e-12);
-        assert_eq!(pool_stats(four).unwrap().broadcasts, 1);
+        assert_eq!(pool_stats(four).unwrap().entries, 1);
         // The environment asks for many; a budget of one keeps the call serial.
         std::env::set_var("TENSORCONTRACT_THREADS", "16");
         assert_eq!(tprims_tapp_executor_set_budget(four, 1), TAPP_SUCCESS);
         assert_close(&big.run(four), &want, 1e-12);
         assert_eq!(
-            pool_stats(four).unwrap().broadcasts,
+            pool_stats(four).unwrap().entries,
             1,
-            "budget 1 does not broadcast"
+            "budget 1 does not enter the pool"
         );
         std::env::remove_var("TENSORCONTRACT_THREADS");
         std::env::remove_var("RAYON_NUM_THREADS");
@@ -180,7 +180,7 @@ fn plans_sharing_an_executor_share_its_pool() {
         assert_close(&p1.run(four), &p1.want(), 1e-12);
         assert_close(&p2.run(four), &p2.want(), 1e-12);
         assert_eq!(
-            pool_stats(four).unwrap().broadcasts,
+            pool_stats(four).unwrap().entries,
             2,
             "both plans ran on the one pool"
         );

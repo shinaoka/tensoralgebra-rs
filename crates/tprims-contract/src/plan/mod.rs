@@ -550,9 +550,34 @@ impl<T: Scalar> Plan<T> {
                 };
             }
             Strategy::Faer(f) => {
+                // The C term goes into D first, in one parallel output-sized
+                // pass (not an operand copy; see `strategy::faer`), and faer
+                // accumulates the product. D itself (in place, or a separate C
+                // that is the same mapping at D's origin) needs the pass only
+                // when `beta` and the conjugations are not the identity;
+                // `beta == 0` reads no C and faer overwrites D.
+                let accumulate = match c {
+                    CRead::None => false,
+                    _ if beta == zero => false,
+                    CRead::Separate(cp) if !core::ptr::eq(cp, d) => {
+                        // SAFETY: the caller's contract (C disjoint from D).
+                        unsafe { self.output.run(exec, expr, Inputs::None, c, d) }?;
+                        true
+                    }
+                    _ => {
+                        let identity = beta == <T as Element>::one() && !conj_c && !conj_d;
+                        if !identity {
+                            // SAFETY: the caller's contract; in-place update of D.
+                            unsafe {
+                                self.output.run(exec, expr, Inputs::None, CRead::InPlace, d)
+                            }?;
+                        }
+                        true
+                    }
+                };
                 // SAFETY: the caller's contract; the fusion was proven copy-free
                 // over exactly this problem's layouts.
-                unsafe { f.run(exec, alpha, a, b, beta, d) };
+                unsafe { f.run(exec, alpha, a, b, accumulate, d) };
             }
             Strategy::Elementwise(e) => {
                 // SAFETY: the caller's contract.

@@ -10,7 +10,10 @@
 //! algorithm and, for the packed driver, its family); `CHECK` lines compare the
 //! engines' results. `--list` prints the case names and exits. Environment:
 //! `BENCH_RUNS` (default 20), `BENCH_WARMUP` (3), `BENCH_CASE` (exact case
-//! name). The built-in corpus runs in f64 and c64; a corpus file sets each
+//! name), `BENCH_C_MODE` (`overwrite`, the default `dot_general` form, or the
+//! TAPP-style separate-C forms `separate_b0` (beta 0, C unread), `separate_b1`
+//! (beta 0.5, C a distinct buffer of D's layout) and `separate_same` (beta 0.5,
+//! C is D itself); they run through `execute_raw`). The built-in corpus runs in f64 and c64; a corpus file sets each
 //! entry's dtype.
 use std::hint::black_box;
 
@@ -19,7 +22,9 @@ use strided_view::{StridedView, StridedViewMut};
 use tprims_bench::corpus::{Corpus, DotGeneralEntry, Dtype, Entry, Operand};
 use tprims_bench::threads::BenchThreads;
 use tprims_bench::timing::{env_usize, median_ns};
-use tprims_contract::api::{DType, DotGeneral, LayoutSpec, Op, OperandSpec, Problem, Scalar};
+use tprims_contract::api::{
+    CSpec, DType, DotGeneral, Labels, LayoutSpec, Op, OperandSpec, Problem, Scalar,
+};
 use tprims_contract::{Partition, Plan, PlanConfig};
 use tprims_exec::Exec;
 use tprims_kernel::{Element, Real};
@@ -199,6 +204,60 @@ fn dtype_of(d: Dtype) -> DType {
     }
 }
 
+/// How C is supplied (`BENCH_C_MODE`).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum CMode {
+    /// The `dot_general` overwrite form (`execute_into`).
+    Overwrite,
+    /// TAPP-style separate C, beta zero.
+    SeparateB0,
+    /// Separate C in its own buffer, beta 0.5.
+    SeparateB1,
+    /// Separate C that is D itself, beta 0.5.
+    SeparateSame,
+}
+
+fn c_mode() -> CMode {
+    match std::env::var("BENCH_C_MODE").as_deref() {
+        Ok("separate_b0") => CMode::SeparateB0,
+        Ok("separate_b1") => CMode::SeparateB1,
+        Ok("separate_same") => CMode::SeparateSame,
+        Ok("overwrite") | Ok("") | Err(_) => CMode::Overwrite,
+        Ok(x) => panic!("unknown BENCH_C_MODE {x}"),
+    }
+}
+
+/// The labels of a `dot_general` entry (A, B, D), as `Problem::from_dot_general`
+/// numbers them: batch `0..nb`, contracted `nb..nb+nc`, free axes after.
+fn dot_labels(e: &DotGeneralEntry) -> Labels {
+    let dot = DotGeneral::new(&e.lc, &e.rc, &e.lb, &e.rb);
+    let shape = dot.validate(&e.a.dims, &e.b.dims).expect("config");
+    let (nb, nc) = (e.lb.len() as i64, e.lc.len() as i64);
+    let (mut la, mut lb) = (vec![0i64; e.a.dims.len()], vec![0i64; e.b.dims.len()]);
+    let mut ld = Vec::new();
+    let mut next = nb + nc;
+    for &x in &shape.lhs_free {
+        la[x] = next;
+        ld.push(next);
+        next += 1;
+    }
+    for &x in &shape.rhs_free {
+        lb[x] = next;
+        ld.push(next);
+        next += 1;
+    }
+    for (p, (&l, &r)) in e.lb.iter().zip(&e.rb).enumerate() {
+        la[l] = p as i64;
+        lb[r] = p as i64;
+        ld.push(p as i64);
+    }
+    for (p, (&l, &r)) in e.lc.iter().zip(&e.rc).enumerate() {
+        la[l] = nb + p as i64;
+        lb[r] = nb + p as i64;
+    }
+    Labels::new(&la, &lb, &ld)
+}
+
 fn run<T: Scalar>(
     e: &DotGeneralEntry,
     exec: &Exec<'_>,
@@ -210,14 +269,29 @@ fn run<T: Scalar>(
     let ((oa, la), (ob, lb), (oc, lc)) = (e.a.span(), e.b.span(), e.c.span());
     let ad: Vec<T> = fill(la, 1);
     let bd: Vec<T> = fill(lb, 2);
-    let problem = Problem::from_dot_general(
-        dtype_of(e.dtype),
-        operand(&e.a, op(e.conj[0])),
-        operand(&e.b, op(e.conj[1])),
-        operand(&e.c, Op::Identity),
-        &DotGeneral::new(&e.lc, &e.rc, &e.lb, &e.rb),
-    )
+    let mode = c_mode();
+    let problem = if mode == CMode::Overwrite {
+        Problem::from_dot_general(
+            dtype_of(e.dtype),
+            operand(&e.a, op(e.conj[0])),
+            operand(&e.b, op(e.conj[1])),
+            operand(&e.c, Op::Identity),
+            &DotGeneral::new(&e.lc, &e.rc, &e.lb, &e.rb),
+        )
+    } else {
+        let labels = dot_labels(e);
+        let ld = labels.d().to_vec();
+        Problem::from_labels(
+            dtype_of(e.dtype),
+            operand(&e.a, op(e.conj[0])),
+            operand(&e.b, op(e.conj[1])),
+            CSpec::Separate(operand(&e.c, Op::Identity)),
+            operand(&e.c, Op::Identity),
+            &labels.with_c(&ld),
+        )
+    }
     .expect("problem");
+    let cd: Vec<T> = fill(lc, 3);
     let av = StridedView::new(&ad, &e.a.dims, &e.a.strides, oa as isize).expect("a");
     let bv = StridedView::new(&bd, &e.b.dims, &e.b.strides, ob as isize).expect("b");
     let mut outs = Vec::new();
@@ -252,12 +326,47 @@ fn run<T: Scalar>(
             Some(p) => println!("# selected {name} {tag}: packed {}", p.family_id),
             None => println!("# selected {name} {tag}: {}", report.algorithm.name()),
         }
-        let mut c = vec![<T as Element>::zero(); lc];
-        let ns = median_ns(warmup, runs, || {
-            let mut cv =
-                StridedViewMut::new(&mut c, &e.c.dims, &e.c.strides, oc as isize).expect("c");
-            plan.execute_into(exec, <T as Element>::one(), &av, &bv, &mut cv)
+        let mut c = if mode == CMode::Overwrite {
+            vec![<T as Element>::zero(); lc]
+        } else {
+            cd.clone()
+        };
+        let one = <T as Element>::one();
+        let half = <T as Element>::from_parts(Real::from_f64(0.5), Real::from_f64(0.0));
+        let ns = median_ns(warmup, runs, || match mode {
+            CMode::Overwrite => {
+                let mut cv =
+                    StridedViewMut::new(&mut c, &e.c.dims, &e.c.strides, oc as isize).expect("c");
+                plan.execute_into(exec, one, &av, &bv, &mut cv)
+                    .expect("exec");
+            }
+            // SAFETY: every origin addresses a buffer of its operand's span;
+            // C is D itself only in `SeparateSame`, the same mapping.
+            CMode::SeparateB0 => unsafe {
+                let dp = c.as_mut_ptr().add(oc);
+                let cp = cd.as_ptr().add(oc);
+                plan.execute_raw(
+                    exec,
+                    one,
+                    av.ptr(),
+                    bv.ptr(),
+                    <T as Element>::zero(),
+                    cp,
+                    dp,
+                )
                 .expect("exec");
+            },
+            CMode::SeparateB1 => unsafe {
+                let dp = c.as_mut_ptr().add(oc);
+                let cp = cd.as_ptr().add(oc);
+                plan.execute_raw(exec, one, av.ptr(), bv.ptr(), half, cp, dp)
+                    .expect("exec");
+            },
+            CMode::SeparateSame => unsafe {
+                let dp = c.as_mut_ptr().add(oc);
+                plan.execute_raw(exec, one, av.ptr(), bv.ptr(), half, dp as *const T, dp)
+                    .expect("exec");
+            },
         });
         println!("{name},{tag}_exec,{threads},{ns:.0},{runs}");
         outs.push(c);

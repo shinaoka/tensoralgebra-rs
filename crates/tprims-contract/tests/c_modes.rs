@@ -293,11 +293,12 @@ fn every_c_mode_and_conjugation_matches_the_oracle_under_every_strategy() {
     }
 }
 
-/// The default configuration chooses the documented strategy for each shape,
-/// except that a separately described C is never run on faer (it would need a
-/// copy into D first), and that every shape still gets the same answer.
+/// The default configuration chooses the documented strategy for each shape in
+/// every C mode (a separately described C included: faer writes it into D in
+/// one output-sized pass and accumulates the product), and every shape gets the
+/// same answer.
 #[test]
-fn the_planner_declines_faer_for_a_separate_c_and_keeps_full_semantics() {
+fn the_planner_chooses_the_same_strategy_in_every_c_mode() {
     let (alpha, beta) = (C64::new(0.7, -0.3), C64::new(-0.4, 0.6));
     for shape in shapes() {
         let overwrite = check(
@@ -329,11 +330,7 @@ fn the_planner_declines_faer_for_a_separate_c_and_keeps_full_semantics() {
         );
         assert_eq!(overwrite, shape.default, "{} overwrite", shape.name);
         assert_eq!(output, shape.default, "{} output", shape.name);
-        if shape.default == Algorithm::Faer {
-            assert_eq!(separate, Algorithm::Packed, "{}", shape.name);
-        } else {
-            assert_eq!(separate, shape.default, "{} separate", shape.name);
-        }
+        assert_eq!(separate, shape.default, "{} separate", shape.name);
     }
 }
 
