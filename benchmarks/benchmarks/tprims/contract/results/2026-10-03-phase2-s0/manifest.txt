@@ -1,0 +1,14 @@
+Phase 2 S0 baseline and attribution (tensor4all/tprims-rs #50; spec 2026-10-03-phase2-packed-driver-without-faer-design section 2, 3 S0, 5)
+date: 2026-10-03
+tprims-rs: origin/main c71bba4 + this branch (benchmark corpus and scripts only; library unchanged)
+cpu: AMD EPYC 7713P (Zen 3, AVX2), shared 64-core host with other users' and agents' jobs
+rustc: rustc 1.97.1 (8bab26f4f 2026-07-14)
+profile: cargo build --release -j 16 (opt-level 3, thin LTO, debug=1); built under taskset -c 32-47
+harness: target/release/contract --threads T --corpus C, rows plan (default route) and packed (PlanConfig::packed()), one process per case and width
+sessions: s1 and s2 are two full passes (A/A noise = between them); BENCH_RUNS=5 (samples column = runs used by the harness)
+corpora: tenferro-p1 (57), tenferro-p1-gemm (53), large-batched-gemm (16), phase2-extra (11, new, synthetic Phase 2 gate)
+pinning: scripts/drive.sh. Per case: idle_cpus.py pick 8 --seconds 2 (8 idle CPUs of one L3 domain), then 1T, 4T, 8T back to back on prefixes of that set, each through pinned.sh (idle check 3 s before and after, PINNED_RETRIES=1); a case whose triple is not fully valid is discarded and retried on a new pick (up to 60 picks). The stock paired.sh aborts on the first spoiled run and was not used (same deviation as 2026-10-02-phase1-smoke). Cores per case: s*/<corpus>-cpus.csv. Skipped cases: none (no *-skipped.txt).
+metric/noise: scripts/analyze.py imports benchmarks/scripts/tblis_decision.py (workload = sum calls x exec median; noise_of = mean |log(total/median over sessions)|, max of both rows) and applies them to plan_exec / packed_exec. faer subset = cases whose log line reads '# selected <case> plan: faer'.
+correctness: every harness CHECK line (plan vs packed) is ok (grep MISMATCH finds none).
+outputs: decision.txt (per corpus x width), targets.txt (S1-S3 target list), attribution.md (+ perf/), s1/ s2/ raw CSV/log, scripts/.
+Part B: perf record -F 4999 cycles and page-faults, pinned (scripts/prof.sh, scripts/attrib.py), perf_event_paranoid=1; both rows run in one process, split by symbol (the plan row is faer in all profiled cases).

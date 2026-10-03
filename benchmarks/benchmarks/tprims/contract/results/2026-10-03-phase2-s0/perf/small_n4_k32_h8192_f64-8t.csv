@@ -1,0 +1,9 @@
+# threads: requested=8 pool=8 budget=8
+case,variant,threads,median_ns,samples
+small_n4_k32_h8192_f64,plan_plan,8,920,10
+# selected small_n4_k32_h8192_f64 plan: faer
+small_n4_k32_h8192_f64,plan_exec,8,1493994,10
+small_n4_k32_h8192_f64,packed_plan,8,56032,10
+# selected small_n4_k32_h8192_f64 packed: packed avx2.f64.real.8x6
+small_n4_k32_h8192_f64,packed_exec,8,105904641,10
+CHECK small_n4_k32_h8192_f64 threads=8 plan_vs_packed_rel=0e0 ok
