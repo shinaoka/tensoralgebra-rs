@@ -1,0 +1,7 @@
+case,cpus,attempt
+gemm_batched_047_f64,"0,1,2,3,4,5,6,7",1
+gemm_batched_008_f64,"0,1,2,3,4,5,6,7",1
+gemm_batched_012_f64,"16,17,18,19,20,21,22,23",18
+gemm_batched_022_f64,"0,1,2,3,4,5,6,7",1
+gemm_batched_023_f64,"0,1,2,3,4,5,6,7",2
+gemm_batched_000_f64,"0,1,2,3,4,5,6,7",1

@@ -25,6 +25,10 @@ use super::Ctx;
 pub(super) struct BPart<'a> {
     /// This thread's column group, in `0..pn`.
     pub(super) g: usize,
+    /// Which slice of the shared `B` panel buffer this thread packs into: its
+    /// column group in a team, its lane under batch-axis claiming (see
+    /// [`super::batch`]), where every lane owns one slice and nothing is shared.
+    pub(super) panel: usize,
     pub(super) pn: usize,
     /// This thread's row strip, in `0..pm` — its index *within* the column
     /// group, which is what decides its share of the group's packing.
@@ -41,6 +45,7 @@ impl BPart<'_> {
     /// The serial partition: one cell covering everything, no barrier.
     pub(super) const SERIAL: BPart<'static> = BPart {
         g: 0,
+        panel: 0,
         pn: 1,
         r: 0,
         pm: 1,
@@ -81,11 +86,17 @@ impl BPart<'_> {
 /// empty cell in some `jc` block still takes that block's barriers and then does
 /// nothing, which is why the skip below sits after them and not before.
 ///
+/// `items` is the range of in-plan batch entries to run: all of them for a team
+/// or a serial call, one lane's contiguous share under batch-axis claiming. The
+/// team's barrier-count argument above holds per call, so a lane (which has no
+/// barrier) is free to take any range.
+///
 /// # Safety
 /// As [`execute`], plus: `ap` and `tile` must be this thread's alone, and no
 /// other thread may own an overlapping cell.
 pub(super) unsafe fn run_strip<T>(
     cx: &Ctx<'_, T>,
+    items: std::ops::Range<usize>,
     m_lo: usize,
     m_hi: usize,
     ap_ptr: *mut T::Real,
@@ -112,7 +123,7 @@ pub(super) unsafe fn run_strip<T>(
     } = *cx;
     let (ptr_a, ptr_b, c, d, bp_ptr) = (cx.a.0, cx.b.0, cx.c.0 as *const T, cx.d.0, cx.bp.0);
 
-    for h in 0..plan.stats.batch {
+    for h in items {
         let ah = ptr_a.offset(ha[h] as isize);
         let bh = ptr_b.offset(hb[h] as isize);
         let ch = c.offset(plan.h_c[h] as isize);
@@ -147,7 +158,7 @@ pub(super) unsafe fn run_strip<T>(
                     (q1 - q0) * b_sliver <= b_group,
                     "column group overruns its slice of the packed B panel"
                 );
-                let bp_ptr = bp_ptr.add(bpart.g * b_group);
+                let bp_ptr = bp_ptr.add(bpart.panel * b_group);
                 let ep = Epoch::<T> {
                     ah,
                     bh,
