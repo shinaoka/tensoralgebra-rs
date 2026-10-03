@@ -1,0 +1,123 @@
+W1 balance fix: why and what.
+Regression (control-s1/s2, c71bba4 vs #54, two sessions, noise 1-4% on large cases): dot_general_001_f64 4T +24%, 8T +53%;
+dot_general_032_f64 4T +21%. Cause: W1's rule sent LARGE items to batch lanes whenever H >= budget, also when H does not split
+evenly over the lanes (001 and 032 have H = 9: on 8 lanes one lane runs two entries, critical path 2/9 against 1/8).
+Fix (driver/batch.rs): for non-tiny items lanes need balance, H / (lanes * ceil(H / lanes)) >= 0.9, else the team keeps the item.
+After the fix (table below): 001 0.989 / 0.989 / 1.042 and 032 4T 0.206 (a win) at 1T/4T/8T vs c71bba4.
+Caveats: (1) the 'fix' binary is origin/main c49370c + this change, i.e. it also contains W2 (#56); '#54' is the W1 branch
+binary (c71bba4 + W1). (2) the host was loaded by other users' jobs during this session (waits for idle cores, other
+agents), and mid-size cases (10-60 ms at 1T, the whole 1T column below dot_general_013) swing +-30% between binaries that run the
+same code path at 1T (budget 1: lanes() returns at once), so only the large, stable cases carry the conclusion.
+(3) the 1T column is a no-regression check: large cases are 0.98-1.04.
+Not W1: dot_general_036 at 8T (no batch axis) and a few small cases move with the binary, not with the rule.
+
+tenferro-p1 packed-route cases (38), packed_exec median us, one session (control-fix-s1) with all three binaries back to back on the same cores;
+c71bba4 = before W1; #54 = main after W1 (the regression); fix = main + the balance rule. ratios vs c71bba4.
+noise reference: control-s1/s2 (c71bba4 vs #54, two sessions) -- A/A spread of c71bba4 row between them 1-4% on large cases.
+Pre-fix finding (control-s1/s2, medians of 2 sessions): dot_general_001_f64 #54/c71 = 1.24 (4T), 1.53 (8T); dot_general_032_f64 1.21 (4T).
+
+case                   T    c71bba4     #54     fix
+dot_general_000_f64    1   445648.4   1.005   0.992
+dot_general_001_f64    1   648887.9   0.983   0.989
+dot_general_002_f64    1   151606.2   0.990   1.002
+dot_general_003_f64    1   544619.6   0.997   0.997
+dot_general_004_f64    1   538009.5   1.017   1.009
+dot_general_005_f64    1   179101.2   0.997   1.002
+dot_general_006_f64    1   424267.2   1.005   1.003
+dot_general_007_f64    1   429949.1   1.006   1.005
+dot_general_008_f64    1   169319.8   1.000   1.038
+dot_general_009_f64    1    97296.3   1.004   1.009
+dot_general_010_f64    1    37238.8   0.999   0.994
+dot_general_011_f64    1   102097.7   0.999   1.004
+dot_general_012_f64    1   102364.2   1.013   0.996
+dot_general_013_f64    1    68582.6   1.006   0.996
+dot_general_020_f64    1   148623.9   0.873   0.583
+dot_general_022_f64    1    39857.3   0.987   0.875
+dot_general_023_f64    1    14593.7   0.981   0.720
+dot_general_025_f64    1    80163.5   1.127   1.170
+dot_general_026_f64    1    76312.0   1.155   1.218
+dot_general_027_f64    1    32803.0   1.211   1.014
+dot_general_028_f64    1    54190.8   0.991   1.198
+dot_general_029_f64    1    30402.5   0.704   0.866
+dot_general_030_f64    1    59026.9   1.009   1.042
+dot_general_032_f64    1    18155.4   1.108   1.302
+dot_general_033_f64    1    12415.6   1.176   1.003
+dot_general_034_f64    1    21791.6   1.111   0.659
+dot_general_035_f64    1    14281.7   0.818   1.405
+dot_general_036_f64    1    19614.3   1.184   1.035
+dot_general_043_f64    1        0.6   1.594   1.359
+dot_general_046_f64    1      417.5   1.082   0.984
+dot_general_048_f64    1      209.1   1.478   1.756
+dot_general_051_f64    1        2.6   0.891   0.804
+dot_general_053_f64    1        4.5   1.173   0.497
+dot_general_000_f64    4   148994.8   0.732   0.774
+dot_general_001_f64    4   177475.8   1.243   0.989
+dot_general_002_f64    4    48652.7   0.989   1.050
+dot_general_003_f64    4   151045.8   1.008   1.026
+dot_general_004_f64    4   151552.6   1.018   1.003
+dot_general_005_f64    4    47333.5   1.001   0.998
+dot_general_006_f64    4   110196.1   1.008   1.005
+dot_general_007_f64    4   116325.0   0.984   0.983
+dot_general_008_f64    4    72785.2   0.995   1.000
+dot_general_009_f64    4    26707.5   0.939   0.922
+dot_general_010_f64    4     9685.2   1.057   0.950
+dot_general_011_f64    4    25797.1   0.998   1.010
+dot_general_012_f64    4    25919.4   0.996   1.000
+dot_general_013_f64    4    29866.8   1.014   1.040
+dot_general_020_f64    4    31938.8   1.373   0.986
+dot_general_022_f64    4    12288.5   0.894   0.890
+dot_general_023_f64    4     7568.7   0.476   0.978
+dot_general_025_f64    4    21160.6   1.224   1.181
+dot_general_026_f64    4    25031.4   0.996   0.999
+dot_general_027_f64    4    12430.5   1.040   0.905
+dot_general_028_f64    4    15673.1   1.193   1.219
+dot_general_029_f64    4     8322.0   1.039   1.084
+dot_general_030_f64    4    15733.8   0.711   0.884
+dot_general_032_f64    4    25982.3   0.291   0.206
+dot_general_033_f64    4     3353.9   1.176   1.208
+dot_general_034_f64    4     3639.3   1.988   1.090
+dot_general_035_f64    4     4174.0   1.038   1.954
+dot_general_036_f64    4     7276.5   0.716   0.922
+dot_general_043_f64    4        1.1   0.757   0.775
+dot_general_046_f64    4      277.9   1.047   0.930
+dot_general_048_f64    4      156.3   1.410   1.300
+dot_general_051_f64    4        3.0   0.907   1.272
+dot_general_053_f64    4        4.7   0.377   1.266
+dot_general_000_f64    8    92739.5   0.686   0.672
+dot_general_001_f64    8   102393.0   1.606   1.042
+dot_general_002_f64    8    48257.0   0.992   0.986
+dot_general_003_f64    8    94163.3   0.979   1.017
+dot_general_004_f64    8    89704.0   1.014   1.065
+dot_general_005_f64    8    27319.5   1.025   1.045
+dot_general_006_f64    8    69366.2   0.929   1.015
+dot_general_007_f64    8    70659.3   0.980   0.946
+dot_general_008_f64    8    72241.0   0.991   0.987
+dot_general_009_f64    8    14726.3   0.994   0.991
+dot_general_010_f64    8     6645.2   0.723   0.641
+dot_general_011_f64    8    16845.0   0.908   0.923
+dot_general_012_f64    8    15261.5   1.060   0.993
+dot_general_013_f64    8    14555.7   0.968   1.014
+dot_general_020_f64    8    39397.1   0.971   0.502
+dot_general_022_f64    8     4851.1   0.996   1.063
+dot_general_023_f64    8     3847.4   0.910   1.218
+dot_general_025_f64    8    12205.1   1.168   0.872
+dot_general_026_f64    8    14927.2   0.871   0.737
+dot_general_027_f64    8     6360.7   1.031   1.012
+dot_general_028_f64    8     9101.3   1.122   1.238
+dot_general_029_f64    8     4417.4   1.117   0.887
+dot_general_030_f64    8     8433.0   1.014   1.030
+dot_general_032_f64    8     7365.0   0.707   0.711
+dot_general_033_f64    8     2264.1   1.711   0.999
+dot_general_034_f64    8     3533.3   1.734   1.853
+dot_general_035_f64    8     8531.1   0.383   0.341
+dot_general_036_f64    8     3187.3   1.013   1.117
+dot_general_043_f64    8        1.0   0.768   1.313
+dot_general_046_f64    8      404.1   0.404   0.587
+dot_general_048_f64    8      187.3   1.403   0.842
+dot_general_051_f64    8        2.8   1.204   0.760
+dot_general_053_f64    8        5.7   0.740   0.667
+
+1T n=33: geomean #54 1.039 fix 0.989; time-weighted #54 1.003 fix 0.995
+4T n=33: geomean #54 0.937 fix 0.984; time-weighted #54 0.999 fix 0.967
+8T n=33: geomean #54 0.959 fix 0.903; time-weighted #54 1.023 fix 0.940
+fix > 1.05 x c71bba4 on cases above 50 us: [('dot_general_025_f64', 1, 1.17), ('dot_general_026_f64', 1, 1.218), ('dot_general_028_f64', 1, 1.198), ('dot_general_032_f64', 1, 1.302), ('dot_general_035_f64', 1, 1.405), ('dot_general_048_f64', 1, 1.756), ('dot_general_025_f64', 4, 1.181), ('dot_general_028_f64', 4, 1.219), ('dot_general_029_f64', 4, 1.084), ('dot_general_033_f64', 4, 1.208), ('dot_general_034_f64', 4, 1.09), ('dot_general_035_f64', 4, 1.954), ('dot_general_048_f64', 4, 1.3), ('dot_general_004_f64', 8, 1.065), ('dot_general_022_f64', 8, 1.063), ('dot_general_023_f64', 8, 1.218), ('dot_general_028_f64', 8, 1.238), ('dot_general_034_f64', 8, 1.853), ('dot_general_036_f64', 8, 1.117)]

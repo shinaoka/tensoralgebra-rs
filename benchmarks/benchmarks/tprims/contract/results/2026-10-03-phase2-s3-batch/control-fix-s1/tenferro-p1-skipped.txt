@@ -1,0 +1,5 @@
+SKIPPED dot_general_014_f64
+SKIPPED dot_general_015_f64
+SKIPPED dot_general_017_f64
+SKIPPED dot_general_018_f64
+SKIPPED dot_general_019_f64
