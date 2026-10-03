@@ -1,0 +1,60 @@
+# W2 results: separately described C on faer vs packed (Phase 2, #50)
+
+Metric: workload = sum calls x exec median (tblis_decision.py convention); ratio = packed/faer, >1 means faer is faster.
+Modes (BENCH_C_MODE, TAPP-style execute_raw): separate_b0 = beta 0, C unread; separate_b1 = beta 0.5, C distinct buffer of D's layout; separate_same = beta 0.5, C is D itself.
+Session s1: unconditional faer routing for every separate C (serial in-place scale for separate_same). s2 (partial, separate_same only, 28 of 53 cases, stopped after long starvation by other benchmarks on the host): parallel in-place pass (final code, still unconditional routing).
+
+large-batched-gemm   separate_b1    1T n= 16 workload packed/faer= 1.080 geomean= 1.087 faer-loses(<0.95): 0
+large-batched-gemm   separate_b1    4T n= 16 workload packed/faer= 1.119 geomean= 1.040 faer-loses(<0.95): 3
+large-batched-gemm   separate_b1    8T n= 16 workload packed/faer= 1.126 geomean= 0.972 faer-loses(<0.95): 7
+large-batched-gemm   separate_same  1T n= 16 workload packed/faer= 1.077 geomean= 1.113 faer-loses(<0.95): 0
+large-batched-gemm   separate_same  4T n= 16 workload packed/faer= 1.122 geomean= 1.066 faer-loses(<0.95): 2
+large-batched-gemm   separate_same  8T n= 16 workload packed/faer= 1.134 geomean= 1.014 faer-loses(<0.95): 4
+tenferro-p1-gemm     separate_b0    1T n= 53 workload packed/faer= 1.078 geomean= 1.541 faer-loses(<0.95): 2
+tenferro-p1-gemm     separate_b0    4T n= 53 workload packed/faer= 1.173 geomean= 1.518 faer-loses(<0.95): 9
+tenferro-p1-gemm     separate_b0    8T n= 53 workload packed/faer= 1.249 geomean= 1.514 faer-loses(<0.95): 13
+tenferro-p1-gemm     separate_b1    1T n= 53 workload packed/faer= 1.024 geomean= 1.258 faer-loses(<0.95): 2
+tenferro-p1-gemm     separate_b1    4T n= 53 workload packed/faer= 1.002 geomean= 1.161 faer-loses(<0.95): 18
+tenferro-p1-gemm     separate_b1    8T n= 52 workload packed/faer= 1.027 geomean= 1.161 faer-loses(<0.95): 23
+tenferro-p1-gemm     separate_same  1T n= 53 workload packed/faer= 1.048 geomean= 1.530 faer-loses(<0.95): 2
+tenferro-p1-gemm     separate_same  4T n= 53 workload packed/faer= 1.028 geomean= 1.359 faer-loses(<0.95): 18
+tenferro-p1-gemm     separate_same  8T n= 53 workload packed/faer= 0.967 geomean= 1.279 faer-loses(<0.95): 22
+
+## s2 vs s1, separate_same, faer exec geomean old/new on the 28 shared cases (>1: new faster)
+1T 0.998, 4T 1.026, 8T 1.070 (big cases up to 1.22x at 8T); packed rows 1.00/1.00/0.98 (noise).
+
+## Rule evaluation on s1 (cases the rule sends to packed count as ratio 1)
+-- separate_b0 rule K>=0 0 out<=... (0 0 = route everything)
+separate_b0    1T faer cases 53 workload packed/rule=1.078 worst faer-routed ratio=0.64
+separate_b0    4T faer cases 53 workload packed/rule=1.173 worst faer-routed ratio=0.57
+separate_b0    8T faer cases 53 workload packed/rule=1.249 worst faer-routed ratio=0.58
+-- separate_b0 rule K>=512 1048576 out<=... (0 0 = route everything)
+separate_b0    1T faer cases 30 workload packed/rule=1.016 worst faer-routed ratio=0.64
+separate_b0    4T faer cases 30 workload packed/rule=1.130 worst faer-routed ratio=0.85
+separate_b0    8T faer cases 30 workload packed/rule=1.204 worst faer-routed ratio=0.68
+-- separate_b1 rule K>=0 0 out<=... (0 0 = route everything)
+separate_b1    1T faer cases 53 workload packed/rule=1.024 worst faer-routed ratio=0.48
+separate_b1    4T faer cases 53 workload packed/rule=1.002 worst faer-routed ratio=0.50
+separate_b1    8T faer cases 52 workload packed/rule=1.027 worst faer-routed ratio=0.48
+-- separate_b1 rule K>=512 1048576 out<=... (0 0 = route everything)
+separate_b1    1T faer cases 30 workload packed/rule=1.022 worst faer-routed ratio=0.64
+separate_b1    4T faer cases 30 workload packed/rule=1.113 worst faer-routed ratio=0.71
+separate_b1    8T faer cases 30 workload packed/rule=1.191 worst faer-routed ratio=0.78
+-- separate_same rule K>=0 0 out<=... (0 0 = route everything)
+separate_same  1T faer cases 53 workload packed/rule=1.048 worst faer-routed ratio=0.48
+separate_same  4T faer cases 53 workload packed/rule=1.028 worst faer-routed ratio=0.46
+separate_same  8T faer cases 53 workload packed/rule=0.967 worst faer-routed ratio=0.38
+-- separate_same rule K>=512 1048576 out<=... (0 0 = route everything)
+separate_same  1T faer cases 30 workload packed/rule=1.019 worst faer-routed ratio=0.63
+separate_same  4T faer cases 30 workload packed/rule=1.120 worst faer-routed ratio=0.71
+separate_same  8T faer cases 30 workload packed/rule=1.160 worst faer-routed ratio=0.69
+
+## Decision
+- Every TAPP product (CSpec::Separate) with GEMM-fusable A/B/D now plans on faer when K >= 512 or the output has <= 2^20 elements (plan-time rule; beta is an execution argument and cannot be used).
+- Separate C with a large output and K < 512 stays on the packed driver: the D := beta*op_C(C) pass costs 20-50% of faer's time on memory-bound shapes (e.g. gemm_batched_003: 0.63 -> 0.48, 013: 1.50 -> 0.88, 012: 2.71 -> 1.28 at 8T), so faer loses there at 4T/8T.
+- beta == 0 needs no pass: faer matches the overwrite result (workload 1.078 / 1.173 / 1.249 at 1T/4T/8T); the small-case gains (geomean 1.5x, tiny GEMMs 2-5x) are kept.
+- The faer in-place scale was serial; the parallel output pass replaces it (separate_same at 8T up to 1.2x faster on big cases, neutral at 1T).
+- Kept on packed: separate C with out > 2^20 and K < 512 (plan-time, whatever beta); an isolated one-input K axis (unchanged); non-fusable groups (unchanged).
+- Caveat: the corpus has one c64 case; the thresholds were fit on f64. Pre-existing: faer already loses to packed on some memory-bound overwrite shapes (S0 gate FAIL); not changed here.
+- The final rule was evaluated on the measured data, not re-measured as a whole (a routed-to-packed case is the packed row by construction).
+- Note: with beta known to be 0 at plan time faer would win everywhere (workload 1.249 at 8T vs 1.093 under the rule); beta is an execution argument, so the rule assumes it may be nonzero. A lazily built second plan is a possible follow-up.

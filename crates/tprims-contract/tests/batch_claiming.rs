@@ -155,6 +155,9 @@ fn the_mode_follows_the_width_rule() {
         1,
         "H >= width should not broadcast"
     );
+    // 9 large entries on 8 lanes would leave one lane with two: keep the team.
+    run::<f64>(DType::F64, &exec, [BIG[0], BIG[1], BIG[2], 9]);
+    assert_eq!(pool.stats().broadcasts, 2, "an uneven split lost its team");
 }
 
 #[test]
