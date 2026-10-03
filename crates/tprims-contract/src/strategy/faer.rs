@@ -13,21 +13,29 @@
 //!
 //! # Semantics
 //!
-//! `D = op_D(alpha * op_A(A) * op_B(B) + beta * op_C(D_old))` with a C mode of
-//! overwrite or in-place accumulation. A separately described C is declined (it
-//! would need a copy into D first). faer adds into D with coefficient one, so
-//! the update is reduced to that form without a copy:
+//! `D = op_D(alpha * op_A(A) * op_B(B) + beta * op_C(C))` with a C mode of
+//! overwrite, in-place accumulation, or a separately described C. faer adds
+//! into D with coefficient one, so the update is reduced to that form without
+//! copying an operand:
 //!
 //! * an output conjugation distributes over the sum, flipping the conjugation
 //!   of A, B and C and conjugating `alpha` and `beta`;
 //! * `beta * op_C(D_old)` is applied to D in one in-place pass when it is not
-//!   the identity, then faer accumulates the product.
+//!   the identity, then faer accumulates the product;
+//! * a separate C that is not D itself is first written into D by the
+//!   executor's output-update pass (`D = op_D(beta * op_C(C))`, one strided
+//!   pass over the output through strided-basic, see
+//!   [`super::elementwise`]); faer then accumulates `op_D(alpha * op_A(A) *
+//!   op_B(B))`. That pass is output-sized, not an operand normalization: A, B
+//!   and C are never copied or packed and `PlanReport::materialized` stays
+//!   all false. With `beta == 0` C is not read. A separate C that is D itself
+//!   (same mapping, same origin) is the in-place case above.
 
 use faer::Accum;
 use tprims_exec::{Exec, Par, WidthPolicy};
 use tprims_kernel::Element;
 
-use crate::api::{CSpec, OperandId, Problem, RoleAxis, Scalar};
+use crate::api::{OperandId, Problem, RoleAxis, Scalar};
 use crate::plan::NS_PER_FLOP;
 
 /// One fused group: `(extent, stride)` in each of A, B and D.
@@ -105,10 +113,6 @@ fn fuse_group(group: &[RoleAxis], carriers: &[OperandId]) -> Option<Fused> {
 /// The fusion of `p`, or `None` when this strategy cannot run it copy-free with
 /// full semantics.
 pub(crate) fn plan(p: &Problem) -> Option<FaerPlan> {
-    // A separate C would have to be copied into D first.
-    if matches!(p.c_spec(), CSpec::Separate(_)) {
-        return None;
-    }
     let r = p.roles();
     // A reduction over an axis only one input carries has no matrix to hand
     // to faer without a broadcast copy.
@@ -144,7 +148,9 @@ impl FaerPlan {
     /// `a`, `b` and `d` are the elements at logical index zero of non-empty
     /// layouts matching the plan's problem (K non-empty); `d` is exclusive and
     /// injective and does not alias `a` or `b`. `beta` is zero when the problem
-    /// has no C term.
+    /// has no C term. With `c_done`, `d` already holds `op_D(beta * op_C(C))`
+    /// and only the product is accumulated (`beta` is ignored).
+    #[allow(clippy::too_many_arguments)] // INVARIANT: the GEMM argument set.
     pub(crate) unsafe fn run<T: Scalar>(
         &self,
         exec: &Exec<'_>,
@@ -152,6 +158,7 @@ impl FaerPlan {
         a: *const T,
         b: *const T,
         beta: T,
+        c_done: bool,
         d: *mut T,
     ) {
         let (mut ca, mut cb, mut cc) = (self.conj_a, self.conj_b, self.conj_c);
@@ -160,6 +167,10 @@ impl FaerPlan {
             // conj(alpha*A*B + beta*C) = conj(alpha)*conj(A)*conj(B) + conj(beta)*conj(C)
             (ca, cb, cc) = (!ca, !cb, !cc);
             (alpha, beta) = (Element::conj(alpha), Element::conj(beta));
+        }
+        if c_done {
+            // D holds the C term; only `+= product` remains.
+            (beta, cc) = (<T as Element>::one(), false);
         }
         let count = self.h.extent;
         let policy = WidthPolicy::default();

@@ -550,9 +550,20 @@ impl<T: Scalar> Plan<T> {
                 };
             }
             Strategy::Faer(f) => {
+                // A separate C other than D itself is written into D first, in
+                // one output-sized pass (not an operand copy); faer then adds
+                // the product. D itself is the in-place update.
+                let c_done = match c {
+                    CRead::Separate(cp) if !core::ptr::eq(cp, d) && beta != zero => {
+                        // SAFETY: the caller's contract (C disjoint from D).
+                        unsafe { self.output.run(exec, expr, Inputs::None, c, d) }?;
+                        true
+                    }
+                    _ => false,
+                };
                 // SAFETY: the caller's contract; the fusion was proven copy-free
                 // over exactly this problem's layouts.
-                unsafe { f.run(exec, alpha, a, b, beta, d) };
+                unsafe { f.run(exec, alpha, a, b, beta, c_done, d) };
             }
             Strategy::Elementwise(e) => {
                 // SAFETY: the caller's contract.
