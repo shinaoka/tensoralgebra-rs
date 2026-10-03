@@ -194,6 +194,9 @@ pub struct ResolvedGemm<R: Real> {
     pub opts: PartitionOpts,
     policy: BlockingPolicy,
     gather: bool,
+    /// Bind the `avx2,fma` variants of pack and write-back. Decided once when
+    /// the family is bound, from the CPU check the selection already made.
+    simd: bool,
 }
 impl<R: Real> ResolvedGemm<R> {
     /// Selected immutable, registered descriptor. The reference cannot be
@@ -229,8 +232,8 @@ impl<R: Real> ResolvedGemm<R> {
     /// ```
     pub fn packers<T: crate::Element<Real = R>>(&self) -> (crate::PackFn<T>, crate::PackFn<T>) {
         (
-            crate::pack::pack_fn::<T>(self.a_layout),
-            crate::pack::pack_fn::<T>(self.b_layout),
+            crate::pack::pack_fn::<T>(self.a_layout, self.simd),
+            crate::pack::pack_fn::<T>(self.b_layout, self.simd),
         )
     }
 
@@ -253,7 +256,7 @@ impl<R: Real> ResolvedGemm<R> {
     /// # Ok::<(), tprims_kernel::SelectError>(())
     /// ```
     pub fn emitter<T: crate::Element<Real = R>>(&self) -> crate::EmitFn<T> {
-        crate::writeback::emit_fn::<T>(self.tile_fmt, self.gather)
+        crate::writeback::emit_fn::<T>(self.tile_fmt, self.gather, self.simd)
     }
 
     /// Resolve an exact choice or Auto for the storage dtype `T` on this CPU.
@@ -479,6 +482,10 @@ impl<R: Real> ResolvedGemm<R> {
             opts: PartitionOpts::default(),
             policy: BlockingPolicy::from_tuning(&Tuning::default()),
             gather: false,
+            simd: {
+                let cpu = CpuFeatures::detect();
+                matches!(family.isa, crate::Isa::Avx2 | crate::Isa::Avx512) && cpu.avx2 && cpu.fma
+            },
         };
         rg.with_threads(effective_threads)
     }
