@@ -1,0 +1,12 @@
+Phase 2 W3 (a: const-generic pack/write-back + avx2 variants; b: blocking arms), tensor4all/tprims-rs #50
+date: 2026-10-03
+before: origin/main b3bd887 (after #54), binary w3-before; after: branch phase2-w3-codegen (commit "W3a: const-generic pack and write-back flags...") built as the experiment binary w3b-exp, which adds only a TPRIMS_W3B env switch in blocking selection (k512 / model arms; unset = legacy = the committed code). Experiment patch not committed.
+cpu: AMD EPYC 7713P (Zen 3, AVX2), shared host; W2's benchmark ran on CCD 24-31 and was never concurrent (my driver waits for its binary)
+build: RUSTC_WRAPPER= CARGO_INCREMENTAL=0 cargo build --release -p tprims-bench --bins under taskset -c 32-47 (kache off)
+harness: contract --threads T --corpus C, packed_exec median; plan_exec (faer row, untouched code) printed as ctl = after/before
+variants per case and width, back to back on a prefix of the same 8 idle CPUs (pinned.sh, PINNED_RETRIES=1, retry on a new pick): before, after (W3a), k512 (kc=512, A budget 256 KiB, nc from the 3 MiB B budget), model (BlockModel::Analytical)
+sessions: s1, s2 (A/A noise between them); BENCH_RUNS=5
+case list (scripts/session.sh): phase2-profile gemm_1024_f64/c64; tenferro-p1 packed-route dot_general_000/001/005/007/012/018/036/043 (f64) plus dot_general_016/031 c64 (faer-routed, packed row forced); tenferro-p1-gemm gemm_batched_008/009_c64/012/022/023; phase2-extra small_n4_k32_h8192, small_n4_k4_h65536_c64, rank1_k1_m2048_n2048
+  (dot_general_043 is a 0.4 us case: ratios there are noise.)
+compile time (cache off, incremental off, cargo clean --release -p tprims-kernel -p tprims-contract; cargo test --release -p tprims-contract --no-run, 16 jobs, taskset 32-47): before 61 s (63.2, 60.7), after 69 s (69.8, 68.5)
+outputs: decision.txt (a), ../2026-10-03-phase2-w3b/decision.txt (b), table.txt (scripts/analyze.py s1 s2), s1/ s2/, scripts/

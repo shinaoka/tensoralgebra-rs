@@ -180,3 +180,15 @@ tiny or at least as many as the workers (`driver/batch.rs`). Before/after
 entries 3-50x faster at 4T/8T (`dot_general_049` 11.3 ms -> 0.29 ms at 8T), large
 single GEMMs unchanged within noise. Details and the decision:
 [`results/2026-10-03-phase2-s3-batch/`](results/2026-10-03-phase2-s3-batch/).
+
+## Phase 2 W3: pack and write-back codegen, blocking arms (2026-10-03)
+
+Pack and write-back carry their conjugation / beta / alpha flags as const
+generics (resolved once per panel call or tile) and have `avx2,fma` variants
+bound with the kernel family. Packed route, two sessions: complex 1T about -5%
+(`gemm_1024_c64`, `dot_general_031_c64`, `gemm_batched_009_c64`), f64 neutral,
+4T/8T no regression beyond the control row; `cargo test --release -p
+tprims-contract --no-run` 61 s -> 69 s. Blocking arms (kc=512 with a 256 KiB A
+budget; the analytical model) do not beat the legacy blocking, so it stays
+([`results/2026-10-03-phase2-w3a/`](results/2026-10-03-phase2-w3a/),
+[`results/2026-10-03-phase2-w3b/`](results/2026-10-03-phase2-w3b/)).

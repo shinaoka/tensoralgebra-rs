@@ -1,0 +1,9 @@
+case,variant,threads,median_ns,samples
+gemm_1024_f64,plan_plan,4,740,5
+gemm_1024_f64,plan_exec,4,11317000,5
+gemm_1024_f64,packed_plan,4,23271,5
+gemm_1024_f64,packed_exec,4,13256114,5
+gemm_1024_c64,plan_plan,4,620,5
+gemm_1024_c64,plan_exec,4,40653561,5
+gemm_1024_c64,packed_plan,4,20701,5
+gemm_1024_c64,packed_exec,4,48526098,5
