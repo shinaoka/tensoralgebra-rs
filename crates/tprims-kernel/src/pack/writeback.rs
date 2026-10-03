@@ -503,16 +503,46 @@ pub unsafe fn scale_only<T: Element>(
     d_c: &[i64],
     conj_d: bool,
 ) {
+    // Flags resolved once, outside the element loops (tensor4all-agent-rules#16).
     let beta_is_zero = beta == T::zero();
+    let conj_d = conj_d && T::IS_COMPLEX;
+    let conj_c = conj_c && T::IS_COMPLEX;
+    macro_rules! run {
+        ($bz:literal, $cc:literal, $cd:literal) => {
+            scale_loop::<T, $bz, $cc, $cd>(beta, c_base, c_r, c_c, d_base, d_r, d_c)
+        };
+    }
+    match (beta_is_zero, conj_c, conj_d) {
+        (true, _, false) => run!(true, false, false),
+        (true, _, true) => run!(true, false, true),
+        (false, false, false) => run!(false, false, false),
+        (false, false, true) => run!(false, false, true),
+        (false, true, false) => run!(false, true, false),
+        (false, true, true) => run!(false, true, true),
+    }
+}
+
+/// The `scale_only` loop with its flags as const generics: `BZ` is
+/// `beta == 0` (C is not read), `CC` and `CD` conjugate `C` and `D`.
+#[inline(always)]
+unsafe fn scale_loop<T: Element, const BZ: bool, const CC: bool, const CD: bool>(
+    beta: T,
+    c_base: *const T,
+    c_r: &[i64],
+    c_c: &[i64],
+    d_base: *mut T,
+    d_r: &[i64],
+    d_c: &[i64],
+) {
     for (&dcj, &ccj) in d_c.iter().zip(c_c) {
         for (&dri, &cri) in d_r.iter().zip(c_r) {
             let mut v = T::zero();
-            if !beta_is_zero {
+            if !BZ {
                 let cv = *c_base.offset((cri + ccj) as isize);
-                let cv = if conj_c { cv.conj() } else { cv };
+                let cv = if CC { cv.conj() } else { cv };
                 v = cv.mul(beta);
             }
-            if conj_d {
+            if CD {
                 v = v.conj();
             }
             *d_base.offset((dri + dcj) as isize) = v;
@@ -703,5 +733,49 @@ mod tests {
             &[0., 0.4, 1.],
             &[false, true],
         );
+    }
+
+    #[test]
+    fn scale_only_matches_the_definition_for_every_flag_combination() {
+        let c: Vec<C64> = (0..9)
+            .map(|i| C64::from_parts(i as f64 + 0.5, 2.0 - i as f64))
+            .collect();
+        let (rows, cols) = ([0i64, 1, 2], [0i64, 3, 6]);
+        for beta in [C64::zero(), C64::from_parts(0.4, -0.2)] {
+            for conj_c in [false, true] {
+                for conj_d in [false, true] {
+                    let mut got = [C64::from_parts(9., 9.); 9];
+                    // SAFETY: nine-element arrays cover all scatter offsets; C is
+                    // valid even when beta is zero.
+                    unsafe {
+                        scale_only::<C64>(
+                            beta,
+                            c.as_ptr(),
+                            &rows,
+                            &cols,
+                            conj_c,
+                            got.as_mut_ptr(),
+                            &rows,
+                            &cols,
+                            conj_d,
+                        )
+                    };
+                    for (k, g) in got.iter().enumerate() {
+                        let mut v = C64::zero();
+                        if beta != C64::zero() {
+                            let cv = if conj_c { c[k].conj() } else { c[k] };
+                            v = cv.mul(beta);
+                        }
+                        if conj_d {
+                            v = v.conj();
+                        }
+                        assert_eq!(
+                            *g, v,
+                            "beta {beta:?} conj_c {conj_c} conj_d {conj_d} at {k}"
+                        );
+                    }
+                }
+            }
+        }
     }
 }

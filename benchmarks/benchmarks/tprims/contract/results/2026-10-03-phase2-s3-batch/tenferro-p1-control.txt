@@ -1,0 +1,133 @@
+FINDING (W1 control, found after #54 merged): c71bba4 vs main@#54, tenferro-p1 packed-route cases, two sessions.
+dot_general_001_f64 regressed 4T +24% and 8T +53% (noise 1-4%), dot_general_032_f64 4T +21%. Cause: the W1 rule sent
+LARGE items to batch lanes whenever H >= budget, also when H does not split evenly (001 and 032 have H = 9: on 8 lanes one
+lane runs two entries, critical path 2/9 against 1/8). Fix (batch.rs, in the W3a PR): for non-tiny items lanes need a
+balanced split (H / (lanes * ceil(H / lanes)) >= 0.9), else the team. Re-check in tenferro-p1-control-fix.txt: 001 1.006 / 1.028,
+032 1.046 / 1.042 (4T / 8T, vs c71bba4).
+Not W1: dot_general_036 (no batch axis: lanes() returns at once, same code path), 003, 007, 026 stay +5..+16% at 8T with
+both the #54 and the fixed binary against c71bba4 (reproduced in both sessions); that is a binary-level difference on small 8T
+cases, not the batch rule. Large wins of W1/#54 in the same table: dot_general_014 0.33/0.39, 000 0.72/0.71, 010 0.66 (8T).
+The first table below is the pre-fix control as measured.
+
+tenferro-p1 packed-route cases (default plan selects packed), packed_exec median us; ratio = main@#54 / c71bba4; flag = ratio > 1+max(0.05, 2*noise)
+
+case                   T     c71bba4        main  ratio  noise flag
+dot_general_000_f64    1    438755.6    439965.7  1.003  0.009 
+dot_general_001_f64    1    640155.4    636952.6  0.995  0.010 
+dot_general_002_f64    1    151841.5    150406.0  0.991  0.012 
+dot_general_003_f64    1    550306.1    542299.0  0.985  0.019 
+dot_general_004_f64    1    540765.4    547883.7  1.013  0.006 
+dot_general_005_f64    1    179006.7    178221.2  0.996  0.012 
+dot_general_006_f64    1    427395.0    424908.7  0.994  0.030 
+dot_general_007_f64    1    436424.0    433415.6  0.993  0.032 
+dot_general_008_f64    1    169761.8    169116.1  0.996  0.003 
+dot_general_009_f64    1     97648.9     98048.4  1.004  0.001 
+dot_general_010_f64    1     38049.2     37183.7  0.977  0.061 
+dot_general_011_f64    1    101956.4    101956.3  1.000  0.003 
+dot_general_012_f64    1    102169.7    101778.0  0.996  0.006 
+dot_general_013_f64    1     67988.5     68041.6  1.001  0.003 
+dot_general_014_f64    1     43022.5     41254.6  0.959  0.081 
+dot_general_015_f64    1    115436.9    116618.3  1.010  0.001 
+dot_general_017_f64    1     68639.4     68134.3  0.993  0.013 
+dot_general_018_f64    1     48630.0     50472.4  1.038  0.008 
+dot_general_019_f64    1     15131.6     14960.8  0.989  0.005 
+dot_general_020_f64    1     73130.7     73057.7  0.999  0.000 
+dot_general_022_f64    1     27517.6     27541.0  1.001  0.011 
+dot_general_023_f64    1      8526.2      8351.5  0.980  0.006 
+dot_general_025_f64    1     63803.4     64376.5  1.009  0.008 
+dot_general_026_f64    1     63976.4     64395.7  1.007  0.003 
+dot_general_027_f64    1     28747.9     27342.0  0.951  0.100 
+dot_general_028_f64    1     45352.9     45344.8  1.000  0.004 
+dot_general_029_f64    1     21514.1     21611.7  1.005  0.001 
+dot_general_030_f64    1     41167.0     41741.2  1.014  0.001 
+dot_general_032_f64    1     12418.5     12423.1  1.000  0.008 
+dot_general_033_f64    1     10322.7     10295.8  0.997  0.002 
+dot_general_034_f64    1      9901.4     10147.4  1.025  0.005 
+dot_general_035_f64    1      9904.6      9837.6  0.993  0.007 
+dot_general_036_f64    1     16324.5     16392.9  1.004  0.000 
+dot_general_043_f64    1         0.5         0.5  0.874  0.019 
+dot_general_046_f64    1       309.4       307.6  0.994  0.003 
+dot_general_048_f64    1       175.6       190.6  1.085  0.009 FLAG
+dot_general_051_f64    1         1.1         0.9  0.878  0.066 
+dot_general_053_f64    1         1.6         1.5  0.899  0.190 
+dot_general_000_f64    4    150132.7    109130.6  0.727  0.022 
+dot_general_001_f64    4    176522.6    218763.7  1.239  0.012 FLAG
+dot_general_002_f64    4     48560.4     49248.2  1.014  0.001 
+dot_general_003_f64    4    153054.3    152251.7  0.995  0.021 
+dot_general_004_f64    4    158716.8    151572.8  0.955  0.086 
+dot_general_005_f64    4     47243.2     47837.9  1.013  0.004 
+dot_general_006_f64    4    112661.7    115126.8  1.022  0.041 
+dot_general_007_f64    4    113269.4    116861.9  1.032  0.001 
+dot_general_008_f64    4     72673.9     72579.8  0.999  0.001 
+dot_general_009_f64    4     26683.7     24231.1  0.908  0.006 
+dot_general_010_f64    4      9972.1     10655.8  1.069  0.016 FLAG
+dot_general_011_f64    4     26030.1     25751.7  0.989  0.014 
+dot_general_012_f64    4     25813.0     25733.9  0.997  0.003 
+dot_general_013_f64    4     29673.5     30455.2  1.026  0.014 
+dot_general_014_f64    4     46529.8     14928.5  0.321  0.019 
+dot_general_015_f64    4     30471.8     30663.0  1.006  0.001 
+dot_general_017_f64    4     18664.2     18488.9  0.991  0.015 
+dot_general_018_f64    4     24347.7     18316.5  0.752  0.005 
+dot_general_019_f64    4      6571.1      6563.4  0.999  0.001 
+dot_general_020_f64    4     24402.2     19052.1  0.781  0.005 
+dot_general_022_f64    4      6989.0      7593.4  1.086  0.001 FLAG
+dot_general_023_f64    4      2712.5      2609.0  0.962  0.003 
+dot_general_025_f64    4     17029.8     16910.9  0.993  0.001 
+dot_general_026_f64    4     17102.2     16999.9  0.994  0.012 
+dot_general_027_f64    4      8412.0      8403.8  0.999  0.006 
+dot_general_028_f64    4     12576.7     13671.0  1.087  0.003 FLAG
+dot_general_029_f64    4      5874.7      5879.7  1.001  0.001 
+dot_general_030_f64    4     10601.8     10598.6  1.000  0.006 
+dot_general_032_f64    4      3904.7      4729.2  1.211  0.010 FLAG
+dot_general_033_f64    4      2664.0      2658.3  0.998  0.002 
+dot_general_034_f64    4      2782.8      2735.3  0.983  0.016 
+dot_general_035_f64    4      2768.6      2733.0  0.987  0.001 
+dot_general_036_f64    4      4412.7      4417.3  1.001  0.003 
+dot_general_043_f64    4         0.5         0.4  0.810  0.057 
+dot_general_046_f64    4       177.1       171.0  0.966  0.003 
+dot_general_048_f64    4       127.6       122.0  0.956  0.023 
+dot_general_051_f64    4         1.1         1.0  0.940  0.083 
+dot_general_053_f64    4         1.6         1.4  0.865  0.051 
+dot_general_000_f64    8     89971.1     61588.4  0.685  0.014 
+dot_general_001_f64    8    104216.2    159480.7  1.530  0.040 FLAG
+dot_general_002_f64    8     48085.2     49546.0  1.030  0.007 
+dot_general_003_f64    8     90562.6     96525.2  1.066  0.032 FLAG
+dot_general_004_f64    8     91258.7     96288.4  1.055  0.008 FLAG
+dot_general_005_f64    8     27069.9     28281.3  1.045  0.004 
+dot_general_006_f64    8     64102.8     64770.7  1.010  0.042 
+dot_general_007_f64    8     65907.8     67286.8  1.021  0.038 
+dot_general_008_f64    8     72860.7     71132.9  0.976  0.010 
+dot_general_009_f64    8     15443.8     15494.8  1.003  0.016 
+dot_general_010_f64    8      6677.4      4494.5  0.673  0.014 
+dot_general_011_f64    8     15333.2     15593.4  1.017  0.001 
+dot_general_012_f64    8     15699.7     15553.9  0.991  0.055 
+dot_general_013_f64    8     13611.3     13645.7  1.003  0.088 
+dot_general_014_f64    8     36653.5     14438.8  0.394  0.067 
+dot_general_015_f64    8     17845.9     17729.4  0.993  0.114 
+dot_general_017_f64    8     12148.6     11643.7  0.958  0.010 
+dot_general_018_f64    8     21660.8     17707.9  0.818  0.013 
+dot_general_019_f64    8      5184.9      5090.6  0.982  0.079 
+dot_general_020_f64    8     20248.2     13548.3  0.669  0.060 
+dot_general_022_f64    8      4319.8      3950.7  0.915  0.013 
+dot_general_023_f64    8      2332.9      2297.8  0.985  0.005 
+dot_general_025_f64    8      9670.7      9717.2  1.005  0.015 
+dot_general_026_f64    8      9247.3     10214.6  1.105  0.083 
+dot_general_027_f64    8      5582.3      5458.3  0.978  0.008 
+dot_general_028_f64    8      7682.1      7683.1  1.000  0.055 
+dot_general_029_f64    8      3616.3      3814.9  1.055  0.013 FLAG
+dot_general_030_f64    8      6232.3      6062.7  0.973  0.055 
+dot_general_032_f64    8      3261.5      3505.6  1.075  0.043 
+dot_general_033_f64    8      1670.8      1679.3  1.005  0.014 
+dot_general_034_f64    8      2401.3      2331.9  0.971  0.018 
+dot_general_035_f64    8      2360.9      2289.6  0.970  0.010 
+dot_general_036_f64    8      2512.9      2916.8  1.161  0.013 FLAG
+dot_general_043_f64    8         0.6         0.5  0.768  0.048 
+dot_general_046_f64    8       173.6       180.2  1.038  0.141 
+dot_general_048_f64    8       135.9       123.6  0.910  0.076 
+dot_general_051_f64    8         1.2         1.0  0.829  0.016 
+dot_general_053_f64    8         1.9         1.6  0.840  0.171 
+
+1T: n=38 geomean 0.990 time-weighted 0.998 max 1.085
+4T: n=38 geomean 0.949 time-weighted 0.970 max 1.239
+8T: n=38 geomean 0.942 time-weighted 1.007 max 1.530
+flagged: [('dot_general_048_f64', 1, 1.0850439298261598), ('dot_general_001_f64', 4, 1.2392954498449238), ('dot_general_010_f64', 4, 1.0685698444308163), ('dot_general_022_f64', 4, 1.0864810903501074), ('dot_general_028_f64', 4, 1.0870088717505184), ('dot_general_032_f64', 4, 1.2111615728508982), ('dot_general_001_f64', 8, 1.5302865223748656), ('dot_general_003_f64', 8, 1.065839828784094), ('dot_general_004_f64', 8, 1.055114087839805), ('dot_general_029_f64', 8, 1.0549041659240856), ('dot_general_036_f64', 8, 1.1607655397668202)]
