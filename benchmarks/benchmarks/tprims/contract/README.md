@@ -39,6 +39,31 @@ log and the commit, CPU, core set and corpus hash in `manifest.txt`.
 f32/f64/c32/c64 with the recorded strides. The observation below predates
 corpus mode and used the older `run.sh CPUS1 CPUS4 OUT` (1T/4T only).
 
+`BENCH_C_MODE=separate_b0|separate_b1|separate_same` replays the same corpus
+with a separately described C (the TAPP form, through `execute_raw`): beta 0,
+beta 0.5 with C in its own buffer, beta 0.5 with C being D.
+
+### 2026-10-03 Phase 2 W2: separate C on faer
+
+`tenferro-p1-gemm` (53 GEMM-fusable shapes), packed/faer calls-weighted
+workload (above 1 = faer faster), unconditional faer routing, CPUs 24-31 of one
+CCD, `BENCH_RUNS=5`, one session ([`results/2026-10-03-phase2-w2/`](results/2026-10-03-phase2-w2/),
+[`decision.txt`](results/2026-10-03-phase2-w2/decision.txt)):
+
+| Mode | 1T | 4T | 8T |
+| --- | ---: | ---: | ---: |
+| `separate_b0` (beta 0, C unread) | 1.078 | 1.173 | 1.249 |
+| `separate_b1` (beta 0.5, distinct C) | 1.024 | 1.002 | 1.027 |
+| `separate_same` (beta 0.5, C is D; serial in-place scale) | 1.048 | 1.028 | 0.967 |
+
+With beta nonzero the `D := beta * op_C(C)` pass costs 20-50% of faer's time on
+large outputs with small K, where faer then loses to packed at 4T/8T. The
+planner therefore sends a separate C to faer only for K >= 512 or at most 2^20
+output elements (workload under the rule 1.06-1.19 at 4T/8T; `decision.txt`).
+Three cases that were overwrite wins flip to losses under that rule at 8T
+(`gemm_batched_041/043/044`, outputs of 220-330K elements, K 7-11; 0.78-0.89).
+No A/A run (host shared); packed rows of two sessions agree within 2%.
+
 ### 2026-10-01 switchable GEMM engine: non-regression
 
 Branch (`gemm-engine-spec`, kernel-family contract and engine selection) against

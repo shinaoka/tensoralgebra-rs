@@ -1,0 +1,1 @@
+bin=/tmp/claude-2000/-home-shinaoka-tensor4all/662178ee-cfce-467b-b6ba-c7a683ca4e5b/scratchpad/contract-w2 cpus=24,25,26,27,28,29,30,31 mode=separate_b0 corpus=tenferro-p1-gemm sha=b1663c77a5cb1e06 commit=e3f4748 2026-10-03T06:15:55Z

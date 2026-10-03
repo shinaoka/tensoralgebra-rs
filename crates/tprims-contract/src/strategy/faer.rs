@@ -20,8 +20,9 @@
 //!
 //! * an output conjugation distributes over the sum, flipping the conjugation
 //!   of A, B and C and conjugating `alpha` and `beta`;
-//! * `beta * op_C(D_old)` is applied to D in one in-place pass when it is not
-//!   the identity, then faer accumulates the product;
+//! * a nonzero `beta` and the previous-D term (in-place) are applied to D by
+//!   the executor's output-update pass (`D = op_D(beta * op_C(D))`, parallel,
+//!   skipped when it is the identity), then faer accumulates the product;
 //! * a separate C that is not D itself is first written into D by the
 //!   executor's output-update pass (`D = op_D(beta * op_C(C))`, one strided
 //!   pass over the output through strided-basic, see
@@ -31,11 +32,10 @@
 //!   all false. With `beta == 0` C is not read. A separate C that is D itself
 //!   (same mapping, same origin) is the in-place case above.
 
-use faer::Accum;
 use tprims_exec::{Exec, Par, WidthPolicy};
 use tprims_kernel::Element;
 
-use crate::api::{OperandId, Problem, RoleAxis, Scalar};
+use crate::api::{CSpec, OperandId, Problem, RoleAxis, Scalar};
 use crate::plan::NS_PER_FLOP;
 
 /// One fused group: `(extent, stride)` in each of A, B and D.
@@ -57,7 +57,6 @@ pub(crate) struct FaerPlan {
     h: Fused,
     conj_a: bool,
     conj_b: bool,
-    conj_c: bool,
     conj_d: bool,
 }
 
@@ -110,10 +109,40 @@ fn fuse_group(group: &[RoleAxis], carriers: &[OperandId]) -> Option<Fused> {
     })
 }
 
+/// Output elements up to which a separate C's output pass is cheap enough to
+/// leave the problem on faer whatever its K.
+const SEPARATE_C_MAX_OUT: usize = 1 << 20;
+/// Contracted extent from which the GEMM amortizes a separate C's output pass.
+const SEPARATE_C_MIN_K: usize = 512;
+
+/// Whether a separately described C is worth routing to faer: a small output,
+/// or a K large enough that the extra pass over D is a small share of the work.
+/// Measured against the packed driver on the TAPP-style forms of the
+/// tenferro-p1 GEMM corpus
+/// (`benchmarks/benchmarks/tprims/contract/results/2026-10-03-phase2-w2/`).
+fn separate_c_pays(p: &Problem) -> bool {
+    let r = p.roles();
+    let k: usize = r.k().iter().map(|x| x.extent()).product();
+    let out = r
+        .m()
+        .iter()
+        .chain(r.n())
+        .chain(r.h())
+        .map(|x| x.extent())
+        .fold(1usize, |a, e| a.saturating_mul(e));
+    k >= SEPARATE_C_MIN_K || out <= SEPARATE_C_MAX_OUT
+}
+
 /// The fusion of `p`, or `None` when this strategy cannot run it copy-free with
 /// full semantics.
 pub(crate) fn plan(p: &Problem) -> Option<FaerPlan> {
     let r = p.roles();
+    // A separate C costs an output pass whenever `beta != 0`, and `beta` is an
+    // execution argument. Where that pass is a large share of the work
+    // (a big output with a small K) the packed driver's fused epilogue wins.
+    if matches!(p.c_spec(), CSpec::Separate(_)) && !separate_c_pays(p) {
+        return None;
+    }
     // A reduction over an axis only one input carries has no matrix to hand
     // to faer without a broadcast copy.
     if r.k().iter().any(|x| !(x.in_a() && x.in_b())) {
@@ -127,7 +156,6 @@ pub(crate) fn plan(p: &Problem) -> Option<FaerPlan> {
         h: fuse_group(r.h(), &[A, B, D])?,
         conj_a: p.a().op().is_conj(),
         conj_b: p.b().op().is_conj(),
-        conj_c: p.op_c().is_conj(),
         conj_d: p.d().op().is_conj(),
     })
 }
@@ -147,30 +175,26 @@ impl FaerPlan {
     ///
     /// `a`, `b` and `d` are the elements at logical index zero of non-empty
     /// layouts matching the plan's problem (K non-empty); `d` is exclusive and
-    /// injective and does not alias `a` or `b`. `beta` is zero when the problem
-    /// has no C term. With `c_done`, `d` already holds `op_D(beta * op_C(C))`
-    /// and only the product is accumulated (`beta` is ignored).
-    #[allow(clippy::too_many_arguments)] // INVARIANT: the GEMM argument set.
+    /// injective and does not alias `a` or `b`. With `accumulate`, `d` already holds the whole C term,
+    /// `op_D(beta * op_C(C))` (the caller's output pass), and only
+    /// `op_D(alpha * op_A(A) * op_B(B))` is added ; without it `d` is
+    /// overwritten.
     pub(crate) unsafe fn run<T: Scalar>(
         &self,
         exec: &Exec<'_>,
         alpha: T,
         a: *const T,
         b: *const T,
-        beta: T,
-        c_done: bool,
+        accumulate: bool,
         d: *mut T,
     ) {
-        let (mut ca, mut cb, mut cc) = (self.conj_a, self.conj_b, self.conj_c);
-        let (mut alpha, mut beta) = (alpha, beta);
+        let (mut ca, mut cb) = (self.conj_a, self.conj_b);
+        let mut alpha = alpha;
         if self.conj_d {
-            // conj(alpha*A*B + beta*C) = conj(alpha)*conj(A)*conj(B) + conj(beta)*conj(C)
-            (ca, cb, cc) = (!ca, !cb, !cc);
-            (alpha, beta) = (Element::conj(alpha), Element::conj(beta));
-        }
-        if c_done {
-            // D holds the C term; only `+= product` remains.
-            (beta, cc) = (<T as Element>::one(), false);
+            // conj(alpha*A*B + beta*C) = conj(alpha)*conj(A)*conj(B) + conj(beta)*conj(C);
+            // the C term is already in D, conjugated by the caller's pass.
+            (ca, cb) = (!ca, !cb);
+            alpha = Element::conj(alpha);
         }
         let count = self.h.extent;
         let policy = WidthPolicy::default();
@@ -189,8 +213,7 @@ impl FaerPlan {
                     ca,
                     bp.get().offset(i * self.h.b),
                     cb,
-                    beta,
-                    cc,
+                    accumulate,
                     dp.get().offset(i * self.h.d),
                     par,
                 )
@@ -222,26 +245,15 @@ impl FaerPlan {
         ca: bool,
         b: *const T,
         cb: bool,
-        beta: T,
-        cc: bool,
+        accumulate: bool,
         d: *mut T,
         par: faer::Par,
     ) {
         let (m, n, k) = (self.m.extent, self.n.extent, self.k.extent);
-        let zero = <T as Element>::zero();
-        let accum = if beta == zero {
-            Accum::Replace
-        } else {
-            if beta != <T as Element>::one() || cc {
-                // SAFETY: forwarded.
-                unsafe { scale(d, self.m, self.n, beta, cc) };
-            }
-            Accum::Add
-        };
         // SAFETY: the caller's contract; views are read-only / exclusive as faer requires.
         unsafe {
             T::matmul(
-                accum == Accum::Add,
+                accumulate,
                 (m, n, k),
                 d,
                 (self.m.d, self.n.d),
@@ -255,25 +267,6 @@ impl FaerPlan {
                 par,
             )
         };
-    }
-}
-
-/// `D = beta * op(D)` over one item's `m x n` matrix, in place.
-///
-/// # Safety
-///
-/// `d` with the fused strides addresses writable elements, exclusively
-/// borrowed by the caller.
-unsafe fn scale<T: Scalar>(d: *mut T, m: Fused, n: Fused, beta: T, conj: bool) {
-    for j in 0..n.extent {
-        for i in 0..m.extent {
-            // SAFETY: i < m, j < n; offsets validated by the problem.
-            unsafe {
-                let p = d.offset(i as isize * m.d + j as isize * n.d);
-                let old = if conj { Element::conj(*p) } else { *p };
-                *p = Element::mul(beta, old);
-            }
-        }
     }
 }
 

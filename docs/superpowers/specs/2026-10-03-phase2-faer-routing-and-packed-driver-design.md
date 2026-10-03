@@ -64,6 +64,18 @@ neutral or negative result is recorded and reverted.
   - other `plan()` refusals.
 - Route a class to faer only where it wins.
 - Keep the C/D/op semantics, and check them with the oracle tests.
+- **Done in W2 (separate C).** faer computes `D := op_D(beta * op_C(C))` in
+  one parallel strided pass (strided-basic, type-level conj; the in-place
+  update uses the same pass instead of faer's former serial scale) and then
+  accumulates `op_D(alpha * op_A(A) * op_B(B))` with `Accum::Add`; `beta == 0`
+  overwrites D and never reads C. The pass is output-sized, not an operand
+  normalization: A, B and C are not copied, packed or reordered, so
+  `no_materialize` semantics and `PlanReport::materialized` are unchanged.
+  A separate C goes to faer when K >= 512 or the output has at most 2^20
+  elements (measured; results under `results/2026-10-03-phase2-w2/`); a large
+  output with small K stays packed because the pass costs 20-50% of faer's
+  time there. `beta` is an execution argument, so the rule cannot depend on it.
+  An isolated one-input K axis stays on packed.
 
 **W3. Packed-driver codegen for its own domain.** These are causes 1 and
 4 of the source study.

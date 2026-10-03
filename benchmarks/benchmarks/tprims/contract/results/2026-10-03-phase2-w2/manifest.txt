@@ -1,0 +1,9 @@
+bin=/tmp/claude-2000/-home-shinaoka-tensor4all/662178ee-cfce-467b-b6ba-c7a683ca4e5b/scratchpad/contract-w2 cpus=24,25,26,27,28,29,30,31 mode=separate_b1 corpus=large-batched-gemm sha=475f1f8be4c503b0 commit=e3f4748 2026-10-03T06:59:23Z
+bin=/tmp/claude-2000/-home-shinaoka-tensor4all/662178ee-cfce-467b-b6ba-c7a683ca4e5b/scratchpad/contract-w2 cpus=24,25,26,27,28,29,30,31 mode=separate_same corpus=large-batched-gemm sha=475f1f8be4c503b0 commit=e3f4748 2026-10-03T07:12:49Z
+bin=/tmp/claude-2000/-home-shinaoka-tensor4all/662178ee-cfce-467b-b6ba-c7a683ca4e5b/scratchpad/contract-w2 cpus=24,25,26,27,28,29,30,31 mode=separate_b0 corpus=tenferro-p1-gemm sha=b1663c77a5cb1e06 commit=e3f4748 2026-10-03T06:15:55Z
+bin=/tmp/claude-2000/-home-shinaoka-tensor4all/662178ee-cfce-467b-b6ba-c7a683ca4e5b/scratchpad/contract-w2 cpus=24,25,26,27,28,29,30,31 mode=separate_b1 corpus=tenferro-p1-gemm sha=b1663c77a5cb1e06 commit=e3f4748 2026-10-03T04:10:16Z
+bin=/tmp/claude-2000/-home-shinaoka-tensor4all/662178ee-cfce-467b-b6ba-c7a683ca4e5b/scratchpad/contract-w2 cpus=24,25,26,27,28,29,30,31 mode=separate_same corpus=tenferro-p1-gemm sha=b1663c77a5cb1e06 commit=e3f4748 2026-10-03T06:39:55Z
+host: AMD EPYC 7713P, cpus 24-31 (one CCD), pinned.sh idle-checked (attempts in s1/pinned.err), BENCH_RUNS=5, BENCH_WARMUP=3
+tprims-rs: branch phase2-w2-faer-coverage; s1 binary = first W2 commit + harness, s2 binary = parallel in-place pass
+A/A noise: not measured (host contended by other benchmarks; runs serialised by the drive.sh wait loop). Differences below ~5% are not findings.
+Noise proxy: the packed rows of s2 vs s1 (identical code, 28 shared cases) differ by geomean 1.003 / 1.003 / 0.979 at 1T/4T/8T; all CHECK lines ok (max plan-vs-packed relative difference 3e-15).

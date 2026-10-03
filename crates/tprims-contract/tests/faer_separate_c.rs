@@ -90,7 +90,11 @@ fn check<T: Scalar + Element>(
     nan_c: bool,
 ) {
     let [ca, cb, cc, cd] = flags;
-    let (sa, sb, sd) = (col_major(&shape.a), col_major(&shape.b), col_major(&shape.d));
+    let (sa, sb, sd) = (
+        col_major(&shape.a),
+        col_major(&shape.b),
+        col_major(&shape.d),
+    );
     let sc = match source {
         Source::InPlace | Source::SameLayout => sd.clone(),
         Source::OtherLayout => row_major(&shape.d),
@@ -263,4 +267,42 @@ fn a_tapp_style_gemm_product_reports_faer() {
     let plan = Plan::<f64>::new(&problem, &PlanConfig::default()).unwrap();
     assert_eq!(plan.report().algorithm, Algorithm::Faer);
     assert_eq!(plan.report().materialized, [false; 3]);
+}
+
+fn matmul_problem(m: usize, n: usize, k: usize, separate: bool) -> Problem {
+    let (sa, sb, sd) = (col_major(&[m, k]), col_major(&[k, n]), col_major(&[m, n]));
+    let (c, labels) = if separate {
+        (
+            CSpec::Separate(spec(&[m, n], &sd, false)),
+            Labels::new(&[0, 2], &[2, 1], &[0, 1]).with_c(&[0, 1]),
+        )
+    } else {
+        (CSpec::Absent, Labels::new(&[0, 2], &[2, 1], &[0, 1]))
+    };
+    Problem::from_labels(
+        DType::F64,
+        spec(&[m, k], &sa, false),
+        spec(&[k, n], &sb, false),
+        c,
+        spec(&[m, n], &sd, false),
+        &labels,
+    )
+    .unwrap()
+}
+
+/// A separate C costs an output pass at `beta != 0`: a large output with a
+/// small K stays on the packed driver (measured, Phase 2 W2), a large K or a
+/// small output goes to faer; the same GEMM without a separate C is faer.
+#[test]
+fn a_separate_c_on_a_large_output_with_small_k_stays_packed() {
+    let algo = |m, n, k, sep| {
+        Plan::<f64>::new(&matmul_problem(m, n, k, sep), &PlanConfig::default())
+            .unwrap()
+            .report()
+            .algorithm
+    };
+    assert_eq!(algo(2048, 1024, 8, true), Algorithm::Packed);
+    assert_eq!(algo(2048, 1024, 8, false), Algorithm::Faer);
+    assert_eq!(algo(2048, 1024, 512, true), Algorithm::Faer);
+    assert_eq!(algo(512, 512, 8, true), Algorithm::Faer);
 }
