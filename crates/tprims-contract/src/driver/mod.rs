@@ -118,6 +118,7 @@ use std::sync::Barrier;
 use tprims_exec::{Exec, WorkspaceProvider, WorkspaceReq};
 
 use crate::buffer::Panel;
+mod batch;
 mod dynamic;
 mod static_grid;
 #[cfg(test)]
@@ -522,7 +523,14 @@ unsafe fn execute_capped<T>(
         }
         _ => None,
     };
+    // Batch-axis claiming: only on the default partition, and decided here once
+    // from the plan, the item and the budget. One lane means the usual path.
+    let lanes = match (explicit_grid, dyn_jobs) {
+        (None, None) => batch::lanes(exec, plan.stats.batch, (m, n, k), T::IS_COMPLEX),
+        _ => 1,
+    };
     let (mut pm, mut pn) = match (explicit_grid, dyn_jobs) {
+        _ if lanes > 1 => (1, 1),
         (_, Some((_, _, jobs))) => (want.min(jobs), 1),
         (Some((pm, pn)), None) => (pm, pn),
         (None, None) => plan.partition_with(mr, nr, want),
@@ -588,6 +596,15 @@ unsafe fn execute_capped<T>(
     let ap_len = panel_len(mc, mr, kc, fam.a_pack);
     let group_cap = nc.div_ceil(nr).div_ceil(pn);
     let b_group = panel_len(group_cap * nr, nr, kc, fam.b_pack);
+    // Under batch-axis claiming every lane packs its own `B` into one slice of
+    // the buffer, so the slices are cache-line aligned to keep lanes apart.
+    let (panels, b_group) = match lanes > 1 {
+        true => (
+            lanes,
+            b_group.next_multiple_of(64 / core::mem::size_of::<T::Real>()),
+        ),
+        false => (pn, b_group),
+    };
     // What this call needs from the owner, if it has one. Everything is in
     // bytes except the element counts of the scratch vectors.
     let element = core::mem::size_of::<T::Real>();
@@ -596,7 +613,11 @@ unsafe fn execute_capped<T>(
         tile_bytes: (fam.tile + fam.induced_scratch(kc)) * element,
         worker_scatter: 0,
         // A direct-B call never touches the panel, so it asks for none.
-        b_bytes: if direct_b { 0 } else { pn * b_group * element },
+        b_bytes: if direct_b {
+            0
+        } else {
+            panels * b_group * element
+        },
         team_scatter: am.len().div_ceil(mr)
             + bn.len().div_ceil(nr)
             + dm.len().div_ceil(mr)
@@ -618,7 +639,7 @@ unsafe fn execute_capped<T>(
     let has_lease = lease.is_some();
     let mut local_bp = match has_lease || direct_b {
         true => None,
-        false => Some(Panel::<T::Real>::new(pn * b_group)),
+        false => Some(Panel::<T::Real>::new(panels * b_group)),
     };
     let bp_ptr = match lease.as_mut() {
         Some(l) => l.panel(req.b_bytes) as *mut T::Real,
@@ -716,11 +737,56 @@ unsafe fn execute_capped<T>(
     };
     let scratch_off = fam.tile;
 
+    if lanes > 1 {
+        // Barrier-free: lane `i` runs a contiguous share of the batch entries,
+        // each with the serial blocking and its own `A`, `B` and tile, so every
+        // entry's arithmetic is the serial path's.
+        let items = plan.stats.batch;
+        let lane = |i: usize| {
+            let bpart = BPart {
+                panel: i,
+                ..BPart::SERIAL
+            };
+            with_buffers(&mut |ap, tile| {
+                // SAFETY: `execute`'s contract covers the accesses; the lanes'
+                // item ranges are disjoint, so they write disjoint entries of
+                // `D`, and each lane's buffers and `B` slice are its own.
+                unsafe {
+                    run_strip::<T>(
+                        &cx,
+                        i * items / lanes..(i + 1) * items / lanes,
+                        0,
+                        m,
+                        ap,
+                        tile,
+                        tile.add(scratch_off),
+                        bpart,
+                    )
+                }
+            });
+        };
+        // Runs serially, lane after lane, on a `Serial` or nested `Exec`; the
+        // width rule already excluded both, so this is the pool partition.
+        exec.for_each_partition(lanes, &lane);
+        return;
+    }
+
     if p == 1 {
         with_buffers(&mut |ap, tile| {
             // SAFETY: `execute`'s contract, and these buffers are exclusive to
             // this call for its duration.
-            unsafe { run_strip::<T>(&cx, 0, m, ap, tile, tile.add(scratch_off), BPart::SERIAL) }
+            unsafe {
+                run_strip::<T>(
+                    &cx,
+                    0..plan.stats.batch,
+                    0,
+                    m,
+                    ap,
+                    tile,
+                    tile.add(scratch_off),
+                    BPart::SERIAL,
+                )
+            }
         });
         return;
     }
@@ -757,6 +823,7 @@ unsafe fn execute_capped<T>(
         let (r, g) = (t / pn, t % pn);
         let bpart = BPart {
             g,
+            panel: g,
             pn,
             r,
             pm,
@@ -767,7 +834,18 @@ unsafe fn execute_capped<T>(
             // SAFETY: `execute`'s contract covers the accesses; the strips and
             // column groups partition the output, so this thread's writes are
             // disjoint from every other thread's.
-            unsafe { run_strip::<T>(cx, lo, hi, ap, tile, tile.add(scratch_off), bpart) };
+            unsafe {
+                run_strip::<T>(
+                    cx,
+                    0..plan.stats.batch,
+                    lo,
+                    hi,
+                    ap,
+                    tile,
+                    tile.add(scratch_off),
+                    bpart,
+                )
+            };
         });
     };
 
@@ -784,6 +862,17 @@ unsafe fn execute_capped<T>(
     with_buffers(&mut |ap, tile| {
         // SAFETY: forwarded unchanged from this call's contract; a serial strip
         // is the degenerate partition and needs no barrier.
-        unsafe { run_strip::<T>(&cx, 0, m, ap, tile, tile.add(scratch_off), BPart::SERIAL) }
+        unsafe {
+            run_strip::<T>(
+                &cx,
+                0..plan.stats.batch,
+                0,
+                m,
+                ap,
+                tile,
+                tile.add(scratch_off),
+                BPart::SERIAL,
+            )
+        }
     });
 }
