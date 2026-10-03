@@ -25,3 +25,9 @@ Cost: cargo test --release -p tprims-contract --no-run, cache off: 61 s -> 69 s 
 
 Not done: hand-written SIMD for regular-block packing (the measurement above shows no headroom: the f64 cases are
 gather- and memory-bound, the c64 gain came without it), and Direct kernels (out of Phase 2).
+
+Longer 8T check, gemm_1024_f64 (requested for the PR review): 8 alternations of before (main@#54), PR head, and a second copy
+of before (A/A), each BENCH_RUNS=7 on a fresh pick of 8 idle CPUs of one CCD (gemm_1024_f64-8t-alternations.csv).
+Medians (ms): before 7.85, head 7.68, before-A/A 7.57 (the host was loaded: single alternations range 7.3-9.6).
+head/before median ratio 0.980, bootstrap 95% CI 0.925-1.048; A/A (before2/before) 0.975, CI 0.934-1.062.
+The PR head is not slower beyond noise at 8T: no change to the avx2 variants was needed.
