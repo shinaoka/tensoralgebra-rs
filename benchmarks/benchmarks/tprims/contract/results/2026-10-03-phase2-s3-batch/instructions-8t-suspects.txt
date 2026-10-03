@@ -1,0 +1,17 @@
+Bisect of the unexplained +5..+16% 8T timings (dot_general_036/003/007/026, #54 vs c71bba4) with load-insensitive counters.
+perf stat -e instructions:u,cycles:u, whole process (both harness rows, BENCH_RUNS=3, 1 warmup), taskset cpu 56 (1T) / 56-63 (8T),
+host load average ~30 (other users' jobs), binaries: c71bba4 | #54 (W1) | main (c49370c = #54 + W2 #56). Millions.
+
+case            T   c71bba4 instr   #54 instr   main instr     c71bba4 cyc  #54 cyc   main cyc
+dot_general_036  1      2051         2050         2077           570         558       567
+dot_general_036  8      2053         2053         2080           657         656       654
+dot_general_003  1     61390        61380        61430         16760       17440     17250
+dot_general_003  8     61450        61450        61490         19880       20930     18300
+dot_general_007  1     47190        47190        47240         13680       14670     13610
+dot_general_007  8     47200        47200        47250         14880       14310     15940
+dot_general_026  1      8151         8147         8390          2482        2308      2376
+dot_general_026  8      8157         8154         8396          2433        2612      2767
+
+Result: user instructions of #54 are identical to c71bba4 (+-0.05%) at 1T and 8T, also for dot_general_036 which has no batch axis.
+So #54 adds no work on the H = 1 path; the +5..16% timings were contention (cycles vary +-8% run to run at this load), not code.
+main's +1.3% (036) / +3% (026) instructions come from W2 (#56), not from W1.

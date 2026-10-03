@@ -1,0 +1,11 @@
+W3b (blocking arms): NO CHANGE. No arm wins; the legacy default stays. No PR.
+
+Arms (all on the W3a code, packed row, kc and blocking independent of width): legacy (kc=256 f64, A budget 512 KiB),
+k512 (kc=512, A budget 256 KiB = half of Zen 3 L2, nc from the unchanged 3 MiB B budget), model (BlockModel::Analytical).
+Data: ../2026-10-03-phase2-w3a/ (columns k512 and model of table.txt; same cases, widths, sessions and noise).
+
+Geomean ratio to before (s1+s2, n = 20): k512 0.998 (1T), 1.006 (4T), 1.006 (8T); model 1.008, 1.008, 1.016. The
+legacy arm (= W3a) is 1.004, 1.013, 1.019 (control row 1.008, 1.022, 1.015). 1024^3 f64 1T: before 43.3 ms, legacy 43.5, k512 43.2, model 44.4; c64 1T: before 187.7 ms, legacy (W3a) 180.0,
+k512 180.2, model 176.6 (model's 2% over legacy is inside noise).
+Single-case swings (0.86-1.4) are inside the A/A noise of the same rows. Neither kc=512 nor the analytical model
+beats the legacy blocking by more than noise at any width, so nothing is changed (the experiment switch was not committed).

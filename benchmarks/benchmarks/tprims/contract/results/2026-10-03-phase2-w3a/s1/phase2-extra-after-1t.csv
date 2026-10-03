@@ -1,0 +1,13 @@
+case,variant,threads,median_ns,samples
+small_n4_k32_h8192_f64,plan_plan,1,1020,5
+small_n4_k32_h8192_f64,plan_exec,1,6729366,5
+small_n4_k32_h8192_f64,packed_plan,1,41901,5
+small_n4_k32_h8192_f64,packed_exec,1,10145325,5
+small_n4_k4_h65536_c64,plan_plan,1,1060,5
+small_n4_k4_h65536_c64,plan_exec,1,3583104,5
+small_n4_k4_h65536_c64,packed_plan,1,1220752,5
+small_n4_k4_h65536_c64,packed_exec,1,7821505,5
+rank1_k1_m2048_n2048_f64,plan_plan,1,930,5
+rank1_k1_m2048_n2048_f64,plan_exec,1,1202792,5
+rank1_k1_m2048_n2048_f64,packed_plan,1,30570,5
+rank1_k1_m2048_n2048_f64,packed_exec,1,2779015,5
