@@ -1,0 +1,234 @@
+S1-S3 target list. Per corpus x width: (a) faer-selected cases above 50us with packed/plan > 1.5; (b) top 10 cases by weighted loss = calls x (packed - plan) exec median [ns]; plan route in last column.
+
+== tenferro-p1 1T ==
+(a) faer cases >50us with ratio > 1.5:
+    dot_general_040_f64                          plan       195.7us packed       376.9us ratio  1.93
+    dot_general_044_f64                          plan       120.8us packed       193.7us ratio  1.60
+    dot_general_045_f64                          plan       203.3us packed       311.2us ratio  1.53
+    dot_general_049_f64                          plan       864.2us packed      1357.1us ratio  1.57
+(b) top 10 weighted loss:
+    dot_general_016_c64                          calls     8 plan     40289.1us packed     45017.7us ratio  1.12 loss      37.83ms route faer
+    dot_general_040_f64                          calls    48 plan       195.7us packed       376.9us ratio  1.93 loss       8.70ms route faer
+    dot_general_031_c64                          calls     2 plan     40428.7us packed     44714.5us ratio  1.11 loss       8.57ms route faer
+    dot_general_049_f64                          calls    16 plan       864.2us packed      1357.1us ratio  1.57 loss       7.89ms route faer
+    dot_general_008_f64                          calls     2 plan    169776.1us packed    172544.5us ratio  1.02 loss       5.54ms route packed
+    dot_general_041_f64                          calls    48 plan       211.8us packed       302.3us ratio  1.43 loss       4.34ms route faer
+    dot_general_021_f64                          calls     6 plan     41835.0us packed     42518.4us ratio  1.02 loss       4.10ms route faer
+    dot_general_018_f64                          calls     2 plan     48614.9us packed     49972.8us ratio  1.03 loss       2.72ms route packed
+    dot_general_045_f64                          calls    24 plan       203.3us packed       311.2us ratio  1.53 loss       2.59ms route faer
+    dot_general_044_f64                          calls    28 plan       120.8us packed       193.7us ratio  1.60 loss       2.04ms route faer
+
+== tenferro-p1 4T ==
+(a) faer cases >50us with ratio > 1.5:
+    dot_general_040_f64                          plan       195.8us packed       374.5us ratio  1.91
+    dot_general_049_f64                          plan       261.7us packed     10278.4us ratio 39.27
+(b) top 10 weighted loss:
+    dot_general_049_f64                          calls    16 plan       261.7us packed     10278.4us ratio 39.27 loss     160.27ms route faer
+    dot_general_016_c64                          calls     8 plan     10071.5us packed     11738.7us ratio  1.17 loss      13.34ms route faer
+    dot_general_040_f64                          calls    48 plan       195.8us packed       374.5us ratio  1.91 loss       8.58ms route faer
+    dot_general_000_f64                          calls     2 plan    148298.4us packed    152401.8us ratio  1.03 loss       8.21ms route packed
+    dot_general_021_f64                          calls     6 plan     10474.6us packed     11299.9us ratio  1.08 loss       4.95ms route faer
+    dot_general_041_f64                          calls    48 plan       233.7us packed       332.6us ratio  1.42 loss       4.75ms route faer
+    dot_general_031_c64                          calls     2 plan     10194.8us packed     11695.7us ratio  1.15 loss       3.00ms route faer
+    dot_general_044_f64                          calls    28 plan        92.6us packed       136.7us ratio  1.48 loss       1.24ms route faer
+    dot_general_007_f64                          calls     2 plan    113930.0us packed    114457.4us ratio  1.00 loss       1.05ms route packed
+    dot_general_045_f64                          calls    24 plan       142.7us packed       182.2us ratio  1.28 loss       0.95ms route faer
+
+== tenferro-p1 8T ==
+(a) faer cases >50us with ratio > 1.5:
+    dot_general_040_f64                          plan       235.1us packed       452.4us ratio  1.92
+    dot_general_049_f64                          plan       310.3us packed     11454.6us ratio 36.92
+(b) top 10 weighted loss:
+    dot_general_049_f64                          calls    16 plan       310.3us packed     11454.6us ratio 36.92 loss     178.31ms route faer
+    dot_general_040_f64                          calls    48 plan       235.1us packed       452.4us ratio  1.92 loss      10.43ms route faer
+    dot_general_041_f64                          calls    48 plan       252.8us packed       362.2us ratio  1.43 loss       5.25ms route faer
+    dot_general_021_f64                          calls     6 plan      6206.4us packed      6876.8us ratio  1.11 loss       4.02ms route faer
+    dot_general_001_f64                          calls     2 plan    103434.6us packed    104970.5us ratio  1.01 loss       3.07ms route packed
+    dot_general_005_f64                          calls     4 plan     28164.8us packed     28725.3us ratio  1.02 loss       2.24ms route packed
+    dot_general_016_c64                          calls     8 plan      6056.4us packed      6300.8us ratio  1.04 loss       1.96ms route faer
+    dot_general_002_f64                          calls     2 plan     47911.9us packed     48703.1us ratio  1.02 loss       1.58ms route packed
+    dot_general_018_f64                          calls     2 plan     21313.5us packed     21791.7us ratio  1.02 loss       0.96ms route packed
+    dot_general_044_f64                          calls    28 plan       109.2us packed       141.9us ratio  1.30 loss       0.92ms route faer
+
+== tenferro-p1-gemm 1T ==
+(a) faer cases >50us with ratio > 1.5:
+    gemm_batched_008_f64                         plan     82707.6us packed    194911.3us ratio  2.36
+    gemm_batched_019_f64                         plan      6448.6us packed      9691.7us ratio  1.50
+    gemm_batched_022_f64                         plan      6489.6us packed     15903.8us ratio  2.45
+    gemm_batched_023_f64                         plan     24007.2us packed     49792.5us ratio  2.07
+    gemm_batched_026_f64                         plan      4303.6us packed      8086.5us ratio  1.88
+    gemm_batched_029_f64                         plan      2491.5us packed      3796.7us ratio  1.52
+    gemm_batched_036_f64                         plan       194.2us packed       375.7us ratio  1.93
+    gemm_batched_041_f64                         plan       110.9us packed       175.8us ratio  1.59
+    gemm_batched_042_f64                         plan       202.7us packed       308.0us ratio  1.52
+    gemm_batched_044_f64                         plan       110.8us packed       175.8us ratio  1.59
+    gemm_batched_047_f64                         plan       865.7us packed      1368.0us ratio  1.58
+(b) top 10 weighted loss:
+    gemm_batched_008_f64                         calls     2 plan     82707.6us packed    194911.3us ratio  2.36 loss     224.41ms route faer
+    gemm_batched_000_f64                         calls     4 plan    395175.2us packed    413614.7us ratio  1.05 loss      73.76ms route faer
+    gemm_batched_003_f64                         calls     4 plan     94982.0us packed    112730.6us ratio  1.19 loss      70.99ms route faer
+    gemm_batched_006_f64                         calls     2 plan    427436.3us packed    458325.7us ratio  1.07 loss      61.78ms route faer
+    gemm_batched_023_f64                         calls     2 plan     24007.2us packed     49792.5us ratio  2.07 loss      51.57ms route faer
+    gemm_batched_009_c64                         calls    10 plan     40339.3us packed     44754.9us ratio  1.11 loss      44.16ms route faer
+    gemm_batched_002_f64                         calls     4 plan    173256.2us packed    183639.2us ratio  1.06 loss      41.53ms route faer
+    gemm_batched_022_f64                         calls     4 plan      6489.6us packed     15903.8us ratio  2.45 loss      37.66ms route faer
+    gemm_batched_018_f64                         calls     2 plan     69014.7us packed     87835.7us ratio  1.27 loss      37.64ms route faer
+    gemm_batched_007_f64                         calls     4 plan     85061.2us packed     92303.4us ratio  1.09 loss      28.97ms route faer
+
+== tenferro-p1-gemm 4T ==
+(a) faer cases >50us with ratio > 1.5:
+    gemm_batched_008_f64                         plan     47802.5us packed     77945.8us ratio  1.63
+    gemm_batched_012_f64                         plan     13543.7us packed     45767.4us ratio  3.38
+    gemm_batched_022_f64                         plan      4029.4us packed      6981.0us ratio  1.73
+    gemm_batched_036_f64                         plan       195.7us packed       374.6us ratio  1.91
+    gemm_batched_047_f64                         plan       260.2us packed     10068.2us ratio 38.70
+(b) top 10 weighted loss:
+    gemm_batched_047_f64                         calls    16 plan       260.2us packed     10068.2us ratio 38.70 loss     156.93ms route faer
+    gemm_batched_012_f64                         calls     2 plan     13543.7us packed     45767.4us ratio  3.38 loss      64.45ms route faer
+    gemm_batched_008_f64                         calls     2 plan     47802.5us packed     77945.8us ratio  1.63 loss      60.29ms route faer
+    gemm_batched_005_f64                         calls     2 plan    129582.1us packed    149911.4us ratio  1.16 loss      40.66ms route faer
+    gemm_batched_004_f64                         calls     2 plan    130137.1us packed    149071.4us ratio  1.15 loss      37.87ms route faer
+    gemm_batched_000_f64                         calls     4 plan     99294.1us packed    108186.0us ratio  1.09 loss      35.57ms route faer
+    gemm_batched_006_f64                         calls     2 plan    113175.7us packed    129673.5us ratio  1.15 loss      33.00ms route faer
+    gemm_batched_009_c64                         calls    10 plan     10444.0us packed     12842.0us ratio  1.23 loss      23.98ms route faer
+    gemm_batched_018_f64                         calls     2 plan     21857.8us packed     32390.8us ratio  1.48 loss      21.07ms route faer
+    gemm_batched_022_f64                         calls     4 plan      4029.4us packed      6981.0us ratio  1.73 loss      11.81ms route faer
+
+== tenferro-p1-gemm 8T ==
+(a) faer cases >50us with ratio > 1.5:
+    gemm_batched_008_f64                         plan     35917.6us packed     57557.1us ratio  1.60
+    gemm_batched_012_f64                         plan     13430.3us packed     35056.2us ratio  2.61
+    gemm_batched_013_f64                         plan     14579.6us packed     21930.3us ratio  1.50
+    gemm_batched_022_f64                         plan      3072.0us packed      5723.5us ratio  1.86
+    gemm_batched_025_f64                         plan      3288.8us packed      5516.4us ratio  1.68
+    gemm_batched_036_f64                         plan       232.3us packed       455.4us ratio  1.96
+    gemm_batched_047_f64                         plan       224.7us packed     11566.9us ratio 51.48
+(b) top 10 weighted loss:
+    gemm_batched_047_f64                         calls    16 plan       224.7us packed     11566.9us ratio 51.48 loss     181.48ms route faer
+    gemm_batched_008_f64                         calls     2 plan     35917.6us packed     57557.1us ratio  1.60 loss      43.28ms route faer
+    gemm_batched_012_f64                         calls     2 plan     13430.3us packed     35056.2us ratio  2.61 loss      43.25ms route faer
+    gemm_batched_000_f64                         calls     4 plan     56411.6us packed     63730.7us ratio  1.13 loss      29.28ms route faer
+    gemm_batched_005_f64                         calls     2 plan     75027.9us packed     89646.6us ratio  1.19 loss      29.24ms route faer
+    gemm_batched_006_f64                         calls     2 plan     61799.8us packed     76232.8us ratio  1.23 loss      28.87ms route faer
+    gemm_batched_004_f64                         calls     2 plan     77019.6us packed     90699.1us ratio  1.18 loss      27.36ms route faer
+    gemm_batched_013_f64                         calls     2 plan     14579.6us packed     21930.3us ratio  1.50 loss      14.70ms route faer
+    gemm_batched_036_f64                         calls    48 plan       232.3us packed       455.4us ratio  1.96 loss      10.71ms route faer
+    gemm_batched_022_f64                         calls     4 plan      3072.0us packed      5723.5us ratio  1.86 loss      10.61ms route faer
+
+== large-batched-gemm 1T ==
+(a) faer cases >50us with ratio > 1.5:
+    none
+(b) top 10 weighted loss:
+    large_b1_m4096_n4096_k4096_c64               calls     1 plan  11172400.4us packed  11983024.6us ratio  1.07 loss     810.62ms route faer
+    large_b2_m2048_n2048_k2048_c64               calls     1 plan   2735574.4us packed   2968432.2us ratio  1.09 loss     232.86ms route faer
+    large_b4_m1024_n1024_k1024_c64               calls     1 plan    676199.2us packed    745123.3us ratio  1.10 loss      68.92ms route faer
+    large_b64_m256_n1024_k64_c64                 calls     1 plan    171562.7us packed    212175.4us ratio  1.24 loss      40.61ms route faer
+    large_b16_m512_n512_k512_c64                 calls     1 plan    348728.4us packed    375059.5us ratio  1.08 loss      26.33ms route faer
+    large_b2_m2048_n2048_k2048_f64               calls     1 plan    683836.8us packed    702929.3us ratio  1.03 loss      19.09ms route faer
+    large_b64_m256_n256_k256_c64                 calls     1 plan    175566.9us packed    194608.6us ratio  1.11 loss      19.04ms route faer
+    large_b512_m128_n128_k128_c64                calls     1 plan    200772.3us packed    216284.3us ratio  1.08 loss      15.51ms route faer
+    large_b512_m128_n128_k128_f64                calls     1 plan     53529.8us packed     64662.8us ratio  1.21 loss      11.13ms route faer
+    large_b64_m1024_n64_k256_f64                 calls     1 plan     61025.8us packed     69704.7us ratio  1.14 loss       8.68ms route faer
+
+== large-batched-gemm 4T ==
+(a) faer cases >50us with ratio > 1.5:
+    none
+(b) top 10 weighted loss:
+    large_b1_m4096_n4096_k4096_c64               calls     1 plan   2752751.3us packed   3157438.6us ratio  1.15 loss     404.69ms route faer
+    large_b2_m2048_n2048_k2048_c64               calls     1 plan    655349.5us packed    785833.4us ratio  1.20 loss     130.48ms route faer
+    large_b1_m4096_n4096_k4096_f64               calls     1 plan    685269.1us packed    728345.3us ratio  1.06 loss      43.08ms route faer
+    large_b4_m1024_n1024_k1024_c64               calls     1 plan    163266.7us packed    195024.4us ratio  1.19 loss      31.76ms route faer
+    large_b2_m2048_n2048_k2048_f64               calls     1 plan    167027.5us packed    186048.2us ratio  1.11 loss      19.02ms route faer
+    large_b16_m512_n512_k512_c64                 calls     1 plan     83827.7us packed     98991.5us ratio  1.18 loss      15.16ms route faer
+    large_b64_m1024_n64_k256_c64                 calls     1 plan     53876.2us packed     62457.6us ratio  1.16 loss       8.58ms route faer
+    large_b512_m128_n128_k128_c64                calls     1 plan     60691.4us packed     67923.6us ratio  1.12 loss       7.23ms route faer
+    large_b64_m256_n1024_k64_c64                 calls     1 plan     49209.7us packed     56070.0us ratio  1.14 loss       6.86ms route faer
+    large_b16_m512_n512_k512_f64                 calls     1 plan     21898.1us packed     25693.9us ratio  1.17 loss       3.80ms route faer
+
+== large-batched-gemm 8T ==
+(a) faer cases >50us with ratio > 1.5:
+    none
+(b) top 10 weighted loss:
+    large_b1_m4096_n4096_k4096_c64               calls     1 plan   1522492.8us packed   1758700.4us ratio  1.16 loss     236.21ms route faer
+    large_b2_m2048_n2048_k2048_c64               calls     1 plan    366366.8us packed    445523.2us ratio  1.22 loss      79.16ms route faer
+    large_b1_m4096_n4096_k4096_f64               calls     1 plan    377006.8us packed    417551.7us ratio  1.11 loss      40.54ms route faer
+    large_b4_m1024_n1024_k1024_c64               calls     1 plan     90761.2us packed    109116.7us ratio  1.20 loss      18.36ms route faer
+    large_b2_m2048_n2048_k2048_f64               calls     1 plan     90852.5us packed    103726.1us ratio  1.14 loss      12.87ms route faer
+    large_b16_m512_n512_k512_c64                 calls     1 plan     49225.2us packed     58068.3us ratio  1.18 loss       8.84ms route faer
+    large_b64_m256_n256_k256_c64                 calls     1 plan     25167.4us packed     30985.8us ratio  1.23 loss       5.82ms route faer
+    large_b64_m256_n1024_k64_c64                 calls     1 plan     28377.4us packed     33021.3us ratio  1.16 loss       4.64ms route faer
+    large_b512_m128_n128_k128_c64                calls     1 plan     37536.2us packed     42141.7us ratio  1.12 loss       4.61ms route faer
+    large_b4_m1024_n1024_k1024_f64               calls     1 plan     24573.0us packed     27919.4us ratio  1.14 loss       3.35ms route faer
+
+== phase2-extra 1T ==
+(a) faer cases >50us with ratio > 1.5:
+    rank1_k1_batched_m256_n256_h64_f64           plan      1101.7us packed      2825.2us ratio  2.56
+    rank1_k1_m1024_n1024_c64                     plan       397.5us packed      1839.7us ratio  4.63
+    rank1_k1_m2048_n2048_f64                     plan      1141.5us packed      2522.9us ratio  2.21
+    small_m1_n64_k64_h4096_f64                   plan      5916.5us packed     31355.5us ratio  5.30
+    small_n2_k2_h262144_f64                      plan      6338.0us packed     20781.2us ratio  3.28
+    small_n3_k3_h131072_f64                      plan      4881.5us packed     11815.8us ratio  2.42
+    small_n4_k32_h8192_f64                       plan      6406.9us packed      9845.5us ratio  1.54
+    small_n4_k4_h65536_c64                       plan      3597.4us packed      8067.6us ratio  2.24
+    small_n4_k4_h65536_f64                       plan      2448.6us packed      6866.2us ratio  2.80
+(b) top 10 weighted loss:
+    small_m1_n64_k64_h4096_f64                   calls     1 plan      5916.5us packed     31355.5us ratio  5.30 loss      25.44ms route faer
+    small_n2_k2_h262144_f64                      calls     1 plan      6338.0us packed     20781.2us ratio  3.28 loss      14.44ms route faer
+    small_n4_m256_k256_h256_f64                  calls     1 plan     19382.6us packed     27837.6us ratio  1.44 loss       8.45ms route faer
+    small_n3_k3_h131072_f64                      calls     1 plan      4881.5us packed     11815.8us ratio  2.42 loss       6.93ms route faer
+    small_n4_k4_h65536_c64                       calls     1 plan      3597.4us packed      8067.6us ratio  2.24 loss       4.47ms route faer
+    small_n4_k4_h65536_f64                       calls     1 plan      2448.6us packed      6866.2us ratio  2.80 loss       4.42ms route faer
+    small_n4_k32_h8192_f64                       calls     1 plan      6406.9us packed      9845.5us ratio  1.54 loss       3.44ms route faer
+    rank1_k1_batched_m256_n256_h64_f64           calls     1 plan      1101.7us packed      2825.2us ratio  2.56 loss       1.72ms route faer
+    rank1_k1_m1024_n1024_c64                     calls     1 plan       397.5us packed      1839.7us ratio  4.63 loss       1.44ms route faer
+    rank1_k1_m2048_n2048_f64                     calls     1 plan      1141.5us packed      2522.9us ratio  2.21 loss       1.38ms route faer
+
+== phase2-extra 4T ==
+(a) faer cases >50us with ratio > 1.5:
+    rank1_k1_batched_m256_n256_h64_f64           plan       391.3us packed      1788.3us ratio  4.57
+    rank1_k1_m1024_n1024_c64                     plan       262.3us packed       642.5us ratio  2.45
+    rank1_k1_m2048_n2048_f64                     plan       365.0us packed       922.0us ratio  2.53
+    small_m1_n64_k64_h4096_f64                   plan      2668.8us packed     45814.7us ratio 17.17
+    small_n2_k2_h262144_f64                      plan      1816.7us packed     22121.9us ratio 12.18
+    small_n3_k3_h131072_f64                      plan      1265.4us packed     11790.0us ratio  9.32
+    small_n4_k32_h8192_f64                       plan      1963.0us packed     76721.1us ratio 39.08
+    small_n4_k4_h65536_c64                       plan      1037.8us packed      8070.6us ratio  7.78
+    small_n4_k4_h65536_f64                       plan       642.6us packed      6580.0us ratio 10.24
+    small_n4_m256_k256_h256_f64                  plan      4876.3us packed      8422.1us ratio  1.73
+(b) top 10 weighted loss:
+    small_n4_k32_h8192_f64                       calls     1 plan      1963.0us packed     76721.1us ratio 39.08 loss      74.76ms route faer
+    small_m1_n64_k64_h4096_f64                   calls     1 plan      2668.8us packed     45814.7us ratio 17.17 loss      43.15ms route faer
+    small_n2_k2_h262144_f64                      calls     1 plan      1816.7us packed     22121.9us ratio 12.18 loss      20.31ms route faer
+    small_n3_k3_h131072_f64                      calls     1 plan      1265.4us packed     11790.0us ratio  9.32 loss      10.52ms route faer
+    small_n4_k4_h65536_c64                       calls     1 plan      1037.8us packed      8070.6us ratio  7.78 loss       7.03ms route faer
+    small_n4_k4_h65536_f64                       calls     1 plan       642.6us packed      6580.0us ratio 10.24 loss       5.94ms route faer
+    small_n4_m256_k256_h256_f64                  calls     1 plan      4876.3us packed      8422.1us ratio  1.73 loss       3.55ms route faer
+    rank1_k1_batched_m256_n256_h64_f64           calls     1 plan       391.3us packed      1788.3us ratio  4.57 loss       1.40ms route faer
+    rank1_k1_m2048_n2048_f64                     calls     1 plan       365.0us packed       922.0us ratio  2.53 loss       0.56ms route faer
+    rank1_k1_m1024_n1024_c64                     calls     1 plan       262.3us packed       642.5us ratio  2.45 loss       0.38ms route faer
+
+== phase2-extra 8T ==
+(a) faer cases >50us with ratio > 1.5:
+    rank1_k1_batched_m256_n256_h64_f64           plan       296.0us packed      1721.3us ratio  5.82
+    rank1_k1_m1024_n1024_c64                     plan       270.5us packed       534.8us ratio  1.98
+    rank1_k1_m2048_n2048_f64                     plan       276.1us packed       597.6us ratio  2.16
+    rank1_k1_m4096_n64_f64                       plan        51.5us packed       190.5us ratio  3.70
+    small_m1_n64_k64_h4096_f64                   plan      2668.6us packed     59149.8us ratio 22.17
+    small_n2_k2_h262144_f64                      plan      1323.7us packed     20993.4us ratio 15.86
+    small_n3_k3_h131072_f64                      plan       842.3us packed     11837.6us ratio 14.05
+    small_n4_k32_h8192_f64                       plan      1752.9us packed     78502.7us ratio 44.79
+    small_n4_k4_h65536_c64                       plan       776.0us packed      8013.6us ratio 10.33
+    small_n4_k4_h65536_f64                       plan       386.0us packed      6586.2us ratio 17.06
+    small_n4_m256_k256_h256_f64                  plan      3114.1us packed      7993.3us ratio  2.57
+(b) top 10 weighted loss:
+    small_n4_k32_h8192_f64                       calls     1 plan      1752.9us packed     78502.7us ratio 44.79 loss      76.75ms route faer
+    small_m1_n64_k64_h4096_f64                   calls     1 plan      2668.6us packed     59149.8us ratio 22.17 loss      56.48ms route faer
+    small_n2_k2_h262144_f64                      calls     1 plan      1323.7us packed     20993.4us ratio 15.86 loss      19.67ms route faer
+    small_n3_k3_h131072_f64                      calls     1 plan       842.3us packed     11837.6us ratio 14.05 loss      11.00ms route faer
+    small_n4_k4_h65536_c64                       calls     1 plan       776.0us packed      8013.6us ratio 10.33 loss       7.24ms route faer
+    small_n4_k4_h65536_f64                       calls     1 plan       386.0us packed      6586.2us ratio 17.06 loss       6.20ms route faer
+    small_n4_m256_k256_h256_f64                  calls     1 plan      3114.1us packed      7993.3us ratio  2.57 loss       4.88ms route faer
+    rank1_k1_batched_m256_n256_h64_f64           calls     1 plan       296.0us packed      1721.3us ratio  5.82 loss       1.43ms route faer
+    rank1_k1_m2048_n2048_f64                     calls     1 plan       276.1us packed       597.6us ratio  2.16 loss       0.32ms route faer
+    rank1_k1_m1024_n1024_c64                     calls     1 plan       270.5us packed       534.8us ratio  1.98 loss       0.26ms route faer
+

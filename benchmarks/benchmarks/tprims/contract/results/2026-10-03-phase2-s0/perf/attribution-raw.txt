@@ -1,0 +1,60 @@
+## gemm_1024_c64-1t  window 2632.7 ms, 13137 samples in window, threads 1
+  on-CPU share by category: kernel 89.6%, writeback 5.4%, pack 3.0%, driver 1.2%, kernel-mode 0.7%, other-user 0.0%
+  off-CPU (idle/parked) fraction of T x window: 0.2%
+  page-fault events (whole process, by faulting code): other-user 16552, faer(plan row) 2051, pack 904, kernel-mode 7, driver 6, unknown-user 3, writeback 2, rayon 1, sync 1, kernel 1
+  top symbols: _RINvNtNtNtNtCskjIBsqo3ayt_13tprims_kernel7kernels3x864avx28 89.5%; _RINvNtNtCskjIBsqo3ayt_13tprims_kernel4pack9writeback8emit_f 5.4%; _RINvNtNtCskjIBsqo3ayt_13tprims_kernel4pack4pack8pack_fmtINt 3.0%; _RINvNtNtCs5kj4rNlwm2k_15tprims_contract6driver11static_grid 1.2%; __memset_avx2_unaligned_erms 0.0%; _RINvNtNtNtNtCskjIBsqo3ayt_13tprims_kernel7kernels3x864avx28 0.0%
+
+## gemm_1024_c64-8t  window 399.9 ms, 15472 samples in window, threads 8
+  on-CPU share by category: kernel 86.4%, pack 5.7%, writeback 5.1%, driver 1.4%, kernel-mode 1.3%, other-user 0.1%, sync 0.0%, rayon 0.0%
+  off-CPU (idle/parked) fraction of T x window: 3.3%
+  page-fault events (whole process, by faulting code): other-user 16728, faer(plan row) 12297, pack 1802, driver 8, kernel-mode 7, unknown-user 3, writeback 2, rayon 1, sync 1
+  top symbols: _RINvNtNtNtNtCskjIBsqo3ayt_13tprims_kernel7kernels3x864avx28 86.4%; _RINvNtNtCskjIBsqo3ayt_13tprims_kernel4pack4pack8pack_fmtINt 5.7%; _RINvNtNtCskjIBsqo3ayt_13tprims_kernel4pack9writeback8emit_f 5.1%; _RINvNtNtCs5kj4rNlwm2k_15tprims_contract6driver11static_grid 1.4%; __memset_avx2_unaligned_erms 0.0%; _RNvNtNtCskjIBsqo3ayt_13tprims_kernel4pack7scatter13run_stru 0.0%
+
+## gemm_1024_f64-1t  window 663.6 ms, 3309 samples in window, threads 1
+  on-CPU share by category: kernel 85.2%, writeback 6.5%, pack 4.6%, driver 2.4%, kernel-mode 1.3%, unknown-user 0.0%
+  off-CPU (idle/parked) fraction of T x window: 0.3%
+  page-fault events (whole process, by faulting code): other-user 4260, faer(plan row) 3074, writeback 2049, pack 647, driver 10, kernel-mode 7, unknown-user 3, rayon 2, sync 1
+  top symbols: _RINvNtNtNtNtCskjIBsqo3ayt_13tprims_kernel7kernels3x864avx28 85.2%; _RINvNtNtCskjIBsqo3ayt_13tprims_kernel4pack9writeback8emit_f 6.5%; _RINvNtNtCskjIBsqo3ayt_13tprims_kernel4pack4pack8pack_fmtdKh 4.5%; _RINvNtNtCs5kj4rNlwm2k_15tprims_contract6driver11static_grid 2.4%; _RINvNtNtNtNtCskjIBsqo3ayt_13tprims_kernel7kernels3x864avx28 0.1%; _RNvNtNtCskjIBsqo3ayt_13tprims_kernel4pack7scatter13run_stru 0.0%
+
+## gemm_1024_f64-8t  window 102.4 ms, 4049 samples in window, threads 8
+  on-CPU share by category: kernel 77.1%, pack 7.5%, writeback 7.2%, kernel-mode 5.9%, driver 2.1%, other-user 0.1%, rayon 0.1%
+  off-CPU (idle/parked) fraction of T x window: 1.1%
+  page-fault events (whole process, by faulting code): faer(plan row) 19382, writeback 6747, other-user 4395, pack 1034, kernel-mode 8, driver 5, unknown-user 3, kernel 3, rayon 1, sync 1
+  top symbols: _RINvNtNtNtNtCskjIBsqo3ayt_13tprims_kernel7kernels3x864avx28 77.1%; _RINvNtNtCskjIBsqo3ayt_13tprims_kernel4pack4pack8pack_fmtdKh 7.4%; _RINvNtNtCskjIBsqo3ayt_13tprims_kernel4pack9writeback8emit_f 7.2%; _RINvNtNtCs5kj4rNlwm2k_15tprims_contract6driver11static_grid 2.0%; _RNvNtNtCskjIBsqo3ayt_13tprims_kernel4pack7scatter20append_b 0.1%; _RNCINvCs7X1hgm5gQtw_8contract3rundEs1_0B4_ 0.1%
+
+## gemm_batched_008_f64-1t  window 2770.1 ms, 13739 samples in window, threads 1
+  on-CPU share by category: pack 41.2%, kernel 34.3%, writeback 11.0%, driver 7.5%, kernel-mode 5.9%, other-user 0.0%
+  off-CPU (idle/parked) fraction of T x window: 0.8%
+  page-fault events (whole process, by faulting code): other-user 252601, faer(plan row) 84079, writeback 84076, pack 1294, kernel-mode 16, driver 5, unknown-user 3, sync 2, kernel 1
+  top symbols: _RINvNtNtCskjIBsqo3ayt_13tprims_kernel4pack4pack8pack_fmtdKh 41.2%; _RINvNtNtNtNtCskjIBsqo3ayt_13tprims_kernel7kernels3x864avx28 34.2%; _RINvNtNtCskjIBsqo3ayt_13tprims_kernel4pack9writeback8emit_f 11.0%; _RINvNtNtCs5kj4rNlwm2k_15tprims_contract6driver11static_grid 7.5%; _RINvNtNtNtNtCskjIBsqo3ayt_13tprims_kernel7kernels3x864avx28 0.1%; _RNvNtNtCskjIBsqo3ayt_13tprims_kernel4pack7scatter13build_sc 0.0%
+
+## gemm_batched_008_f64-8t  window 949.4 ms, 35558 samples in window, threads 8
+  on-CPU share by category: pack 30.4%, kernel-mode 30.3%, kernel 24.5%, driver 7.1%, writeback 7.0%, sync 0.4%, other-user 0.4%, rayon 0.0%
+  off-CPU (idle/parked) fraction of T x window: 6.4%
+  page-fault events (whole process, by faulting code): other-user 252650, faer(plan row) 175872, writeback 144970, pack 1287, kernel-mode 14, driver 6, unknown-user 3, rayon 1, sync 1, kernel 1
+  top symbols: _RINvNtNtCskjIBsqo3ayt_13tprims_kernel4pack4pack8pack_fmtdKh 30.3%; _RINvNtNtNtNtCskjIBsqo3ayt_13tprims_kernel7kernels3x864avx28 24.5%; _RINvNtNtCs5kj4rNlwm2k_15tprims_contract6driver11static_grid 7.0%; _RINvNtNtCskjIBsqo3ayt_13tprims_kernel4pack9writeback8emit_f 7.0%; _RNvMs0_NtNtCs2AWtUsOyxgP_3std4sync7barrierNtB5_7Barrier4wai 0.4%; syscall 0.3%
+
+## gemm_batched_012_f64-8t  window 712.1 ms, 26727 samples in window, threads 8
+  on-CPU share by category: kernel-mode 48.7%, writeback 25.4%, driver 12.5%, kernel 6.6%, pack 3.6%, sync 2.8%, other-user 0.5%, rayon 0.0%
+  off-CPU (idle/parked) fraction of T x window: 6.2%
+  page-fault events (whole process, by faulting code): writeback 282690, faer(plan row) 84097, other-user 9937, pack 35, kernel-mode 15, driver 10, unknown-user 3, sync 1
+  top symbols: _RINvNtNtCskjIBsqo3ayt_13tprims_kernel4pack9writeback8emit_f 25.4%; _RINvNtNtCs5kj4rNlwm2k_15tprims_contract6driver11static_grid 12.3%; _RINvNtNtNtNtCskjIBsqo3ayt_13tprims_kernel7kernels3x864avx28 6.5%; _RINvNtNtCskjIBsqo3ayt_13tprims_kernel4pack4pack8pack_fmtdKh 3.6%; _RNvMNtNtNtNtCs2AWtUsOyxgP_3std3sys4sync5mutex5futexNtB2_5Mu 2.0%; _RNvMs0_NtNtCs2AWtUsOyxgP_3std4sync7barrierNtB5_7Barrier4wai 0.8%
+
+## gemm_batched_047_f64-8t  window 1182.5 ms, 31188 samples in window, threads 8
+  on-CPU share by category: kernel-mode 83.3%, sync 6.3%, pack 3.9%, driver 2.8%, kernel 2.1%, other-user 0.9%, writeback 0.5%, rayon 0.1%, unknown-user 0.0%
+  off-CPU (idle/parked) fraction of T x window: 34.1%
+  page-fault events (whole process, by faulting code): other-user 3655, writeback 568, driver 326, kernel-mode 12, pack 12, unknown-user 3, sync 2
+  top symbols: _RNvMNtNtNtNtCs2AWtUsOyxgP_3std3sys4sync5mutex5futexNtB2_5Mu 5.4%; _RINvNtNtCskjIBsqo3ayt_13tprims_kernel4pack4pack8pack_fmtdKh 3.9%; _RINvNtNtCs5kj4rNlwm2k_15tprims_contract6driver11static_grid 2.6%; _RINvNtNtNtNtCskjIBsqo3ayt_13tprims_kernel7kernels3x864avx28 2.1%; _RNvMs0_NtNtCs2AWtUsOyxgP_3std4sync7barrierNtB5_7Barrier4wai 1.0%; syscall 0.9%
+
+## small_n4_k32_h8192_f64-1t  window 143.2 ms, 713 samples in window, threads 1
+  on-CPU share by category: pack 70.5%, kernel 16.3%, kernel-mode 5.2%, driver 4.6%, writeback 3.4%
+  off-CPU (idle/parked) fraction of T x window: 0.4%
+  page-fault events (whole process, by faulting code): other-user 18595, faer(plan row) 2050, writeback 2049, pack 63, kernel-mode 7, driver 7, unknown-user 3, sync 2, kernel 1
+  top symbols: _RINvNtNtCskjIBsqo3ayt_13tprims_kernel4pack4pack8pack_fmtdKh 70.1%; _RINvNtNtNtNtCskjIBsqo3ayt_13tprims_kernel7kernels3x864avx28 16.3%; _RINvNtNtCs5kj4rNlwm2k_15tprims_contract6driver11static_grid 3.9%; _RINvNtNtCskjIBsqo3ayt_13tprims_kernel4pack9writeback8emit_f 3.4%; _RINvNtNtCs5kj4rNlwm2k_15tprims_contract6driver4tile14pack_b 0.6%; _RNvNtNtCskjIBsqo3ayt_13tprims_kernel4pack7scatter13build_sc 0.4%
+
+## small_n4_k32_h8192_f64-8t  window 1392.3 ms, 24639 samples in window, threads 8
+  on-CPU share by category: kernel-mode 77.8%, pack 8.8%, sync 5.6%, driver 3.2%, kernel 2.8%, other-user 1.2%, writeback 0.5%, rayon 0.0%, unknown-user 0.0%
+  off-CPU (idle/parked) fraction of T x window: 55.8%
+  page-fault events (whole process, by faulting code): other-user 18657, faer(plan row) 2058, writeback 2049, pack 65, driver 7, kernel-mode 6, unknown-user 3, sync 2, rayon 1
+  top symbols: _RINvNtNtCskjIBsqo3ayt_13tprims_kernel4pack4pack8pack_fmtdKh 8.8%; _RNvMNtNtNtNtCs2AWtUsOyxgP_3std3sys4sync5mutex5futexNtB2_5Mu 4.1%; _RINvNtNtCs5kj4rNlwm2k_15tprims_contract6driver11static_grid 2.9%; _RINvNtNtNtNtCskjIBsqo3ayt_13tprims_kernel7kernels3x864avx28 2.8%; _RNvMs0_NtNtCs2AWtUsOyxgP_3std4sync7barrierNtB5_7Barrier4wai 1.5%; syscall 1.2%
+

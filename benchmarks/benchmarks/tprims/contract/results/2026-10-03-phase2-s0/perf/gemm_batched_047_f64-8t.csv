@@ -1,0 +1,9 @@
+# threads: requested=8 pool=8 budget=8
+case,variant,threads,median_ns,samples
+gemm_batched_047_f64,plan_plan,8,671,60
+# selected gemm_batched_047_f64 plan: faer
+gemm_batched_047_f64,plan_exec,8,245239,60
+gemm_batched_047_f64,packed_plan,8,10841,60
+# selected gemm_batched_047_f64 packed: packed avx2.f64.real.8x6
+gemm_batched_047_f64,packed_exec,8,18889784,60
+CHECK gemm_batched_047_f64 threads=8 plan_vs_packed_rel=2.7401953406912707e-16 ok

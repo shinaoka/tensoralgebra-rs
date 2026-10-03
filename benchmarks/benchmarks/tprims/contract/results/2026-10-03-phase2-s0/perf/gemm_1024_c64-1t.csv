@@ -1,0 +1,9 @@
+# threads: requested=1 pool=1 budget=1
+case,variant,threads,median_ns,samples
+gemm_1024_c64,plan_plan,1,810,10
+# selected gemm_1024_c64 plan: faer
+gemm_1024_c64,plan_exec,1,176156585,10
+gemm_1024_c64,packed_plan,1,20191,10
+# selected gemm_1024_c64 packed: packed avx2.c64.planar.4x5
+gemm_1024_c64,packed_exec,1,193400021,10
+CHECK gemm_1024_c64 threads=1 plan_vs_packed_rel=1.6916803379420444e-15 ok
