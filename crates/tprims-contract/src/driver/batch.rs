@@ -29,9 +29,11 @@ use crate::plan::NS_PER_FLOP;
 ///    (`exec.width_for(h * item_ns) == 1`);
 /// 3. otherwise lanes when the entry is *tiny*, i.e. alone below the policy's
 ///    serial threshold, so a team would pay its barriers for nothing, **or**
-///    when there are at least as many entries as workers, so the batch alone
-///    fills the budget; large entries with fewer entries than workers keep the
-///    team;
+///    when there are at least as many entries as workers *and* they split
+///    evenly over the lanes (the busiest lane takes at most 1/0.9 of the mean
+///    share), so the batch alone fills the budget; large entries with fewer
+///    entries than workers, or an uneven split (9 entries on 8 lanes leaves
+///    one lane with two and the rest idle for half the time), keep the team;
 /// 4. the count is the width the whole batch warrants, at most one lane per
 ///    entry.
 pub(super) fn lanes(
@@ -52,8 +54,11 @@ pub(super) fn lanes(
         return 1;
     }
     let tiny = item_ns < policy.serial_below_ns;
-    if tiny || h >= budget {
-        h.min(width)
+    let lanes = h.min(width);
+    // Busiest lane's entries against the mean: `h / (lanes * ceil(h / lanes))`.
+    let balanced = 10 * h >= 9 * lanes * h.div_ceil(lanes);
+    if tiny || (h >= budget && balanced) {
+        lanes
     } else {
         1
     }
