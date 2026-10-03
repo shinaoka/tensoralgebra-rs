@@ -2,6 +2,12 @@
 
 Dated 2026-09-29, extended through 2026-10-02. Sections below the source-integration entries are history: where a row names `tprims-blas`, `tprims-linalg`, `tprims-core`, `tprims-bundle`, engines, `private-gemm-x86`, the `tensorprimitives/` tree or an environment variable, read the source-integration section above for the current rule. A source link supports the observation; the proposed response remains a hypothesis until an experiment records evidence. Structural decisions (naming, packaging, ABI shape) are marked **Decided** when the maintainer has chosen them; they can still be revisited before the first release.
 
+## 2026-10-03 Phase 2 routing ([#50](https://github.com/tensor4all/tprims-rs/issues/50))
+
+| Question | Ruling | Evidence or next check |
+| --- | --- | --- |
+| Delete faer for one packed route? | **Maintainer decision: no.** GEMM-fusable contractions of any size go to faer. Non-fusable contractions go to the packed driver, and all-batch problems to strided-rs. Phase 2 widens faer's coverage and optimizes the packed driver in its own domain. | Phase 2 S0 (`benchmarks/benchmarks/tprims/contract/results/2026-10-03-phase2-s0/`). faer wins every copy-free size class: tiny, n ≤ 4, rank-1, batched-small, small-K and large (10–15%). The packed micro-kernel matches faer; the losses are structural fixed costs. |
+
 ## 2026-10-02 source integration ([#37](https://github.com/tensor4all/tprims-rs/issues/37)), implemented
 
 Implemented in four PRs (exec, kernel, contract, capi/testkit/bench); the

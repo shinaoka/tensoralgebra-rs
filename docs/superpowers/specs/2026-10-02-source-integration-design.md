@@ -28,7 +28,7 @@ performance parity.
 | D2 | The public Rust API may break freely. tenferro gets a migration guide; the `ext/tenferro-cpu-tprims` update is separate work. |
 | D3 | Removed: the public BLAS API (`gemm`, `gemm_batched`, `gemm_grouped`, `trsm`), the BLAS C ABI (`tprims-blas-capi`), the engine layer (`Engine`, `EngineChoice`, `TPRIMS_GEMM_ENGINE`), the private-gemm-x86 engine (`tprims-kernel-pgx86`), the gemm-f64/f32 adapter (`tprims-kernel-gemm`) and `tprims-linalg`. BLAS and linalg may return later as separate repositories. |
 | D4 | Phase 1 keeps faer only as an internal contraction strategy, for copy-free permute+GEMM and the batched faer loop. It lives in one module. Phase 2 deletes it after the packed driver is optimized. |
-| D5 | Phase 2 target: contractions with a K role use **only the packed driver**, and the only difference between cases is which kernel family is called. Small and matvec-like problems are covered by families and driver handling, not by separate paths. All-batch (pure elementwise: no M, N or K) problems are **delegated to strided-rs permanently** (`strategy/elementwise.rs` on `strided-basic`, monomorphized flag-free bodies); they are not removed in Phase 2. (Amended 2026-10-02.) |
+| D5 | **Amended 2026-10-03:** contractions that fuse to a strided (batched) GEMM without a copy run on **faer**, of any size; contractions that would need a copy run on the **packed driver** (kernel families); all-batch (no M, N or K) problems are delegated to **strided-rs**. faer stays a permanent dependency. This supersedes the earlier "one route, delete faer" target; see the [Phase 2 spec](2026-10-03-phase2-faer-routing-and-packed-driver-design.md). |
 | D6 | The central contraction representation is a lowered, role-grouped problem (§4.1). Label-based (TAPP) and `DotGeneral` (Rust/tenferro) inputs are thin front ends lowered at plan time. Execution cost is identical: the driver already runs on precomputed offset tables (`tensorcontract/src/plan.rs:275`), not on labels. |
 | D7 | Kernel family IDs are renamed to one scheme (§6.2). |
 | D8 | The library reads **no environment variables**. Every tuning knob becomes explicit configuration; benchmarks translate env/flags into it. |
@@ -624,21 +624,7 @@ Name feature-gated reference cases separately from tprims strategies.
 
 ## 10. Phase 2 (separate spec, summary only)
 
-**Goal.** Optimize the packed driver, then delete `strategy/faer.rs` and the faer dependency. `strategy/elementwise.rs` stays: all-batch problems are delegated to strided-rs permanently.
-
-**End state.** Contractions with a K role run one route (the packed driver), where cases differ only in the selected family; all-batch problems run on strided-rs.
-
-**Work items:**
-
-- direct-C write-back by default;
-- tuned AVX2 tiles;
-- `target_feature` on packing and write-back;
-- a small-problem path with no fixed packing cost;
-- parallel-partition review, including the decided but unimplemented rule (decision log, "SPMD width on a borrowed Rayon pool") that barrier broadcasts use the full pool and medium widths use barrier-free partitions;
-- driver-side batch-axis job claiming, the cross-batch claiming deferred in #29, needed for tiny batched GEMMs and Hadamard;
-- reusable SIMD placed in strided-rs where practical.
-
-**Acceptance.** No regression on `tenferro-p1`, `hadamard` and the GEMM corpora.
+Superseded on 2026-10-03 by the [Phase 2 spec](2026-10-03-phase2-faer-routing-and-packed-driver-design.md). faer is kept for every GEMM-fusable contraction. Phase 2 widens faer's coverage and optimizes the packed driver for the contractions it owns.
 
 ## 11. Delivery and verification (Phase 1)
 
