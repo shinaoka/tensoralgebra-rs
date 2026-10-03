@@ -587,35 +587,22 @@ mod tests {
         }
     }
 
-    /// Bitwise on x86_64, where the variants are compiled from one source with
-    /// no fused multiply-add. Other targets may contract the same expression
-    /// differently at different inlining sites (macOS CI showed it for ThreeM),
-    /// so there the comparison allows a few ulps.
+    /// Bitwise on every target.
     fn agree<T: Element>(got: &[T], want: &[T], ctx: &str) {
         let bits = |v: &[T]| {
             v.iter()
                 .map(|x| (x.re().to_f64().to_bits(), x.im().to_f64().to_bits()))
                 .collect::<Vec<_>>()
         };
-        if cfg!(target_arch = "x86_64") {
-            assert_eq!(bits(got), bits(want), "{ctx}");
-            return;
-        }
-        // Loose enough for f32 rounding differences, far below any logic error.
-        let close = |a: f64, b: f64| (a - b).abs() <= 1e-5 * a.abs().max(b.abs()).max(1.0);
-        for (g, w) in got.iter().zip(want) {
-            assert!(
-                close(g.re().to_f64(), w.re().to_f64()) && close(g.im().to_f64(), w.im().to_f64()),
-                "{ctx}: {g:?} vs {w:?}"
-            );
-        }
+        assert_eq!(bits(got), bits(want), "{ctx}");
     }
 
     fn check<T: Element>(fmts: &[TileFormat], alphas: &[T], betas: &[T], conjs: &[bool]) {
         let ab: Vec<T::Real> = (0..24)
             .map(|i| T::Real::from_f64(i as f64 / 7. + 0.3))
             .collect();
-        let c: Vec<T> = (0..10)
+        // Sixteen elements: the largest scatter offset is 2 * 3 + 6 = 12.
+        let c: Vec<T> = (0..16)
             .map(|i| T::from_parts(T::Real::from_f64(3. + i as f64), T::Real::from_f64(-2.)))
             .collect();
         let simds: &[bool] = if simd_available() {
